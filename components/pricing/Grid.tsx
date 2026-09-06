@@ -12,7 +12,7 @@ import { won } from '@/lib/format';
 import { startKey } from '@/lib/pricing-match';
 
 import {
-  Empty, FIELD, PANEL,
+  Empty, FIELD, FIELD_BASE, PANEL,
 } from '@/components/ui';
 import {
   CanEdit, POWER_TYPES, bldgAxisLabel, prefillOf, receiveUnitOf, type FormOpen,
@@ -208,10 +208,20 @@ export function Grid({
       */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <h2 className="text-h3 font-black text-slate-900">매트릭스</h2>
-        <div className="w-40">
+        {/*
+          ★시기 칸은 내용에 맞춰 넓힌다★ (한백 2026-09-06 「기간이 짤려서 보여」) — 이름이
+          반년 묶음(「2026 하반기」)일 때는 고정 폭으로 됐지만, 이제 케이스가 적은 기간
+          그대로라(「2026년 9월 1일 ~ 12월 31일」) 고정 폭에서 잘린다. 고른 값이 안 보이는
+          드롭다운은 「무엇을 보고 있나」를 말하지 못한다. 운영사 칸은 이름이 짧아 그대로 둔다.
+
+          ★FIELD 가 아니라 FIELD_BASE 다★ — FIELD 에는 w-full 이 박혀 있어서, 뒤에 w-auto 를
+          덧붙여도 어느 쪽이 이길지는 클래스 순서가 아니라 생성된 CSS 의 순서가 정한다.
+          폭을 안 정하는 부품으로 바꿔야 셀렉트가 제 내용만큼 선다.
+        */}
+        <div>
           <select
             aria-label="시기"
-            className={FIELD}
+            className={FIELD_BASE}
             value={period ?? ''}
             onChange={(e) => setPeriodPick(e.target.value)}
           >
