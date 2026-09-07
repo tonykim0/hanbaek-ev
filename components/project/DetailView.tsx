@@ -21,7 +21,7 @@ import { safetyFeeApplies } from '@/lib/settlement';
 import { useAction } from '@/lib/use-action';
 import { DatePicker } from '@/components/DatePicker';
 import { Badge, Btn, Confirm, Empty, Err, FIELD, Tag, type Tone, Val } from '@/components/ui';
-import { buildDocContext, evaluateDocs, PROCESS_DOCS } from '@/lib/doc-rules';
+import { buildDocContext, evaluateDocs, processDocsFor, PROCESS_DOCS } from '@/lib/doc-rules';
 import { BAND_TONE, bandOfColumn, boardColumnOf, phaseOfProject } from '@/lib/board';
 import type { BoardBand, BoardColumn } from '@/lib/board';
 import { statusIndex, type ProcessEdit } from '@/lib/process';
@@ -150,7 +150,19 @@ export default function ProjectDetailView({
    * 같은 화면의 「전체 다운로드 (6)」과 두 말을 했다. 게이트도 uploaded 를 통과로 본다
    * (lib/process docApproved) — 세는 자리만 갈려 있었다.
    */
-  const processDone = PROCESS_DOCS.filter((d) =>
+  /*
+   * ★분모는 이 현장이 실제로 받는 서류다★ — 전체 목록으로 세면 조건부 서류가 늘 분모에
+   * 들어가 그 현장은 N/N 에 영영 못 닿는다. 전기안전관리자 선임신고증명서(한전불입만)가
+   * 이미 그랬고, 전기안전점검수수료 영수증(받는 운영사만)을 더하면서 플러그링크·에버온
+   * 현장의 분모가 또 하나 늘었다 — 그 현장에는 낼 수 없는 칸이다.
+   * 조건 판정은 doc-rules 한 곳이 한다(processDocsFor).
+   */
+  const processTake = processDocsFor(PROCESS_DOCS.map((d) => d.key), {
+    powerType: detail.project.powerType,
+    bizType: detail.project.bizType,
+    cpo: detail.project.cpo,
+  });
+  const processDone = processTake.filter((d) =>
     process.docs.find((x) => x.kind === d.key && (x.status === 'uploaded' || x.status === 'approved'))
   ).length;
   // 기성 차수는 한백 전용 묶음에 있다 — 협력사 응답에는 admin 키가 아예 없다
@@ -181,7 +193,7 @@ export default function ProjectDetailView({
     {
       key: 'construction',
       label: '시공',
-      count: `${processDone}/${PROCESS_DOCS.length}`,
+      count: `${processDone}/${processTake.length}`,
       locked: constructionLocked,
       why: !contract.docsFilled
         ? '필수 서류 미충족'
