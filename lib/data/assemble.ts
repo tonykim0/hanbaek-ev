@@ -365,8 +365,15 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
    * 계속 들면서 화면에서는 줄이 안 보여 지울 수도 없다. 여기서 0 으로 보면 그 오염이 없다.
    */
   const applies = safetyFeeApplies(d.project.cpo);
+  /*
+   * ★null 을 0 으로 누르지 않는다★ — 두 값은 다른 말이다(화면 규칙 10). null 은 「아직
+   * 청구액을 안 적었다」이고 0 은 「세었고 없다」다. 눌러 보내면 「미기재」를 찾는 자리가
+   * 전부 죽는다: 표의 점검수수료 칸이 「받을 수 있음 · 0」으로 뜨고, 거르는 축 「미기재」와
+   * 정산현황 꼬리표와 할 일 카드가 하나도 안 걸린다(전부 safetyFee === null 로 판정한다).
+   * 안 받는 운영사도 null 이다 — 값이 남아 있어도 셈에는 안 들고, 화면은 cpo 로 「해당없음」을 안다.
+   */
   const fee = {
-    safetyFee: applies ? admin.safetyFee ?? 0 : 0,
+    safetyFee: applies ? admin.safetyFee : null,
     safetyFeeCollectedAt: applies ? admin.safetyFeeCollectedAt : null,
   };
   const sales = payoutSideOf(d.payoutEntries, '영업비');
@@ -386,7 +393,7 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
      * 「점검수수료 N 포함」으로 적는다. 차수에 얹지 않는 이유는 lib/settlement 의
      * SAFETY_FEE_CPOS 주석에 있다(차수 합 = 받는 단가 항등을 깨뜨린다).
      */
-    planTotal: sum(steps) + fee.safetyFee!,
+    planTotal: sum(steps) + (fee.safetyFee ?? 0),
     /*
      * 받은 돈은 ★실수금액이 있으면 그것★이다 — 계획액은 협의로 달라질 수 있다(0034).
      * 옛 기록은 실수금액이 없으므로 계획액을 그대로 쓴다.
@@ -406,7 +413,7 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
     consTotal: d.lines.reduce((n, l) => n + (l.rule?.consUnit ?? 0) * l.qty, 0),
     /* 마진에도 든다 — 청구액을 적으면 그때부터 한백 몫이다(수금 여부와 무관) */
     marginTotal: d.lines.reduce((n, l) => n + (l.rule?.margin ?? 0) * l.qty, 0)
-      + fee.safetyFee!,
+      + (fee.safetyFee ?? 0),
     unpricedLines: d.lines.filter((l) => !l.rule).length,
     salesAdjust: sales.adjust,
     salesPaid: sales.paid,

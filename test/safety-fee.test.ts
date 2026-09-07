@@ -12,7 +12,8 @@ import {
   safetyFeeDue, safetyFeeOpen,
 } from '@/lib/settlement';
 import { CPO_NAMES } from '@/types/project';
-import type { SettlementStep } from '@/types/project';
+import type { SettlementStep, SettlementSummary } from '@/types/project';
+import { receivableTodos } from '@/lib/todo-receivables';
 
 describe('게이트 — 어느 운영사에게서 따로 받나', () => {
   it('SK일렉링크·나이스인프라·현대엔지니어링 셋이다', () => {
@@ -121,5 +122,46 @@ describe('수금률 — 차수만 센다 (한백 2026-09-06 「수금률에 포�
       step({ no: 2 }),
     ];
     expect(collectionRate(절반)).toBe(50);
+  });
+});
+
+describe('할 일 — 트리거가 없는 돈이라 여기서 재촉한다', () => {
+  const row = (over: Partial<SettlementSummary>): SettlementSummary => ({
+    id: 'p1', name: '테스트아파트', cpo: 'SK일렉링크', qty: 3,
+    stage: 'construction', status: '준공완료',
+    ruleName: '착공 800,000원 → 준공마감 잔액',
+    steps: [], planTotal: 0, collectedTotal: 0, cpoCloseDate: null,
+    safetyFee: null, safetyFeeCollectedAt: null,
+    salesOrg: null, gcOrg: null,
+    payoutMilestones: { contractConfirmedAt: null, installCompletedAt: null, completedAt: null },
+    salesPayoutDocsMissing: [], salesTotal: 0, consTotal: 0, marginTotal: 0, unpricedLines: 0,
+    salesAdjust: 0, salesPaid: 0, salesLastPaidAt: null,
+    consAdjust: 0, consPaid: 0, consLastPaidAt: null,
+    payNote: null, ...over,
+  } as SettlementSummary);
+  const kinds = (r: SettlementSummary) => receivableTodos([r]).map((t) => t.kind);
+
+  it('청구액을 적었는데 안 들어오면 「점검수수료 수금」이 선다', () => {
+    expect(kinds(row({ safetyFee: 450_000 }))).toContain('점검수수료 수금');
+  });
+
+  it('수금까지 되면 사라진다', () => {
+    expect(kinds(row({ safetyFee: 450_000, safetyFeeCollectedAt: '2026-09-06' })))
+      .not.toContain('점검수수료 수금');
+  });
+
+  /* ★이 판정이 assemble 의 null→0 붕괴로 한 번 죽었다★ — 그래서 여기서 못 박는다 */
+  it('준공완료인데 청구액이 없으면 「점검수수료 미기재」가 선다', () => {
+    expect(kinds(row({ status: '준공완료' }))).toContain('점검수수료 미기재');
+  });
+
+  it('준공 전에는 미기재로 세우지 않는다 — 아직 올 때가 아니다', () => {
+    expect(kinds(row({ status: '착공' }))).not.toContain('점검수수료 미기재');
+  });
+
+  it('안 받는 운영사는 두 카드 모두 안 선다', () => {
+    const 에버온 = kinds(row({ cpo: '에버온', status: '준공완료', safetyFee: 450_000 }));
+    expect(에버온).not.toContain('점검수수료 미기재');
+    expect(에버온).not.toContain('점검수수료 수금');
   });
 });

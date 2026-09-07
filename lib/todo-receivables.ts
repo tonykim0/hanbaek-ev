@@ -117,7 +117,12 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
      * 차수 카드에 합치지 않는다: 그 카드의 말은 「N차 기성 · 착공 충족」 꼴이라 트리거가
      * 없는 이 돈을 담으면 문장이 거짓이 된다.
      */
-    if (safetyFeeOpen(r) > 0) {
+    /*
+     * 게이트를 여기서도 본다 — 조립이 안 받는 운영사의 값을 null 로 보내지만(assemble
+     * settlementSummaryOf), 그 불변식에 네 자리가 기대고 있어서 한 번 깨졌을 때 전부 같이
+     * 죽었다. 판정하는 자리마다 cpo 를 같이 본다.
+     */
+    if (safetyFeeApplies(r.cpo) && safetyFeeOpen(r) > 0) {
       items.push({
         id: `safetyfee|${r.id}`,
         href: `/projects/${r.id}?tab=receivable`,

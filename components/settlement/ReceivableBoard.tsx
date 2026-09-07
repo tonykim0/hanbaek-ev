@@ -63,10 +63,28 @@ const SORTS: Array<{ key: SortKey; label: string }> = [
  * 그래서 「조건 대기」로 서는 일이 없고, planTotal 에 이미 들어 있으므로 여기서도 세야
  * 「총액 = 수금 완료 + 미수금」·「미수금 = 받을 수 있는 돈 + 조건 대기」 두 관계가 유지된다.
  */
+/* 안 받는 운영사면 0 — 조립도 null 로 보내지만 판정하는 자리마다 cpo 를 같이 본다 */
+const feeOpenOf = (r: SettlementSummary) => (safetyFeeApplies(r.cpo) ? safetyFeeOpen(r) : 0);
+const feeGotOf = (r: SettlementSummary) => (safetyFeeApplies(r.cpo) ? safetyFeeCollected(r) : 0);
+
 const openOf = (r: SettlementSummary) =>
   r.steps.filter((s) => s.state === 'open').reduce((n, s) => n + (s.planAmount ?? 0), 0)
-  + safetyFeeOpen(r);
-const unpaidOf = (r: SettlementSummary) => Math.max(0, r.planTotal - r.collectedTotal);
+  + feeOpenOf(r);
+/*
+ * 미수금 — 차수 몫과 수수료 몫을 ★따로 자른다★.
+ *
+ * 예전에는 planTotal − collectedTotal 을 통째로 Math.max(0, …) 했다. 초과수금 현장
+ * (협의로 계획액보다 많이 받은 곳 — 실수금액에 상한이 없다)에서는 차수 쪽이 음수라,
+ * 그 음수가 아직 안 받은 수수료를 삼켜 미수금이 0 으로 뜬다. 그러면 화면이 스스로 적어 둔
+ * 「미수금 = 받을 수 있는 돈 + 조건 대기」가 깨진다 — 받을 수 있는 돈은 수수료를 세는데
+ * 미수금은 0 이 된다. 차수 초과분이 수수료를 지우는 것은 다른 돈끼리의 상계다.
+ */
+const unpaidOf = (r: SettlementSummary) => {
+  const feePlan = safetyFeeApplies(r.cpo) ? r.safetyFee ?? 0 : 0;
+  const stepPlan = r.planTotal - feePlan;
+  const stepCollected = r.collectedTotal - feeGotOf(r);
+  return Math.max(0, stepPlan - stepCollected) + feeOpenOf(r);
+};
 
 export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] }) {
   const sp = useSearchParams();
@@ -106,7 +124,7 @@ export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] })
         f === 'open' ? openOf(r) > 0
           : f === 'unpaid' ? unpaidOf(r) > 0
             : f === 'done' ? r.planTotal > 0 && r.collectedTotal >= r.planTotal
-              : f === 'feeopen' ? safetyFeeOpen(r) > 0
+              : f === 'feeopen' ? feeOpenOf(r) > 0
                 /* 준공완료 뒤에 청구액이 없는 것만 센다 — 준공 전에는 아직 올 때가 아니다 */
                 : f === 'feemiss' ? safetyFeeApplies(r.cpo) && r.safetyFee === null && safetyFeeDue(r.status)
                   : r.ruleName === null
@@ -132,10 +150,10 @@ export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] })
       collected: sum((r) => r.collectedTotal),
       open: sum(openOf),
       /* 그중 수수료 몫 — 차수가 안 열린 현장에서도 금액이 서는 이유다 */
-      openFee: sum(safetyFeeOpen),
+      openFee: sum(feeOpenOf),
       /* 수금률에서 빼기 위해 따로 센다 — 수수료는 차수 진행률에 안 든다 */
-      fee: sum((r) => r.safetyFee ?? 0),
-      feeCollected: sum(safetyFeeCollected),
+      fee: sum((r) => (safetyFeeApplies(r.cpo) ? r.safetyFee ?? 0 : 0)),
+      feeCollected: sum(feeGotOf),
       unpaid: sum(unpaidOf),
       /* 미수금에서 아직 조건이 안 찬 몫 — 총액의 나머지 한 토막이다 */
       waiting: Math.max(0, sum(unpaidOf) - sum(openOf)),

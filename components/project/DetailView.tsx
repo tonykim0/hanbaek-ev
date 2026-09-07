@@ -17,6 +17,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { ContractState, ProjectDetail, SettlementRuleChoice } from '@/types/project';
 import { subsidized } from '@/types/project';
+import { safetyFeeApplies } from '@/lib/settlement';
 import { useAction } from '@/lib/use-action';
 import { DatePicker } from '@/components/DatePicker';
 import { Badge, Btn, Confirm, Empty, Err, FIELD, Tag, type Tone, Val } from '@/components/ui';
@@ -154,8 +155,15 @@ export default function ProjectDetailView({
   ).length;
   // 기성 차수는 한백 전용 묶음에 있다 — 협력사 응답에는 admin 키가 아예 없다
   const steps = detail.admin?.steps ?? [];
-  const settlementOpen = steps.filter((s) => s.state !== 'na').length;
-  const settlementDone = steps.filter((s) => s.state === 'collected').length;
+  /*
+   * ★점검수수료도 한 칸으로 센다★ (한백 2026-09-06 「맨 마지막에 수금 이외 추가적인
+   * 수금단계로 카운트해」). 안 세면 차수 셋을 다 받고 수수료가 미수인 현장이 「3/3」으로
+   * 다 받은 것처럼 뜬다 — 그 현장의 미수금은 45만이다.
+   */
+  const feeStage = safetyFeeApplies(detail.project.cpo) && detail.admin?.safetyFee != null;
+  const settlementOpen = steps.filter((s) => s.state !== 'na').length + (feeStage ? 1 : 0);
+  const settlementDone = steps.filter((s) => s.state === 'collected').length
+    + (feeStage && detail.admin?.safetyFeeCollectedAt != null ? 1 : 0);
 
   /*
    * 계약이 끝나기 전에는 시공 탭을 잠근다.
