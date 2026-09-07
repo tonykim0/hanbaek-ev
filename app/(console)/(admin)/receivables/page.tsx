@@ -37,7 +37,8 @@ export default async function ReceivablesPage() {
         </p>
       </div>
 
-      <ReceivableBoard rows={rows} />
+      {/* 점검수수료는 이 표에서 바로 적는다(한백 2026-09-06) — 쓰기는 관리자만 */}
+      <ReceivableBoard rows={rows} canEdit={session.role === 'admin'} />
 
       {/*
         * 기성은 청구해서 받는 것이 아니라 트리거가 차면 열린다 — 환경부 승인일·실착공일은

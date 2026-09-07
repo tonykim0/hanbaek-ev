@@ -829,6 +829,8 @@ export interface Settlement {
   safetyFee: number | null;
   /** 그 수수료를 받은 날. null 이면 미수금 */
   safetyFeeCollectedAt: string | null;
+  /** 그 수수료의 영수증 — 협력사에게서 받아 운영사에 청구하는 근거. 검수 대상이 아니다 */
+  safetyFeeReceipts: NoticeFile[];
   /** 지급 비고 */
   payNote: string | null;
 }
@@ -866,6 +868,8 @@ export interface AdminOnlyDetail {
   safetyFee: number | null;
   /** 그 수수료를 받은 날 */
   safetyFeeCollectedAt: string | null;
+  /** 그 수수료의 영수증 (여러 장) */
+  safetyFeeReceipts: NoticeFile[];
 }
 
 /**
@@ -1170,6 +1174,8 @@ export interface SettlementSummary {
    */
   safetyFee: number | null;
   safetyFeeCollectedAt: string | null;
+  /** 영수증 장수 — 표에서는 몇 장인지만 세고, 파일은 현장 상세에서 본다 */
+  safetyFeeReceiptCount: number;
 
   /*
    * 여기부터는 반대 방향이다 — 한백이 협력사에게 내려주는 돈.

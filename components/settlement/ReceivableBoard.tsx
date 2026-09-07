@@ -24,7 +24,9 @@ import type { SettlementSummary } from '@/types/project';
 import {
   safetyFeeApplies, safetyFeeCollected, safetyFeeDue, safetyFeeOpen, STEP_LABEL, STEP_TONE,
 } from '@/lib/settlement';
-import { Badge, Blank, Empty, FIELD, FIELD_BASE, Tag, Td, Th } from '@/components/ui';
+import { Badge, Blank, Btn, Empty, Err, FIELD, FIELD_BASE, FIELD_CELL, Tag, Td, Th } from '@/components/ui';
+import { DatePicker } from '@/components/DatePicker';
+import { useAction } from '@/lib/use-action';
 import CheckMenu from '@/components/CheckMenu';
 import { Frame, SiteLink, Tile, won } from './parts';
 
@@ -86,7 +88,11 @@ const unpaidOf = (r: SettlementSummary) => {
   return Math.max(0, stepPlan - stepCollected) + feeOpenOf(r);
 };
 
-export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] }) {
+export default function ReceivableBoard({ rows, canEdit }: {
+  rows: SettlementSummary[];
+  /** 점검수수료를 이 표에서 바로 적을 수 있나 — 한백 관리자만 (열람 전용은 읽기만) */
+  canEdit: boolean;
+}) {
   const sp = useSearchParams();
   const [q, setQ] = useState(() => sp.get('q') ?? '');
   const [flags, setFlags] = useState<Flag[]>(
@@ -308,7 +314,7 @@ export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] })
                 {([1, 2, 3] as const).map((no) => (
                   <StepCell key={no} step={r.steps.find((x) => x.no === no) ?? null} />
                 ))}
-                <FeeCell row={r} />
+                <FeeCell row={r} canEdit={canEdit} />
                 <Td money className="font-bold text-slate-800">
                   {won(r.planTotal)}
                 </Td>
@@ -336,25 +342,102 @@ export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] })
  * 빈 값이 셋으로 갈린다(화면 규칙 10): 안 받는 운영사는 「해당없음」, 준공 전에는 「—」
  * (아직 올 때가 아님), 준공완료 뒤 금액이 없으면 노랑 「미지정」.
  */
-function FeeCell({ row }: { row: SettlementSummary }) {
+function FeeCell({ row, canEdit }: { row: SettlementSummary; canEdit: boolean }) {
+  const [editing, setEditing] = useState(false);
   if (!safetyFeeApplies(row.cpo)) {
     return <Td><Empty kind="na" /></Td>;
   }
-  if (row.safetyFee === null) {
-    return <Td><Empty kind={safetyFeeDue(row.status) ? 'miss' : 'wait'} /></Td>;
+
+  /*
+   * ★이 표의 첫 쓰기 자리다★ (한백 2026-09-06 「표에서 바로 적게해줘」). 대상이 116곳이라
+   * 현장을 하나씩 열어 적는 것은 116번 건너가는 일이었다. 표의 칸은 「여러 건을 쭉 넣는
+   * 자리」라 화면 규칙 4(평소엔 글자, 고칠 때만 입력칸)의 예외로 이미 적혀 있다.
+   */
+  if (editing) {
+    return (
+      <Td>
+        <FeeEdit row={row} onDone={() => setEditing(false)} />
+      </Td>
+    );
   }
+
   const done = row.safetyFeeCollectedAt !== null;
   return (
     <Td>
-      {/* 차수 칸과 같은 색·같은 말을 쓴다 — 같은 표에서 두 어휘를 두지 않는다 */}
-      <Badge tone={STEP_TONE[done ? 'collected' : 'open']}>
-        {STEP_LABEL[done ? 'collected' : 'open']}
-      </Badge>
-      <span className="mt-0.5 block text-tiny font-semibold tabular-nums text-slate-500">
-        {won(row.safetyFee)}
-        {done && ` · ${row.safetyFeeCollectedAt}`}
-      </span>
+      {row.safetyFee === null ? (
+        <Empty kind={safetyFeeDue(row.status) ? 'miss' : 'wait'} />
+      ) : (
+        <>
+          {/* 차수 칸과 같은 색·같은 말을 쓴다 — 같은 표에서 두 어휘를 두지 않는다 */}
+          <Badge tone={STEP_TONE[done ? 'collected' : 'open']}>
+            {STEP_LABEL[done ? 'collected' : 'open']}
+          </Badge>
+          <span className="mt-0.5 block text-tiny font-semibold tabular-nums text-slate-500">
+            {won(row.safetyFee)}
+            {done && ` · ${row.safetyFeeCollectedAt}`}
+          </span>
+        </>
+      )}
+      {/* 영수증은 여기서 세기만 한다 — 파일은 현장 상세에서 받는다 */}
+      {row.safetyFeeReceiptCount > 0 && (
+        <span className="mt-0.5 block text-tiny font-semibold text-slate-400">
+          영수증 {row.safetyFeeReceiptCount}장
+        </span>
+      )}
+      {canEdit && (
+        <Btn size="sm" kind="quiet" className="mt-0.5" onClick={() => setEditing(true)}>
+          {row.safetyFee === null ? '입력' : '수정'}
+        </Btn>
+      )}
     </Td>
+  );
+}
+
+/**
+ * 표 안에서 금액·수금일을 적는다 — 한 칸에서 두 사실을 받는다.
+ *
+ * ★금액과 수금일을 같이 보낸다★ (한백 2026-09-06 「금액과 수금일 동시에 입력해야만
+ * 수금완료로 처리」) — 금액만 적고 저장하면 미수금이고, 둘을 채우면 수금 완료다.
+ * 수금일을 비우면 수금을 되돌린다(화면 규칙 7).
+ */
+function FeeEdit({ row, onDone }: { row: SettlementSummary; onDone: () => void }) {
+  const { busy, error, run } = useAction();
+  const [amount, setAmount] = useState(row.safetyFee === null ? '' : String(row.safetyFee));
+  const [at, setAt] = useState(row.safetyFeeCollectedAt);
+
+  const save = () => void run({
+    url: `/api/projects/${row.id}/settlement`,
+    body: {
+      safetyFee: {
+        amount: amount === '' ? null : Number(amount),
+        /* 금액을 지우면 저장소가 수금일도 같이 지운다 — 여기서 보내는 값은 무시된다 */
+        collectedAt: amount === '' ? null : at,
+      },
+    },
+    fail: '점검수수료를 저장하지 못했습니다.',
+  }).then((ok) => { if (ok) onDone(); });
+
+  return (
+    <div className="flex flex-col items-stretch gap-1.5 text-left">
+      <input
+        value={amount}
+        onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ''))}
+        placeholder="청구액"
+        aria-label={`${row.name} 점검수수료`}
+        className={`${FIELD_CELL} text-right tabular-nums`}
+      />
+      {/* 금액이 없으면 받을 것이 없다 — 수금일 자리를 주지 않는다 */}
+      {amount !== '' && (
+        <DatePicker value={at} onChange={setAt} disabled={busy} ariaLabel={`${row.name} 수수료 수금일`} />
+      )}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Btn size="sm" busy={busy} busyLabel="저장 중…" onClick={save}>
+          {amount === '' && row.safetyFee !== null ? '지우기' : '저장'}
+        </Btn>
+        <Btn size="sm" kind="quiet" disabled={busy} onClick={onDone}>취소</Btn>
+      </div>
+      <Err>{error}</Err>
+    </div>
   );
 }
 

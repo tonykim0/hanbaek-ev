@@ -275,6 +275,7 @@ export function toSettlementRaw(projectId: string, r: SettlementRow | undefined)
     cpoCloseDate: r?.closeDate ?? null,
     safetyFee: r?.safetyFee ?? null,
     safetyFeeCollectedAt: r?.safetyFeeCollectedAt ?? null,
+    safetyFeeReceipts: r?.safetyFeeReceipts ?? [],
     payNote: r?.payNote ?? null,
   };
 }

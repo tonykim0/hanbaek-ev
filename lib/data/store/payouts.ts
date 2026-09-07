@@ -27,7 +27,7 @@ import {
 import type { ProjectRecord, RuleMap } from '../assemble';
 import type { Viewer } from '@/lib/auth/types';
 import type {
-  CpoName, NewPayoutEntry, PayoutCategory, PayoutKind, PayoutRow, SettlementSummary,
+  CpoName, NewPayoutEntry, NoticeFile, PayoutCategory, PayoutKind, PayoutRow, SettlementSummary,
 } from '@/types/project';
 import type { Actor, PaymentPatch, ProjectRepository } from '../repository';
 import {
@@ -40,7 +40,7 @@ export const payoutStore: Pick<
   ProjectRepository,
   'listSettlements' | 'listPayouts' | 'listPayoutOverview' | 'setLinePricing' | 'setPayment'
   | 'setPayoutTermsConfirmed' | 'setSettlementRule' | 'setCpoCloseDate' | 'setSettlementCollected'
-  | 'setSafetyFee'
+  | 'setSafetyFee' | 'attachSafetyFeeReceipt' | 'removeSafetyFeeReceipt'
   | 'runPayoutBatch' | 'addPayoutEntry' | 'addPayoutEntries' | 'deletePayoutEntry'
 > = {
   async listSettlements(viewer: Viewer): Promise<SettlementSummary[]> {
@@ -322,6 +322,65 @@ export const payoutStore: Pick<
         });
       }
     });
+  },
+
+  /**
+   * 영수증 올리기 — 공지 첨부(store/notices attachNoticeFile)와 같은 꼴이다.
+   * 쌓는다: 앞 장을 갈아치우지 않는다(회의록이 두 장으로 오는 것과 같은 이유).
+   */
+  async attachSafetyFeeReceipt(projectId, file, actor): Promise<void> {
+    assertAdmin(actor, '전기안전점검수수료 영수증 올리기');
+    const db = getDb();
+    await db.transaction(async (tx) => {
+      const [row] = await tx
+        .select({ cpo: projects.cpo })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      if (!row) throw new Error('현장을 찾을 수 없습니다.');
+      if (!safetyFeeApplies(row.cpo as CpoName)) {
+        throw new Error(`${row.cpo} 현장은 전기안전점검수수료를 따로 받지 않습니다.`);
+      }
+      const [before] = await tx
+        .select({ files: settlements.safetyFeeReceipts })
+        .from(settlements)
+        .where(eq(settlements.projectId, projectId))
+        .limit(1);
+      const files = [...(before?.files ?? []), file];
+      await tx
+        .insert(settlements)
+        .values({ projectId, safetyFeeReceipts: files })
+        .onConflictDoUpdate({ target: settlements.projectId, set: { safetyFeeReceipts: files } });
+      await writeAudit(tx, {
+        projectId, actor, action: '전기안전점검수수료 영수증 올림',
+        field: 'safetyFeeReceipts', oldValue: null, newValue: file.name,
+      });
+    });
+  },
+
+  /** 영수증 한 장 빼기 — 뺀 파일의 주소를 돌려준다(라우트가 Blob 을 지운다) */
+  async removeSafetyFeeReceipt(projectId, url, actor): Promise<string> {
+    assertAdmin(actor, '전기안전점검수수료 영수증 빼기');
+    const db = getDb();
+    const [before] = await db
+      .select({ files: settlements.safetyFeeReceipts })
+      .from(settlements)
+      .where(eq(settlements.projectId, projectId))
+      .limit(1);
+    const gone = (before?.files ?? []).find((f) => f.url === url);
+    if (!gone) throw new Error('그 영수증을 찾을 수 없습니다.');
+    const files = (before?.files ?? []).filter((f) => f.url !== url);
+    await db.transaction(async (tx) => {
+      await tx
+        .update(settlements)
+        .set({ safetyFeeReceipts: files })
+        .where(eq(settlements.projectId, projectId));
+      await writeAudit(tx, {
+        projectId, actor, action: '전기안전점검수수료 영수증 뺌',
+        field: 'safetyFeeReceipts', oldValue: gone.name, newValue: null,
+      });
+    });
+    return gone.url;
   },
 
   async setSettlementCollected(projectId, no: 1 | 2 | 3, value, actor): Promise<void> {

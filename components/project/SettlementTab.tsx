@@ -13,7 +13,7 @@
 import { Fragment, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import type {
-  CpoName, PayoutCategory, PayoutEntry, PayoutKind, ProjectDetail, SettlementRule,
+  CpoName, NoticeFile, PayoutCategory, PayoutEntry, PayoutKind, ProjectDetail, SettlementRule,
   SettlementRuleChoice, SettlementStep,
 } from '@/types/project';
 import { PAYOUT_CATEGORIES, replLabel } from '@/types/project';
@@ -25,6 +25,7 @@ import {
 import type { Visibility } from '@/lib/roles';
 import type { RuleOptions } from '@/lib/pricing-match';
 import { useAction } from '@/lib/use-action';
+import { formatSize } from '@/lib/materials-meta';
 import { won } from '@/lib/format';
 import { today } from '@/lib/date';
 import {
@@ -176,6 +177,7 @@ export function ReceivableTab({
           due={safetyFeeDue(detail.process.status)}
           fee={admin?.safetyFee ?? null}
           collectedAt={admin?.safetyFeeCollectedAt ?? null}
+          receipts={admin?.safetyFeeReceipts ?? []}
           canEdit={canReview}
         />
       </div>
@@ -199,7 +201,7 @@ export function ReceivableTab({
  * 수금 자리가 아예 없다.
  */
 function SafetyFeeFact({
-  projectId, applies, due, fee, collectedAt, canEdit,
+  projectId, applies, due, fee, collectedAt, receipts, canEdit,
 }: {
   projectId: string;
   /** 이 운영사에게서 따로 받는가 — 아니면 「해당없음」 */
@@ -208,6 +210,8 @@ function SafetyFeeFact({
   due: boolean;
   fee: number | null;
   collectedAt: string | null;
+  /** 협력사에게서 받은 영수증 — 운영사에 청구하는 근거 */
+  receipts: NoticeFile[];
   canEdit: boolean;
 }) {
   const { busy, error, run } = useAction();
@@ -313,6 +317,104 @@ function SafetyFeeFact({
           </span>
         )
       )}
+      <Err>{error}</Err>
+      {/*
+        영수증 — 협력사에게서 받아 운영사에 청구하는 근거다(한백 2026-09-06).
+        ★검수 대상이 아니라 미리보기를 두지 않는다★ — 받아서 청구서에 붙이는 파일이다
+        (공지 첨부와 같은 판단). 줄 아래로 흘려 두면 차수 줄의 오와열이 안 흐트러진다.
+      */}
+      {showValue && (canEdit || receipts.length > 0) && (
+        <div className="mt-1.5 flex w-full flex-col gap-1.5 border-t border-slate-100 pt-1.5">
+          {receipts.map((f) => (
+            <ReceiptRow key={f.url} projectId={projectId} file={f} canEdit={canEdit} />
+          ))}
+          {canEdit && applies && <ReceiptUpload projectId={projectId} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** 영수증 한 줄 — 받기와 빼기. 이름은 DB 의 것이 정본이라 올린 이름 그대로 받아진다 */
+function ReceiptRow({ projectId, file, canEdit }: {
+  projectId: string; file: NoticeFile; canEdit: boolean;
+}) {
+  const { busy, error, run } = useAction();
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span className="shrink-0 text-tiny font-bold text-slate-400">영수증</span>
+      <a
+        href={file.url}
+        download={file.name}
+        className="min-w-0 truncate text-small font-bold text-brand-800 underline decoration-brand-200 transition hover:decoration-brand-500"
+      >
+        {file.name}
+      </a>
+      <span className="shrink-0 text-tiny tabular-nums text-slate-400">{formatSize(file.size)}</span>
+      {canEdit && (
+        <Btn
+          size="sm"
+          kind="undo"
+          busy={busy}
+          busyLabel="빼는 중…"
+          className="ml-auto"
+          onClick={() => void run({
+            url: `/api/projects/${projectId}/safety-fee-receipt`,
+            method: 'DELETE',
+            body: { url: file.url },
+            fail: '영수증을 빼지 못했습니다.',
+          })}
+        >
+          빼기
+        </Btn>
+      )}
+      <Err>{error}</Err>
+    </div>
+  );
+}
+
+/** 영수증 올리기 — 종류를 좁히지 않는다(스캔본은 PDF·그림·한글로 온다) */
+function ReceiptUpload({ projectId }: { projectId: string }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function upload(file: File) {
+    setBusy(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/projects/${projectId}/safety-fee-receipt`, {
+        method: 'POST', body: form,
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(j?.error ?? '영수증을 올리지 못했습니다.');
+      }
+      window.location.reload(); // 목록은 서버 컴포넌트가 그린다 — 새로 받아야 보인다
+    } catch (err) {
+      setError((err as Error).message);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <label className="cursor-pointer">
+        <input
+          type="file"
+          className="hidden"
+          disabled={busy}
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            e.target.value = ''; // 같은 파일을 다시 골라도 onChange 가 돌게
+            if (f) void upload(f);
+          }}
+        />
+        <span className="inline-flex items-center rounded-ctl border border-slate-200 bg-white px-2.5 py-1 text-tiny font-bold text-slate-500 transition hover:border-brand-300 hover:text-brand-800">
+          {busy ? '올리는 중…' : '영수증 올리기'}
+        </span>
+      </label>
       <Err>{error}</Err>
     </div>
   );

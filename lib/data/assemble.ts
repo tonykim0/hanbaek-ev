@@ -170,6 +170,7 @@ export const emptySettlement = (projectId: string): Omit<Settlement, 'steps'> =>
   cpoCloseDate: null,
   safetyFee: null,
   safetyFeeCollectedAt: null,
+  safetyFeeReceipts: [],
   payNote: null,
 });
 
@@ -274,6 +275,7 @@ export function toDetail(r: ProjectRecord, rules: RuleMap, settles: SettleMap): 
       cpoCloseDate: settlement.cpoCloseDate,
       safetyFee: settlement.safetyFee,
       safetyFeeCollectedAt: settlement.safetyFeeCollectedAt,
+      safetyFeeReceipts: settlement.safetyFeeReceipts,
     },
     stage,
     // 계약 판정은 여기서 한 번만 한다 — 화면이 다시 세면 조건이 갈린다
@@ -405,6 +407,8 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
     cpoCloseDate: admin.cpoCloseDate,
     safetyFee: fee.safetyFee,
     safetyFeeCollectedAt: fee.safetyFeeCollectedAt,
+    /* 표는 장수만 센다 — 파일 목록을 전 현장에 실어 보내면 응답이 통째로 무거워진다 */
+    safetyFeeReceiptCount: applies ? admin.safetyFeeReceipts.length : 0,
     salesOrg: d.project.salesOrg,
     gcOrg: d.project.gcOrg,
     payoutMilestones: payoutMilestonesFor(r),
