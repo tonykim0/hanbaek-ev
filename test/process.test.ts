@@ -516,18 +516,24 @@ describe('체크를 풀면 그 칸에서 물러나는가 — 게이트가 그 �
  * ① 두 흐름의 칸과 순서 ② ★표준 흐름의 「다음 칸」이 예전과 같다★ — 유도로 바꾸면서
  * 159개 현장이 지나는 길이 조용히 달라지면 안 된다(CHECK_ADVANCES 가 그 기준이다).
  */
-describe('기설치 연동은 다른 칸을 지난다', () => {
+describe('기설치 연동은 발주·수령을 안 지난다', () => {
   const ENVC = { bizType: '환경부' as const };
   const LINK = { bizType: '기설치 연동' as const };
 
-  it('연동은 발주·수령·착공을 안 지나고, 전기사용신청·전기안전점검을 지난다', () => {
+  /*
+   * ★새 칸을 만들지 않는다★ (한백 정정 2026-09-07) — 전기사용신청은 착공의 설치
+   * 상자에서(전기사용신청 접수증), 전기안전점검은 준공서류 칸에서(사용전점검필증)
+   * 이미 이뤄진다. 절차를 칸으로 새로 세웠다가 걷었다: 이미 있는 자리에 있는 일을
+   * 칸으로 또 세우면 같은 일을 두 번 적게 되고, 보드에는 아무도 안 쓰는 칸이 선다.
+   */
+  it('빠지는 것은 충전기 발주·수령 둘뿐이다 — 착공은 남는다', () => {
     expect(stepsOf(LINK)).toEqual([
-      '계약완료', '운영사 계약서 제출', '전기사용신청', '전기안전점검', '행위신고',
+      '계약완료', '운영사 계약서 제출', '행위신고', '착공',
       '개통 및 통신확인', '준공서류 접수/검토', '준공보완', '준공완료',
     ]);
   });
 
-  it('환경부·자체투자는 그 둘을 안 지난다 — 예전 그대로다', () => {
+  it('환경부·자체투자는 전부 지난다 — 예전 그대로다', () => {
     expect(stepsOf(ENVC)).toEqual([
       '계약완료', '운영사 계약서 제출', '행위신고', '충전기 발주', '충전기 수령', '착공',
       '개통 및 통신확인', '준공서류 접수/검토', '준공보완', '준공완료',
@@ -537,19 +543,17 @@ describe('기설치 연동은 다른 칸을 지난다', () => {
 
   it('★행위신고 다음이 갈린다★ — 그래서 +1 로 세면 안 된다', () => {
     expect(nextStatusOf('행위신고', ENVC)).toBe('충전기 발주');
-    expect(nextStatusOf('행위신고', LINK)).toBe('개통 및 통신확인');
+    expect(nextStatusOf('행위신고', LINK)).toBe('착공');
   });
 
   it('연동의 앞 칸도 건너뛴 칸을 안 가리킨다', () => {
-    expect(prevStatusOf('개통 및 통신확인', ENVC)).toBe('착공');
-    expect(prevStatusOf('개통 및 통신확인', LINK)).toBe('행위신고');
-    expect(prevStatusOf('전기사용신청', LINK)).toBe('운영사 계약서 제출');
+    expect(prevStatusOf('착공', ENVC)).toBe('충전기 수령');
+    expect(prevStatusOf('착공', LINK)).toBe('행위신고');
   });
 
   it('안 지나는 칸에 서 있어도 다음·앞을 찾는다 — 사업구분이 바뀐 옛 현장', () => {
-    /* 연동인데 착공에 서 있다(구분을 나중에 고쳤다) — 전역 순서에서 이웃을 집는다 */
-    expect(nextStatusOf('착공', LINK)).toBe('개통 및 통신확인');
-    expect(prevStatusOf('착공', LINK)).toBe('행위신고');
+    expect(nextStatusOf('충전기 발주', LINK)).toBe('착공');
+    expect(prevStatusOf('충전기 수령', LINK)).toBe('행위신고');
   });
 
   it('★표준 흐름에서 여는 칸이 예전과 같다★ — CHECK_ADVANCES 가 기준', () => {
@@ -564,9 +568,8 @@ describe('기설치 연동은 다른 칸을 지난다', () => {
     expect(advanceTargetOf('completionSubmitAt', LINK)).toBeNull();
   });
 
-  it('연동의 두 칸은 서로를 연다 — 신청 → 점검 → 신고', () => {
-    expect(advanceTargetOf('elecApplyDoneAt', LINK)).toBe('전기안전점검');
-    expect(advanceTargetOf('safetyCheckDoneAt', LINK)).toBe('행위신고');
-    expect(advanceTargetOf('notifyDoneAt', LINK)).toBe('개통 및 통신확인');
+  it('연동에서 행위신고를 끝내면 착공이 열린다 — 발주·수령을 건너뛴다', () => {
+    expect(advanceTargetOf('notifyDoneAt', LINK)).toBe('착공');
+    expect(advanceTargetOf('notifySkippedAt', LINK)).toBe('착공');
   });
 });

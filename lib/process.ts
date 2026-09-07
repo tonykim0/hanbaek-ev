@@ -90,16 +90,6 @@ const docApproved = (process: ProcessInfo, key: string): boolean =>
 export const STATUS_GATES: Record<ProcessStatus, StatusGate | null> = {
   '계약완료': null,   // 서류·단가가 다 차고 한백이 확인하면 여기서 시작한다
   /*
-   * ★기설치 연동만 지나는 두 칸 — 조건을 두지 않는다★ (한백 지시 2026-09-07).
-   *
-   * 앞의 계약 칸들과 같다: 넘기는 것이 곧 선언이다. 무엇을 갖췄는지는 그 칸의 상자가
-   * 받는다(날짜·서류) — 들어오는 조건으로 또 물으면 같은 사실을 두 번 말하게 된다.
-   * 신청서·필증을 들어오는 조건으로 삼으면 「들어가야 올릴 수 있고 올려야 들어가는」
-   * 교착이 된다(개통 및 통신확인이 설치완료확인서로 그 자리를 겪었다).
-   */
-  '전기사용신청': null,
-  '전기안전점검': null,
-  /*
    * 우리가 운영사에 계약서를 냈는가. 우리가 하는 일이라 통보를 기다릴 것이 없다.
    *
    * 낸 뒤로는 운영사 쪽이 알아서 승인·접수하고(형식이다), 환경부 대기번호가 나오기를
@@ -246,16 +236,20 @@ export function statusIndex(status: ProcessStatus): number {
  * 가리킨다. 이웃은 nextStatusOf·prevStatusOf 로만 구한다.
  */
 
-/** 기설치 연동만 지나는 칸 — 계약 뒤 전기 쪽 절차다 */
-const LINK_ONLY: readonly ProcessStatus[] = ['전기사용신청', '전기안전점검'];
-
-/** 기설치 연동은 지나지 않는 칸 — 충전기가 이미 깔려 있다 */
-const NOT_FOR_LINK: readonly ProcessStatus[] = ['충전기 발주', '충전기 수령', '착공'];
+/**
+ * 기설치 연동이 지나지 않는 칸 — ★충전기가 이미 깔려 있다★.
+ *
+ * 발주·수령만이다. ★착공은 남는다★ (한백 정정 2026-09-07) — 전기사용신청이 그 칸의
+ * 설치 상자에서 이뤄진다(전기사용신청 접수증). 전기안전점검도 새 칸이 아니다:
+ * 준공서류 칸의 사용전점검필증이 그것이다. 절차를 칸으로 새로 만들었다가 걷었다 —
+ * 이미 있는 자리에 있는 일을 칸으로 또 세우면 같은 일을 두 번 적게 된다.
+ */
+const NOT_FOR_LINK: readonly ProcessStatus[] = ['충전기 발주', '충전기 수령'];
 
 /** 이 현장이 지나는 칸 — 순서는 PROCESS_STATUSES 그대로다 */
 export function stepsOf(ctx: Pick<GateContext, 'bizType'>): ProcessStatus[] {
   const link = ctx.bizType === '기설치 연동';
-  return PROCESS_STATUSES.filter((st) => (link ? !NOT_FOR_LINK.includes(st) : !LINK_ONLY.includes(st)));
+  return link ? PROCESS_STATUSES.filter((st) => !NOT_FOR_LINK.includes(st)) : [...PROCESS_STATUSES];
 }
 
 /** 이 현장에서 그 칸 다음 — 없으면 null(마지막) */
@@ -492,9 +486,6 @@ export const CHECK_AT = {
   chargerDoneAt: '충전기 수령',
   installConfirmedAt: '착공',
   openDoneAt: '개통 및 통신확인',
-  /* 기설치 연동만 지나는 둘 */
-  elecApplyDoneAt: '전기사용신청',
-  safetyCheckDoneAt: '전기안전점검',
 } as const satisfies Record<string, ProcessStatus>;
 
 /** 그 선언이 여는 칸 — 사업구분이 정한다. 칸을 닫지 않는 선언이면 null */
@@ -610,9 +601,6 @@ export function advanceBlockers(
 export const COURT_AFTER_STATUS: Record<ProcessStatus, Court> = {
   '계약완료': '한백',             // 다음 일: 운영사에 계약서 제출 — 한백이 한다
   '운영사 계약서 제출': '운영사', // 시공승인 회신을 기다린다
-  /* 기설치 연동의 앞 두 칸 — 신청·점검을 돌리는 것은 현장이다 */
-  '전기사용신청': '시공사',
-  '전기안전점검': '시공사',
   '행위신고': '시공사',           // 시공팀이 접수한다 (1~2주)
   '충전기 발주': '한백',          // 발주·출고·모델·발주 수량은 한백이 적는다
   '충전기 수령': '시공사',        // 충전기를 받고 수량을 세는 것은 현장이다

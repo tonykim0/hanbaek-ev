@@ -304,11 +304,6 @@ export const processes = pgTable('processes', {
   /** 개통완료일 — 통신까지 끝나고 실제 개통된 날. 시공사가 적는다 */
   openDate: text('open_date'),
   /** 행위신고일 — 파일을 올리면 그 날이 기본으로 들어간다(비어 있을 때만) */
-  /* 기설치 연동만 쓰는 둘 — 전기사용신청·전기안전점검 (migrations/0062) */
-  elecApplyDate: text('elec_apply_date'),
-  elecApplyDoneAt: text('elec_apply_done_at'),
-  safetyCheckDate: text('safety_check_date'),
-  safetyCheckDoneAt: text('safety_check_done_at'),
   notifyDate: text('notify_date'),
   /** 발주한 수량 — 한백이 적는다. 수령 수량과 가른다(부분 입고·오배송을 알아야 한다) */
   chargerOrderQty: integer('charger_order_qty'),

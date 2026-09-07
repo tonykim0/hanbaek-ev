@@ -128,11 +128,6 @@ export interface ProjectRecord {
 
 export const emptyProcess = (projectId: string): ProcessInfo => ({
   projectId,
-  /* 기설치 연동만 쓰는 둘 — 그 사업구분이 아니면 늘 null 이다 */
-  elecApplyDate: null,
-  elecApplyDoneAt: null,
-  safetyCheckDate: null,
-  safetyCheckDoneAt: null,
   envApprovalDate: null,
   completeDoneAt: null,
   cpoSubmitDate: null,

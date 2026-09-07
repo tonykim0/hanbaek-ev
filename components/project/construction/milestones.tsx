@@ -23,17 +23,13 @@ import {
 /** 고칠 수 있는 날짜 칸 — 이름은 서버(ProcessPatch)와 같아야 한다 */
 export type DateField =
   | 'notifyDate' | 'chargerOrderDate' | 'chargerShipDate' | 'chargerRecvDate'
-  | 'startActualDate' | 'installDoneDate' | 'commDoneDate' | 'openDate'
-  /* 기설치 연동만 쓰는 둘 */
-  | 'elecApplyDate' | 'safetyCheckDate';
+  | 'startActualDate' | 'installDoneDate' | 'commDoneDate' | 'openDate';
 
 /** 묶음별 완료 체크 칸 */
 export type CheckField =
   | 'notifyDoneAt' | 'notifySkippedAt' | 'notifyRequiredAt'
   | 'chargerDoneAt' | 'installConfirmedAt' | 'openDoneAt'
-  | 'completionSubmitAt'
-  /* 기설치 연동만 쓰는 둘 */
-  | 'elecApplyDoneAt' | 'safetyCheckDoneAt';
+  | 'completionSubmitAt';
 
 /** 수량 칸 — 설치 실적(거점·기) · 발주 수량(한백) · 수령 수량(협력사) */
 export type CountField =
@@ -124,33 +120,6 @@ export function groupsByStatus(
   const missingDocs = missingCompletionDocs(p, ctx);
 
   return {
-    /*
-     * ★기설치 연동만 지나는 두 칸★ (한백 지시 2026-09-07). 이미 깔린 충전기를 운영사
-     * 시스템에 붙이는 사업이라 발주·수령·착공이 없고, 계약 뒤에 전기 쪽 절차를 거친다.
-     * 다른 사업구분에서는 이 칸이 스테퍼에 서지 않는다(lib/process stepsOf).
-     *
-     * 서류는 이미 있는 것을 쓴다 — 새로 만들지 않는다: 전기사용신청 접수증(elecapply)은
-     * 설치 상자에도 서지만 연동에서는 이 칸이 그 서류를 받는 자리다.
-     */
-    '전기사용신청': [
-      {
-        title: '전기사용신청',
-        opensNext: true,
-        rows: [{ label: '전기사용신청일', field: 'elecApplyDate', value: p.elecApplyDate }],
-        docs: ['elecapply'],
-        advance: { label: '다음 단계로 진행', target: '전기안전점검', field: 'elecApplyDoneAt' },
-      },
-    ],
-    '전기안전점검': [
-      {
-        title: '전기안전점검',
-        opensNext: true,
-        rows: [{ label: '전기안전점검일', field: 'safetyCheckDate', value: p.safetyCheckDate }],
-        /* 사용전점검필증 — 준공 묶음에도 있는 서류다(한 칸이라 어디서 올려도 같다) */
-        docs: ['safety'],
-        advance: { label: '다음 단계로 진행', target: '행위신고', field: 'safetyCheckDoneAt' },
-      },
-    ],
     '행위신고': [
       {
         title: '행위신고',
