@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   advanceBlockers, advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES,
-  nextStatusOf, prevStatusOf, stepsOf,
+  entryOkOf, nextStatusOf, prevStatusOf, stepsOf,
   COURT_AFTER_STATUS, declarationBlockers, isHanbaekOnlyProcessField, statusIndex,
   canChangeContractDocs, CONTRACT_DOCS_LOCK_AT, contractDocsLockedWhy, PARTNER_DOCS_CLOSED_AT,
 } from '@/lib/process';
@@ -571,5 +571,56 @@ describe('기설치 연동은 발주·수령을 안 지난다', () => {
   it('연동에서 행위신고를 끝내면 착공이 열린다 — 발주·수령을 건너뛴다', () => {
     expect(advanceTargetOf('notifyDoneAt', LINK)).toBe('착공');
     expect(advanceTargetOf('notifySkippedAt', LINK)).toBe('착공');
+  });
+});
+
+/**
+ * ★기설치 연동이 실제로 앞으로 갈 수 있는가★ — 흐름 갈래를 넣은 날 검증에서 나온 구멍들.
+ *
+ * 그때 시험 380개가 다 통과했는데도 그 사업구분은 행위신고에 갇혀 있었다. 이유는
+ * ★advanceTargetOf 만 못 박고 canEnter 를 연동 ctx 로 부르는 시험이 하나도 없어서★다 —
+ * 「다음 칸이 무엇인가」는 맞았지만 「그 칸에 들어갈 수 있는가」를 아무도 안 물었다.
+ * 여는 칸과 들어갈 수 있는지는 다른 판정이고, 앞으로 가는 길은 canEnter 를 지난다.
+ */
+describe('기설치 연동이 실제로 앞으로 간다', () => {
+  const ctxOf = (bizType: '환경부' | '기설치 연동') =>
+    ({ subsidized: bizType === '환경부', powerType: '모자분리' as const, bizType, cpo: null });
+  /** 행위신고까지 끝낸 현장 */
+  const notified = P({
+    status: '행위신고', notifyRequiredAt: '2026-09-01', notifyDate: '2026-09-01',
+    notifyDoneAt: '2026-09-01', docs: [doc('notify')],
+  });
+
+  it('★행위신고를 끝내면 착공에 들어갈 수 있다★ — 건너뛴 칸의 게이트를 안 묻는다', () => {
+    expect(canEnter('착공', notified, ctxOf('기설치 연동'))).toEqual({ ok: true });
+  });
+
+  it('신고도 안 했으면 착공이 막힌다 — 조건을 아예 비우지 않았다', () => {
+    expect(canEnter('착공', P({ status: '행위신고' }), ctxOf('기설치 연동')).ok).toBe(false);
+  });
+
+  it('표준 흐름은 그대로 발주·수령을 묻는다 — 한 글자도 안 바뀌어야 한다', () => {
+    const r = canEnter('착공', notified, ctxOf('환경부'));
+    expect(r.ok).toBe(false);
+    /* 환경부는 승인일부터 막힌다(발주 칸의 조건) — 연동에는 없는 문이다 */
+    expect((r as { blockedBy: string }).blockedBy).toContain('환경부 승인일');
+  });
+
+  it('환경부는 수령 완료 없이 착공에 못 간다', () => {
+    const ready = P({
+      status: '충전기 수령', envApprovalDate: '2026-08-01', notifyDoneAt: '2026-09-01',
+      chargerOrderDate: '2026-08-10', chargerShipDate: '2026-08-20', chargerModelId: 'm',
+      chargerOrderQty: 2, modemOrderQty: 2,
+    });
+    expect(canEnter('착공', ready, ctxOf('환경부'))).toEqual({
+      ok: false, blockedBy: '충전기 수령 완료',
+    });
+  });
+
+  it('연동에서 앞으로 갈 수 있는 칸에 건너뛴 칸이 없다', () => {
+    const ok = entryOkOf(notified, ctxOf('기설치 연동'));
+    expect(ok).not.toContain('충전기 발주');
+    expect(ok).not.toContain('충전기 수령');
+    expect(ok).toContain('착공');
   });
 });

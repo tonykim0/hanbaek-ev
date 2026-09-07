@@ -18,6 +18,7 @@ import {
 
 import {
   advanceBlockers, missingCompletionDocs, type GateContext,
+  nextStatusOf,
 } from '@/lib/process';
 
 /** 고칠 수 있는 날짜 칸 — 이름은 서버(ProcessPatch)와 같아야 한다 */
@@ -140,9 +141,14 @@ export function groupsByStatus(
          * 「행위신고 완료」 체크는 없앴다 — 넘어가는 단추가 그 선언을 겸한다.
          * 신고일과 파일이 다 있으면 활성화되고, 누르면 완료로 찍히며 다음 단계가 열린다.
          */
+        /*
+         * ★목표는 사업구분이 정한다★ (검증에서 나온 구멍) — '충전기 발주' 고정값이라
+         * 기설치 연동에서 단추가 활성인데 눌러도 아무 일이 없었다(서버가 조용히 return).
+         * 막는 것을 단추 이름에 적는 화면 규칙 3 이 그 자리에서만 침묵했다.
+         */
         advance: {
           label: '다음 단계로 진행',
-          target: '충전기 발주',
+          target: nextStatusOf('행위신고', ctx) ?? '충전기 발주',
           field: p.notifySkippedAt ? 'notifySkippedAt' : 'notifyDoneAt',
         },
         /*

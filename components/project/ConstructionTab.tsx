@@ -355,8 +355,13 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
                   * 담당도 운영사를 거치지 않는다. 이제 그 칸이 스테퍼의 첫 자리에 있으므로
                   * 건너뛸 일이 없다. 막을 것은 「두 칸 이상 앞으로」 하나뿐이다.
                   */}
+                {/*
+                  * ★「바로 다음」은 흐름 기준이다★ (검증에서 나온 구멍) — selIdx === now + 1 로
+                  * 세면 기설치 연동이 필요한 유일한 도약(행위신고 → 착공, 사이가 셋)에서
+                  * 단추도 「🔒 … 필요」 문구도 통째로 안 그려졌다.
+                  */}
                 {edit === 'all' && selState !== 'current'
-                  && (selState === 'past' || selIdx === now + 1) && (
+                  && (selState === 'past' || selected === nextStatusOf(p.status, gate)) && (
                   selEntry.ok ? (
                     <button
                       type="button"

@@ -150,10 +150,19 @@ export const STATUS_GATES: Record<ProcessStatus, StatusGate | null> = {
     p.chargerOrderQty == null && { key: 'chargerOrderQty', label: '충전기 발주 수량' },
     p.modemOrderQty == null && { key: 'modemOrderQty', label: '모뎀 발주 수량' },
   ]),
-  // 충전기가 현장에 왔다 — 수령 완료 체크가 그 선언이다
-  '착공': (p) => missing([
-    !p.chargerDoneAt && { key: 'chargerDoneAt', label: '충전기 수령 완료' },
-  ]),
+  /*
+   * 충전기가 현장에 왔다 — 수령 완료 체크가 그 선언이다.
+   *
+   * ★기설치 연동은 그 선언을 찍을 자리가 없다★ — 수령 칸을 안 지난다(stepsOf). 그래서
+   * 그 사업구분에는 앞 칸인 행위신고의 선언을 묻는다. 조건을 아예 비우지 않는 이유는
+   * 신고도 안 한 현장이 착공에 서면 안 되기 때문이다.
+   */
+  '착공': (p, ctx) => missing(
+    ctx.bizType === '기설치 연동'
+      ? [!p.notifyDoneAt && !p.notifySkippedAt
+          && { key: 'notifyDoneAt', label: '행위신고 대상 여부' }]
+      : [!p.chargerDoneAt && { key: 'chargerDoneAt', label: '충전기 수령 완료' }]
+  ),
   // 공사가 돌았다 — 착공일은 착공 칸에서 적고, 설치 사진과 완료 선언이 이 칸을 연다
   '개통 및 통신확인': (p) => missing([
     !p.startActualDate && { key: 'startActualDate', label: '착공일' },
@@ -372,7 +381,13 @@ export function contractDocsLockedWhy(status: ProcessStatus): string {
  * 끌어다 놓고 나서 거절당하는 것보다 못 놓는다는 걸 먼저 보여주는 편이 낫다.
  */
 export function entryOkOf(process: ProcessInfo, ctx: GateContext): ProcessStatus[] {
-  return PROCESS_STATUSES.filter((s) => canEnter(s, process, ctx).ok);
+  /*
+   * ★그 현장이 지나는 칸만 후보다★ (검증에서 나온 구멍) — 전역 목록을 걸렀더니 기설치
+   * 연동의 후보에 「충전기 발주·수령」이 들어갔다(연동은 환경부 승인을 안 물어 그 칸의
+   * 게이트가 통과한다). 보드·표가 이 목록으로 고를 수 있는 칸을 그리므로, 건너뛰어야
+   * 할 칸이 고를 수 있는 자리로 제시됐다.
+   */
+  return stepsOf(ctx).filter((s) => canEnter(s, process, ctx).ok);
 }
 
 /**
@@ -397,7 +412,17 @@ export function canEnter(
   const from = statusIndex(process.status);
   const to = statusIndex(status);
   if (to <= from) return { ok: true };
-  for (const st of PROCESS_STATUSES.slice(from + 1, to + 1)) {
+  /*
+   * ★그 현장이 지나는 칸만 묻는다★ (한백 지적 2026-09-07 뒤 검증에서 나온 구멍).
+   *
+   * 전에는 PROCESS_STATUSES 를 그대로 잘라서, 기설치 연동 현장이 행위신고에서 착공으로
+   * 가려 하면 건너뛰는 칸(충전기 발주·수령)의 게이트까지 물었다 — 이미 깔린 충전기라
+   * 없는 발주일·출고일·모델·수량을 요구해 앞으로 갈 길이 아예 없었다. 상태를 옮기는
+   * 모든 길이 이 판정을 지나므로(setProcessStatus·advanceAfterCheck·스테퍼·보드) 우회로도
+   * 없었다. 표준 흐름에서는 stepsOf 가 전역 목록과 같아 한 글자도 안 바뀐다.
+   */
+  const steps = stepsOf(ctx);
+  for (const st of steps.filter((x) => statusIndex(x) > from && statusIndex(x) <= to)) {
     const blockers = STATUS_GATES[st]?.(process, ctx) ?? [];
     if (blockers.length > 0) {
       return { ok: false, blockedBy: blockers.map((b) => b.label).join(' · ') };

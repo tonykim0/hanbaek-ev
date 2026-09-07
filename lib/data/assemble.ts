@@ -33,7 +33,7 @@ import {
   entryTypeOf, payoutSideOf, safetyFeeApplies, safetyFeeCollected, settlementForProject,
 } from '@/lib/settlement';
 import { contractStateOf, deriveStage, docsOutsideConsole, stalledDaysSince } from '@/lib/stage';
-import { canEnter, entryOkOf, gateContextOf, type GateContext } from '@/lib/process';
+import { canEnter, entryOkOf, gateContextOf, nextStatusOf, type GateContext } from '@/lib/process';
 import { PROCESS_STATUSES } from '@/types/project';
 import { effectiveVisibility, type Visibility } from '@/lib/roles';
 import type { Viewer } from '@/lib/auth/types';
@@ -344,8 +344,12 @@ function nextStepOf(
   process: ProjectRecord['process'],
   ctx: GateContext
 ): ProjectSummary['nextStep'] {
-  const idx = PROCESS_STATUSES.indexOf(process.status);
-  const next = PROCESS_STATUSES[idx + 1];
+  /*
+   * ★미는 쪽도 흐름을 알아야 한다★ (검증에서 나온 구멍) — 전에는 +1 로 세서, 기설치
+   * 연동 현장의 카드에 「충전기 발주 로 넘기기 →」가 떴고 눌리면 실제로 그 칸에 들어갔다.
+   * 되돌리는 쪽만 prevStatusOf 로 옮기고 미는 쪽을 안 옮긴 탓이다.
+   */
+  const next = nextStatusOf(process.status, ctx);
   if (!next) return null;
   const entry = canEnter(next, process, ctx);
   return { status: next, ready: entry.ok, need: entry.ok ? null : entry.blockedBy };
