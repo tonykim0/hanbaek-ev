@@ -22,8 +22,10 @@ import {
   setPartnerFile,
   type PartnerFileKind,
 } from '@/lib/auth/partner-details';
+import { MAX_FORM_BYTES } from '@/types/project';
 
-const MAX_FILE_BYTES = 4 * 1024 * 1024; // 서버리스 본문 한도(4.5MB) 아래
+/* 상한의 정본은 types/project.ts 한 곳이다 — 화면도 같은 값을 보고 미리 줄인다 */
+const MAX_FILE_BYTES = MAX_FORM_BYTES;
 const ALLOWED_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png', 'image/webp']);
 const EXT_BY_TYPE: Record<string, string> = {
   'application/pdf': '.pdf',
@@ -105,7 +107,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       throw new BadRequest('PDF·JPG·PNG·WEBP 파일만 올릴 수 있습니다.');
     }
     if (file.size > MAX_FILE_BYTES) {
-      throw new BadRequest(`파일이 너무 큽니다 (${(file.size / 1024 / 1024).toFixed(1)}MB). 4MB 이하로 줄여주세요.`);
+      /* 화면이 먼저 줄여서 보내므로 여기까지 오는 것은 못 줄인 파일뿐이다 — 수는 한 곳에서 온다 */
+      throw new BadRequest(
+        `파일이 너무 큽니다 (${(file.size / 1024 / 1024).toFixed(1)}MB). `
+        + `${(MAX_FILE_BYTES / 1024 / 1024).toFixed(0)}MB 이하로 줄여주세요.`
+      );
     }
 
     const blob = await put(

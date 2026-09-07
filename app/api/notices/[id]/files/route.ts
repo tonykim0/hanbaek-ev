@@ -15,9 +15,10 @@ import { del, put } from '@vercel/blob';
 import { getRepository } from '@/lib/data';
 import { actorOf, getSessionUser } from '@/lib/auth/session';
 import { adminWrite, BadRequest } from '@/lib/api/write-route';
+import { MAX_FORM_BYTES } from '@/types/project';
 
-/* 서버리스 본문 한도(4.5MB) 아래 — 양식 파일은 대개 수백 KB 다 */
-const MAX_FILE_BYTES = 4 * 1024 * 1024;
+/* 상한의 정본은 types/project.ts 한 곳이다 — 양식 파일은 대개 수백 KB 다 */
+const MAX_FILE_BYTES = MAX_FORM_BYTES;
 
 export const DELETE = adminWrite<{ id: string }, { url?: unknown }>(
   '한백 관리자만 공지 첨부를 뺄 수 있습니다.',

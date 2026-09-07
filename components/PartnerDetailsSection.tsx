@@ -21,6 +21,8 @@ import { useRouter } from 'next/navigation';
 import { useAction } from '@/lib/use-action';
 import type { AccountView } from '@/lib/auth/types';
 import type { PartnerDetailsView, PartnerFileKind } from '@/lib/auth/partner-details';
+import { canShrink, shrink } from '@/lib/shrink';
+import { MAX_FORM_BYTES } from '@/types/project';
 import {
   ACCOUNT_DIGITS_MAX,
   ACCOUNT_DIGITS_MIN,
@@ -423,6 +425,10 @@ function FileFact({
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
+  /** 사진을 다시 굽는 중 — 4MB 를 넘긴 파일에서만 선다 */
+  const [shrinking, setShrinking] = useState(false);
+  /** 줄여서 올렸다는 사실 — 원본과 다른 것을 올렸으면 조용히 바꿔치우지 않고 말한다 */
+  const [shrunk, setShrunk] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   async function send(init: RequestInit, fail: string): Promise<boolean> {
@@ -445,15 +451,45 @@ function FileFact({
     }
   }
 
+  const mb = (n: number) => (n / 1024 / 1024).toFixed(1);
+
   async function upload(files: FileList | null) {
-    const file = files?.[0];
-    if (!file) return;
+    const picked = files?.[0];
+    if (!picked) return;
+    onError(null);
+    setShrunk(null);
+
+    /*
+     * ★큰 파일은 막지 않고 그 자리에서 줄인다★ (한백 지시 2026-09-05 — 제일전기통신
+     * 사업자등록증·통장사본이 4.2MB 로 막혔다). 여기는 Blob 을 안 거치고 multipart 로
+     * 바로 보내는 자리라 상한이 4MB 다(서버리스 본문 한도). 휴대폰으로 찍은 서류 한 장이
+     * 그 선을 넘는 일이 흔한데, 「줄여서 다시 올려주세요」는 사람이 할 일이 아니다 —
+     * 서류 칸이 100MB 에서 하는 일과 같은 길이다(lib/shrink).
+     */
+    let file = picked;
+    if (file.size > MAX_FORM_BYTES && canShrink(file)) {
+      setShrinking(true);
+      const small = await shrink(file);
+      setShrinking(false);
+      if (small) file = small.file;
+    }
+    if (file.size > MAX_FORM_BYTES) {
+      /* 서버도 같은 값을 본다 — 여기서 먼저 말해 왕복을 아낀다(화면 규칙 3) */
+      onError(canShrink(picked)
+        ? `${KIND_LABEL[kind]} — ${mb(picked.size)}MB 를 줄이지 못했습니다. 최대 ${mb(MAX_FORM_BYTES)}MB 입니다.`
+        : `${KIND_LABEL[kind]} — ${mb(picked.size)}MB · 최대 ${mb(MAX_FORM_BYTES)}MB 입니다. PDF·JPG·PNG 로 올려 주세요.`);
+      return;
+    }
+
     const body = new FormData();
     body.append('userId', account.id);
     body.append('kind', kind);
     body.append('file', file);
     // 올라간 뒤에 읽는다 — 판독은 Blob 에 붙은 것을 다시 받아 본다
-    if (await send({ method: 'POST', body }, '올리지 못했습니다.')) onRead(kind);
+    if (await send({ method: 'POST', body }, '올리지 못했습니다.')) {
+      if (file !== picked) setShrunk(`${mb(picked.size)}MB → ${mb(file.size)}MB 로 줄여서 올렸습니다`);
+      onRead(kind);
+    }
   }
 
   const actionBtn =
@@ -486,7 +522,7 @@ function FileFact({
         type="file"
         accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
         className="hidden"
-        disabled={busy || !dbReady}
+        disabled={busy || shrinking || !dbReady}
         onChange={(e) => {
           void upload(e.target.files);
           e.target.value = '';
@@ -506,8 +542,9 @@ function FileFact({
             >
               {reading ? '읽는 중…' : '채우기'}
             </button>
-            <button type="button" disabled={busy || reading || !dbReady} onClick={() => inputRef.current?.click()} className={actionBtn}>
-              {busy ? '올리는 중…' : '교체'}
+            <button type="button" disabled={busy || shrinking || reading || !dbReady} onClick={() => inputRef.current?.click()} className={actionBtn}>
+              {/* 굽는 중에는 그것을 말한다 — 「올리는 중」이라 적으면 멈춘 것처럼 보인다 */}
+              {shrinking ? '사진 줄이는 중…' : busy ? '올리는 중…' : '교체'}
             </button>
             <button
               type="button"
@@ -528,10 +565,14 @@ function FileFact({
         ) : (
           <>
             <Empty kind="miss" />
-            <button type="button" disabled={busy || reading || !dbReady} onClick={() => inputRef.current?.click()} className={actionBtn}>
-              {busy ? '올리는 중…' : reading ? '읽는 중…' : '올리기'}
+            <button type="button" disabled={busy || shrinking || reading || !dbReady} onClick={() => inputRef.current?.click()} className={actionBtn}>
+              {shrinking ? '사진 줄이는 중…' : busy ? '올리는 중…' : reading ? '읽는 중…' : '올리기'}
             </button>
           </>
+        )}
+        {/* 원본과 다른 것을 올렸으면 말한다 — 조용히 바꿔치우지 않는다 */}
+        {shrunk && (
+          <span className="text-tiny font-bold text-amber-700">{shrunk}</span>
         )}
       </span>
     </FactRow>
