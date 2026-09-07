@@ -107,6 +107,14 @@ export const PL_INV_STEPS: SettlementStepRule[] = [
  */
 export const PL_START = '2026년 7월 1일 ~ 8월 31일';
 
+/**
+ * ★자체투자와 상업 보조금은 안 닫힌다★ (한백 2026-09-06 「9월 이후에도 자투·상업 케이스는
+ * 7월과 동일해」). 9월 정책(pricing-policy-pl-2609)이 갈아치운 것은 보조금 공동주택 넷과
+ * 연동 둘뿐이라, 나머지 셋은 9월 이후에도 이 값이 정본이다 — 끝 날짜를 적으면 거짓말이 된다.
+ * 0057 이 아홉을 한꺼번에 닫았던 것을 0059 가 그 셋만 되돌린다.
+ */
+export const PL_INV_START = '2026년 7월 1일';
+
 const PL_PROMO: Record<number, PromoStep[]> = {
   7: [{ months: 6, rate: 149 }],
   10: [{ months: 6, rate: 149 }, { months: 6, rate: 249 }],
@@ -265,7 +273,7 @@ const PL_INV_ROWS: { term: number; bldg: '공동주택' | '상업시설'; total:
 
 export function plNewRules(): NewPricingRule[] {
   return PL_INV_ROWS.map((row) => ({
-    caseName: `플러그링크 (${PL_START}) | ${row.bldg} | ${row.term}년 자체투자 | 모자분리`,
+    caseName: `플러그링크 (${PL_INV_START}) | ${row.bldg} | ${row.term}년 자체투자 | 모자분리`,
     cpo: '플러그링크',
     bizType: '자체투자',
     powerType: '모자분리',
@@ -275,7 +283,7 @@ export function plNewRules(): NewPricingRule[] {
     replType: '자체투자 (제자리교체)',
     channel: '턴키',
     bizYear: 2026,
-    startDate: PL_START,
+    startDate: PL_INV_START,
     salesUnit: row.total - PL_PAYOUT_CONS - MARGIN,
     consUnit: PL_PAYOUT_CONS,
     margin: MARGIN,
