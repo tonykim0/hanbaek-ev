@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   advanceBlockers, advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES,
-  entryOkOf, nextStatusOf, prevStatusOf, stepsOf,
+  CHECK_AT, CHECK_HOME, entryOkOf, nextStatusOf, prevStatusOf, STATUS_GATES, stepsOf,
   COURT_AFTER_STATUS, declarationBlockers, isHanbaekOnlyProcessField, statusIndex,
   canChangeContractDocs, CONTRACT_DOCS_LOCK_AT, contractDocsLockedWhy, PARTNER_DOCS_CLOSED_AT,
 } from '@/lib/process';
@@ -654,5 +654,57 @@ describe('기설치 연동은 건너뛴 칸에 못 들어간다', () => {
     const ENVC = { subsidized: true, powerType: '모자분리' as const, bizType: '환경부' as const, cpo: null };
     const ready = P({ status: '행위신고', envApprovalDate: 'd', notifyDoneAt: 'd' });
     expect(canEnter('충전기 발주', ready, ENVC)).toEqual({ ok: true });
+  });
+});
+
+/**
+ * 2차 검증에서 나온 회귀들 — ★내가 만든 것이라 여기 못 박는다.★
+ *
+ * 흐름 갈래를 넣으며 두 자리가 조용히 죽었다. 시험 389개가 다 통과했는데도 그랬다:
+ * 저장소가 부르는 배치(목표 === 서 있는 칸, CHECK_AT 에 없는 필드)를 아무도 안 물었다.
+ */
+describe('체크를 풀면 물러난다 — canEnter 로 물으면 안 되는 자리', () => {
+  const ENVC = { subsidized: true, powerType: '모자분리' as const, bizType: '환경부' as const, cpo: null };
+
+  /*
+   * ★canEnter 는 서 있는 칸을 목표로 주면 늘 ok 다★ — 「지금 서 있는 자리까지는 지난
+   * 것으로 친다」(to <= from 즉시 ok). retreatAfterUncheck 가 그것으로 물었더니 문이
+   * 늘 열려 한 번도 물러나지 않았다. 물어야 할 것은 그 칸의 게이트다.
+   */
+  it('canEnter 는 서 있는 칸을 늘 통과시킨다 — 되돌림 판정에 쓸 수 없다', () => {
+    const bare = P({ status: '충전기 발주' });                  // 조건이 하나도 안 찬 현장
+    expect(canEnter('충전기 발주', bare, ENVC)).toEqual({ ok: true });
+    /* 그런데 그 칸의 게이트는 실제로 막고 있다 — 되돌림은 이것을 봐야 한다 */
+    expect(STATUS_GATES['충전기 발주']?.(bare, ENVC).map((b) => b.label))
+      .toEqual(['환경부 승인일 (한백 입력)', '행위신고 대상 여부']);
+  });
+
+  it('선언을 풀면 그 칸의 게이트가 다시 막는다 — 물러날 근거가 생긴다', () => {
+    const opened = P({ status: '충전기 발주', envApprovalDate: 'd', notifyDoneAt: 'd' });
+    expect(STATUS_GATES['충전기 발주']?.(opened, ENVC)).toEqual([]);        // 찍힌 동안은 안 막는다
+    const undone = { ...opened, notifyDoneAt: null } as never;
+    expect(STATUS_GATES['충전기 발주']?.(undone, ENVC).map((b) => b.label))
+      .toEqual(['행위신고 대상 여부']);                                      // 풀면 막는다
+  });
+
+  /*
+   * checkStepWindow 가 「선언이 사는 칸」을 CHECK_AT 으로만 재면, 칸을 닫지 않는 선언
+   * (completionSubmitAt)은 키가 없어 창 검사가 통째로 사라진다 — 시공사가 착공에서
+   * 준공서류 제출 완료를 찍을 수 있게 되고, 그 선언이 한백의 준공 승인 단추를 연다.
+   */
+  it('★칸을 닫지 않는 선언에도 사는 칸이 있다★ — CHECK_HOME 이 그것을 담는다', () => {
+    expect(CHECK_AT).not.toHaveProperty('completionSubmitAt');
+    expect(CHECK_HOME.completionSubmitAt).toBe('준공서류 접수/검토');
+    /* 칸을 닫는 선언들은 두 지도가 같은 답을 준다 */
+    for (const [f, at] of Object.entries(CHECK_AT)) {
+      expect(CHECK_HOME[f as keyof typeof CHECK_HOME]).toBe(at);
+    }
+  });
+
+  it('안 지나는 칸은 뒤로도 목표가 될 수 없다', () => {
+    const LINK = { subsidized: false, powerType: '모자분리' as const, bizType: '기설치 연동' as const, cpo: null };
+    /* 뒤로 가는 길(to < from)에서도 막혀야 한다 — 전에는 to<=from 단축이 먼저 걸렸다 */
+    const late = P({ status: '준공서류 접수/검토' });
+    expect(canEnter('충전기 수령', late, LINK).ok).toBe(false);
   });
 });

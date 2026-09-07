@@ -14,8 +14,8 @@ import { writeAudit } from '@/lib/db/audit';
 import { processDocuments, processes, projects } from '@/lib/db/schema';
 import { today } from '@/lib/date';
 import {
-  advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES, CHECK_AT,
-  COURT_AFTER_STATUS, nextStatusOf, prevStatusOf, type GateContext,
+  advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES, CHECK_HOME,
+  COURT_AFTER_STATUS, nextStatusOf, prevStatusOf, STATUS_GATES, type GateContext,
   declarationBlockers, gateContextOf, statusIndex,
 } from '@/lib/process';
 import { PROCESS_STATUSES } from '@/types/project';
@@ -238,8 +238,6 @@ async function advanceAfterCheck(projectId: string, patch: ProcessPatch, actor: 
 async function retreatAfterUncheck(
   projectId: string, field: keyof typeof CHECK_ADVANCES, actor: Actor
 ): Promise<void> {
-  const opened = CHECK_ADVANCES[field];
-
   const rows = await getDb().select().from(projects).where(eq(projects.id, projectId)).limit(1);
   if (!rows[0]) return;
   const [record] = await recordsOf(rows);
@@ -247,6 +245,11 @@ async function retreatAfterUncheck(
 
   // 계약이 안 끝난 현장은 공정을 움직이지 않는다 — advanceAfterCheck 와 같은 잠금
   if (toDetail(record, await ruleMap(), await settleMap()).stage === 'intake') return;
+
+  const ctx = gateContextOf(record.project);
+  /* 여는 칸은 사업구분이 정한다 — 고정값(CHECK_ADVANCES)이면 연동이 여기서 떨어진다 */
+  const opened = advanceTargetOf(field, ctx);
+  if (!opened) return;                                   // 칸을 닫지 않는 선언
 
   const cur = record.process.status;
   if (statusIndex(cur) !== statusIndex(opened)) return;  // 그 단계에 서 있을 때만 물러난다
@@ -265,14 +268,20 @@ async function retreatAfterUncheck(
    * 준공서류 제출 완료를 되돌리면 단계가 「개통 및 통신확인」으로 후퇴했다.
    *
    * 이 시점의 record 는 체크가 이미 풀린 뒤다(트랜잭션이 커밋된 뒤에 부른다).
-   * 그래도 이 칸에 들어올 수 있으면 그 체크는 이 칸을 연 것이 아니다 — 물러날 이유가
-   * 없다. 판정을 CHECK_ADVANCES 가 아니라 게이트에서 끌어오므로, 체크가 늘어도
-   * 여기 손댈 일이 없다.
+   * 그 칸의 게이트가 그래도 안 막으면 그 체크는 이 칸을 연 것이 아니다 — 물러날 이유가 없다.
+   *
+   * ★canEnter 로 묻지 않는다★ (2026-09-07 검증에서 나온 과교정) — canEnter 는 「지금 서
+   * 있는 자리까지는 지난 것으로 친다」(to <= from 이면 즉시 ok)라, 서 있는 칸을 목표로
+   * 주면 무조건 ok 다. 그래서 이 문이 늘 열려 ★한 번도 물러나지 않았다★ — 「체크를 풀면
+   * 한 걸음 되돌아온다」가 두 흐름 모두에서 죽어 있었고, 행위신고 기록이 0인 현장이
+   * 준공까지 흘러갈 수 있었다(이 함수 머리말이 막겠다고 적은 바로 그 상태다).
+   * 물어야 할 것은 ★그 칸의 게이트★다.
    */
-  if (canEnter(cur, record.process, gateContextOf(record.project)).ok) return;
+  const blockers = STATUS_GATES[cur]?.(record.process, ctx) ?? [];
+  if (blockers.length === 0) return;
 
   /* 앞 칸도 그 현장이 지나는 것 중에서 — 건너뛴 칸으로 물러나면 갈 수 없는 자리에 선다 */
-  const back = prevStatusOf(opened, gateContextOf(record.project));
+  const back = prevStatusOf(opened, ctx);
   if (!back) return;
   await moveStatus(projectId, cur, back, actor, '진행 단계 되돌림 (체크 해제)', { progress: false });
 }
@@ -387,14 +396,20 @@ function checkStepWindow(
    * CHECK_AT 은 사업구분과 무관하게 「어느 칸에 서서 누르는가」다.
    */
   if (unchecked) {
-    const opened = advanceTargetOf(unchecked, ctx);
+    /*
+     * 해제 창 — 그 선언이 연 칸(없으면 사는 칸)보다 더 갔으면 거절한다.
+     * ★advanceTargetOf 하나로 재면 안 된다★ — 칸을 닫지 않는 선언(completionSubmitAt)은
+     * null 이라 검사가 통째로 사라진다(2026-09-07 검증에서 나온 회귀).
+     */
+    const opened = advanceTargetOf(unchecked, ctx) ?? CHECK_HOME[unchecked as keyof typeof CHECK_HOME];
     if (opened && statusIndex(cur) > statusIndex(opened)) {
       throw new Error(`이미 ${cur} 까지 진행돼 해제할 수 없습니다 — 단계를 먼저 되돌리세요.`);
     }
   }
   for (const f of fields) {
     if (!(f in CHECK_ADVANCES) || patch[f] == null) continue;
-    const at = CHECK_AT[f as keyof typeof CHECK_AT];
+    /* 찍는 창 — 그 선언이 사는 칸에 닿아야 한다(CHECK_AT 은 칸을 닫는 것만 담는다) */
+    const at = CHECK_HOME[f as keyof typeof CHECK_HOME];
     if (at && statusIndex(cur) < statusIndex(at)) {
       throw new Error(`아직 그 구간이 아닙니다 — 지금은 ${cur} 입니다.`);
     }

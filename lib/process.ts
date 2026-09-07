@@ -242,7 +242,7 @@ export function statusIndex(status: ProcessStatus): number {
  * 같은 순서로 올라가므로 한 줄기로 표현된다:
  *
  *   환경부·자체투자  운영사 계약서 제출 → 행위신고 → 발주 → 수령 → 착공 → 개통 → 준공…
- *   기설치 연동      운영사 계약서 제출 → 전기사용신청 → 전기안전점검 → 행위신고 → 개통 → 준공…
+ *   기설치 연동      운영사 계약서 제출 → 행위신고 →           착공 → 개통 → 준공…
  *
  * 「다음 칸」을 +1 로 세지 않는 이유가 이것이다 — 건너뛰는 칸이 있으면 +1 이 없는 칸을
  * 가리킨다. 이웃은 nextStatusOf·prevStatusOf 로만 구한다.
@@ -411,6 +411,14 @@ export function canEnter(
 ): { ok: true } | { ok: false; blockedBy: string } {
   const from = statusIndex(process.status);
   const to = statusIndex(status);
+  /*
+   * ★안 지나는 칸은 앞으로든 뒤로든 목표가 될 수 없다★ — 전에는 이 검사가 to <= from
+   * 단축 뒤에 있어서, 뒤로 가는 길로는 건너뛰는 칸에 세울 수 있었다(2026-09-07 검증).
+   * 화면은 그 칸을 안 내밀지만 상태 라우트는 열 개 중 아무 값이나 받는다.
+   */
+  if (!stepsOf(ctx).includes(status)) {
+    return { ok: false, blockedBy: `${status} 는 이 사업구분이 지나지 않는 단계입니다` };
+  }
   if (to <= from) return { ok: true };
   /*
    * ★그 현장이 지나는 칸만 묻는다★ (한백 지적 2026-09-07 뒤 검증에서 나온 구멍).
@@ -422,14 +430,6 @@ export function canEnter(
    * 없었다. 표준 흐름에서는 stepsOf 가 전역 목록과 같아 한 글자도 안 바뀐다.
    */
   const steps = stepsOf(ctx);
-  /*
-   * ★안 지나는 칸은 목표가 될 수 없다★ — 사이에 검사할 칸이 없어서 조용히 통과했다.
-   * 화면은 이제 그 칸을 내밀지 않지만(nextStepOf·entryOkOf), 저장소를 직접 부르는 길
-   * (setProcessStatus)이 남아 있었다. 문은 판정하는 곳에서 닫는다.
-   */
-  if (!steps.includes(status)) {
-    return { ok: false, blockedBy: `${status} 는 이 사업구분이 지나지 않는 단계입니다` };
-  }
   for (const st of steps.filter((x) => statusIndex(x) > from && statusIndex(x) <= to)) {
     const blockers = STATUS_GATES[st]?.(process, ctx) ?? [];
     if (blockers.length > 0) {
@@ -507,7 +507,7 @@ export const CHECK_ADVANCES = {
  * 그 선언을 ★어느 칸에 서서★ 누르는가 (한백 지시 2026-09-07, 기설치 연동 흐름).
  *
  * CHECK_ADVANCES 는 「무엇이 열리는가」인데 그 답이 사업구분마다 다르다 — 행위신고를
- * 끝내면 환경부는 「충전기 발주」로, 기설치 연동은 「개통 및 통신확인」으로 간다.
+ * 끝내면 환경부는 「충전기 발주」로, 기설치 연동은 「착공」으로 간다(발주·수령을 건너뛴다).
  * 그래서 여는 칸을 고정값으로 두지 않고 ★서 있는 칸에서 흐름으로 유도★한다
  * (advanceTargetOf → nextStatusOf). CHECK_ADVANCES 는 표준 흐름의 답으로 남는다 —
  * 되돌림(retreatAfterUncheck)이 그것을 보고, 시험이 그 값을 못 박는다.
@@ -522,6 +522,22 @@ export const CHECK_AT = {
   chargerDoneAt: '충전기 수령',
   installConfirmedAt: '착공',
   openDoneAt: '개통 및 통신확인',
+} as const satisfies Record<string, ProcessStatus>;
+
+/**
+ * 그 선언이 ★사는 칸★ — 여는지와 무관하다.
+ *
+ * CHECK_AT 은 「칸을 닫는 선언」만 담는다(그것으로 다음 칸을 유도한다). 하지만
+ * 「어느 칸에 서서 누르는가」는 칸을 닫지 않는 선언에도 있다 — completionSubmitAt 이
+ * 그것이고, 준공서류 접수/검토에 서서 「다 냈다」고 말하는 자리다.
+ *
+ * ★이 지도가 없으면 그 창이 사라진다★ (2026-09-07 검증) — checkStepWindow 를 CHECK_AT
+ * 으로 옮기면서 그 키가 없어 검사를 그냥 지나갔고, 시공사가 착공에서 준공서류 제출
+ * 완료를 찍을 수 있게 됐다(그 선언이 한백의 준공 승인 단추를 연다).
+ */
+export const CHECK_HOME = {
+  ...CHECK_AT,
+  completionSubmitAt: '준공서류 접수/검토',
 } as const satisfies Record<string, ProcessStatus>;
 
 /** 그 선언이 여는 칸 — 사업구분이 정한다. 칸을 닫지 않는 선언이면 null */
