@@ -22,7 +22,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { SettlementSummary } from '@/types/project';
 import {
-  safetyFeeApplies, safetyFeeDue, safetyFeeOpen, STEP_LABEL, STEP_TONE,
+  safetyFeeApplies, safetyFeeCollected, safetyFeeDue, safetyFeeOpen, STEP_LABEL, STEP_TONE,
 } from '@/lib/settlement';
 import { Badge, Blank, Empty, FIELD, FIELD_BASE, Tag, Td, Th } from '@/components/ui';
 import CheckMenu from '@/components/CheckMenu';
@@ -133,13 +133,24 @@ export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] })
       open: sum(openOf),
       /* 그중 수수료 몫 — 차수가 안 열린 현장에서도 금액이 서는 이유다 */
       openFee: sum(safetyFeeOpen),
+      /* 수금률에서 빼기 위해 따로 센다 — 수수료는 차수 진행률에 안 든다 */
+      fee: sum((r) => r.safetyFee ?? 0),
+      feeCollected: sum(safetyFeeCollected),
       unpaid: sum(unpaidOf),
       /* 미수금에서 아직 조건이 안 찬 몫 — 총액의 나머지 한 토막이다 */
       waiting: Math.max(0, sum(unpaidOf) - sum(openOf)),
     };
   }, [shown]);
 
-  const rate = money.plan > 0 ? Math.round((money.collected / money.plan) * 1000) / 10 : null;
+  /*
+   * ★수금률은 차수만 센다★ (한백 2026-09-06 「수금률에 포함시키지마」) — 분모·분자에서
+   * 수수료를 뺀다. 그 돈은 준공완료 뒤 영수증으로 청구하는 차수 밖의 마지막 한 건이라
+   * 차수 진행률에 섞으면 「기성이 어디까지 왔나」가 흐려진다. 현장 상세 기성 탭의
+   * collectionRate 도 같은 규칙이다 — 두 화면이 같은 숫자를 봐야 한다.
+   */
+  const stepPlan = money.plan - money.fee;
+  const stepCollected = money.collected - money.feeCollected;
+  const rate = stepPlan > 0 ? Math.round((stepCollected / stepPlan) * 1000) / 10 : null;
   const active = flags.length + cpos.length + (q.trim() ? 1 : 0);
 
   return (
@@ -169,8 +180,9 @@ export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] })
               : money.openFee > 0
                 ? `점검수수료 ${won(money.openFee)}원 포함`
                 : '조건이 찬 차수'} />
+          {/* 수금률은 ★차수만★ 센다 (한백 2026-09-06) — 그래서 이름에 「차수」를 적는다 */}
           <Tile label="수금 완료" value={money.collected} tone="in"
-            note={rate !== null ? `수금률 ${rate}%` : undefined} />
+            note={rate !== null ? `차수 수금률 ${rate}%` : undefined} />
           {/* 다 받은 목록에 부기가 뜨면 안 된다 — 0원에는 아무것도 달지 않는다 */}
           <Tile label="미수금" value={money.unpaid}
             note={money.unpaid === 0 ? undefined
@@ -246,7 +258,7 @@ export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] })
       {shown.length === 0 ? (
         <Blank>{rows.length === 0 ? '현장 0건' : '걸린 조건에 맞는 현장 0건'}</Blank>
       ) : (
-        <Frame min="900px">
+        <Frame min="1020px">
           <thead className="border-b border-slate-100 bg-slate-50 text-tiny font-bold tracking-[0.06em] text-slate-500">
             <tr>
               <Th left>현장</Th>
@@ -254,6 +266,12 @@ export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] })
               <Th>1차</Th>
               <Th>2차</Th>
               <Th>3차</Th>
+              {/*
+                ★차수 다음의 마지막 수금단계★ (한백 2026-09-06 「맨 마지막에 수금 이외
+                추가적인 수금단계로 카운트해」). 차수 셋과 나란히 서야 줄의 합이 눈으로 맞는다 —
+                열이 없으면 「받아야 할 돈」이 차수 셋의 합보다 큰 이유를 표에서 찾을 수 없다.
+              */}
+              <Th>점검수수료</Th>
               <Th money>받아야 할 돈</Th>
               <Th money>수금 완료</Th>
               <Th money>미수금</Th>
@@ -272,26 +290,12 @@ export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] })
                 {([1, 2, 3] as const).map((no) => (
                   <StepCell key={no} step={r.steps.find((x) => x.no === no) ?? null} />
                 ))}
-                {/*
-                  ★차수 셋의 합과 이 숫자가 다를 수 있다★ — 전기안전점검수수료가 차수 밖에서
-                  들어오기 때문이다(한백 2026-09-06). 사람이 줄을 더해 보면 어긋나므로 그
-                  차이를 여기서 밝힌다. 없는 현장에는 아무것도 달지 않는다(화면 규칙 10).
-                */}
+                <FeeCell row={r} />
                 <Td money className="font-bold text-slate-800">
                   {won(r.planTotal)}
-                  {r.safetyFee !== null && (
-                    <span className="block text-tiny font-semibold text-slate-400">
-                      점검수수료 {won(r.safetyFee)} 포함
-                    </span>
-                  )}
                 </Td>
                 <Td money className="font-bold text-brand-800">
                   {r.collectedTotal > 0 ? won(r.collectedTotal) : <span className="text-slate-300">—</span>}
-                  {r.safetyFeeCollectedAt !== null && r.safetyFee !== null && (
-                    <span className="block text-tiny font-semibold text-slate-400">
-                      점검수수료 {won(r.safetyFee)} 포함
-                    </span>
-                  )}
                 </Td>
                 <Td money className="font-bold text-slate-500">
                   {won(unpaidOf(r))}
@@ -302,6 +306,37 @@ export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] })
         </Frame>
       )}
     </div>
+  );
+}
+
+/**
+ * 점검수수료 한 칸 — 차수 다음의 마지막 수금단계 (한백 2026-09-06).
+ *
+ * 차수 칸(StepCell)과 같은 꼴이다: 상태가 값이고 금액이 그 아래 딸린다. 다른 점은 트리거가
+ * 없다는 것뿐이다 — 준공완료 뒤 협력사 영수증으로 운영사에 청구하는 돈이라 여는 사건이 없다.
+ *
+ * 빈 값이 셋으로 갈린다(화면 규칙 10): 안 받는 운영사는 「해당없음」, 준공 전에는 「—」
+ * (아직 올 때가 아님), 준공완료 뒤 금액이 없으면 노랑 「미지정」.
+ */
+function FeeCell({ row }: { row: SettlementSummary }) {
+  if (!safetyFeeApplies(row.cpo)) {
+    return <Td><Empty kind="na" /></Td>;
+  }
+  if (row.safetyFee === null) {
+    return <Td><Empty kind={safetyFeeDue(row.status) ? 'miss' : 'wait'} /></Td>;
+  }
+  const done = row.safetyFeeCollectedAt !== null;
+  return (
+    <Td>
+      {/* 차수 칸과 같은 색·같은 말을 쓴다 — 같은 표에서 두 어휘를 두지 않는다 */}
+      <Badge tone={STEP_TONE[done ? 'collected' : 'open']}>
+        {STEP_LABEL[done ? 'collected' : 'open']}
+      </Badge>
+      <span className="mt-0.5 block text-tiny font-semibold tabular-nums text-slate-500">
+        {won(row.safetyFee)}
+        {done && ` · ${row.safetyFeeCollectedAt}`}
+      </span>
+    </Td>
   );
 }
 

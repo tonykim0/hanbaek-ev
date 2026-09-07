@@ -111,11 +111,8 @@ export function ReceivableTab({
    */
   const admin = detail.admin;
   const steps = admin?.steps ?? [];
-  /* 수수료도 분모·분자에 든다 — 안 넣으면 기성관리 표와 같은 현장에 다른 %가 뜬다 */
-  const rate = collectionRate(steps, {
-    safetyFee: admin?.safetyFee ?? null,
-    safetyFeeCollectedAt: admin?.safetyFeeCollectedAt ?? null,
-  });
+  /* 수금률은 ★차수만★ 센다 (한백 2026-09-06) — 수수료는 차수 밖의 마지막 한 건이다 */
+  const rate = collectionRate(steps);
 
   return (
     <section>

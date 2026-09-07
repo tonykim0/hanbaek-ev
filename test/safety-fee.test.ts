@@ -93,37 +93,33 @@ describe('청구할 때 — 준공 정산이라 준공완료 전에는 금액을
   });
 });
 
-describe('수금률 — 두 화면이 같은 숫자를 봐야 한다', () => {
+describe('수금률 — 차수만 센다 (한백 2026-09-06 「수금률에 포함시키지마」)', () => {
   const step = (o: Partial<SettlementStep>): SettlementStep => ({
     no: 1, trigger: '착공', basisLabel: '고정', planAmount: 3_000_000,
     state: 'waiting', openedAt: null, collectedAt: null, collectedAmount: null, ...o,
   });
-  const 셋 = [step({ no: 1 }), step({ no: 2 }), step({ no: 3 })];
-  const 다받음 = 셋.map((s) => ({ ...s, state: 'collected' as const, collectedAt: '2026-09-01' }));
-
-  it('수수료가 없으면 예전 셈과 같다', () => {
-    expect(collectionRate(다받음)).toBe(100);
-    expect(collectionRate(다받음, { safetyFee: null, safetyFeeCollectedAt: null })).toBe(100);
-  });
+  const 다받음 = [1, 2, 3].map((no) => step({
+    no: no as 1 | 2 | 3, state: 'collected', collectedAt: '2026-09-01',
+  }));
 
   /*
-   * ★이것이 검증에서 걸린 자리다★ — 차수를 다 받고 수수료만 미수인 현장에서 기성 탭이
-   * 100% 라 말하면 45만원이 남은 현장을 끝난 것으로 읽는다.
+   * ★수수료가 미수여도 차수를 다 받으면 100% 다.★ 그 돈은 차수와 성격이 다르다 —
+   * 준공완료 뒤 영수증으로 청구하는 차수 밖의 마지막 한 건이라, 차수 진행률에 섞으면
+   * 「기성이 어디까지 왔나」가 흐려진다. 대신 받을 돈 합계·미수금·마진에는 든다.
    */
-  it('차수를 다 받아도 수수료가 미수면 100% 가 아니다', () => {
-    const rate = collectionRate(다받음, { safetyFee: 450_000, safetyFeeCollectedAt: null });
-    expect(rate).toBe(95.2); // 900만 / 945만
-    expect(rate).toBeLessThan(100);
+  it('차수를 다 받으면 100% — 수수료 미수는 이 숫자를 안 흔든다', () => {
+    expect(collectionRate(다받음)).toBe(100);
   });
 
-  it('수수료까지 받으면 100% 다', () => {
-    expect(collectionRate(다받음, { safetyFee: 450_000, safetyFeeCollectedAt: '2026-09-06' })).toBe(100);
+  it('차수가 없으면 null — 셀 것이 없다', () => {
+    expect(collectionRate([])).toBeNull();
   });
 
-  it('차수가 없고 수수료만 있어도 셈이 선다 — 분모가 0 이 아니다', () => {
-    const 없음: SettlementStep[] = [];
-    expect(collectionRate(없음, { safetyFee: 450_000, safetyFeeCollectedAt: null })).toBe(0);
-    expect(collectionRate(없음, { safetyFee: 450_000, safetyFeeCollectedAt: '2026-09-06' })).toBe(100);
-    expect(collectionRate(없음)).toBeNull();
+  it('절반만 받으면 절반이다', () => {
+    const 절반 = [
+      step({ no: 1, state: 'collected', collectedAt: '2026-09-01' }),
+      step({ no: 2 }),
+    ];
+    expect(collectionRate(절반)).toBe(50);
   });
 });

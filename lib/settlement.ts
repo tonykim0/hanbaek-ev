@@ -646,22 +646,21 @@ export function payoutSideOf(entries: PayoutEntry[], kind: PayoutKind): {
 }
 
 /**
- * 수금률 = 수금액 ÷ 계획총액 × 100.
+ * 수금률 = 차수 수금액 ÷ 차수 계획총액 × 100.
  *
- * ★전기안전점검수수료도 분모·분자에 든다★ (한백 2026-09-06 「받을 돈 합계에 들어가」).
- * 안 넣으면 같은 현장이 두 숫자를 갖는다 — 기성 탭은 차수만 세고(차수 셋 다 받았으면 100%)
- * 기성관리 표는 planTotal·collectedTotal 로 세니(수수료 포함) 66.7% 가 된다. 그 상태로
- * 「100%」를 보면 안 받은 수수료가 있는 현장을 끝난 것으로 읽는다.
- * 수수료를 안 받는 운영사 현장에서는 fee 가 null 이라 예전 셈과 같다.
+ * ★전기안전점검수수료는 여기 안 든다★ (한백 2026-09-06 「수금률에 포함시키지마 — 정액제로
+ * 기입해서 나중에 따로 기록해야 하는 곳들이야」). 그 돈은 차수와 성격이 다르다: 준공완료 뒤
+ * 협력사에게서 영수증을 받아 그것으로 운영사에 청구하는, 차수 밖의 마지막 한 건이다.
+ * 차수 진행률에 섞으면 「기성이 어디까지 왔나」가 흐려진다.
+ *
+ * 그래서 수수료는 ★받을 돈 합계·미수금·마진·월별 수금★에는 들고 수금률에만 안 든다 —
+ * 기성관리 표의 수금률도 같은 규칙을 쓴다(components/settlement/ReceivableBoard).
  */
-export function collectionRate(
-  steps: SettlementStep[],
-  fee: SafetyFeePair = { safetyFee: null, safetyFeeCollectedAt: null }
-): number | null {
-  const plan = steps.reduce((s, x) => s + (x.planAmount ?? 0), 0) + (fee.safetyFee ?? 0);
+export function collectionRate(steps: SettlementStep[]): number | null {
+  const plan = steps.reduce((s, x) => s + (x.planAmount ?? 0), 0);
   if (plan <= 0) return null;
   const got = steps
     .filter((x) => x.state === 'collected')
-    .reduce((s, x) => s + (x.planAmount ?? 0), 0) + safetyFeeCollected(fee);
+    .reduce((s, x) => s + (x.planAmount ?? 0), 0);
   return Math.round((got / plan) * 1000) / 10;
 }
