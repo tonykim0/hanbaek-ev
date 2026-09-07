@@ -450,6 +450,18 @@ export interface ProjectRepository {
   setPayoutTermsConfirmed(projectId: string, confirmed: boolean, actor: Actor): Promise<void>;
 
   setSettlementRule(projectId: string, ruleId: string | null, actor: Actor): Promise<void>;
+  /**
+   * 전기안전점검수수료 — 금액과 수금일 (한백 2026-09-06).
+   *
+   * ★두 사실이라 부분 갱신을 받는다★ — 금액을 먼저 적고 나중에 수금일을 찍는 순서가
+   * 실제 흐름이다. 준 키만 고친다(undefined 는 「안 건드림」, null 은 「지운다」).
+   * 받는 운영사가 아니면 거절한다 — 판정 정본은 lib/settlement 의 safetyFeeApplies.
+   */
+  setSafetyFee(
+    projectId: string,
+    patch: { amount?: number | null; collectedAt?: string | null },
+    actor: Actor
+  ): Promise<void>;
 
   /**
    * 운영사가 통보한 준공마감일. [한백 전용]

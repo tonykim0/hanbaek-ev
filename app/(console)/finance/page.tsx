@@ -4,6 +4,7 @@ import { getRepository } from '@/lib/data';
 import { allSlots } from '@/lib/data/db-slot';
 import { getSessionUser, viewerOf } from '@/lib/auth/session';
 import { isHanbaek } from '@/lib/roles';
+import { safetyFeeApplies, safetyFeeDue, safetyFeeOpen } from '@/lib/settlement';
 import { won, wonCompact } from '@/lib/format';
 import YearTabs from '@/components/YearTabs';
 import { Blank, PANEL, Tag } from '@/components/ui';
@@ -53,11 +54,19 @@ export default async function FinancePage({
   const thisYear = thisMonth.slice(0, 4);
 
   // 수금·지급이 일어난 해만 고를 수 있다. 올해는 자료가 없어도 늘 넣는다(탭이 사라지지 않게).
-  const collected = settlements.flatMap((s) =>
-    s.steps
+  const collected = settlements.flatMap((s) => [
+    ...s.steps
       .filter((step) => step.collectedAt && step.planAmount !== null)
-      .map((step) => ({ at: step.collectedAt!, amount: step.planAmount! }))
-  );
+      .map((step) => ({ at: step.collectedAt!, amount: step.planAmount! })),
+    /*
+     * ★전기안전점검수수료 수금도 돈이 움직인 날이다★ (한백 2026-09-06). 안 세면 위
+     * 「수금 완료」(collectedTotal)와 이 표의 합이 그만큼 벌어지고, 그 해에 움직인 돈이
+     * 수수료뿐이면 연도 탭 자체가 생기지 않아 그 돈이 화면에서 사라진다.
+     */
+    ...(s.safetyFeeCollectedAt !== null && s.safetyFee !== null
+      ? [{ at: s.safetyFeeCollectedAt, amount: s.safetyFee }]
+      : []),
+  ]);
   const paid = overview.history.map((row) => ({ at: row.paidAt, amount: row.amount }));
   const dataYears = [...new Set([...collected, ...paid].map((row) => row.at.slice(0, 4)))];
   const years = [...new Set([thisYear, ...dataYears])].sort().reverse();
@@ -102,12 +111,24 @@ export default async function FinancePage({
    */
   const planIn = settlements.reduce((sum, s) => sum + s.planTotal, 0);
   const collectedAll = settlements.reduce((sum, s) => sum + s.collectedTotal, 0);
+  /* 받을 수 있는 돈 — 조건이 찬 차수 + 아직 안 받은 전기안전점검수수료(트리거가 없다) */
   const openIn = settlements.reduce(
     (sum, s) => sum + s.steps
       .filter((step) => step.state === 'open' && step.planAmount !== null)
-      .reduce((stepSum, step) => stepSum + step.planAmount!, 0),
+      .reduce((stepSum, step) => stepSum + step.planAmount!, 0)
+      + safetyFeeOpen(s),
     0
   );
+  /*
+   * 마진 안에서 전기안전점검수수료가 얼마인지 따로 센다 — marginTotal 에 이미 들어 있지만
+   * (assemble settlementSummaryOf) 단가에서 유도한 마진과 사람이 적은 청구액을 한 숫자로만
+   * 두면 어느 쪽이 틀렸는지 못 짚는다(한백 2026-09-06).
+   */
+  const safetyFeeIn = settlements.reduce((sum, s) => sum + (s.safetyFee ?? 0), 0);
+  /* 청구액을 적어야 하는데 안 적은 현장 — 마진이 그만큼 실제보다 적다(단가 미지정과 같은 꼴) */
+  const safetyFeeMissing = settlements.filter(
+    (s) => safetyFeeApplies(s.cpo) && s.safetyFee === null && safetyFeeDue(s.status)
+  ).length;
   const planOut = overview.plans.reduce((sum, row) => sum + row.plan + row.adjust, 0);
   const paidAll = overview.plans.reduce((sum, row) => sum + row.confirmed, 0);
   const restOut = overview.plans.reduce((sum, row) => sum + restOf(row), 0);
@@ -173,9 +194,28 @@ export default async function FinancePage({
           <Panel
             eyebrow="한백 몫"
             title="한백 마진"
-            side={unpricedSites > 0 ? <Tag tone="warn">단가 미지정 {unpricedSites}건</Tag> : undefined}
+            side={(unpricedSites > 0 || safetyFeeMissing > 0) ? (
+              <span className="flex flex-wrap items-center gap-1.5">
+                {unpricedSites > 0 && <Tag tone="warn">단가 미지정 {unpricedSites}건</Tag>}
+                {/* 단가 미지정과 같은 이유로 남긴다 — 이 합계가 실제보다 적다는 사실이다 */}
+                {safetyFeeMissing > 0 && <Tag tone="warn">점검수수료 미기재 {safetyFeeMissing}건</Tag>}
+              </span>
+            ) : undefined}
           >
-            <Facts rows={[{ label: '합계', value: margin, tone: 'in' }]} />
+            {/*
+              수수료가 있으면 두 줄로 가른다 — 단가에서 유도한 마진과 사람이 적은 청구액은
+              틀리는 방식이 다르다(한백 2026-09-06 「정산현황에서는 한백 마진으로 들어가게」).
+              없으면 줄을 만들지 않는다 — 0 원 줄은 「받는데 안 적었다」로 읽힌다.
+            */}
+            <Facts
+              rows={safetyFeeIn > 0
+                ? [
+                    { label: '단가 마진', value: margin - safetyFeeIn, tone: 'in' as const },
+                    { label: '전기안전점검수수료', value: safetyFeeIn, tone: 'in' as const },
+                    { label: '합계', value: margin, tone: 'in' as const },
+                  ]
+                : [{ label: '합계', value: margin, tone: 'in' as const }]}
+            />
           </Panel>
         )}
       </div>

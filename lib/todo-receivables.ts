@@ -9,6 +9,7 @@
 import { phaseOfProject } from '@/lib/board';
 import { won } from '@/lib/format';
 import { daysSince } from '@/lib/date';
+import { safetyFeeApplies, safetyFeeDue, safetyFeeOpen } from '@/lib/settlement';
 import type { SettlementStep, SettlementSummary } from '@/types/project';
 import type { TodoItem } from '@/lib/todo-types';
 
@@ -18,6 +19,8 @@ import type { TodoItem } from '@/lib/todo-types';
  *   기성 수금        조건이 찼는데 아직 안 들어온 차수 — ★이것이 본디 할 일이다★
  *   준공마감일 지정   공정은 끝났는데 마지막 기성이 열리지 않았다 (그 날짜가 트리거다)
  *   정산 규칙 미지정  규칙이 없어 기성이 계산조차 안 된다
+ *   점검수수료 수금   청구액을 적었는데 아직 안 들어왔다 — ★여는 사건이 없는 돈이다★
+ *   점검수수료 미기재 준공완료인데 청구액을 안 적었다 (적지 않으면 청구 자체가 없다)
  *
  * ★조건 대기는 넣지 않는다.★ 아직 안 찬 차수는 우리가 할 일이 없다 — 기다리는 것을
  * 할 일로 세우면 목록이 영영 줄지 않는다. 무엇을 기다리는지는 기성관리 화면이 말한다.
@@ -99,6 +102,52 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
          * 날짜로 잴 근거가 없다. 밀림 문턱(7일)에 놓아 「밀린 것만」에는 걸리되, 날수로
          * 재어 온 것들 위로는 올라서지 않게 한다 — 꾸민 날짜로 순위를 만들지 않는다.
          */
+        urgency: 7,
+        urgencyLabel: null,
+      });
+    }
+
+    /*
+     * ── 전기안전점검수수료 (한백 지시 2026-09-06) ──────────────────────────
+     *
+     * ★여는 사건이 없는 돈이라 여기 서야 한다.★ 차수는 트리거가 차면 할 일이 서서 사람을
+     * 밀어주는데, 이 수수료는 청구액을 적은 순간부터 받을 수 있다 — 적어 놓고 잊으면
+     * 아무 데서도 재촉하지 않아 영구히 미수금으로 남는다.
+     *
+     * 차수 카드에 합치지 않는다: 그 카드의 말은 「N차 기성 · 착공 충족」 꼴이라 트리거가
+     * 없는 이 돈을 담으면 문장이 거짓이 된다.
+     */
+    if (safetyFeeOpen(r) > 0) {
+      items.push({
+        id: `safetyfee|${r.id}`,
+        href: `/projects/${r.id}?tab=receivable`,
+        name: r.name,
+        what: `전기안전점검수수료 ${won(r.safetyFee ?? 0)}원`,
+        group: '기성',
+        kind: '점검수수료 수금',
+        stalledDays: 0,
+        /*
+         * 열린 날을 기록하지 않으므로 날수로 잴 근거가 없다 — 정산 규칙 미지정과 같은 자리에
+         * 놓는다(문턱 7일). 꾸민 날짜로 순위를 만들지 않는다.
+         */
+        urgency: 7,
+        urgencyLabel: null,
+      });
+    }
+
+    /*
+     * 청구액을 안 적으면 청구 자체가 없다 — 준공완료 뒤에만 세운다(준공 정산이라 그전에는
+     * 금액을 모른다, lib/settlement safetyFeeDue). 대상 운영사가 아니면 받을 것이 없다.
+     */
+    if (safetyFeeApplies(r.cpo) && r.safetyFee === null && safetyFeeDue(r.status)) {
+      items.push({
+        id: `safetyfee-miss|${r.id}`,
+        href: `/projects/${r.id}?tab=receivable`,
+        name: r.name,
+        what: '전기안전점검수수료 청구액 미지정',
+        group: '기성',
+        kind: '점검수수료 미기재',
+        stalledDays: 0,
         urgency: 7,
         urgencyLabel: null,
       });

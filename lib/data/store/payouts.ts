@@ -18,8 +18,8 @@ import { allSlots } from '../db-slot';
 import { stampOf, today } from '@/lib/date';
 import { isHanbaek } from '@/lib/roles';
 import {
-  checkPayoutEntry, entryTypeOf, payoutPrerequisiteBlockersOf, payoutReleaseOf, payoutSideOf,
-  payoutStepsOf,
+  checkPayoutEntry, checkSafetyFee, entryTypeOf, payoutPrerequisiteBlockersOf, payoutReleaseOf,
+  payoutSideOf, payoutStepsOf, safetyFeeApplies,
 } from '@/lib/settlement';
 import {
   contractStateFor, payoutMilestonesFor, payoutPlansOf, payoutRowsOf, settlementSummaryOf, toDetail,
@@ -27,7 +27,7 @@ import {
 import type { ProjectRecord, RuleMap } from '../assemble';
 import type { Viewer } from '@/lib/auth/types';
 import type {
-  NewPayoutEntry, PayoutCategory, PayoutKind, PayoutRow, SettlementSummary,
+  CpoName, NewPayoutEntry, PayoutCategory, PayoutKind, PayoutRow, SettlementSummary,
 } from '@/types/project';
 import type { Actor, PaymentPatch, ProjectRepository } from '../repository';
 import {
@@ -40,6 +40,7 @@ export const payoutStore: Pick<
   ProjectRepository,
   'listSettlements' | 'listPayouts' | 'listPayoutOverview' | 'setLinePricing' | 'setPayment'
   | 'setPayoutTermsConfirmed' | 'setSettlementRule' | 'setCpoCloseDate' | 'setSettlementCollected'
+  | 'setSafetyFee'
   | 'runPayoutBatch' | 'addPayoutEntry' | 'addPayoutEntries' | 'deletePayoutEntry'
 > = {
   async listSettlements(viewer: Viewer): Promise<SettlementSummary[]> {
@@ -254,6 +255,72 @@ export const payoutStore: Pick<
         projectId, actor, action: date ? '준공마감일 지정' : '준공마감일 해제',
         field: 'cpoCloseDate', oldValue: before?.closeDate ?? null, newValue: date,
       });
+    });
+  },
+
+  /**
+   * 전기안전점검수수료 — setCpoCloseDate 와 같은 꼴이다(한 사실을 settlements 한 칸에).
+   * 다른 점 둘: ★받는 운영사인지 먼저 본다★, 그리고 금액·수금일 둘을 부분 갱신한다.
+   */
+  async setSafetyFee(projectId, patch, actor): Promise<void> {
+    assertAdmin(actor, '전기안전점검수수료 기록');
+    const db = getDb();
+    await db.transaction(async (tx) => {
+      const [row] = await tx
+        .select({ cpo: projects.cpo })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      if (!row) throw new Error('현장을 찾을 수 없습니다.');
+      const [before] = await tx
+        .select({ fee: settlements.safetyFee, at: settlements.safetyFeeCollectedAt })
+        .from(settlements)
+        .where(eq(settlements.projectId, projectId))
+        .limit(1);
+      const amount = patch.amount === undefined ? before?.fee ?? null : patch.amount;
+      /*
+       * 운영사 게이트는 화면에서도 보지만 여기서 다시 본다 — 라우트는 직접 부를 수 있고,
+       * 안 받는 운영사 현장에 금액이 적히면 받을 돈 합계와 마진이 조용히 부풀어 오른다.
+       *
+       * ★지우기는 통과시킨다★ — 게이트가 나중에 바뀌면(「나이스는 이제 안 받아」) 이미
+       * 적힌 값을 되돌릴 길이 있어야 한다(화면 규칙 7). 막는 것은 「새로 적는 것」뿐이다.
+       */
+      if (amount !== null && !safetyFeeApplies(row.cpo as CpoName)) {
+        throw new Error(`${row.cpo} 현장은 전기안전점검수수료를 따로 받지 않습니다.`);
+      }
+
+      /*
+       * ★금액을 지울 때만 수금일을 같이 지운다★ — 예전에는 amount 가 null 이면 무조건
+       * collectedAt 을 null 로 눌렀다. 그러면 「금액이 비어 있는데 수금일을 찍는 요청」이
+       * checkSafetyFee 에 닿지 못하고 「바뀐 것 없음」으로 조용히 200 이 나갔다: 다른 탭이
+       * 금액을 지운 뒤 이 탭에서 수금일을 고르면 사람은 기록했다고 믿고 DB 는 그대로였다.
+       */
+      const collectedAt = patch.amount === null
+        ? null
+        : patch.collectedAt === undefined ? before?.at ?? null : patch.collectedAt;
+
+      const bad = checkSafetyFee(amount, collectedAt);
+      if (bad.length > 0) throw new Error(bad.join(' '));
+      if ((before?.fee ?? null) === amount && (before?.at ?? null) === collectedAt) return;
+
+      const set = { safetyFee: amount, safetyFeeCollectedAt: collectedAt };
+      await tx
+        .insert(settlements)
+        .values({ projectId, ...set })
+        .onConflictDoUpdate({ target: settlements.projectId, set });
+
+      if ((before?.fee ?? null) !== amount) {
+        await writeAudit(tx, {
+          projectId, actor, action: amount === null ? '전기안전점검수수료 해제' : '전기안전점검수수료 기록',
+          field: 'safetyFee', oldValue: String(before?.fee ?? ''), newValue: String(amount ?? ''),
+        });
+      }
+      if ((before?.at ?? null) !== collectedAt) {
+        await writeAudit(tx, {
+          projectId, actor, action: collectedAt === null ? '전기안전점검수수료 수금 취소' : '전기안전점검수수료 수금',
+          field: 'safetyFeeCollectedAt', oldValue: before?.at ?? null, newValue: collectedAt,
+        });
+      }
     });
   },
 

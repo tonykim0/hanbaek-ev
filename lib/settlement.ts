@@ -10,8 +10,8 @@
  *   준공마감     — 한백이 판단해 지정한다. 공정 일정에서 유도하지 않는다.
  */
 import type {
-  ContractLineView, NewPayoutEntry, PayoutCategory, PayoutEntry, PayoutKind, PayoutMilestones,
-  PricingRule, ProcessInfo,
+  ContractLineView, CpoName, NewPayoutEntry, PayoutCategory, PayoutEntry, PayoutKind, PayoutMilestones,
+  PricingRule, ProcessInfo, ProcessStatus,
   SettlementRule, SettlementStep, SettlementStepRule, StepBasis, StepState, Trigger,
 } from '@/types/project';
 import { PAYOUT_CATEGORIES, PAYOUT_KINDS } from '@/types/project';
@@ -97,6 +97,80 @@ export function basisLabel(basis: StepBasis): string {
 
 /** 기성 단계에 쓸 수 있는 트리거 — '해당없음' 은 빈 차수 표시용이라 정의에는 못 쓴다 */
 export const RECEIVE_TRIGGERS: readonly Trigger[] = ['환경부 승인', '착공', '준공마감'];
+
+/**
+ * ── 전기안전점검수수료 — 운영사에게서 ★따로 받는★ 돈 (한백 지시 2026-09-06) ──────
+ *
+ * 기성 차수와 별개다. 차수에 얹을 수 없다: 차수 합은 받는 단가와 정확히 같아야 하고
+ * (checkSettlementSteps) 그 항등이 「한백 마진 = 받을 기성 − 내려줄 지급」을 지탱한다.
+ * 그래서 현장 단위 별 칸으로 받고, 받을 돈 합계와 마진에 같이 든다.
+ *
+ * ★수전방식과 무관하다★ — 처음 지시가 「모자분리 현장에 한함」이었는데 곧 정정됐다
+ * (「한전불입 현장들도 다 받아야 해」). 남은 축은 운영사 하나다.
+ *
+ * 플러그링크·에버온은 해당없음 — 「따로 우리가 운영사로부터 안 받아서」(한백). 그 둘의
+ * 케이스가 safetyFeeBearer 를 「한백 부담」으로 적어 둔 것과 같은 사실이다.
+ * 현대엔지니어링의 「안전공사 검사·점검비(준공 시 정산)」가 이 돈이다(한백 확인) —
+ * migrations/0039 가 정책표에서 걷어낸 그 항목이고, 이제 현장마다 이 칸이 받는다.
+ */
+export const SAFETY_FEE_CPOS: ReadonlySet<CpoName> = new Set([
+  'SK일렉링크', '나이스인프라', '현대엔지니어링',
+]);
+
+/** 이 운영사 현장에서 전기안전점검수수료를 따로 받는가 — 판정은 이 함수 하나다 */
+export function safetyFeeApplies(cpo: CpoName): boolean {
+  return SAFETY_FEE_CPOS.has(cpo);
+}
+
+/** 수수료 한 쌍 — 금액과 수금일. 금액이 없으면 이 현장은 아직 청구액을 안 적은 것이다 */
+export interface SafetyFeePair {
+  safetyFee: number | null;
+  safetyFeeCollectedAt: string | null;
+}
+
+/**
+ * 아직 안 받은 수수료 — 「받을 수 있는 돈」에 드는 몫.
+ *
+ * 기성 차수와 달리 트리거가 없다: ★금액을 적은 순간부터 받을 수 있다★. 그래서
+ * 「조건 대기」로 서는 일이 없고, 적히지 않았으면 청구할 것 자체가 없어 0 이다.
+ */
+export function safetyFeeOpen(s: SafetyFeePair): number {
+  return s.safetyFee !== null && s.safetyFeeCollectedAt === null ? s.safetyFee : 0;
+}
+
+/** 이미 받은 수수료 — 수금 완료에 드는 몫 */
+export function safetyFeeCollected(s: SafetyFeePair): number {
+  return s.safetyFee !== null && s.safetyFeeCollectedAt !== null ? s.safetyFee : 0;
+}
+
+/**
+ * 청구액을 적을 때가 됐나 — ★준공 정산이라 준공완료 전에는 금액을 모른다★.
+ *
+ * 현대엔지니어링의 이 돈은 정책표에 「안전공사 검사·점검비(준공 시 정산)」로 적혀 있었다
+ * (한백 확인 2026-09-06: 그것과 같은 돈이다). 그래서 준공 전 빈 값은 「아직 올 때가 아님」
+ * (「—」)이고 준공완료 뒤 빈 값은 「미지정」(노랑)이다 — 화면 규칙 10 의 두 빈 값이 갈리는
+ * 자리다. 안 가르면 대상 현장 116곳이 접수 직후부터 내내 노랑으로 서서, 「청구액을 빠뜨린
+ * 현장」과 「아직 청구할 때가 아닌 현장」이 같아 보인다.
+ */
+export function safetyFeeDue(status: ProcessStatus): boolean {
+  return status === '준공완료';
+}
+
+/** 저장 전 검사 — 라우트와 저장소가 같은 규칙을 봐야 한다 */
+export function checkSafetyFee(amount: number | null, collectedAt: string | null): string[] {
+  const bad: string[] = [];
+  if (amount !== null && (!Number.isInteger(amount) || amount <= 0)) {
+    bad.push('전기안전점검수수료는 0 보다 큰 원 단위 정수여야 합니다.');
+  }
+  if (collectedAt !== null && !/^\d{4}-\d{2}-\d{2}$/.test(collectedAt)) {
+    bad.push('수금일은 YYYY-MM-DD 형식이어야 합니다.');
+  }
+  /* 금액 없이 수금일만 있으면 「얼마를 받았는지 모르는 수금」이 남는다 */
+  if (amount === null && collectedAt !== null) {
+    bad.push('금액을 먼저 적어야 수금일을 기록할 수 있습니다.');
+  }
+  return bad;
+}
 
 /**
  * 단계 정의를 턴키(받는 단가)에 적용한 대당 금액.
@@ -571,12 +645,23 @@ export function payoutSideOf(entries: PayoutEntry[], kind: PayoutKind): {
   };
 }
 
-/** 수금률 = 수금액 ÷ 계획총액 × 100 */
-export function collectionRate(steps: SettlementStep[]): number | null {
-  const plan = steps.reduce((s, x) => s + (x.planAmount ?? 0), 0);
+/**
+ * 수금률 = 수금액 ÷ 계획총액 × 100.
+ *
+ * ★전기안전점검수수료도 분모·분자에 든다★ (한백 2026-09-06 「받을 돈 합계에 들어가」).
+ * 안 넣으면 같은 현장이 두 숫자를 갖는다 — 기성 탭은 차수만 세고(차수 셋 다 받았으면 100%)
+ * 기성관리 표는 planTotal·collectedTotal 로 세니(수수료 포함) 66.7% 가 된다. 그 상태로
+ * 「100%」를 보면 안 받은 수수료가 있는 현장을 끝난 것으로 읽는다.
+ * 수수료를 안 받는 운영사 현장에서는 fee 가 null 이라 예전 셈과 같다.
+ */
+export function collectionRate(
+  steps: SettlementStep[],
+  fee: SafetyFeePair = { safetyFee: null, safetyFeeCollectedAt: null }
+): number | null {
+  const plan = steps.reduce((s, x) => s + (x.planAmount ?? 0), 0) + (fee.safetyFee ?? 0);
   if (plan <= 0) return null;
   const got = steps
     .filter((x) => x.state === 'collected')
-    .reduce((s, x) => s + (x.planAmount ?? 0), 0);
+    .reduce((s, x) => s + (x.planAmount ?? 0), 0) + safetyFeeCollected(fee);
   return Math.round((got / plan) * 1000) / 10;
 }

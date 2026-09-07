@@ -20,6 +20,7 @@ import { PAYOUT_CATEGORIES, replLabel } from '@/types/project';
 import {
   adjustEntriesOf, collectionRate, distributionUnit, entryTypeOf, payoutSideOf, payoutStepsOf,
   STEP_LABEL, STEP_TONE, triggerSource, turnkeyUnit,
+  safetyFeeApplies, safetyFeeDue,
 } from '@/lib/settlement';
 import type { Visibility } from '@/lib/roles';
 import type { RuleOptions } from '@/lib/pricing-match';
@@ -110,7 +111,11 @@ export function ReceivableTab({
    */
   const admin = detail.admin;
   const steps = admin?.steps ?? [];
-  const rate = collectionRate(steps);
+  /* 수수료도 분모·분자에 든다 — 안 넣으면 기성관리 표와 같은 현장에 다른 %가 뜬다 */
+  const rate = collectionRate(steps, {
+    safetyFee: admin?.safetyFee ?? null,
+    safetyFeeCollectedAt: admin?.safetyFeeCollectedAt ?? null,
+  });
 
   return (
     <section>
@@ -162,8 +167,157 @@ export function ReceivableTab({
             <CollectControl projectId={detail.project.id} step={s} canEdit={canReview} />
           </div>
         ))}
+        {/*
+          전기안전점검수수료 — ★차수 줄과 같은 꼴로 목록 끝에 선다★ (한백 2026-09-06).
+          차수가 아니지만 「받을 돈 한 줄 + 수금 기록」이라는 축이 같고, 이 돈이 받을 돈
+          합계에 드므로 목록 밖에 두면 표의 합과 화면이 안 맞는다.
+          받는 운영사가 아니면 자리 자체가 없다 — 없는 돈에 「미지정」을 세우지 않는다.
+        */}
+        <SafetyFeeFact
+          projectId={detail.project.id}
+          applies={safetyFeeApplies(detail.project.cpo)}
+          due={safetyFeeDue(detail.process.status)}
+          fee={admin?.safetyFee ?? null}
+          collectedAt={admin?.safetyFeeCollectedAt ?? null}
+          canEdit={canReview}
+        />
       </div>
     </section>
+  );
+}
+
+/**
+ * 전기안전점검수수료 — 운영사에게서 차수 밖에서 따로 받는 돈 (한백 지시 2026-09-06).
+ *
+ * ★차수 줄과 같은 꼴로 늘 자리를 지킨다★ (화면 규칙 6·10). 안 받는 운영사(플러그링크·
+ * 에버온)에서는 「해당없음」이다 — 규칙상 없는 것이고 고치는 자리를 주지 않는다. 줄을
+ * 통째로 감추면 그 사실이 화면에서 확인되지 않아 빠뜨린 것처럼 읽힌다(바로 위 차수 줄도
+ * state==='na' 를 그렇게 다룬다).
+ *
+ * 빈 값이 두 가지로 갈린다: 준공완료 전에는 「—」(아직 올 때가 아님 — 준공 정산이다),
+ * 준공완료 뒤에 비어 있으면 「미지정」(노랑, 넣어야 하는데 안 넣음). 안 가르면 대상 현장
+ * 116곳이 접수 직후부터 내내 노랑으로 선다.
+ *
+ * 두 사실을 한 줄에서 받는다: ★청구액★과 ★받은 날★. 금액이 없으면 받을 것이 없으니
+ * 수금 자리가 아예 없다.
+ */
+function SafetyFeeFact({
+  projectId, applies, due, fee, collectedAt, canEdit,
+}: {
+  projectId: string;
+  /** 이 운영사에게서 따로 받는가 — 아니면 「해당없음」 */
+  applies: boolean;
+  /** 청구액을 적을 때가 됐나 (준공완료) */
+  due: boolean;
+  fee: number | null;
+  collectedAt: string | null;
+  canEdit: boolean;
+}) {
+  const { busy, error, run } = useAction();
+  const [editing, setEditing] = useState(false);
+  const [asking, setAsking] = useState(false);
+  const [draft, setDraft] = useState(fee === null ? '' : String(fee));
+
+  const save = (body: { amount?: number | null; collectedAt?: string | null }) =>
+    run({
+      url: `/api/projects/${projectId}/settlement`,
+      body: { safetyFee: body },
+      fail: '전기안전점검수수료를 저장하지 못했습니다.',
+    });
+
+  /* 값이 남아 있으면 대상이 아니어도 보여 준다 — 안 보이면 지울 수도 없다 */
+  const showValue = applies || fee !== null;
+  const state = collectedAt !== null ? 'collected' : fee !== null ? 'open' : 'waiting';
+  /* 「수정」을 열 때 지금 값으로 되맞춘다 — 다른 탭이 고친 뒤라면 옛 값이 남아 있다 */
+  const openEdit = () => { setDraft(fee === null ? '' : String(fee)); setEditing(true); };
+
+  return (
+    <div
+      className={`flex flex-wrap items-center gap-x-4 gap-y-1 rounded-box border border-slate-200 border-l-[3px] px-4 py-3 ${showValue ? STEP_STYLE[state] : STEP_STYLE.na}`}
+    >
+      <span className="w-10 shrink-0 text-tiny font-bold text-slate-400">수수료</span>
+      <div className="min-w-0 flex-1">
+        <p className="text-lead font-bold text-slate-800">전기안전점검수수료</p>
+        <p className="text-tiny text-slate-500">
+          {!applies ? '이 운영사에게서는 따로 받지 않는다'
+            : collectedAt !== null ? '수금 완료'
+              : fee !== null ? '미수금'
+                : due ? '준공 정산 — 청구액을 적는다' : '준공 정산'}
+        </p>
+      </div>
+      {!showValue ? (
+        <Empty kind="na" />
+      ) : fee === null ? (
+        /* 준공 전 빈 값은 「아직 올 때가 아님」, 준공 뒤 빈 값은 「미지정」 (화면 규칙 10) */
+        <Empty kind={due ? 'miss' : 'wait'} />
+      ) : (
+        <Badge tone={STEP_TONE[state]}>{STEP_LABEL[state]}</Badge>
+      )}
+      <span className="w-28 shrink-0 text-right text-lead font-black tabular-nums text-slate-800">
+        {fee === null ? <span className="text-slate-300">—</span> : won(fee)}
+      </span>
+      {canEdit && showValue && (editing ? (
+        <span className="flex flex-wrap items-center gap-1.5">
+          <input
+            value={draft}
+            onChange={(e) => setDraft(e.target.value.replace(/[^0-9]/g, ''))}
+            placeholder="청구액"
+            aria-label="전기안전점검수수료"
+            className={`${FIELD} w-36 text-right tabular-nums`}
+          />
+          {/*
+            이미 수금이 찍혀 있는데 금액을 지우면 그 수금 기록도 같이 사라진다 —
+            되돌릴 수 없는 것을 확정하는 자리라 그 자리에서 묻는다(화면 규칙 7·12).
+          */}
+          <Btn
+            size="sm"
+            busy={busy}
+            busyLabel="저장 중…"
+            onClick={() => {
+              /* 수금이 찍힌 값을 지우는 것은 되돌릴 수 없다 — 그 자리에서 한 번 묻는다 */
+              if (draft === '' && collectedAt !== null) { setAsking(true); return; }
+              void save({ amount: draft === '' ? null : Number(draft) })
+                .then((ok) => { if (ok) setEditing(false); });
+            }}
+          >
+            {draft === '' && fee !== null ? '지우기' : '저장'}
+          </Btn>
+          <Btn size="sm" kind="quiet" disabled={busy} onClick={() => setEditing(false)}>취소</Btn>
+          <Confirm
+            open={asking}
+            title="청구액을 지웁니다"
+            detail={`${collectedAt} 수금 기록도 같이 사라집니다`}
+            confirmLabel="지우기"
+            busy={busy}
+            error={error}
+            onConfirm={() => void save({ amount: null }).then((ok) => {
+              if (ok) { setAsking(false); setEditing(false); }
+            })}
+            onCancel={() => setAsking(false)}
+          />
+        </span>
+      ) : (
+        applies && <Btn size="sm" kind="quiet" onClick={openEdit}>{fee === null ? '입력' : '수정'}</Btn>
+      ))}
+      {canEdit && applies && fee !== null && !editing && (
+        collectedAt === null ? (
+          <DatePicker
+            value={null}
+            onChange={(v) => void save({ collectedAt: v })}
+            disabled={busy}
+            ariaLabel="수수료 수금일"
+          />
+        ) : (
+          <span className="flex flex-wrap items-center gap-2 text-tiny font-bold text-slate-500">
+            <span className="tabular-nums text-slate-800">{collectedAt} 수금</span>
+            <Btn size="sm" kind="quiet" busy={busy} busyLabel="되돌리는 중…" onClick={() => void save({ collectedAt: null })}>
+              되돌리기
+            </Btn>
+          </span>
+        )
+      )}
+      <Err>{error}</Err>
+    </div>
   );
 }
 

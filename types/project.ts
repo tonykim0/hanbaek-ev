@@ -794,7 +794,14 @@ export interface Settlement {
    * 공정 마일스톤에서 유도할 수 없어 별도로 받는다. 대부분 운영사의 최종 기성(잔액) 트리거.
    */
   cpoCloseDate: string | null;
+  /**
+   * 전기안전점검수수료 — 운영사에게서 ★따로 받는★ 돈 (한백 2026-09-06).
+   * 기성 차수와 별개이고 받을 돈 합계와 한백 마진에 같이 든다.
+   * 받는 운영사는 lib/settlement 의 SAFETY_FEE_CPOS 가 정한다.
+   */
   safetyFee: number | null;
+  /** 그 수수료를 받은 날. null 이면 미수금 */
+  safetyFeeCollectedAt: string | null;
   /** 지급 비고 */
   payNote: string | null;
 }
@@ -828,8 +835,10 @@ export interface AdminOnlyDetail {
   steps: SettlementStep[];
   /** 운영사가 통보하는 준공마감일 */
   cpoCloseDate: string | null;
-  /** 안전관리비 — 원가다 */
+  /** 전기안전점검수수료 — 운영사에게서 따로 받는 돈. 받을 돈 합계와 마진에 든다 */
   safetyFee: number | null;
+  /** 그 수수료를 받은 날 */
+  safetyFeeCollectedAt: string | null;
 }
 
 /**
@@ -1127,6 +1136,13 @@ export interface SettlementSummary {
   collectedTotal: number;
   /** 운영사가 통보한 준공마감일 — 마지막 기성(잔액)의 근거 */
   cpoCloseDate: string | null;
+  /**
+   * 전기안전점검수수료 — 차수 밖에서 따로 받는 돈. ★planTotal·collectedTotal 에 이미 들어 있다★
+   * (한백 2026-09-06 「운영사로부터 받을 돈 합계에 들어가」). 그래서 차수 셋의 합과 planTotal 이
+   * 다를 수 있고, 화면은 그 차이를 「점검수수료 N 포함」으로 적어야 한다.
+   */
+  safetyFee: number | null;
+  safetyFeeCollectedAt: string | null;
 
   /*
    * 여기부터는 반대 방향이다 — 한백이 협력사에게 내려주는 돈.

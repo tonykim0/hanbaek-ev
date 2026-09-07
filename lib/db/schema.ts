@@ -388,7 +388,19 @@ export const settlements = pgTable('settlements', {
   collected1Amount: integer('collected_1_amount'),
   collected2Amount: integer('collected_2_amount'),
   collected3Amount: integer('collected_3_amount'),
+  /*
+   * ★전기안전점검수수료 — 운영사에게서 따로 받는 돈★ (한백 2026-09-06, migrations/0061).
+   * 대상은 SK일렉링크·나이스인프라·현대엔지니어링이고 수전방식과 무관하다(lib/settlement
+   * SAFETY_FEE_CPOS 가 정본). 기성 차수에 못 얹는 돈이라 현장 단위로 받는다 — 차수 합은
+   * 받는 단가와 정확히 같아야 한다(checkSettlementSteps).
+   *
+   * ★이 칸의 뜻이 바뀌었다.★ 골격 첫 커밋부터 있었지만 어느 화면도 읽거나 쓴 적이 없고
+   * (프로덕션 31행 전부 null, 2026-09-06 확인) 타입 주석만 「안전관리비 — 원가」라고
+   * 적혀 있었다 — 방향이 반대인 말이었다. 값이 없는 칸이라 뜻을 여기서 확정한다.
+   */
   safetyFee: integer('safety_fee'),
+  /** 그 수수료를 받은 날. null 이면 아직 미수금이다 */
+  safetyFeeCollectedAt: text('safety_fee_collected_at'),
   /** 지급 관련 메모 — 감액·보류 사유 등 금액만으로 설명되지 않는 것 */
   payNote: text('pay_note'),
 });

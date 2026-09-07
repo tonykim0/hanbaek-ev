@@ -29,7 +29,9 @@ import type {
 } from '@/types/project';
 import { bizTypeOfRepl } from '@/types/project';
 import { buildDocContext, DOC_KEYS, evaluateDocs, PROCESS_DOCS } from '@/lib/doc-rules';
-import { entryTypeOf, payoutSideOf, settlementForProject } from '@/lib/settlement';
+import {
+  entryTypeOf, payoutSideOf, safetyFeeApplies, safetyFeeCollected, settlementForProject,
+} from '@/lib/settlement';
 import { contractStateOf, deriveStage, docsOutsideConsole, stalledDaysSince } from '@/lib/stage';
 import { canEnter, entryOkOf, gateContextOf, type GateContext } from '@/lib/process';
 import { PROCESS_STATUSES } from '@/types/project';
@@ -162,6 +164,7 @@ export const emptySettlement = (projectId: string): Omit<Settlement, 'steps'> =>
   projectId,
   cpoCloseDate: null,
   safetyFee: null,
+  safetyFeeCollectedAt: null,
   payNote: null,
 });
 
@@ -265,6 +268,7 @@ export function toDetail(r: ProjectRecord, rules: RuleMap, settles: SettleMap): 
       steps,
       cpoCloseDate: settlement.cpoCloseDate,
       safetyFee: settlement.safetyFee,
+      safetyFeeCollectedAt: settlement.safetyFeeCollectedAt,
     },
     stage,
     // 계약 판정은 여기서 한 번만 한다 — 화면이 다시 세면 조건이 갈린다
@@ -350,6 +354,16 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
   const admin = d.admin!;
   const steps = admin.steps;
   const sum = (list: SettlementStep[]) => list.reduce((n, x) => n + (x.planAmount ?? 0), 0);
+  /*
+   * ★셈에도 운영사 게이트를 둔다★ — 쓰기 경로만 막으면, 안 받는 운영사 현장에 값이 남는
+   * 경우(게이트가 바뀌거나 데이터 정리 SQL 로 들어간 경우) 그 돈이 받을 돈 합계와 마진에
+   * 계속 들면서 화면에서는 줄이 안 보여 지울 수도 없다. 여기서 0 으로 보면 그 오염이 없다.
+   */
+  const applies = safetyFeeApplies(d.project.cpo);
+  const fee = {
+    safetyFee: applies ? admin.safetyFee ?? 0 : 0,
+    safetyFeeCollectedAt: applies ? admin.safetyFeeCollectedAt : null,
+  };
   const sales = payoutSideOf(d.payoutEntries, '영업비');
   const cons = payoutSideOf(d.payoutEntries, '시공비');
   return {
@@ -361,22 +375,33 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
     status: d.process.status,
     ruleName: admin.settlementRule?.name ?? null,
     steps,
-    planTotal: sum(steps),
+    /*
+     * ★전기안전점검수수료가 여기 든다★ (한백 2026-09-06 「운영사로부터 받을 돈 합계에
+     * 들어가」). 그래서 planTotal 은 차수 셋의 합보다 클 수 있다 — 화면이 그 차이를
+     * 「점검수수료 N 포함」으로 적는다. 차수에 얹지 않는 이유는 lib/settlement 의
+     * SAFETY_FEE_CPOS 주석에 있다(차수 합 = 받는 단가 항등을 깨뜨린다).
+     */
+    planTotal: sum(steps) + fee.safetyFee!,
     /*
      * 받은 돈은 ★실수금액이 있으면 그것★이다 — 계획액은 협의로 달라질 수 있다(0034).
      * 옛 기록은 실수금액이 없으므로 계획액을 그대로 쓴다.
      */
     collectedTotal: steps
       .filter((x) => x.state === 'collected')
-      .reduce((n, x) => n + (x.collectedAmount ?? x.planAmount ?? 0), 0),
+      .reduce((n, x) => n + (x.collectedAmount ?? x.planAmount ?? 0), 0)
+      + safetyFeeCollected(fee),
     cpoCloseDate: admin.cpoCloseDate,
+    safetyFee: fee.safetyFee,
+    safetyFeeCollectedAt: fee.safetyFeeCollectedAt,
     salesOrg: d.project.salesOrg,
     gcOrg: d.project.gcOrg,
     payoutMilestones: payoutMilestonesFor(r),
     salesPayoutDocsMissing: d.contract.payoutDocsMissing,
     salesTotal: d.lines.reduce((n, l) => n + (l.rule?.salesUnit ?? 0) * l.qty, 0),
     consTotal: d.lines.reduce((n, l) => n + (l.rule?.consUnit ?? 0) * l.qty, 0),
-    marginTotal: d.lines.reduce((n, l) => n + (l.rule?.margin ?? 0) * l.qty, 0),
+    /* 마진에도 든다 — 청구액을 적으면 그때부터 한백 몫이다(수금 여부와 무관) */
+    marginTotal: d.lines.reduce((n, l) => n + (l.rule?.margin ?? 0) * l.qty, 0)
+      + fee.safetyFee!,
     unpricedLines: d.lines.filter((l) => !l.rule).length,
     salesAdjust: sales.adjust,
     salesPaid: sales.paid,

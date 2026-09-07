@@ -21,18 +21,26 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { SettlementSummary } from '@/types/project';
-import { STEP_LABEL, STEP_TONE } from '@/lib/settlement';
+import {
+  safetyFeeApplies, safetyFeeDue, safetyFeeOpen, STEP_LABEL, STEP_TONE,
+} from '@/lib/settlement';
 import { Badge, Blank, Empty, FIELD, FIELD_BASE, Tag, Td, Th } from '@/components/ui';
 import CheckMenu from '@/components/CheckMenu';
 import { Frame, SiteLink, Tile, won } from './parts';
 
 /** 거르는 축 — 상태는 「그 현장에 그런 차수가 하나라도 있나」로 본다 */
-type Flag = 'open' | 'unpaid' | 'done' | 'norule';
+type Flag = 'open' | 'unpaid' | 'done' | 'norule' | 'feeopen' | 'feemiss';
 const FLAGS: Array<{ key: Flag; label: string }> = [
   { key: 'open', label: '받을 수 있는 돈' },
   { key: 'unpaid', label: '미수금' },
   { key: 'done', label: '수금 완료' },
   { key: 'norule', label: '정산 규칙 미지정' },
+  /*
+   * 수수료 두 축 — 대상 현장이 116곳이라 이 축이 없으면 「청구액을 안 적은 현장」을
+   * 현장 상세를 하나씩 열어야 안다(한백 「이것도 수금 관리를 해야해」).
+   */
+  { key: 'feeopen', label: '점검수수료 미수금' },
+  { key: 'feemiss', label: '점검수수료 미기재' },
 ];
 
 /**
@@ -49,8 +57,15 @@ const SORTS: Array<{ key: SortKey; label: string }> = [
   { key: 'name', label: '현장명' },
 ];
 
+/*
+ * 받을 수 있는 돈 — 조건이 찬 차수 + ★아직 안 받은 전기안전점검수수료★.
+ * 수수료에는 트리거가 없다: 청구액을 적은 순간부터 받을 수 있다(lib/settlement safetyFeeOpen).
+ * 그래서 「조건 대기」로 서는 일이 없고, planTotal 에 이미 들어 있으므로 여기서도 세야
+ * 「총액 = 수금 완료 + 미수금」·「미수금 = 받을 수 있는 돈 + 조건 대기」 두 관계가 유지된다.
+ */
 const openOf = (r: SettlementSummary) =>
-  r.steps.filter((s) => s.state === 'open').reduce((n, s) => n + (s.planAmount ?? 0), 0);
+  r.steps.filter((s) => s.state === 'open').reduce((n, s) => n + (s.planAmount ?? 0), 0)
+  + safetyFeeOpen(r);
 const unpaidOf = (r: SettlementSummary) => Math.max(0, r.planTotal - r.collectedTotal);
 
 export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] }) {
@@ -91,7 +106,10 @@ export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] })
         f === 'open' ? openOf(r) > 0
           : f === 'unpaid' ? unpaidOf(r) > 0
             : f === 'done' ? r.planTotal > 0 && r.collectedTotal >= r.planTotal
-              : r.ruleName === null
+              : f === 'feeopen' ? safetyFeeOpen(r) > 0
+                /* 준공완료 뒤에 청구액이 없는 것만 센다 — 준공 전에는 아직 올 때가 아니다 */
+                : f === 'feemiss' ? safetyFeeApplies(r.cpo) && r.safetyFee === null && safetyFeeDue(r.status)
+                  : r.ruleName === null
       );
     };
     const by: Record<SortKey, (a: SettlementSummary, b: SettlementSummary) => number> = {
@@ -113,6 +131,8 @@ export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] })
       plan: sum((r) => r.planTotal),
       collected: sum((r) => r.collectedTotal),
       open: sum(openOf),
+      /* 그중 수수료 몫 — 차수가 안 열린 현장에서도 금액이 서는 이유다 */
+      openFee: sum(safetyFeeOpen),
       unpaid: sum(unpaidOf),
       /* 미수금에서 아직 조건이 안 찬 몫 — 총액의 나머지 한 토막이다 */
       waiting: Math.max(0, sum(unpaidOf) - sum(openOf)),
@@ -140,8 +160,15 @@ export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] })
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Tile label="총 받아야 할 돈" value={money.plan}
             note={`현장 ${shown.length}건`} />
+          {/*
+            수수료는 트리거가 없어 청구액을 적은 순간부터 이 칸에 든다 — 부기가 「조건이 찬
+            차수」라고만 말하면 차수가 하나도 안 열린 현장에서 금액이 서는 것이 거짓말이 된다.
+          */}
           <Tile label="받을 수 있는 돈" value={money.open} tone="wait"
-            note={money.open > 0 ? '조건이 찬 차수' : '조건이 찬 차수 없음'} />
+            note={money.open === 0 ? '조건이 찬 차수 없음'
+              : money.openFee > 0
+                ? `점검수수료 ${won(money.openFee)}원 포함`
+                : '조건이 찬 차수'} />
           <Tile label="수금 완료" value={money.collected} tone="in"
             note={rate !== null ? `수금률 ${rate}%` : undefined} />
           {/* 다 받은 목록에 부기가 뜨면 안 된다 — 0원에는 아무것도 달지 않는다 */}
@@ -245,11 +272,26 @@ export default function ReceivableBoard({ rows }: { rows: SettlementSummary[] })
                 {([1, 2, 3] as const).map((no) => (
                   <StepCell key={no} step={r.steps.find((x) => x.no === no) ?? null} />
                 ))}
+                {/*
+                  ★차수 셋의 합과 이 숫자가 다를 수 있다★ — 전기안전점검수수료가 차수 밖에서
+                  들어오기 때문이다(한백 2026-09-06). 사람이 줄을 더해 보면 어긋나므로 그
+                  차이를 여기서 밝힌다. 없는 현장에는 아무것도 달지 않는다(화면 규칙 10).
+                */}
                 <Td money className="font-bold text-slate-800">
                   {won(r.planTotal)}
+                  {r.safetyFee !== null && (
+                    <span className="block text-tiny font-semibold text-slate-400">
+                      점검수수료 {won(r.safetyFee)} 포함
+                    </span>
+                  )}
                 </Td>
                 <Td money className="font-bold text-brand-800">
                   {r.collectedTotal > 0 ? won(r.collectedTotal) : <span className="text-slate-300">—</span>}
+                  {r.safetyFeeCollectedAt !== null && r.safetyFee !== null && (
+                    <span className="block text-tiny font-semibold text-slate-400">
+                      점검수수료 {won(r.safetyFee)} 포함
+                    </span>
+                  )}
                 </Td>
                 <Td money className="font-bold text-slate-500">
                   {won(unpaidOf(r))}
