@@ -183,7 +183,15 @@ export function groupsByStatus(
          * 신고는 설치 전에 하는 일이라 그 묶음에 있을 자리가 아니었다.
          */
         docs: ['orderQuote', 'installNotice'],
-        advance: { label: '다음 단계로 진행', target: '충전기 수령', move: '충전기 수령' },
+        /*
+         * 목표를 흐름에서 뽑는다 — 사업구분을 나중에 기설치 연동으로 바꾼 현장이 이 칸에
+         * 서 있으면(스테퍼는 그 칸을 안 그리지만 저장값은 남는다) 고정값 '충전기 수령'이
+         * 또 다른 건너뛴 칸으로 밀어 넣고 없는 발주 값 다섯을 요구했다.
+         */
+        advance: (() => {
+          const to = nextStatusOf('충전기 발주', ctx) ?? '충전기 수령';
+          return { label: '다음 단계로 진행', target: to, move: to };
+        })(),
       },
     ],
     // 충전기가 현장에 왔다 — 받은 것을 세고 넘긴다(현장 차례)

@@ -624,3 +624,35 @@ describe('기설치 연동이 실제로 앞으로 간다', () => {
     expect(ok).toContain('착공');
   });
 });
+
+/**
+ * 건너뛴 칸으로는 어느 길로도 못 들어간다 — 검증 2차에서 나온 문들.
+ *
+ * 화면이 그 칸을 안 내밀게 고쳐도(nextStepOf·entryOkOf) 저장소를 직접 부르는 길이
+ * 남아 있었다. canEnter 가 「사이에 검사할 칸이 없다」는 이유로 조용히 통과시켰다 —
+ * 판정하는 곳에서 닫아야 모든 길이 닫힌다.
+ */
+describe('기설치 연동은 건너뛴 칸에 못 들어간다', () => {
+  const LINK = { subsidized: false, powerType: '모자분리' as const, bizType: '기설치 연동' as const, cpo: null };
+  const notified = P({
+    status: '행위신고', notifyRequiredAt: 'd', notifyDate: 'd', notifyDoneAt: 'd',
+    docs: [doc('notify')],
+  });
+
+  it.each(['충전기 발주', '충전기 수령'] as const)('%s 는 목표가 될 수 없다', (skipped) => {
+    const r = canEnter(skipped, notified, LINK);
+    expect(r.ok).toBe(false);
+    expect((r as { blockedBy: string }).blockedBy).toContain('지나지 않는 단계');
+  });
+
+  it('앞으로 갈 수 있는 칸에도, 다음 칸에도 안 나온다', () => {
+    expect(entryOkOf(notified, LINK)).not.toContain('충전기 발주');
+    expect(nextStatusOf('행위신고', LINK)).toBe('착공');
+  });
+
+  it('표준 흐름은 그 둘을 정상으로 지난다 — 문이 잘못 닫히지 않았다', () => {
+    const ENVC = { subsidized: true, powerType: '모자분리' as const, bizType: '환경부' as const, cpo: null };
+    const ready = P({ status: '행위신고', envApprovalDate: 'd', notifyDoneAt: 'd' });
+    expect(canEnter('충전기 발주', ready, ENVC)).toEqual({ ok: true });
+  });
+});

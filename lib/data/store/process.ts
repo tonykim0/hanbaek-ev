@@ -14,8 +14,8 @@ import { writeAudit } from '@/lib/db/audit';
 import { processDocuments, processes, projects } from '@/lib/db/schema';
 import { today } from '@/lib/date';
 import {
-  advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES,
-  COURT_AFTER_STATUS, nextStatusOf, prevStatusOf,
+  advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES, CHECK_AT,
+  COURT_AFTER_STATUS, nextStatusOf, prevStatusOf, type GateContext,
   declarationBlockers, gateContextOf, statusIndex,
 } from '@/lib/process';
 import { PROCESS_STATUSES } from '@/types/project';
@@ -58,7 +58,8 @@ export const processStore: Pick<
         .limit(1);
 
       unchecked = uncheckedField(fields, patch, before);
-      checkStepWindow(fields, patch, before, unchecked);
+      /* as never — 위 select 가 문자열로 읽어 온다(363행이 같은 방식이다) */
+      checkStepWindow(fields, patch, before, unchecked, gateContextOf(project as never));
       await checkDeclarations(tx, projectId, project, fields, patch, before);
 
       // 공정 행이 없는 현장이 있다 — update 는 0행을 조용히 지나가므로 없으면 만들어 넣는다
@@ -374,16 +375,27 @@ function checkStepWindow(
   fields: Array<keyof ProcessPatch>,
   patch: ProcessPatch,
   before: ProcRowLike | undefined,
-  unchecked: keyof typeof CHECK_ADVANCES | null
+  unchecked: keyof typeof CHECK_ADVANCES | null,
+  ctx: GateContext
 ): void {
   const cur = asProcessStatus(before?.status);
-  if (unchecked && statusIndex(cur) > statusIndex(CHECK_ADVANCES[unchecked])) {
-    throw new Error(`이미 ${cur} 까지 진행돼 해제할 수 없습니다 — 단계를 먼저 되돌리세요.`);
+  /*
+   * ★창을 「선언을 누르는 자리」로 잰다★ (검증에서 나온 구멍) — 전에는 여는 칸에서
+   * 한 칸 앞(opened − 1)으로 쟀는데, 그 셈은 「선언이 사는 칸이 여는 칸 바로 앞」을
+   * 전제한다. 기설치 연동은 행위신고(2)가 착공(5)을 열어 사이가 셋이라, 서버가
+   * 「아직 그 구간이 아닙니다」로 거절했다 — canEnter 를 고쳐도 여기서 막혔다.
+   * CHECK_AT 은 사업구분과 무관하게 「어느 칸에 서서 누르는가」다.
+   */
+  if (unchecked) {
+    const opened = advanceTargetOf(unchecked, ctx);
+    if (opened && statusIndex(cur) > statusIndex(opened)) {
+      throw new Error(`이미 ${cur} 까지 진행돼 해제할 수 없습니다 — 단계를 먼저 되돌리세요.`);
+    }
   }
   for (const f of fields) {
     if (!(f in CHECK_ADVANCES) || patch[f] == null) continue;
-    const opened = CHECK_ADVANCES[f as keyof typeof CHECK_ADVANCES];
-    if (statusIndex(cur) < statusIndex(opened) - 1) {
+    const at = CHECK_AT[f as keyof typeof CHECK_AT];
+    if (at && statusIndex(cur) < statusIndex(at)) {
       throw new Error(`아직 그 구간이 아닙니다 — 지금은 ${cur} 입니다.`);
     }
   }

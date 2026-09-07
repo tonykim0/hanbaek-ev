@@ -422,6 +422,14 @@ export function canEnter(
    * 없었다. 표준 흐름에서는 stepsOf 가 전역 목록과 같아 한 글자도 안 바뀐다.
    */
   const steps = stepsOf(ctx);
+  /*
+   * ★안 지나는 칸은 목표가 될 수 없다★ — 사이에 검사할 칸이 없어서 조용히 통과했다.
+   * 화면은 이제 그 칸을 내밀지 않지만(nextStepOf·entryOkOf), 저장소를 직접 부르는 길
+   * (setProcessStatus)이 남아 있었다. 문은 판정하는 곳에서 닫는다.
+   */
+  if (!steps.includes(status)) {
+    return { ok: false, blockedBy: `${status} 는 이 사업구분이 지나지 않는 단계입니다` };
+  }
   for (const st of steps.filter((x) => statusIndex(x) > from && statusIndex(x) <= to)) {
     const blockers = STATUS_GATES[st]?.(process, ctx) ?? [];
     if (blockers.length > 0) {

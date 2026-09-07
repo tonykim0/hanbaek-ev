@@ -24,7 +24,7 @@ import {
 } from '@/lib/doc-rules';
 import { constructionLabelOf, HANDOFF_STATUS } from '@/lib/board';
 import { advanceBlockers,
-  canEnter, gateContextOf, isHanbaekOnlyProcessField, nextStatusOf, statusIndex,
+  canEnter, gateContextOf, isHanbaekOnlyProcessField, nextStatusOf, prevStatusOf, statusIndex,
   STATUS_GATES, stepsOf,
   type ProcessEdit,
 } from '@/lib/process';
@@ -70,14 +70,21 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
    * 세우고 시공 쪽 이름으로 부른다(lib/board constructionLabelOf).
    */
   /*
-   * ★그 현장이 지나는 칸만 세운다★ (한백 지시 2026-09-07) — 기설치 연동은 발주·수령·
-   * 착공이 없고 대신 전기사용신청·전기안전점검이 있다(lib/process stepsOf). 전에는 모든
-   * 현장이 같은 칸 아홉을 지나서, 연동 현장이라면 지나지도 않을 칸 셋을 스테퍼에서
-   * 눌러 가며 확인해야 했다.
+   * ★그 현장이 지나는 칸만 세운다★ (한백 지시 2026-09-07) — 기설치 연동은 이미 깔린
+   * 충전기라 「충전기 발주·수령」을 안 지난다(lib/process stepsOf). ★착공은 지난다★ —
+   * 전기사용신청 접수증이 그 칸의 설치 상자에 놓인다(빼면 그 서류 자리가 사라진다).
    */
   const STEPS = stepsOf(gate).filter((st) => statusIndex(st) >= statusIndex(HANDOFF_STATUS));
   const anchor: ProcessStatus =
-    statusIndex(p.status) >= statusIndex(HANDOFF_STATUS) ? p.status : HANDOFF_STATUS;
+    statusIndex(p.status) < statusIndex(HANDOFF_STATUS) ? HANDOFF_STATUS
+      /*
+       * ★건너뛴 칸에 서 있을 수도 있다★ — 사업구분을 나중에 기설치 연동으로 바꾼 현장이
+       * 「충전기 발주」에 남아 있는 경우다. 그 칸은 STEPS 에 없어서 닻이 되면 어느 칩도
+       * current 가 아니고, 어디 서 있는지 화면이 말하지 못했다. 그때는 그 현장이 지나는
+       * 칸 중 다음 자리를 닻으로 삼는다 — 실제로 갈 곳이 거기다.
+       */
+      : STEPS.includes(p.status) ? p.status
+        : nextStatusOf(p.status, gate) ?? p.status;
   /** 스테퍼에서 보고 있는 구간 — 단계가 바뀌면 그 구간을 따라간다 */
   const [selected, setSelected] = useState<ProcessStatus>(anchor);
   useEffect(() => setSelected(anchor), [anchor]);
@@ -243,7 +250,8 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
    * 대기」로 앞당겨지면서, 행위신고에 서 있을 때 그 칩과 이 단추가 같은 되돌리기를 두 번
    * 말하게 됐다. 판정은 자리로 한다 — 칸 이름을 적으면 첫 칸이 바뀔 때 조용히 어긋난다.
    */
-  const prevStatus = PROCESS_STATUSES[now - 1] ?? null;
+  /* 앞·다음 칸은 그 현장이 지나는 것 중에서 — ±1 은 건너뛴 칸을 가리킨다 */
+  const prevStatus = prevStatusOf(p.status, gate);
   const backToContract =
     prevStatus && statusIndex(prevStatus) < statusIndex(HANDOFF_STATUS) ? prevStatus : null;
 
@@ -326,7 +334,7 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
           const selEntry = canEnter(selected, p, gate);
           const selGroups = GROUPS_BY_STATUS[selected] ?? [];
           // 지금 구간의 다음 걸음 — 무엇이 차면 어디로 가는지 이 자리에 보여야 한다
-          const nextStatus = PROCESS_STATUSES[now + 1] ?? null;
+          const nextStatus = nextStatusOf(p.status, gate);
           const nextEntry = nextStatus ? canEnter(nextStatus, p, gate) : null;
           /*
            * 지금 보고 있는 구간 다음의 구간 — 상자 이름에 쓴다.
