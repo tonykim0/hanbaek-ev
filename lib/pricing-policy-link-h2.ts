@@ -42,9 +42,9 @@ const PL_LINK_MISC = '· 연동 대상 기기·세부 조건은 운영사 확인
 
 const BASE = {
   cpo: undefined as never,
-  bizType: '연동' as const,
+  bizType: '기설치 연동' as const,
   powerType: '모자분리' as const,
-  replType: '연동' as const,
+  replType: '기설치 연동' as const,
   channel: '턴키' as const,
   bizYear: 2026,
   consUnit: 0,

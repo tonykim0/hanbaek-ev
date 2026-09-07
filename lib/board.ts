@@ -66,6 +66,9 @@ export interface BoardColumnDef {
 const BAND_OF_STATUS: Record<ProcessStatus, BoardBand> = {
   '계약완료': '계약',
   '운영사 계약서 제출': '계약',
+  /* 기설치 연동만 지나는 둘 — 계약 뒤의 일이라 시공 띠다 */
+  '전기사용신청': '시공',
+  '전기안전점검': '시공',
   '행위신고': '시공',   // 시공팀의 첫 일 — 시공 보드의 첫 칸이다
   '충전기 발주': '시공',
   '충전기 수령': '시공',

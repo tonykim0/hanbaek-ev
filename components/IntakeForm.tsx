@@ -43,7 +43,7 @@ const CPOS: CpoName[] = ['플러그링크', '나이스인프라', '현대엔지�
 const BLDG: BuildingType[] = ['공동주택', '상업시설'];
 const PARTIES: ContractParty[] = ['입주자대표회의', '관리단', '건설사'];
 const POWERS: PowerType[] = ['한전불입', '모자분리', '한전불입+모자분리'];
-const BIZ: BizType[] = ['환경부', '자체투자', '연동'];
+const BIZ: BizType[] = ['환경부', '자체투자', '기설치 연동'];
 const PRE: PreInstall[] = ['없음', '있음'];
 const TERMS = [5, 7, 10];
 
@@ -338,7 +338,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
   const replRows: ReplType[] =
     bizType === '자체투자'
       ? (SPLITS_SELF_REPL.has(cpo) ? [...SELF_REPLS] : [SELF_REPLS[0]])
-      : bizType === '연동' ? ['연동'] : ['환경부 신규'];
+      : bizType === '기설치 연동' ? ['기설치 연동'] : ['환경부 신규'];
   /** 대수 칸의 열 — 수전방식이 정한다 */
   const powerCols: Array<Exclude<PowerType, '한전불입+모자분리'> | null> = mixed
     ? ['한전불입', '모자분리']
@@ -638,7 +638,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
             required
             auto={auto.has('bizType')}
             hint={bizType === '자체투자' ? '제자리교체·신규위치를 대수 칸에서 나눕니다'
-              : bizType === '연동' ? '기 구축 충전기를 운영사 시스템에 연결하는 사업입니다' : undefined}
+              : bizType === '기설치 연동' ? '이미 깔린 충전기를 운영사 시스템에 붙이는 사업입니다' : undefined}
           >
             <Select
               value={bizType ?? ''}

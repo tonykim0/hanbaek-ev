@@ -24,7 +24,8 @@ import {
 } from '@/lib/doc-rules';
 import { constructionLabelOf, HANDOFF_STATUS } from '@/lib/board';
 import { advanceBlockers,
-  canEnter, gateContextOf, isHanbaekOnlyProcessField, statusIndex, STATUS_GATES,
+  canEnter, gateContextOf, isHanbaekOnlyProcessField, nextStatusOf, statusIndex,
+  STATUS_GATES, stepsOf,
   type ProcessEdit,
 } from '@/lib/process';
 import {
@@ -64,7 +65,13 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
    * 승인이 나면 운영사가 알려주고, 한백이 환경부 승인일을 적는다. 그래서 그 칸을 앞에
    * 세우고 시공 쪽 이름으로 부른다(lib/board constructionLabelOf).
    */
-  const STEPS = PROCESS_STATUSES.filter((st) => statusIndex(st) >= statusIndex(HANDOFF_STATUS));
+  /*
+   * ★그 현장이 지나는 칸만 세운다★ (한백 지시 2026-09-07) — 기설치 연동은 발주·수령·
+   * 착공이 없고 대신 전기사용신청·전기안전점검이 있다(lib/process stepsOf). 전에는 모든
+   * 현장이 같은 칸 아홉을 지나서, 연동 현장이라면 지나지도 않을 칸 셋을 스테퍼에서
+   * 눌러 가며 확인해야 했다.
+   */
+  const STEPS = stepsOf(gate).filter((st) => statusIndex(st) >= statusIndex(HANDOFF_STATUS));
   const anchor: ProcessStatus =
     statusIndex(p.status) >= statusIndex(HANDOFF_STATUS) ? p.status : HANDOFF_STATUS;
   /** 스테퍼에서 보고 있는 구간 — 단계가 바뀌면 그 구간을 따라간다 */
@@ -326,7 +333,7 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
            * p.status 기준(nextStatus)이 아니라 고른 구간 기준이다 — 지난 구간을 열어 봐도
            * 그 상자가 무엇을 열었는지는 같아야 한다.
            */
-          const selNext = PROCESS_STATUSES[statusIndex(selected) + 1] ?? null;
+          const selNext = nextStatusOf(selected, gate);
           return (
             <div className="mt-1 flex flex-col gap-4">
               {/* 구간 머리 — 무엇을 보고 있고, 그 구간으로 옮길 수 있으면 단추가 여기 선다 */}

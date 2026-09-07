@@ -90,6 +90,16 @@ const docApproved = (process: ProcessInfo, key: string): boolean =>
 export const STATUS_GATES: Record<ProcessStatus, StatusGate | null> = {
   '계약완료': null,   // 서류·단가가 다 차고 한백이 확인하면 여기서 시작한다
   /*
+   * ★기설치 연동만 지나는 두 칸 — 조건을 두지 않는다★ (한백 지시 2026-09-07).
+   *
+   * 앞의 계약 칸들과 같다: 넘기는 것이 곧 선언이다. 무엇을 갖췄는지는 그 칸의 상자가
+   * 받는다(날짜·서류) — 들어오는 조건으로 또 물으면 같은 사실을 두 번 말하게 된다.
+   * 신청서·필증을 들어오는 조건으로 삼으면 「들어가야 올릴 수 있고 올려야 들어가는」
+   * 교착이 된다(개통 및 통신확인이 설치완료확인서로 그 자리를 겪었다).
+   */
+  '전기사용신청': null,
+  '전기안전점검': null,
+  /*
    * 우리가 운영사에 계약서를 냈는가. 우리가 하는 일이라 통보를 기다릴 것이 없다.
    *
    * 낸 뒤로는 운영사 쪽이 알아서 승인·접수하고(형식이다), 환경부 대기번호가 나오기를
@@ -220,6 +230,49 @@ export function asProcessStatus(value: string | null | undefined): ProcessStatus
 
 export function statusIndex(status: ProcessStatus): number {
   return PROCESS_STATUSES.indexOf(status);
+}
+
+/* ── 사업구분마다 지나는 칸이 다르다 ──────────────────────────────────
+ * (한백 지시 2026-09-07 「기설치 연동은 환경부 승인부터 착공까지 내용이 없다」)
+ *
+ * 칸 목록(PROCESS_STATUSES)은 하나다 — 사업구분마다 목록을 따로 두면 보드·할 일·
+ * 게이트가 두 벌이 된다. 대신 현장마다 ★지나는 칸의 부분집합★을 고른다. 두 흐름 다
+ * 같은 순서로 올라가므로 한 줄기로 표현된다:
+ *
+ *   환경부·자체투자  운영사 계약서 제출 → 행위신고 → 발주 → 수령 → 착공 → 개통 → 준공…
+ *   기설치 연동      운영사 계약서 제출 → 전기사용신청 → 전기안전점검 → 행위신고 → 개통 → 준공…
+ *
+ * 「다음 칸」을 +1 로 세지 않는 이유가 이것이다 — 건너뛰는 칸이 있으면 +1 이 없는 칸을
+ * 가리킨다. 이웃은 nextStatusOf·prevStatusOf 로만 구한다.
+ */
+
+/** 기설치 연동만 지나는 칸 — 계약 뒤 전기 쪽 절차다 */
+const LINK_ONLY: readonly ProcessStatus[] = ['전기사용신청', '전기안전점검'];
+
+/** 기설치 연동은 지나지 않는 칸 — 충전기가 이미 깔려 있다 */
+const NOT_FOR_LINK: readonly ProcessStatus[] = ['충전기 발주', '충전기 수령', '착공'];
+
+/** 이 현장이 지나는 칸 — 순서는 PROCESS_STATUSES 그대로다 */
+export function stepsOf(ctx: Pick<GateContext, 'bizType'>): ProcessStatus[] {
+  const link = ctx.bizType === '기설치 연동';
+  return PROCESS_STATUSES.filter((st) => (link ? !NOT_FOR_LINK.includes(st) : !LINK_ONLY.includes(st)));
+}
+
+/** 이 현장에서 그 칸 다음 — 없으면 null(마지막) */
+export function nextStatusOf(cur: ProcessStatus, ctx: Pick<GateContext, 'bizType'>): ProcessStatus | null {
+  const steps = stepsOf(ctx);
+  const i = steps.indexOf(cur);
+  /* 안 지나는 칸에 서 있으면(옛 데이터·사업구분 변경) 전역 순서에서 다음을 찾는다 */
+  if (i < 0) return steps.find((st) => statusIndex(st) > statusIndex(cur)) ?? null;
+  return steps[i + 1] ?? null;
+}
+
+/** 이 현장에서 그 칸 앞 — 없으면 null(처음) */
+export function prevStatusOf(cur: ProcessStatus, ctx: Pick<GateContext, 'bizType'>): ProcessStatus | null {
+  const steps = stepsOf(ctx);
+  const i = steps.indexOf(cur);
+  if (i < 0) return [...steps].reverse().find((st) => statusIndex(st) < statusIndex(cur)) ?? null;
+  return i > 0 ? steps[i - 1] : null;
 }
 
 /**
@@ -421,6 +474,38 @@ export const CHECK_ADVANCES = {
 } as const satisfies Record<string, ProcessStatus>;
 
 /**
+ * 그 선언을 ★어느 칸에 서서★ 누르는가 (한백 지시 2026-09-07, 기설치 연동 흐름).
+ *
+ * CHECK_ADVANCES 는 「무엇이 열리는가」인데 그 답이 사업구분마다 다르다 — 행위신고를
+ * 끝내면 환경부는 「충전기 발주」로, 기설치 연동은 「개통 및 통신확인」으로 간다.
+ * 그래서 여는 칸을 고정값으로 두지 않고 ★서 있는 칸에서 흐름으로 유도★한다
+ * (advanceTargetOf → nextStatusOf). CHECK_ADVANCES 는 표준 흐름의 답으로 남는다 —
+ * 되돌림(retreatAfterUncheck)이 그것을 보고, 시험이 그 값을 못 박는다.
+ *
+ * ★completionSubmitAt 은 여기 없다★ — 그 선언은 칸을 닫지 않는다. 「준공서류 접수/검토」에
+ * 서서 「다 냈다」고 말하는 것이고, 그 칸을 닫는 것은 한백의 검토 판정이다(CompletionReview).
+ * 여기 넣으면 시공사의 선언 한 번에 현장이 준공보완으로 넘어간다.
+ */
+export const CHECK_AT = {
+  notifyDoneAt: '행위신고',
+  notifySkippedAt: '행위신고',
+  chargerDoneAt: '충전기 수령',
+  installConfirmedAt: '착공',
+  openDoneAt: '개통 및 통신확인',
+  /* 기설치 연동만 지나는 둘 */
+  elecApplyDoneAt: '전기사용신청',
+  safetyCheckDoneAt: '전기안전점검',
+} as const satisfies Record<string, ProcessStatus>;
+
+/** 그 선언이 여는 칸 — 사업구분이 정한다. 칸을 닫지 않는 선언이면 null */
+export function advanceTargetOf(
+  field: string, ctx: Pick<GateContext, 'bizType'>
+): ProcessStatus | null {
+  const at = (CHECK_AT as Record<string, ProcessStatus | undefined>)[field];
+  return at ? nextStatusOf(at, ctx) : null;
+}
+
+/**
  * 완료 선언을 하려면 무엇이 있어야 하나 — 없는 것만 담아 돌려준다.
  *
  * 게이트(STATUS_GATES)는 「선언이 있는가」를 보고, 이쪽은 「그 선언을 할 수 있는가」를 본다.
@@ -525,6 +610,9 @@ export function advanceBlockers(
 export const COURT_AFTER_STATUS: Record<ProcessStatus, Court> = {
   '계약완료': '한백',             // 다음 일: 운영사에 계약서 제출 — 한백이 한다
   '운영사 계약서 제출': '운영사', // 시공승인 회신을 기다린다
+  /* 기설치 연동의 앞 두 칸 — 신청·점검을 돌리는 것은 현장이다 */
+  '전기사용신청': '시공사',
+  '전기안전점검': '시공사',
   '행위신고': '시공사',           // 시공팀이 접수한다 (1~2주)
   '충전기 발주': '한백',          // 발주·출고·모델·발주 수량은 한백이 적는다
   '충전기 수령': '시공사',        // 충전기를 받고 수량을 세는 것은 현장이다

@@ -17,7 +17,7 @@ import { useRouter } from 'next/navigation';
 import type { ProcessStatus, ProjectSummary } from '@/types/project';
 import { PROCESS_STATUSES } from '@/types/project';
 import { BOARD_COLUMNS, boardColumnOf, partnerWaitingOf, type BoardColumn } from '@/lib/board';
-import { statusIndex } from '@/lib/process';
+import { prevStatusOf, statusIndex } from '@/lib/process';
 import { Btn, Tag } from '@/components/ui';
 import { StopControl } from '@/components/project/StopControl';
 
@@ -229,7 +229,8 @@ function Card({
    */
   const back =
     p.stage !== 'intake' && !p.holdState
-      ? PROCESS_STATUSES[statusIndex(p.status) - 1] ?? null
+      /* 앞 칸도 그 현장이 지나는 것 중에서 — 기설치 연동은 건너뛰는 칸이 있다 */
+      ? prevStatusOf(p.status, { bizType: p.bizType })
       : null;
 
   /** 협력사가 기다리는 대상 — 한백에게는 없다(조작할 사람이 자기다) */

@@ -14,7 +14,8 @@ import { writeAudit } from '@/lib/db/audit';
 import { processDocuments, processes, projects } from '@/lib/db/schema';
 import { today } from '@/lib/date';
 import {
-  asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES, COURT_AFTER_STATUS,
+  advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES,
+  COURT_AFTER_STATUS, nextStatusOf, prevStatusOf,
   declarationBlockers, gateContextOf, statusIndex,
 } from '@/lib/process';
 import { PROCESS_STATUSES } from '@/types/project';
@@ -197,7 +198,6 @@ async function advanceAfterCheck(projectId: string, patch: ProcessPatch, actor: 
     (f) => f in CHECK_ADVANCES && patch[f] != null
   );
   if (!field) return;
-  const target = CHECK_ADVANCES[field as keyof typeof CHECK_ADVANCES];
 
   const db = getDb();
   const rows = await db.select().from(projects).where(eq(projects.id, projectId)).limit(1);
@@ -205,9 +205,19 @@ async function advanceAfterCheck(projectId: string, patch: ProcessPatch, actor: 
   const [record] = await recordsOf(rows);
   if (!record) return;
 
+  const ctx = gateContextOf(record.project);
+  /*
+   * ★여는 칸은 사업구분이 정한다★ (한백 지시 2026-09-07) — 행위신고를 끝내면 환경부는
+   * 「충전기 발주」로, 기설치 연동은 「개통 및 통신확인」으로 간다. 고정값(CHECK_ADVANCES)을
+   * 쓰면 연동 현장이 지나지도 않는 칸으로 넘어간다.
+   */
+  const target = advanceTargetOf(field, ctx);
+  if (!target) return;                                           // 칸을 닫지 않는 선언
+
   const cur = record.process.status;
-  if (statusIndex(target) !== statusIndex(cur) + 1) return;      // 바로 다음 한 걸음만
-  if (!canEnter(target, record.process, gateContextOf(record.project)).ok) return; // 조건이 아직 안 찼다
+  /* 「바로 다음 한 걸음만」 — 그 현장이 지나는 칸 기준이다(건너뛰는 칸이 있다) */
+  if (nextStatusOf(cur, ctx) !== target) return;
+  if (!canEnter(target, record.process, ctx).ok) return;         // 조건이 아직 안 찼다
   if (toDetail(record, await ruleMap(), await settleMap()).stage === 'intake') return;
   await moveStatus(projectId, cur, target, actor, '진행 단계 변경 (완료 체크)');
 }
@@ -260,7 +270,8 @@ async function retreatAfterUncheck(
    */
   if (canEnter(cur, record.process, gateContextOf(record.project)).ok) return;
 
-  const back = PROCESS_STATUSES[statusIndex(opened) - 1];
+  /* 앞 칸도 그 현장이 지나는 것 중에서 — 건너뛴 칸으로 물러나면 갈 수 없는 자리에 선다 */
+  const back = prevStatusOf(opened, gateContextOf(record.project));
   if (!back) return;
   await moveStatus(projectId, cur, back, actor, '진행 단계 되돌림 (체크 해제)', { progress: false });
 }

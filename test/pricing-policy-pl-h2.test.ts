@@ -108,7 +108,7 @@ describe('9월 1일 벌 — 보조금 +50만(마진 30만) · 연동 120/140만 
   it('아홉이다 — 값이 바뀐 여섯 + 7월과 같은 값 셋', () => {
     expect(rules).toHaveLength(9);
     expect(rules.filter((r) => r.bizType === '환경부')).toHaveLength(5);
-    expect(rules.filter((r) => r.bizType === '연동')).toHaveLength(2);
+    expect(rules.filter((r) => r.bizType === '기설치 연동')).toHaveLength(2);
     expect(rules.filter((r) => r.bizType === '자체투자')).toHaveLength(2);
     expect(rules.filter((r) => r.bldgTypes.includes('상업시설'))).toHaveLength(1);
   });
@@ -170,7 +170,7 @@ describe('9월 1일 벌 — 보조금 +50만(마진 30만) · 연동 120/140만 
       expect(stepUnits(r.settlementSteps, t)).toEqual([200_000, (t - 200_000) / 2, (t - 200_000) / 2]);
       expect(checkSettlementSteps(r.settlementSteps, t)).toEqual([]);
     }
-    for (const r of rules.filter((x) => x.bizType === '연동')) {
+    for (const r of rules.filter((x) => x.bizType === '기설치 연동')) {
       const t = turnkeyUnit(r) as number;
       expect(stepUnits(r.settlementSteps, t)).toEqual([200_000, t - 200_000]);
       expect(settlementStepsKeyOf(r.settlementSteps)).toBe(settlementStepsKeyOf(PL_INV_STEPS));

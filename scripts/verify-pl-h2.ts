@@ -105,7 +105,7 @@ async function main() {
     const bads: string[] = [];
     if (r.margin !== 200_000) bads.push(`마진 ${won(r.margin)}`);
     // 연동은 시공이 없다(연결만 한다) — 시공 0 이 맞다
-    if (r.biz_type !== '연동' && r.cons_unit !== 950_000) bads.push(`시공 ${won(r.cons_unit)}`);
+    if (r.biz_type !== '기설치 연동' && r.cons_unit !== 950_000) bads.push(`시공 ${won(r.cons_unit)}`);
     if (bads.length > 0) {
       off += 1;
       console.log(`  ✗ ${r.case_name}\n      ${bads.join(' · ')}  (받는단가 ${won(r.sales_unit + r.cons_unit + r.margin)})`);

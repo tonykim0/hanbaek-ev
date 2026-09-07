@@ -86,7 +86,7 @@ describe('checkPricingRule — 저장 전 검산', () => {
   });
 
   it('연동은 모자분리 전제다 — 한전불입 연동은 설 자리가 없다', () => {
-    expect(checkPricingRule(새케이스({ replType: '연동', bizType: '연동', powerType: '한전불입' })).join())
+    expect(checkPricingRule(새케이스({ replType: '기설치 연동', bizType: '기설치 연동', powerType: '한전불입' })).join())
       .toMatch(/모자분리/);
   });
 
@@ -104,7 +104,7 @@ describe('checkPricingRule — 저장 전 검산', () => {
 
   it('한전불입이 붙는 것은 환경부 신규뿐이다', () => {
     expect(powerTypesOfRepl('환경부 신규')).toContain('한전불입');
-    for (const r of ['자체투자 (제자리교체)', '자체투자 (신규위치)', '연동'] as const) {
+    for (const r of ['자체투자 (제자리교체)', '자체투자 (신규위치)', '기설치 연동'] as const) {
       expect(powerTypesOfRepl(r)).toEqual(['모자분리']);
     }
   });
