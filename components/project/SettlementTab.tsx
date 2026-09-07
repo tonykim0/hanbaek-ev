@@ -373,15 +373,46 @@ function ReceiptRow({ projectId, file, canEdit }: {
   );
 }
 
-/** 영수증 올리기 — 종류를 좁히지 않는다(스캔본은 PDF·그림·한글로 온다) */
+/* 라우트의 한도와 같은 값 — 여기서 먼저 줄여야 그 벽에 안 닿는다 */
+const RECEIPT_MAX_BYTES = 4 * 1024 * 1024;
+const mb = (n: number) => (n / 1024 / 1024).toFixed(1);
+
+/**
+ * 영수증 올리기 — 종류를 좁히지 않는다(스캔본은 PDF·그림·한글로 온다).
+ *
+ * ★큰 파일은 막지 않고 줄인다★ — 협력사가 준공 뒤 영수증을 휴대폰으로 찍어 보내면
+ * 12MP JPEG 가 3~8MB 다. 4MB 에서 막으면 사람은 「어떻게 줄이나」를 모르고, 4.5MB 를
+ * 넘으면 서버리스 본문 한도에 걸려 라우트가 돌기도 전에 413 이라 크기 얘기도 못 한다.
+ * 서류 첨부가 쓰는 그 축소기(lib/shrink)를 여기서도 쓴다 — 150dpi·1600px 로 다시 구우면
+ * 인쇄 품질은 그대로면서 수십 분의 일이 된다.
+ */
 function ReceiptUpload({ projectId }: { projectId: string }) {
   const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function upload(file: File) {
+  async function upload(input: File) {
     setBusy(true);
     setError(null);
+    setNote(null);
+    let file = input;
     try {
+      if (file.size > RECEIPT_MAX_BYTES) {
+        const { canShrink, shrink } = await import('@/lib/shrink');
+        const small = canShrink(file) ? await shrink(file) : null;
+        if (!small) {
+          setError(
+            canShrink(file)
+              ? `${mb(file.size)}MB · 최대 ${mb(RECEIPT_MAX_BYTES)}MB 입니다. 자동으로 줄이지 못했습니다.`
+              : `${mb(file.size)}MB · 최대 ${mb(RECEIPT_MAX_BYTES)}MB 입니다. PDF·사진으로 저장해 다시 올려 주세요.`
+          );
+          setBusy(false);
+          return;
+        }
+        file = small.file;
+        setNote(`${mb(small.before)}MB → ${mb(small.after)}MB 로 줄여서 올립니다`);
+      }
+
       const form = new FormData();
       form.append('file', file);
       const res = await fetch(`/api/projects/${projectId}/safety-fee-receipt`, {
@@ -389,7 +420,10 @@ function ReceiptUpload({ projectId }: { projectId: string }) {
       });
       if (!res.ok) {
         const j = (await res.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(j?.error ?? '영수증을 올리지 못했습니다.');
+        /* 413 은 본문이 라우트에 닿지도 못한 것이라 서버가 할 말이 없다 — 여기서 말한다 */
+        throw new Error(j?.error ?? (res.status === 413
+          ? `파일이 너무 커서 서버가 받지 못했습니다 (${mb(file.size)}MB).`
+          : '영수증을 올리지 못했습니다.'));
       }
       window.location.reload(); // 목록은 서버 컴포넌트가 그린다 — 새로 받아야 보인다
     } catch (err) {
@@ -415,6 +449,8 @@ function ReceiptUpload({ projectId }: { projectId: string }) {
           {busy ? '올리는 중…' : '영수증 올리기'}
         </span>
       </label>
+      {/* 줄여서 올린 것은 사람이 알아야 한다 — 원본이 그대로 올라간 줄 알면 안 된다 */}
+      {note && <span className="text-tiny font-semibold text-slate-500">{note}</span>}
       <Err>{error}</Err>
     </div>
   );

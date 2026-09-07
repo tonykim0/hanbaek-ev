@@ -341,16 +341,21 @@ export const payoutStore: Pick<
       if (!safetyFeeApplies(row.cpo as CpoName)) {
         throw new Error(`${row.cpo} 현장은 전기안전점검수수료를 따로 받지 않습니다.`);
       }
-      const [before] = await tx
-        .select({ files: settlements.safetyFeeReceipts })
-        .from(settlements)
-        .where(eq(settlements.projectId, projectId))
-        .limit(1);
-      const files = [...(before?.files ?? []), file];
+      /*
+       * ★읽고 쓰는 것을 한 문장으로 한다★ — 배열을 읽어 와서 덧붙여 통째로 덮으면,
+       * 둘이 동시에 올릴 때 늦게 커밋한 쪽이 상대의 파일을 지운다(Blob 에만 남는 고아가
+       * 된다). jsonb 이어붙이기(||)는 DB 안에서 일어나 그 창이 없다.
+       */
+      const added = JSON.stringify([file]);
       await tx
         .insert(settlements)
-        .values({ projectId, safetyFeeReceipts: files })
-        .onConflictDoUpdate({ target: settlements.projectId, set: { safetyFeeReceipts: files } });
+        .values({ projectId, safetyFeeReceipts: [file] })
+        .onConflictDoUpdate({
+          target: settlements.projectId,
+          set: {
+            safetyFeeReceipts: sql`coalesce(${settlements.safetyFeeReceipts}, '[]'::jsonb) || ${added}::jsonb`,
+          },
+        });
       await writeAudit(tx, {
         projectId, actor, action: '전기안전점검수수료 영수증 올림',
         field: 'safetyFeeReceipts', oldValue: null, newValue: file.name,
@@ -358,29 +363,48 @@ export const payoutStore: Pick<
     });
   },
 
-  /** 영수증 한 장 빼기 — 뺀 파일의 주소를 돌려준다(라우트가 Blob 을 지운다) */
+  /**
+   * 영수증 한 장 빼기 — 뺀 파일의 주소를 돌려준다(라우트가 Blob 을 지운다).
+   *
+   * ★한 문장으로 뺀다★ — 배열을 읽어 걸러 통째로 덮으면 둘이 동시에 만질 때 서로의
+   * 변경을 지운다: 빼기 둘이 겹치면 한 장만 빠진 배열이 남는데 라우트는 두 Blob 을 다
+   * 지워 죽은 링크가 생기고, 빼기와 올리기가 겹치면 방금 올린 파일이 DB 에서 사라진다.
+   */
   async removeSafetyFeeReceipt(projectId, url, actor): Promise<string> {
     assertAdmin(actor, '전기안전점검수수료 영수증 빼기');
     const db = getDb();
-    const [before] = await db
-      .select({ files: settlements.safetyFeeReceipts })
-      .from(settlements)
-      .where(eq(settlements.projectId, projectId))
-      .limit(1);
-    const gone = (before?.files ?? []).find((f) => f.url === url);
-    if (!gone) throw new Error('그 영수증을 찾을 수 없습니다.');
-    const files = (before?.files ?? []).filter((f) => f.url !== url);
-    await db.transaction(async (tx) => {
-      await tx
-        .update(settlements)
-        .set({ safetyFeeReceipts: files })
-        .where(eq(settlements.projectId, projectId));
+    return db.transaction(async (tx) => {
+      /* 이름은 감사 로그에 적을 값이다 — 없으면 뺄 것이 없다 */
+      const [before] = await tx
+        .select({ files: settlements.safetyFeeReceipts })
+        .from(settlements)
+        .where(eq(settlements.projectId, projectId))
+        .limit(1);
+      const gone = (before?.files ?? []).find((f) => f.url === url);
+      if (!gone) throw new Error('그 영수증을 찾을 수 없습니다.');
+
+      const marker = JSON.stringify([{ url }]);
+      const hit = await tx.execute(sql`
+        update settlements
+           set safety_fee_receipts = coalesce((
+                 select jsonb_agg(x)
+                   from jsonb_array_elements(safety_fee_receipts) x
+                  where x->>'url' <> ${url}
+               ), '[]'::jsonb)
+         where project_id = ${projectId}
+           and safety_fee_receipts @> ${marker}::jsonb
+      `);
+      /* 그 사이 남이 먼저 뺐으면 0행이다 — Blob 을 두 번 지우지 않게 여기서 멈춘다 */
+      if ((hit as unknown as { rowCount?: number }).rowCount === 0) {
+        throw new Error('그 영수증을 찾을 수 없습니다.');
+      }
+
       await writeAudit(tx, {
         projectId, actor, action: '전기안전점검수수료 영수증 뺌',
         field: 'safetyFeeReceipts', oldValue: gone.name, newValue: null,
       });
+      return gone.url;
     });
-    return gone.url;
   },
 
   async setSettlementCollected(projectId, no: 1 | 2 | 3, value, actor): Promise<void> {

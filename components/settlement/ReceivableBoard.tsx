@@ -24,7 +24,9 @@ import type { SettlementSummary } from '@/types/project';
 import {
   safetyFeeApplies, safetyFeeCollected, safetyFeeDue, safetyFeeOpen, STEP_LABEL, STEP_TONE,
 } from '@/lib/settlement';
-import { Badge, Blank, Btn, Empty, Err, FIELD, FIELD_BASE, FIELD_CELL, Tag, Td, Th } from '@/components/ui';
+import {
+  Badge, Blank, Btn, Confirm, Empty, Err, FIELD, FIELD_BASE, FIELD_CELL, Tag, Td, Th,
+} from '@/components/ui';
 import { DatePicker } from '@/components/DatePicker';
 import { useAction } from '@/lib/use-action';
 import CheckMenu from '@/components/CheckMenu';
@@ -402,26 +404,57 @@ function FeeCell({ row, canEdit }: { row: SettlementSummary; canEdit: boolean })
  */
 function FeeEdit({ row, onDone }: { row: SettlementSummary; onDone: () => void }) {
   const { busy, error, run } = useAction();
+  /* 열 때의 값을 쥐고 있는다 — 사람이 만진 키만 보내기 위한 기준이다 */
+  const [was] = useState({ fee: row.safetyFee, at: row.safetyFeeCollectedAt });
   const [amount, setAmount] = useState(row.safetyFee === null ? '' : String(row.safetyFee));
   const [at, setAt] = useState(row.safetyFeeCollectedAt);
+  const [asking, setAsking] = useState(false);
 
-  const save = () => void run({
-    url: `/api/projects/${row.id}/settlement`,
-    body: {
-      safetyFee: {
-        amount: amount === '' ? null : Number(amount),
-        /* 금액을 지우면 저장소가 수금일도 같이 지운다 — 여기서 보내는 값은 무시된다 */
-        collectedAt: amount === '' ? null : at,
-      },
-    },
-    fail: '점검수수료를 저장하지 못했습니다.',
-  }).then((ok) => { if (ok) onDone(); });
+  const wipes = amount === '' && row.safetyFeeCollectedAt !== null;
+
+  /*
+   * ★사람이 만진 키만 보낸다★ — 라우트·저장소는 「준 키만 고친다」로 서 있다
+   * (금액과 수금일은 두 사실이고 적는 순서가 따로다). 둘을 늘 같이 보내면, 편집칸을
+   * 열어 둔 사이 다른 자리에서 찍힌 수금일이 열 때의 값(null)으로 덮여 조용히 취소된다.
+   */
+  const patch = (): { amount?: number | null; collectedAt?: string | null } => {
+    const next = amount === '' ? null : Number(amount);
+    /* 금액을 지우는 것은 한 사실이다 — 저장소가 수금일도 같이 지운다 */
+    if (next === null) return { amount: null };
+    const out: { amount?: number | null; collectedAt?: string | null } = {};
+    if (next !== was.fee) out.amount = next;
+    if (at !== was.at) out.collectedAt = at;
+    return out;
+  };
+
+  const send = (body: { amount?: number | null; collectedAt?: string | null }) =>
+    void run({
+      url: `/api/projects/${row.id}/settlement`,
+      body: { safetyFee: body },
+      fail: '점검수수료를 저장하지 못했습니다.',
+    }).then((ok) => { if (ok) onDone(); });
+
+  const save = () => {
+    /* 수금 기록이 같이 사라지는 것은 되돌릴 수 없다 — 현장 상세와 같은 자리에서 묻는다 */
+    if (wipes) { setAsking(true); return; }
+    const body = patch();
+    if (Object.keys(body).length === 0) { onDone(); return; } // 만진 것이 없으면 그냥 닫는다
+    send(body);
+  };
 
   return (
     <div className="flex flex-col items-stretch gap-1.5 text-left">
+      {/*
+        ★어느 현장에 적고 있는지 칸 안에서 보인다★ — 저장하면 정렬이 다시 계산돼 줄이
+        위로 튄다(받을 수 있는 돈에 이 금액이 든다). 116곳을 훑는 흐름에서 현장명이
+        칸에 없으면 다음에 누른 「입력」이 방금 보던 현장이 아니다.
+      */}
+      <span className="truncate text-tiny font-bold text-slate-500">{row.name}</span>
       <input
+        autoFocus
         value={amount}
         onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ''))}
+        onKeyDown={(e) => { if (e.key === 'Enter') save(); if (e.key === 'Escape') onDone(); }}
         placeholder="청구액"
         aria-label={`${row.name} 점검수수료`}
         className={`${FIELD_CELL} text-right tabular-nums`}
@@ -437,6 +470,16 @@ function FeeEdit({ row, onDone }: { row: SettlementSummary; onDone: () => void }
         <Btn size="sm" kind="quiet" disabled={busy} onClick={onDone}>취소</Btn>
       </div>
       <Err>{error}</Err>
+      <Confirm
+        open={asking}
+        title="청구액을 지웁니다"
+        detail={`${row.safetyFeeCollectedAt} 수금 기록도 같이 사라집니다`}
+        confirmLabel="지우기"
+        busy={busy}
+        error={error}
+        onConfirm={() => send({ amount: null })}
+        onCancel={() => setAsking(false)}
+      />
     </div>
   );
 }
