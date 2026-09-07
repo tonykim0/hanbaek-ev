@@ -50,7 +50,11 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
   /** 설치 실적 옆에 두는 비교 기준 — 계약과 실제가 다른 것은 흔하다 */
   const contractQty = detail.lines.reduce((s, l) => s + l.qty, 0);
   /** 조건부 서류가 보는 것 — 그 현장에 그 서류가 필요한가(doc-rules 의 only) */
-  const docCtx = { powerType: detail.project.powerType, bizType: detail.project.bizType };
+  const docCtx = {
+    powerType: detail.project.powerType,
+    bizType: detail.project.bizType,
+    cpo: detail.project.cpo,
+  };
   const { busyKey, error, run } = useAction();
 
   /*

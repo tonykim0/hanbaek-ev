@@ -808,8 +808,6 @@ export interface Settlement {
   safetyFee: number | null;
   /** 그 수수료를 받은 날. null 이면 미수금 */
   safetyFeeCollectedAt: string | null;
-  /** 그 수수료의 영수증 — 협력사에게서 받아 운영사에 청구하는 근거. 검수 대상이 아니다 */
-  safetyFeeReceipts: NoticeFile[];
   /** 지급 비고 */
   payNote: string | null;
 }
@@ -847,8 +845,12 @@ export interface AdminOnlyDetail {
   safetyFee: number | null;
   /** 그 수수료를 받은 날 */
   safetyFeeCollectedAt: string | null;
-  /** 그 수수료의 영수증 (여러 장) */
-  safetyFeeReceipts: NoticeFile[];
+  /**
+   * 그 수수료의 영수증 — ★협력사가 공정에서 내는 서류다★ (한백 2026-09-06).
+   * 정본은 공정 서류 한 칸(safetyFeeReceipt)이고 이 값은 그것을 실어 온 사본이다.
+   * 기성 탭은 읽기만 한다 — 올리고 빼는 것은 시공 탭의 그 칸이 한다.
+   */
+  safetyFeeReceipts: DocFile[];
 }
 
 /**

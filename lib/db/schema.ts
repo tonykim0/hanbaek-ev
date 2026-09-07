@@ -401,13 +401,6 @@ export const settlements = pgTable('settlements', {
   safetyFee: integer('safety_fee'),
   /** 그 수수료를 받은 날. null 이면 아직 미수금이다 */
   safetyFeeCollectedAt: text('safety_fee_collected_at'),
-  /*
-   * 전기안전점검수수료 영수증 — 협력사에게서 받아 운영사에 청구하는 근거다
-   * (한백 2026-09-06 「현장별로 영수증 담는 칸도 생성해줘」). ★검수 대상이 아니다★ —
-   * 보관하고 청구할 때 꺼내 보는 파일이라 종류를 좁히지 않는다(공지 첨부와 같은 성격).
-   * 여러 장이 올 수 있어 쌓는다 — 회의록이 두 장으로 스캔되는 것과 같은 이유다.
-   */
-  safetyFeeReceipts: jsonb('safety_fee_receipts').$type<NoticeFile[]>().notNull().default([]),
   /** 지급 관련 메모 — 감액·보류 사유 등 금액만으로 설명되지 않는 것 */
   payNote: text('pay_note'),
 });

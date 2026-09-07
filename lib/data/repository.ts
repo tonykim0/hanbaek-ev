@@ -462,16 +462,6 @@ export interface ProjectRepository {
     patch: { amount?: number | null; collectedAt?: string | null },
     actor: Actor
   ): Promise<void>;
-  /**
-   * 전기안전점검수수료 영수증 — 협력사에게서 받아 운영사에 청구하는 근거 (한백 2026-09-06).
-   *
-   * ★검수 대상이 아니다★ — 서류처럼 반려·승인이 없고 보관하고 꺼내 보는 파일이다.
-   * 그래서 documents 가 아니라 settlements 의 칸에 쌓는다(공지 첨부와 같은 성격·같은 꼴).
-   * 여러 장이 온다 — 올리면 쌓이고, 빼는 것은 한 장씩이다.
-   */
-  attachSafetyFeeReceipt(projectId: string, file: NoticeFile, actor: Actor): Promise<void>;
-  /** 뺀 파일의 Blob 주소를 돌려준다 — 라우트가 그것으로 실파일을 지운다 */
-  removeSafetyFeeReceipt(projectId: string, url: string, actor: Actor): Promise<string>;
 
   /**
    * 운영사가 통보한 준공마감일. [한백 전용]

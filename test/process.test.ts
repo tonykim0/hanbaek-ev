@@ -20,9 +20,9 @@ const P = (o: Record<string, unknown> = {}): ProcessInfo =>
   ({ docs: [], status: '행위신고', ...o }) as unknown as ProcessInfo;
 
 /** 환경부 사업 — 승인일을 기다린다 */
-const ENV: GateContext = { subsidized: true, powerType: '모자분리', bizType: '환경부' };
+const ENV: GateContext = { subsidized: true, powerType: '모자분리', bizType: '환경부', cpo: null };
 /** 자체투자·연동 — 환경부 승인도 대기번호도 없다 (한백 2026-08-28) */
-const SELF: GateContext = { subsidized: false, powerType: '모자분리', bizType: '자체투자' };
+const SELF: GateContext = { subsidized: false, powerType: '모자분리', bizType: '자체투자', cpo: null };
 const doc = (kind: string) => ({ kind, status: 'uploaded' });
 
 describe('advanceBlockers — 진행 단추를 막는 것들', () => {
@@ -200,7 +200,7 @@ describe('준공서류 제출 완료 — 세부 칸으로 본다 (2026-08-29 흐
   /* 한전불입은 전기안전관리자 선임신고증명서를 더 받는다 — 모자분리는 선임 대상이 아니다 */
   it('한전불입 현장은 선임신고증명서까지 본다', () => {
     const p = P({ status: '준공서류 접수/검토', docs: ALL.map(doc) });
-    const kepco: GateContext = { subsidized: true, powerType: '한전불입', bizType: '환경부' };
+    const kepco: GateContext = { subsidized: true, powerType: '한전불입', bizType: '환경부', cpo: null };
     expect(advanceBlockers('준공완료', 'completionSubmitAt', p, kepco))
       .toEqual(['전기안전관리자 선임신고증명서']);
   });

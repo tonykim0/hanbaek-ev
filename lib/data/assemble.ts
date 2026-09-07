@@ -165,7 +165,6 @@ export const emptySettlement = (projectId: string): Omit<Settlement, 'steps'> =>
   cpoCloseDate: null,
   safetyFee: null,
   safetyFeeCollectedAt: null,
-  safetyFeeReceipts: [],
   payNote: null,
 });
 
@@ -270,7 +269,13 @@ export function toDetail(r: ProjectRecord, rules: RuleMap, settles: SettleMap): 
       cpoCloseDate: settlement.cpoCloseDate,
       safetyFee: settlement.safetyFee,
       safetyFeeCollectedAt: settlement.safetyFeeCollectedAt,
-      safetyFeeReceipts: settlement.safetyFeeReceipts,
+      /*
+       * ★영수증은 협력사가 공정에서 내는 서류다★ (한백 2026-09-06) — settlements 의 칸이
+       * 아니라 공정 서류 한 칸(safetyFeeReceipt)이 정본이다. 그 칸에 붙은 파일을 그대로
+       * 실어 보낸다: 기성 탭은 그것을 읽기만 하고, 올리고 빼는 것은 시공 탭이 한다
+       * (그 현장의 협력사도 한백도 올릴 수 있는 자리다).
+       */
+      safetyFeeReceipts: r.process.docs.find((d) => d.kind === 'safetyFeeReceipt')?.files ?? [],
     },
     stage,
     // 계약 판정은 여기서 한 번만 한다 — 화면이 다시 세면 조건이 갈린다
@@ -562,7 +567,7 @@ export function redactForViewer(detail: ProjectDetail, vis: Visibility): Project
          * ★부담 주체도 원가 사정이다★ (한백 지시 2026-09-04, 감사 H5).
          *
          * 금액 셋만 지우고 이 둘은 통과시키고 있었다. 값이 「영업비 차감」·「한백
-         * 대납(회수)」·「한백 수령 · 하도급 미지급(턴키금액 포함)」이라 우리가 어떻게
+         * 대납(회수)」·「한백 수령 · 하도급 미지급」이라 우리가 어떻게
          * 떠안고 어디서 빼는지가 그대로 적혀 있다 — 협력사가 자기 현장 상세를 열면
          * 페이지 소스(RSC 페이로드)에 실려 나갔다(실측: 계약 라인 148개).
          * 화면에는 원래 안 나오는 칸인데(폼이 늘 null 을 보낸다) 데이터만 계속 갔다.

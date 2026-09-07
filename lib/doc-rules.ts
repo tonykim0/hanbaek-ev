@@ -17,6 +17,7 @@ import type {
   PreInstall,
 } from '@/types/project';
 import { subsidized } from '@/types/project';
+import { safetyFeeApplies } from '@/lib/settlement';
 
 /** m=필수 · c=조건부필수 · o=해당없음 */
 export type DocReq = 'm' | 'c' | 'o';
@@ -331,6 +332,23 @@ export const PROCESS_DOCS = [
   { key: 'asBuilt', name: '준공도면' },
   { key: 'photoDone', name: '설치완료사진' },
   { key: 'comm', name: '통신확인' },
+  /*
+   * ★전기안전점검수수료 영수증 — 협력사가 낸다★ (한백 2026-09-06 「영수증도 협력사쪽에서
+   * 업로드하게 해줘. 공정과정에서」). 준공완료 뒤 협력사에게서 받아 그것으로 운영사에
+   * 청구한다(그 돈은 한백 몫이고 협력사에게는 안 준다).
+   *
+   * 받는 운영사만이다 — 플러그링크·에버온은 그 수수료를 따로 받지 않아 낼 것도 없다
+   * (판정 정본은 lib/settlement 의 SAFETY_FEE_CPOS 하나다).
+   *
+   * ★준공완료의 조건이 아니다★ — 준공 「뒤에」 오는 서류라 lib/process 의 COMPLETION_DOCS
+   * 에 넣지 않는다. 넣으면 영수증이 없어 준공을 못 끝내고, 준공을 못 끝내서 영수증이 안
+   * 오는 교착이 된다(옛 「준공서류」 칸이 그 꼴이었다).
+   */
+  {
+    key: 'safetyFeeReceipt',
+    name: '전기안전점검수수료 영수증',
+    only: (c: ProcessDocCtx) => c.cpo !== null && safetyFeeApplies(c.cpo),
+  },
 ] as const;
 
 /**
@@ -352,6 +370,8 @@ export type ProcessDocKey = (typeof PROCESS_DOCS)[number]['key'];
 export interface ProcessDocCtx {
   powerType: PowerType | null;
   bizType: BizType | null;
+  /** 운영사 — 전기안전점검수수료 영수증이 이 값으로 갈린다 */
+  cpo: CpoName | null;
 }
 
 /** 이 현장에서 실제로 받는 서류만 남긴다 — 조건이 없는 것은 늘 받는다 */

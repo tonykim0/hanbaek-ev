@@ -13,30 +13,30 @@ const 준공서류 = ['completeConfirm', 'costSurvey', 'safety', 'safetyMgr', 'u
 describe('processDocsFor — 조건부 서류', () => {
   it('★전기안전관리자 선임신고증명서는 한전불입 현장만★', () => {
     const names = (power: string | null) =>
-      processDocsFor(준공서류, { powerType: power as never, bizType: '환경부' }).map((d) => d.name);
+      processDocsFor(준공서류, { powerType: power as never, bizType: '환경부', cpo: null }).map((d) => d.name);
 
     expect(names('한전불입')).toContain('전기안전관리자 선임신고증명서');
     expect(names('모자분리')).not.toContain('전기안전관리자 선임신고증명서');
   });
 
   it('혼용도 한전불입을 쓰므로 낸다', () => {
-    const names = processDocsFor(준공서류, { powerType: '한전불입+모자분리', bizType: '환경부' })
+    const names = processDocsFor(준공서류, { powerType: '한전불입+모자분리', bizType: '환경부', cpo: null })
       .map((d) => d.name);
     expect(names).toContain('전기안전관리자 선임신고증명서');
   });
 
   it('수전방식을 모르면 조건부 서류를 내밀지 않는다 — 안 낼 서류를 내라고 하지 않는다', () => {
-    expect(processDocsFor(준공서류, { powerType: null, bizType: null })).toHaveLength(5);
+    expect(processDocsFor(준공서류, { powerType: null, bizType: null, cpo: null })).toHaveLength(5);
   });
 
   it('조건이 없는 서류는 늘 받는다', () => {
-    const names = processDocsFor(['photoDone', 'installReport'], { powerType: null, bizType: null })
+    const names = processDocsFor(['photoDone', 'installReport'], { powerType: null, bizType: null, cpo: null })
       .map((d) => d.name);
     expect(names).toEqual(['설치완료사진', '설치완료보고서']);
   });
 
   it('적은 순서대로 나온다 — 화면이 그 순서로 그린다', () => {
-    const keys = processDocsFor(['asBuilt', 'completeConfirm'], { powerType: null, bizType: null })
+    const keys = processDocsFor(['asBuilt', 'completeConfirm'], { powerType: null, bizType: null, cpo: null })
       .map((d) => d.key);
     expect(keys).toEqual(['asBuilt', 'completeConfirm']);
   });

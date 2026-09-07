@@ -10,7 +10,7 @@
  * 착공·준공마감은 상태가 아니라 날짜다. 기성 트리거가 실착공일·준공마감일에서 직접
  * 판정하므로(lib/settlement.ts) 같은 사실을 상태로 한 번 더 두지 않는다.
  */
-import type { BizType, Court, PowerType, ProcessInfo, ProjectDocument, ProcessStatus } from '@/types/project';
+import type { BizType, Court, CpoName, PowerType, ProcessInfo, ProjectDocument, ProcessStatus } from '@/types/project';
 import { processDocsFor, type ProcessDocKey } from '@/lib/doc-rules';
 import { PROCESS_STATUSES, subsidized } from '@/types/project';
 import { canWrite, isHanbaek, normalizeOrg, type Role } from '@/lib/roles';
@@ -58,6 +58,8 @@ export interface GateContext {
    */
   powerType: PowerType | null;
   bizType: BizType | null;
+  /** 운영사 — 전기안전점검수수료 영수증을 받는 곳이 갈린다(lib/settlement SAFETY_FEE_CPOS) */
+  cpo: CpoName | null;
 }
 
 /**
@@ -65,12 +67,13 @@ export interface GateContext {
  * 게이트를 부르는 모든 자리가 이것을 거친다(저장소 · 요약 · 시공 탭).
  */
 export function gateContextOf(
-  project: { bizType: BizType | null; powerType?: PowerType | null }
+  project: { bizType: BizType | null; powerType?: PowerType | null; cpo?: CpoName | null }
 ): GateContext {
   return {
     subsidized: subsidized(project.bizType),
     powerType: project.powerType ?? null,
     bizType: project.bizType,
+    cpo: project.cpo ?? null,
   };
 }
 
@@ -544,7 +547,9 @@ const COMPLETION_DOCS: readonly ProcessDocKey[] = [
 /** 준공서류 중 아직 안 온 것 — 옛 한 칸으로 낸 현장(이관분)은 그것으로 갈음한다 */
 export function missingCompletionDocs(p: ProcessInfo, ctx: GateContext): string[] {
   if (docApproved(p, 'completion')) return [];
-  return processDocsFor(COMPLETION_DOCS, { powerType: ctx.powerType, bizType: ctx.bizType })
+  return processDocsFor(COMPLETION_DOCS, {
+    powerType: ctx.powerType, bizType: ctx.bizType, cpo: ctx.cpo,
+  })
     .filter((d) => !docApproved(p, d.key))
     .map((d) => d.name);
 }
