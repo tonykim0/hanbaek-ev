@@ -104,12 +104,29 @@ describe('9월 1일 벌 — 보조금 +50만(마진 30만) · 연동 120/140만 
   const rules = pl2609Rules();
   const byId = new Map(rules.map((r) => [r.id, r]));
 
-  it('여섯 개다 — 보조금 4 + 연동 2. 자투·상업은 이 벌에 없다', () => {
-    expect(rules).toHaveLength(6);
-    expect(rules.filter((r) => r.bizType === '환경부')).toHaveLength(4);
+  /* 「모든 정책은 기간별로 운영되는 거야」(한백) — 값이 같아도 기간이 다르면 다른 케이스다 */
+  it('아홉이다 — 값이 바뀐 여섯 + 7월과 같은 값 셋', () => {
+    expect(rules).toHaveLength(9);
+    expect(rules.filter((r) => r.bizType === '환경부')).toHaveLength(5);
     expect(rules.filter((r) => r.bizType === '연동')).toHaveLength(2);
-    expect(rules.some((r) => r.bizType === '자체투자')).toBe(false);
-    expect(rules.some((r) => r.bldgTypes.includes('상업시설'))).toBe(false);
+    expect(rules.filter((r) => r.bizType === '자체투자')).toHaveLength(2);
+    expect(rules.filter((r) => r.bldgTypes.includes('상업시설'))).toHaveLength(1);
+  });
+
+  /* 값이 안 바뀐 셋 — 7월 케이스와 분해까지 같아야 한다(한백 「7월과 동일해」) */
+  it('자투 둘·상업 하나는 7월과 금액·분해가 같다 — 마진도 20만 그대로', () => {
+    const 같음 = [
+      { id: 'pl-2609-y7-mother-inplace-apt', 총: 2_200_000 },
+      { id: 'pl-2609-y10-mother-inplace-apt', 총: 2_400_000 },
+      { id: 'pl-2609-y10-mother-new-biz', 총: 2_400_000 },
+    ];
+    for (const e of 같음) {
+      const r = byId.get(e.id) as NewPricingRule;
+      expect(turnkeyUnit(r)).toBe(e.총);
+      expect(r.margin).toBe(200_000);
+      expect(r.consUnit).toBe(950_000);
+      expect(r.salesUnit).toBe(e.총 - 950_000 - 200_000);
+    }
   });
 
   it('전부 저장 전 검증을 통과한다', () => {

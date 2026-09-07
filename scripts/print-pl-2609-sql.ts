@@ -1,7 +1,12 @@
 /**
- * 플러그링크 2026년 9월 1일 정책의 마이그레이션 SQL 을 찍는다 (0058 생성기).
+ * 플러그링크 2026년 9월 1일 ~ 12월 31일 벌의 마이그레이션 SQL 을 찍는다 (0060 생성기).
  *
- *   npx tsx scripts/print-pl-2609-sql.ts > migrations/0058_pl-2609-policy.sql
+ *   npx tsx scripts/print-pl-2609-sql.ts > migrations/0060_pl-2609-full-period.sql
+ *
+ * ★0058 이 먼저 여섯을 넣었고, 이 파일은 이제 아홉을 찍는다.★ 「모든 정책은 기간별로
+ * 운영되는 거야」(한백 2026-09-06) — 값이 안 바뀐 자투 둘·상업 하나도 이 기간의 케이스로
+ * 서야 9월을 고른 매트릭스가 완결된다. 0058 은 이미 프로덕션에 적용돼 못 고치므로,
+ * 같은 출력을 0060 으로 한 번 더 돌린다 — 여섯은 on conflict 로 지나가고 셋만 들어간다.
  *
  * 값·근거는 lib/pricing-policy-pl-2609.ts 한 곳이다. 여기서는 SQL 모양만 만든다.
  * 정산 규칙(settlement_rules)을 먼저 심고 그 뒤에 케이스를 넣는다 — 케이스가 규칙을
@@ -24,9 +29,9 @@ if (bad.length > 0) {
   console.error('검증 실패 — SQL 을 찍지 않습니다:\n' + bad.join('\n'));
   process.exit(1);
 }
-/* 이 벌은 여섯이다 — 손으로 적은 id 가 하나라도 겹치면 on conflict 로 조용히 사라진다 */
-if (rules.length !== 6 || new Set(rules.map((r) => r.id)).size !== 6) {
-  console.error(`케이스가 여섯이 아닙니다 (${rules.length}개, 고유 id ${new Set(rules.map((r) => r.id)).size}개)`);
+/* 이 벌은 아홉이다(기간이 한 벌 — 한백 2026-09-06) — 손으로 적은 id 가 겹치면 on conflict 로 조용히 사라진다 */
+if (rules.length !== 9 || new Set(rules.map((r) => r.id)).size !== 9) {
+  console.error(`케이스가 아홉이 아닙니다 (${rules.length}개, 고유 id ${new Set(rules.map((r) => r.id)).size}개)`);
   process.exit(1);
 }
 
@@ -34,12 +39,26 @@ if (rules.length !== 6 || new Set(rules.map((r) => r.id)).size !== 6) {
 const settles = new Map<string, SettlementStepRule[]>();
 for (const r of rules) settles.set(settlementRuleIdOf(r.settlementSteps), r.settlementSteps);
 
-console.log('-- 플러그링크 2026년 9월 1일 정책 — 보조금 +50만(마진 30만) · 연동 120/140만 (한백 지시 2026-09-06)');
+console.log('-- 플러그링크 2026년 9월 1일 ~ 12월 31일 벌을 아홉으로 완성한다 (한백 2026-09-06)');
 console.log('-- lib/pricing-policy-pl-2609.ts 에서 생성 — 손으로 고치지 마세요');
 console.log(`--
--- ★여섯 개뿐이다★ — 「보조금 4 + 연동 2 만 변경하고 나머지는 그대로」(한백). 자체투자와
--- 상업시설 보조금은 금액이 안 바뀌어 새로 세우지 않는다. 9월 이후 그 계약은 「2026년 7월 1일
--- ~ 8월 31일」 케이스를 그대로 쓴다 — 금액은 맞고 화면의 기간만 어긋난다.
+-- ── 0. 0059 를 되돌린다 — 기간 없는 케이스를 만들지 않는다 ──
+--
+-- 0059 는 자투 둘·상업 하나의 끝 날짜를 지워 「2026년 7월 1일」로 열어 뒀다. 9월 이후에도
+-- 그 값이 그대로라는 것을 그렇게 담으려 했는데, ★정책은 기간으로 돈다★(한백) — 끝이 없는
+-- 줄이 시기 목록에 홀로 서면 어느 계약에 무엇이 맞는지 화면이 말하지 못한다.
+-- 그 셋을 다시 8월 31일로 닫고, 같은 값의 9월 케이스 셋을 아래에서 세운다.
+update pricing_rules
+   set start_date = '2026년 7월 1일 ~ 8월 31일',
+       case_name  = replace(case_name, '(2026년 7월 1일)', '(2026년 7월 1일 ~ 8월 31일)')
+ where cpo = '플러그링크'
+   and start_date = '2026년 7월 1일';
+`);
+console.log(`--
+-- ★아홉이다 — 기간이 곧 한 벌이다★ (한백 「모든 정책은 기간별로 운영되는 거야」).
+-- 금액이 바뀐 것은 보조금 넷과 연동 둘이고, 자체투자 둘과 상업 보조금 하나는 7월과 값이
+-- 한 글자도 다르지 않다 — 그래도 이 기간의 케이스로 같이 세운다. 그래야 9월을 고른
+-- 매트릭스에 아홉 칸이 제 값으로 서고, 9월 계약이 「8월 31일에 끝난」 케이스를 안 붙인다.
 --
 -- 옛 벌은 걷지 않는다 — 케이스는 참조되면 불변이고, 계약일이 8월 31일 이전인 현장은 그 단가가
 -- 정본이다. 시기가 갈리는 것은 적용 시작이 한다(lib/pricing-match startKey → 2026-09-01).
@@ -125,7 +144,7 @@ function insertSql(r: NewPricingRule, id: string, settleId: string): string {
 ) on conflict (id) do nothing;\n`;
 }
 
-console.error(`검산(찍힌 SQL 밖) — 적용 시작 ${PL_2609_START} · 케이스 ${rules.length} · 새 규칙 후보 ${settles.size}`);
+console.error(`검산(찍힌 SQL 밖) — 적용 기간 ${PL_2609_START} · 케이스 ${rules.length} · 규칙 후보 ${settles.size}`);
 for (const r of rules) {
   console.error(`  ${r.id.padEnd(28)} ${String((turnkeyUnit(r) as number) / 10_000).padStart(4)}만  ${settlementRuleNameOf(r.settlementSteps)}`);
 }

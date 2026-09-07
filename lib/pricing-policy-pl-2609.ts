@@ -8,10 +8,16 @@
  *   · 기설치 연동 받는 금액 7년 120 · 10년 140만 (55/75 에서 인상). 한백 마진 20만 그대로,
  *     시공비 0 — 연동은 설치 공사가 없다(lib/pricing-policy-link-h2 와 같은 판단).
  *
- * ★이 벌은 여섯 개뿐이다★ — 「보조금 4 + 연동 2 만 변경하고 나머지는 그대로」(한백).
- * 자체투자(공동 7·10년)와 상업시설 보조금은 금액이 안 바뀌어 새로 세우지 않았다.
- * 그래서 9월 이후 자투·상업 계약은 「2026년 7월 1일 ~ 8월 31일」이라 적힌 케이스를 붙인다 —
- * 금액은 맞지만 화면의 기간과 어긋난다. 그 벌을 열어야 하면 그때 새 번호로 세운다.
+ * ★이 벌은 아홉이다 — 기간이 곧 한 벌이다★ (한백 2026-09-06 「모든 정책은 기간별로
+ * 운영되는 거야」). 금액이 바뀐 것은 보조금 넷과 연동 둘뿐이고, 자체투자 둘과 상업 보조금
+ * 하나는 ★7월과 값이 한 글자도 다르지 않다★(한백 「9월 이후에도 자투·상업 케이스는 7월과
+ * 동일해」) — 그래도 이 기간의 케이스로 같이 세운다. 그래야 9월을 고른 매트릭스에 아홉 칸이
+ * 제 값으로 서고, 9월 계약이 「8월 31일에 끝난」 케이스를 붙이는 일이 없다.
+ *
+ * 처음에는 여섯만 세우고 7월 셋의 끝 날짜를 지워 열어 두려 했다(0059) — 그것이 틀렸다.
+ * 기간 없는 케이스가 시기 목록에 「2026년 7월 1일」로 홀로 남았고, 정책이 기간으로 도는데
+ * 끝이 없는 줄이 하나 서 있으면 어느 계약에 무엇이 맞는지 화면이 말하지 못한다. 0060 이
+ * 그 셋을 다시 8월 31일로 닫고, 같은 값의 9월 케이스 셋을 여기서 세운다.
  *
  * ★설치 수량 상한이 내려갔다 (한백 2026-09-06)★ — 1개 단지 최대 130 → ★100대(7년)★ ·
  * 120 → ★90대(10년)★. 그래서 설치조건은 7/1 벌을 못 잇고 이 벌의 것을 따로 적는다.
@@ -67,6 +73,19 @@ const SUB: { id: string; power: PowerType & ('모자분리' | '한전불입'); t
 const LINK: { id: string; term: number; total: number }[] = [
   { id: 'pl-2609-y7-link-apt', term: 7, total: 1_200_000 },
   { id: 'pl-2609-y10-link-apt', term: 10, total: 1_400_000 },
+];
+
+/**
+ * 값이 안 바뀐 셋 — 자체투자 공동 7·10년과 상업 보조금 10년.
+ * ★7월 케이스의 값을 그대로 옮긴다★ (한백 「7월과 동일해」): 금액·분해·기성·설치조건까지
+ * 같고 기간만 이 벌의 것이다. 마진도 20만 그대로다 — 30만 상향은 「보조금 사업」 넷의 말이고,
+ * 이 셋은 그 대상(공동주택 모자분리·한전불입)이 아니다.
+ * 설치 수량 상한도 7월 값(130/120대)이다 — 100/90 은 새 보조금 넷에 온 조건이다.
+ */
+const SAME: { id: string; term: number; total: number; biz: '자체투자' | '환경부' }[] = [
+  { id: 'pl-2609-y7-mother-inplace-apt', term: 7, total: 2_200_000, biz: '자체투자' },
+  { id: 'pl-2609-y10-mother-inplace-apt', term: 10, total: 2_400_000, biz: '자체투자' },
+  { id: 'pl-2609-y10-mother-new-biz', term: 10, total: 2_400_000, biz: '환경부' },
 ];
 
 export function pl2609Rules(): (NewPricingRule & { id: string })[] {
@@ -130,5 +149,32 @@ export function pl2609Rules(): (NewPricingRule & { id: string })[] {
     settlementSteps: PL_INV_STEPS,
   }));
 
-  return [...sub, ...link];
+  /* 값이 안 바뀐 셋 — 7월 케이스를 그대로 옮긴다. 조건 칸도 plPolicy 가 7월 것을 준다 */
+  const same = SAME.map((r): NewPricingRule & { id: string } => {
+    const inv = r.biz === '자체투자';
+    const bldg = inv ? '공동주택' : '상업시설';
+    return {
+      id: r.id,
+      caseName: `플러그링크 (${PL_2609_START}) | ${bldg} | ${r.term}년 ${inv ? '자체투자' : '환경부 신규'} | 모자분리`,
+      cpo: '플러그링크',
+      bizType: r.biz,
+      powerType: '모자분리',
+      termYears: [r.term],
+      bldgTypes: [bldg],
+      replType: inv ? '자체투자 (제자리교체)' : '환경부 신규',
+      channel: '턴키',
+      bizYear: 2026,
+      startDate: PL_2609_START,
+      salesUnit: r.total - CONS - MARGIN_LINK,
+      consUnit: CONS,
+      margin: MARGIN_LINK,
+      supervisionBearer: inv ? null : '영업비 차감',
+      safetyFeeBearer: inv ? null : '한백 부담',
+      note: null,
+      ...plPolicy(!inv, r.term, [bldg]),
+      settlementSteps: inv ? PL_INV_STEPS : plSubSteps(r.total),
+    };
+  });
+
+  return [...sub, ...link, ...same];
 }
