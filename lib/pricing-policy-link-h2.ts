@@ -64,7 +64,7 @@ export function linkRules(): NewPricingRule[] {
   return [
     {
       ...BASE,
-      caseName: 'SK일렉링크 (2026년 7월 20일) | 전체 | 7·10년 연동 | 모자분리',
+      caseName: 'SK일렉링크 (2026년 7월 20일) | 전체 | 7·10년 기설치 연동 | 모자분리',
       cpo: 'SK일렉링크',
       termYears: [7, 10],
       bldgTypes: ['공동주택', '상업시설'],
@@ -76,7 +76,7 @@ export function linkRules(): NewPricingRule[] {
     },
     {
       ...BASE,
-      caseName: '플러그링크 (2026년 하반기) | 공동주택 | 7년 연동 | 모자분리',
+      caseName: '플러그링크 (2026년 하반기) | 공동주택 | 7년 기설치 연동 | 모자분리',
       cpo: '플러그링크',
       /*
        * ★DB 의 시작일은 '2026년 7월 1일' 이다★ — 0037 이 플러그링크의 「2026년 하반기」를
@@ -96,7 +96,7 @@ export function linkRules(): NewPricingRule[] {
     },
     {
       ...BASE,
-      caseName: '플러그링크 (2026년 하반기) | 공동주택 | 10년 연동 | 모자분리',
+      caseName: '플러그링크 (2026년 하반기) | 공동주택 | 10년 기설치 연동 | 모자분리',
       cpo: '플러그링크',
       termYears: [10],
       bldgTypes: ['공동주택'],

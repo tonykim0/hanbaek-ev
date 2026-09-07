@@ -116,7 +116,7 @@ export function pl2609Rules(): (NewPricingRule & { id: string })[] {
   /* 연동의 조건 칸은 link-h2 와 같다 — 설치조건은 문서에 없고(null), 대상 기기만 기타에 남는다 */
   const link = LINK.map((r): NewPricingRule & { id: string } => ({
     id: r.id,
-    caseName: `플러그링크 (${PL_2609_START}) | 공동주택 | ${r.term}년 연동 | 모자분리`,
+    caseName: `플러그링크 (${PL_2609_START}) | 공동주택 | ${r.term}년 기설치 연동 | 모자분리`,
     cpo: '플러그링크',
     bizType: '기설치 연동',
     powerType: '모자분리',
