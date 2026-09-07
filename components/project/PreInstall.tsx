@@ -173,12 +173,24 @@ export function PreInstall({
                   />
                 )}
                 <span className="flex-1" />
-                {canReview && doc && doc.status !== 'none' && (
+                {/*
+                  * ★안 낸 칸도 반려한다★ — 계약 서류 격자와 같은 규칙이다
+                  * (한백 지시 2026-09-03). 그 변경이 서류 구역(IntakeTab)에만 오고
+                  * 이 격자는 `doc && doc.status !== 'none'` 으로 남아 있었다 — 칸에
+                  * 행이 아예 없으면(아직 아무도 안 올림) 반려 단추가 서지 않아,
+                  * 기설치 이력을 안 낸 현장을 짚어 돌려보낼 길이 없었다
+                  * (한백 지적 2026-09-06, 경남 양산 대우마리나 아파트).
+                  *
+                  * 저장소는 처음부터 받아 준다 — checkReviewable 이 「행이 없어도
+                  * 반려는 선다」이고 setDocumentStatus 가 행을 만든다. 화면만 막고
+                  * 있었으니, 서버가 허락하는 일을 단추가 없어서 못 하던 자리다.
+                  */}
+                {canReview && (
                   <DocReview
                     projectId={project.id}
                     kind={d.key}
-                    status={doc.status}
-                    hasFile={doc.files.length > 0}
+                    status={doc?.status ?? 'none'}
+                    hasFile={(doc?.files.length ?? 0) > 0}
                   />
                 )}
                 {canReview && doc && doc.status !== 'none' && (
