@@ -233,8 +233,14 @@ function Card({
       ? prevStatusOf(p.status, { bizType: p.bizType })
       : null;
 
-  /** 협력사가 기다리는 대상 — 한백에게는 없다(조작할 사람이 자기다) */
-  const waiting = !canMove && next ? partnerWaitingOf(next.status) : null;
+  /*
+   * 협력사가 기다리는 대상 — 한백에게는 없다(조작할 사람이 자기다).
+   *
+   * ★남은 조건이 없을 때만 기다린다★ (2026-09-08 검증) — 전에는 조건을 안 봐서, 준공보완에
+   * 선 협력사가 아직 자기 손에 있는 준공서류를 두고 「한백 준공마감 대기 중」을 읽었다.
+   * 그 말이 실제로 막는 것을 덮어썼다(아래 hint 의 ?? 순서).
+   */
+  const waiting = !canMove && next?.ready ? partnerWaitingOf(next.status) : null;
 
   /*
    * 카드 밑에 적을 한 줄. 없으면 아무것도 안 적는다.

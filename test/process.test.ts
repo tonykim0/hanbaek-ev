@@ -708,3 +708,37 @@ describe('체크를 풀면 물러난다 — canEnter 로 물으면 안 되는 �
     expect(canEnter('충전기 수령', late, LINK).ok).toBe(false);
   });
 });
+
+/**
+ * 준공보완은 앞으로 가는 길에 없다 — ★반려로만 들어가는 갈래★
+ * (한백 확인 2026-09-08 「준공서류 접수/검토에서 반려된 준공보완이야.
+ *  준공서류가 다 완료되어야만 준공완료로 넘어가」).
+ */
+describe('준공보완은 갈래지 걸음이 아니다', () => {
+  const ENVC = { subsidized: true, powerType: '모자분리' as const, bizType: '환경부' as const, cpo: null };
+
+  it('접수/검토의 다음은 준공완료다 — 준공보완을 건너뛴다', () => {
+    expect(nextStatusOf('준공서류 접수/검토', ENVC)).toBe('준공완료');
+    expect(prevStatusOf('준공완료', ENVC)).toBe('준공서류 접수/검토');
+  });
+
+  it('준공보완에 서 있으면 나가는 길이 있다 — 갈래도 빠져나와야 한다', () => {
+    expect(nextStatusOf('준공보완', ENVC)).toBe('준공완료');
+    expect(prevStatusOf('준공보완', ENVC)).toBe('준공서류 접수/검토');
+  });
+
+  it('★막는 이유가 준공서류다★ — 반려 칸의 조건이 길을 막는 것처럼 보이면 안 된다', () => {
+    const atReview = P({ status: '준공서류 접수/검토' });
+    const r = canEnter('준공완료', atReview, ENVC);
+    expect(r.ok).toBe(false);
+    const why = (r as { blockedBy: string }).blockedBy;
+    expect(why).toContain('준공도면');                    // 준공완료의 조건
+    expect(why).not.toContain('개통 완료 선언');           // 준공보완의 조건이 아니다
+  });
+
+  it('반려로는 들어갈 수 있다 — 갈래를 목표로 주면 그 게이트를 묻는다', () => {
+    const ok = P({ status: '준공서류 접수/검토', commDoneDate: 'd', openDoneAt: 'd' });
+    expect(canEnter('준공보완', ok, ENVC)).toEqual({ ok: true });
+    expect(canEnter('준공보완', P({ status: '준공서류 접수/검토' }), ENVC).ok).toBe(false);
+  });
+});

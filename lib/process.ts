@@ -258,6 +258,20 @@ export function statusIndex(status: ProcessStatus): number {
  */
 const NOT_FOR_LINK: readonly ProcessStatus[] = ['충전기 발주', '충전기 수령'];
 
+/**
+ * ★앞으로 가는 길에 없는 칸★ — 반려로만 들어가고 서류를 고치면 나온다
+ * (한백 확인 2026-09-08 「준공서류 접수/검토에서 반려된 준공보완이야. 준공서류가 다
+ * 완료되어야만 준공완료로 넘어가」).
+ *
+ * 목록에서는 준공서류 접수/검토 바로 다음 자리에 있지만 정상 걸음이 아니다 — 한백의
+ * 검토 판정이 보내는 갈래이고, 반려가 다 풀리면 저장소가 접수/검토로 되돌린다
+ * (lib/data/store/docs.ts). 그래서 「다음 칸」을 셀 때 건너뛴다: 접수/검토에 선 현장의
+ * 다음은 ★준공완료★이고, 카드도 그 칸의 조건(준공서류 여섯)을 적어야 한다.
+ *
+ * stepsOf 에서는 빼지 않는다 — 반려로 실제로 들어가는 칸이라 canEnter 가 허락해야 한다.
+ */
+const BRANCH_ONLY: readonly ProcessStatus[] = ['준공보완'];
+
 /** 이 현장이 지나는 칸 — 순서는 PROCESS_STATUSES 그대로다 */
 export function stepsOf(ctx: Pick<GateContext, 'bizType'>): ProcessStatus[] {
   const link = ctx.bizType === '기설치 연동';
@@ -266,7 +280,8 @@ export function stepsOf(ctx: Pick<GateContext, 'bizType'>): ProcessStatus[] {
 
 /** 이 현장에서 그 칸 다음 — 없으면 null(마지막) */
 export function nextStatusOf(cur: ProcessStatus, ctx: Pick<GateContext, 'bizType'>): ProcessStatus | null {
-  const steps = stepsOf(ctx);
+  /* 갈래 칸은 「다음」이 될 수 없다 — 지금 그 칸에 서 있는 경우는 뺀다(나가는 길이 필요하다) */
+  const steps = stepsOf(ctx).filter((st) => st === cur || !BRANCH_ONLY.includes(st));
   const i = steps.indexOf(cur);
   /* 안 지나는 칸에 서 있으면(옛 데이터·사업구분 변경) 전역 순서에서 다음을 찾는다 */
   if (i < 0) return steps.find((st) => statusIndex(st) > statusIndex(cur)) ?? null;
@@ -275,7 +290,7 @@ export function nextStatusOf(cur: ProcessStatus, ctx: Pick<GateContext, 'bizType
 
 /** 이 현장에서 그 칸 앞 — 없으면 null(처음) */
 export function prevStatusOf(cur: ProcessStatus, ctx: Pick<GateContext, 'bizType'>): ProcessStatus | null {
-  const steps = stepsOf(ctx);
+  const steps = stepsOf(ctx).filter((st) => st === cur || !BRANCH_ONLY.includes(st));
   const i = steps.indexOf(cur);
   if (i < 0) return [...steps].reverse().find((st) => statusIndex(st) < statusIndex(cur)) ?? null;
   return i > 0 ? steps[i - 1] : null;
@@ -429,7 +444,11 @@ export function canEnter(
    * 모든 길이 이 판정을 지나므로(setProcessStatus·advanceAfterCheck·스테퍼·보드) 우회로도
    * 없었다. 표준 흐름에서는 stepsOf 가 전역 목록과 같아 한 글자도 안 바뀐다.
    */
-  const steps = stepsOf(ctx);
+  /*
+   * 갈래 칸(준공보완)은 지나는 길에 없다 — 목표일 때만 그 게이트를 묻는다.
+   * 안 그러면 접수/검토 → 준공완료 로 갈 때 반려 칸의 조건이 길을 막는 것처럼 보인다.
+   */
+  const steps = stepsOf(ctx).filter((st) => st === status || !BRANCH_ONLY.includes(st));
   for (const st of steps.filter((x) => statusIndex(x) > from && statusIndex(x) <= to)) {
     const blockers = STATUS_GATES[st]?.(process, ctx) ?? [];
     if (blockers.length > 0) {
