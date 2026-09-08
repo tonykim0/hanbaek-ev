@@ -674,7 +674,14 @@ async function applyReviewSideEffects(
       lastProgressAt: day,
       ...(rejected
         ? {
-            ...(started ? {} : { contractConfirmedAt: null }),
+            /*
+             * ★반려는 접수 선언도 무효로 만든다★ (한백 지시 2026-09-08). 협력사가 「다 냈다」고
+             * 한 것을 한백이 돌려보냈으니 그 선언은 더 참이 아니다 — 고친 뒤 「계약 재검토
+             * 요청」을 다시 눌러야 검토에 선다(lib/board). 안 지우면 단추가 서지 않고(선언이
+             * 있으면 감춘다) 상태 줄이 옛 날짜로 「재검토 요청 완료」라 적는다.
+             * 착공 뒤에는 안 지운다 — 그 구간은 협력사가 낼 수 없고 한백이 받아 올린다.
+             */
+            ...(started ? {} : { contractConfirmedAt: null, contractSubmittedAt: null }),
             contractFixAskedAt: sql`coalesce(${projects.contractFixAskedAt}, ${day})`,
             /*
              * ★착공 뒤 반려는 협력사에게 공을 넘기지 않는다★ (한백 지시 2026-09-05).

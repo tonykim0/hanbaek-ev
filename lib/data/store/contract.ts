@@ -294,6 +294,8 @@ async function applyAskSideEffects(
       ...(ask
         ? {
             contractConfirmedAt: null,
+            /* 접수 선언도 지운다 — 다시 「계약 재검토 요청」을 눌러야 검토에 선다(2026-09-08, docs.ts 와 같은 까닭) */
+            contractSubmittedAt: null,
             contractFixAskedAt: sql`coalesce(${projects.contractFixAskedAt}, ${day})`,
             court: '영업사' as const,
           }

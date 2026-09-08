@@ -226,13 +226,19 @@ export function boardColumnOf(p: {
      *
      * ★접수는 처음 모으는 동안만 서는 자리다★ (한백 지시 2026-08-25). 반려를 다 풀면
      * 접수로 떨어져서, 계약완료까지 갔던 현장이 처음 접수하는 현장과 한 칸에 섰다.
-     * 보완요청을 받은 적이 있으면(contractFixAskedAt) 접수 선언이 없어도 검토에 선다 —
-     * 칸을 새로 만들지 않는다(한백 지시): 보완이 풀린 계약을 볼 사람은 한백이고,
-     * 한백이 보는 자리는 계약검토다. 협력사가 내는 행위의 이름만 「재검토 요청」으로
-     * 갈린다(components/project/IntakeTab.tsx).
+     * 보완요청을 받은 적이 있는 현장(contractFixAskedAt)은 접수로 돌아가지 않는다.
+     *
+     * ★반려를 다 풀어도 「계약 재검토 요청」을 눌러야 검토에 선다★ (한백 지시 2026-09-08
+     * 「반려한 항목들을 다 채우고 계약 재검토 요청을 눌러야만 계약검토 단계로」).
+     * 2026-08-25 에는 보완이 풀리면 요청 없이도 검토에 세웠다 — 그러자 협력사가 파일만
+     * 갈아 끼운 채 아직 손보는 중인 계약이 한백 칸에 서고, 담당(court)은 영업사인데 칸은
+     * 검토라 둘이 다른 말을 했다. 요청을 누르기 전까지는 ★계약보완★에 남는다 — 고치는
+     * 중이라는 뜻이 그 칸이다. 반려·보완요청이 접수 선언을 지우므로(lib/data/store 의
+     * applyReviewSideEffects·applyAskSideEffects) 협력사는 반드시 다시 눌러야 한다.
      */
     if (p.rejectedDocs > 0) return '계약보완';
-    return p.submitted || p.fixAsked ? '계약검토' : '계약접수';
+    if (p.submitted) return '계약검토';
+    return p.fixAsked ? '계약보완' : '계약접수';
   }
   return p.status;
 }
