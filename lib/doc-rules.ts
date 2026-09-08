@@ -363,6 +363,12 @@ export const PROCESS_DOCS = [
   },
   { key: 'useInspect', name: '사용검사 필증' },
   { key: 'asBuilt', name: '준공도면' },
+  /*
+   * ★운영시작확인서 (프로모션) — SK일렉링크만★ (한백 지시 2026-09-08 「준공서류 접수/검토에서
+   * 추가해줘 SK만 해당」). 다른 운영사에는 없는 서류라 칸이 서지 않는다 — 조건은 여기 하나다.
+   * 준공서류라 준공완료의 조건에도 든다(lib/process COMPLETION_DOCS).
+   */
+  { key: 'promoStart', name: '운영시작확인서 (프로모션)', only: (c: ProcessDocCtx) => c.cpo === 'SK일렉링크' },
   { key: 'photoDone', name: '설치완료사진' },
   { key: 'comm', name: '통신확인' },
 ] as const;

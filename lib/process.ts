@@ -624,6 +624,8 @@ export const COMPLETION_DOC_KEYS: readonly string[] = [
 
 const COMPLETION_DOCS: readonly ProcessDocKey[] = [
   'completeConfirm', 'costSurvey', 'safety', 'safetyMgr', 'useInspect', 'asBuilt',
+  // SK일렉링크만 — 조건은 정의 옆에 있고(doc-rules 의 only) processDocsFor 가 걸러 준다
+  'promoStart',
 ];
 
 /** 준공서류 중 아직 안 온 것 — 옛 한 칸으로 낸 현장(이관분)은 그것으로 갈음한다 */

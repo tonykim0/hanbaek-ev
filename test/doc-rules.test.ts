@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { evaluateDocs, PROCESS_DOCS, processDocsFor, type DocContext } from '@/lib/doc-rules';
 import { ALL_DOC_KEYS, isKnownDocKind } from '@/lib/data/assemble';
 
-const 준공서류 = ['completeConfirm', 'costSurvey', 'safety', 'safetyMgr', 'useInspect', 'asBuilt'] as const;
+const 준공서류 = ['completeConfirm', 'costSurvey', 'safety', 'safetyMgr', 'useInspect', 'asBuilt', 'promoStart'] as const;
 
 describe('processDocsFor — 조건부 서류', () => {
   it('★전기안전관리자 선임신고증명서는 한전불입 현장만★', () => {
@@ -113,5 +113,18 @@ describe('서류 종류 목록 — 정의와 저장소가 같은 것을 본다',
   it('목록에 빈 이름이나 중복이 없다', () => {
     expect(ALL_DOC_KEYS.filter((k) => !k.trim())).toEqual([]);
     expect(new Set(ALL_DOC_KEYS).size).toBe(ALL_DOC_KEYS.length);
+  });
+});
+
+/* ★운영시작확인서 (프로모션)은 SK일렉링크만★ (한백 지시 2026-09-08) */
+describe('운영시작확인서 (프로모션) — SK일렉링크만 받는다', () => {
+  const names = (cpo: Parameters<typeof processDocsFor>[1]['cpo']) =>
+    processDocsFor(['promoStart'], { powerType: null, bizType: null, cpo }).map((d) => d.name);
+  it('SK 현장에는 선다 — 사업구분과 무관하게', () => {
+    expect(names('SK일렉링크')).toEqual(['운영시작확인서 (프로모션)']);
+  });
+  it('다른 운영사·미지정에는 칸이 없다', () => {
+    expect(names('플러그링크')).toEqual([]);
+    expect(names(null)).toEqual([]);
   });
 });

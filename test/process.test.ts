@@ -742,3 +742,21 @@ describe('준공보완은 갈래지 걸음이 아니다', () => {
     expect(canEnter('준공보완', P({ status: '준공서류 접수/검토' }), ENVC).ok).toBe(false);
   });
 });
+
+/* SK일렉링크는 준공서류에 「운영시작확인서 (프로모션)」이 하나 더 있다 (한백 지시 2026-09-08) */
+describe('준공서류 — SK일렉링크는 운영시작확인서 (프로모션)까지', () => {
+  const SK: GateContext = { subsidized: false, powerType: '모자분리', bizType: '자체투자', cpo: 'SK일렉링크' };
+  const ALL = ['safety', 'useInspect', 'asBuilt'];
+  it('다른 서류가 다 와도 그것이 없으면 못 넘긴다', () => {
+    const p = P({ status: '준공서류 접수/검토', docs: ALL.map(doc) });
+    expect(advanceBlockers('준공완료', 'completionSubmitAt', p, SK)).toEqual(['운영시작확인서 (프로모션)']);
+  });
+  it('오면 열린다', () => {
+    const p = P({ status: '준공서류 접수/검토', docs: [...ALL, 'promoStart'].map(doc) });
+    expect(advanceBlockers('준공완료', 'completionSubmitAt', p, SK)).toEqual([]);
+  });
+  it('SK 가 아니면 묻지 않는다', () => {
+    const p = P({ status: '준공서류 접수/검토', docs: ALL.map(doc) });
+    expect(advanceBlockers('준공완료', 'completionSubmitAt', p, SELF)).toEqual([]);
+  });
+});

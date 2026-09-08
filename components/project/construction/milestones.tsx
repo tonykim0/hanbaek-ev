@@ -309,6 +309,8 @@ export function groupsByStatus(
           'safetyMgr',
           'useInspect',
           'asBuilt',
+          // SK일렉링크만 선다 (한백 2026-09-08) — 조건은 doc-rules 의 only 가 본다
+          'promoStart',
         ],
         /*
          * ★조건은 세부 칸이다★ (2026-08-29 흐름 워크스루) — 옛 「준공서류」 한 칸을
