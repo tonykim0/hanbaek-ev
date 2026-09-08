@@ -213,66 +213,6 @@ describe('서류 칸 — 받는 운영사만 서고, 준공을 막지 않는다'
   });
 });
 
-describe('할 일 — 청구 근거가 안 온 현장', () => {
-  const row = (over: Partial<SettlementSummary>): SettlementSummary => ({
-    id: 'p1', name: '테스트아파트', cpo: 'SK일렉링크', qty: 3,
-    stage: 'construction', status: '준공완료',
-    ruleName: '착공 800,000원 → 준공마감 잔액',
-    steps: [], planTotal: 0, collectedTotal: 0, cpoCloseDate: null,
-    safetyFee: null, safetyFeeCollectedAt: null,
-    safetyFeeReceiptCount: 0, safetyFeeReceiptStatus: 'none',
-    salesOrg: null, gcOrg: null,
-    payoutMilestones: { contractConfirmedAt: null, installCompletedAt: null, completedAt: null },
-    salesPayoutDocsMissing: [], salesTotal: 0, consTotal: 0, marginTotal: 0, unpricedLines: 0,
-    salesAdjust: 0, salesPaid: 0, salesLastPaidAt: null,
-    consAdjust: 0, consPaid: 0, consLastPaidAt: null,
-    payNote: null, ...over,
-  } as SettlementSummary);
-  const kinds = (r: SettlementSummary) => receivableTodos([r]).map((t) => t.kind);
-
-  it('청구액은 적혔는데 영수증이 0장이면 선다 — 그 근거로 청구한다', () => {
-    expect(kinds(row({ safetyFee: 450_000 }))).toContain('점검수수료 영수증');
-  });
-
-  it('영수증이 오면 사라진다', () => {
-    expect(kinds(row({
-      safetyFee: 450_000, safetyFeeReceiptCount: 1, safetyFeeReceiptStatus: 'uploaded',
-    }))).not.toContain('점검수수료 영수증');
-  });
-
-  /*
-   * ★반려된 한 장은 근거가 아니다★ (2026-09-08 설계검증) — 장수만 세던 때는 돌려보낸
-   * 영수증이 있는 현장이 「근거 있음」으로 빠져서, 청구할 수 없는데 할 일에도 없었다.
-   */
-  it('반려된 영수증이 있어도 선다 — 그 파일로는 청구를 못 한다', () => {
-    expect(kinds(row({
-      safetyFee: 450_000, safetyFeeReceiptCount: 1, safetyFeeReceiptStatus: 'rejected',
-    }))).toContain('점검수수료 영수증');
-  });
-
-  it('반려와 미제출은 문구가 갈린다 — 협력사가 할 일이 다르다', () => {
-    const what = (over: Partial<SettlementSummary>) =>
-      receivableTodos([row(over)]).find((t) => t.kind === '점검수수료 영수증')?.what;
-    expect(what({ safetyFee: 450_000, safetyFeeReceiptCount: 1, safetyFeeReceiptStatus: 'rejected' }))
-      .toContain('반려');
-    expect(what({ safetyFee: 450_000 })).toContain('미제출');
-  });
-
-  /* 반려된 칸은 파일을 다 빼도 반려로 남는다(store/docs) — 그때도 할 일은 그대로다 */
-  it('반려인데 파일이 0장이어도 선다', () => {
-    expect(kinds(row({ safetyFee: 450_000, safetyFeeReceiptStatus: 'rejected' })))
-      .toContain('점검수수료 영수증');
-  });
-
-  it('청구액이 없으면 아직 물을 일이 아니다', () => {
-    expect(kinds(row({}))).not.toContain('점검수수료 영수증');
-  });
-
-  it('안 받는 운영사는 안 선다', () => {
-    expect(kinds(row({ cpo: '에버온', safetyFee: 450_000 }))).not.toContain('점검수수료 영수증');
-  });
-});
-
 describe('영수증 상태 — 장수만으로는 근거가 왔는지 알 수 없다', () => {
   /*
    * ★이 판정이 없어서 표와 기성 탭이 반려된 한 장을 「영수증 1장」으로 읽었다★

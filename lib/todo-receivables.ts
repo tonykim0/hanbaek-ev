@@ -10,20 +10,24 @@ import { phaseOfProject } from '@/lib/board';
 import { won } from '@/lib/format';
 import { daysSince } from '@/lib/date';
 import {
-  safetyFeeApplies, safetyFeeDue, safetyFeeOpen, safetyFeeReceiptState,
+  safetyFeeApplies, safetyFeeDue, safetyFeeOpen,
 } from '@/lib/settlement';
 import type { SettlementStep, SettlementSummary } from '@/types/project';
 import type { TodoItem } from '@/lib/todo-types';
 
 /**
- * 기성 할 일 셋 — 운영사에게서 받을 돈이 지금 어디서 걸려 있나.
+ * 기성 할 일 다섯 — 운영사에게서 받을 돈이 지금 어디서 걸려 있나.
  *
  *   기성 수금        조건이 찼는데 아직 안 들어온 차수 — ★이것이 본디 할 일이다★
  *   준공마감일 지정   공정은 끝났는데 마지막 기성이 열리지 않았다 (그 날짜가 트리거다)
  *   정산 규칙 미지정  규칙이 없어 기성이 계산조차 안 된다
  *   점검수수료 수금   청구액을 적었는데 아직 안 들어왔다 — ★여는 사건이 없는 돈이다★
  *   점검수수료 미기재 준공완료인데 청구액을 안 적었다 (적지 않으면 청구 자체가 없다)
- *   점검수수료 영수증   청구액은 적었는데 협력사 영수증이 안 왔다 (청구 근거가 없다)
+ *
+ * ★점검수수료 영수증 미제출은 할 일이 아니다★ (한백 지시 2026-09-08 「이건 할일관리에
+ * 없어도 돼」). 2026-09-08 아침에 「청구 근거가 안 왔다」로 세웠던 것을 그날 걷었다 —
+ * 영수증은 시공 탭의 서류 칸이 보여 주고, 반려·미제출 표시도 거기 있다. 할 일에 서면
+ * 한백이 재촉할 일처럼 읽히는데, 그것은 협력사가 알아서 내는 서류다.
  *
  * ★조건 대기는 넣지 않는다.★ 아직 안 찬 차수는 우리가 할 일이 없다 — 기다리는 것을
  * 할 일로 세우면 목록이 영영 줄지 않는다. 무엇을 기다리는지는 기성관리 화면이 말한다.
@@ -138,33 +142,6 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
          * 열린 날을 기록하지 않으므로 날수로 잴 근거가 없다 — 정산 규칙 미지정과 같은 자리에
          * 놓는다(문턱 7일). 꾸민 날짜로 순위를 만들지 않는다.
          */
-        urgency: 7,
-        urgencyLabel: null,
-      });
-    }
-
-    /*
-     * ★청구 근거가 안 왔다★ (2026-09-08) — 청구액은 적혔는데 협력사 영수증이 없다.
-     * 그 영수증으로 운영사에 청구하므로 없으면 청구를 못 한다. 재촉할 자리가 없어서
-     * 「청구·수금까지 끝났는데 근거 파일이 0장인 현장」이 조용히 남던 자리다.
-     * 담당은 그 현장 시공사다 — 올리는 자리는 시공 탭 준공 구간이다.
-     *
-     * ★반려도 여기 선다★ (2026-09-08 설계검증) — 처음에는 장수만 세어서, 돌려보낸 영수증이
-     * 있는 현장은 「근거가 있다」로 빠졌다. 그 파일로는 청구할 수 없으니 할 일은 그대로
-     * 남아 있다. 문구는 갈라 적는다 — 협력사가 할 일이 다르다(내라 / 고쳐서 다시 내라).
-     */
-    const receipt = safetyFeeReceiptState(r.safetyFeeReceiptStatus, r.safetyFeeReceiptCount);
-    if (safetyFeeApplies(r.cpo) && r.safetyFee !== null && receipt !== 'arrived') {
-      items.push({
-        id: `safetyfee-receipt|${r.id}`,
-        href: `/projects/${r.id}?tab=construction`,
-        name: r.name,
-        what: receipt === 'rejected'
-          ? '전기안전점검수수료 영수증 반려 — 다시 받아야 함'
-          : '전기안전점검수수료 영수증 미제출',
-        group: '기성',
-        kind: '점검수수료 영수증',
-        stalledDays: 0,
         urgency: 7,
         urgencyLabel: null,
       });
