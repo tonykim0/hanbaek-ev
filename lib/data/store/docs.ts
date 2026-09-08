@@ -325,6 +325,16 @@ export const docStore: Pick<
       if (!canAccessProject(actor.role, actor.org, project)) {
         throw new Error('이 현장에 서류를 올릴 권한이 없습니다.');
       }
+      /*
+       * ★같은 칸에 동시에 붙는 요청을 줄 세운다★ (감사 2026-09-04 M10).
+       *
+       * 아래 put*Doc 은 「읽고(files) → 더하고 → 덮어쓰기」다. 잠금 없이 둘이 겹치면 둘 다 같은
+       * before 를 읽고 각자 1장짜리 목록을 써서, 나중 커밋이 앞 파일의 기록을 지운다 — 먼저 올린
+       * 쪽은 성공 응답을 받았는데 목록에서 사라졌다(test/db/upload-race.test.ts 가 첫 실행에서 재현).
+       * 행이 아직 없는 칸은 둘 다 insert 라 FOR UPDATE 로는 못 막는다 — 접수 번호(createProject)와
+       * 같은 자문 잠금을 쓴다. 잠긴 빈 칸(canFillEmpty)의 slotEmpty 판정도 이 뒤에 서야 한 사람만 통과한다.
+       */
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hb_doc:${input.projectId}:${input.kind}`}))`);
       await assertContractDocsOpen(tx, input.projectId, input.kind, actor);
 
       /*

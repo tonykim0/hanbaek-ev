@@ -16,6 +16,8 @@ export default defineConfig({
   },
   test: {
     include: ['test/**/*.test.ts'],
+    // 경계 시험(test/db)은 개발 DB 에 붙는다 — 따로 돈다: npm run test:db (vitest.db.config.mts)
+    exclude: ['test/db/**'],
     environment: 'node',
   },
 });
