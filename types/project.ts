@@ -851,6 +851,14 @@ export interface AdminOnlyDetail {
    * 기성 탭은 읽기만 한다 — 올리고 빼는 것은 시공 탭의 그 칸이 한다.
    */
   safetyFeeReceipts: DocFile[];
+  /**
+   * 그 칸의 검수 상태 — ★파일이 있다는 것만으로는 근거가 아니다★ (2026-09-08).
+   * 반려된 칸에도 파일은 남아 있어서 장수로는 못 가른다. 판정은 한 자리에서 한다
+   * (lib/settlement safetyFeeReceiptState).
+   */
+  safetyFeeReceiptStatus: DocStatus;
+  /** 반려 사유 — 반려일 때만 있다. 협력사가 무엇을 고쳐야 하는지가 이 한 줄이다 */
+  safetyFeeReceiptReason: string | null;
 }
 
 /**
@@ -1157,6 +1165,12 @@ export interface SettlementSummary {
   safetyFeeCollectedAt: string | null;
   /** 영수증 장수 — 표에서는 몇 장인지만 세고, 파일은 현장 상세에서 본다 */
   safetyFeeReceiptCount: number;
+  /**
+   * 그 영수증 칸의 검수 상태 — ★장수와 같이 봐야 근거가 왔는지 알 수 있다★ (2026-09-08).
+   * 반려된 칸에도 파일이 남으므로 장수만으로는 「영수증 1장」이라 적히고 만다
+   * (판정: lib/settlement safetyFeeReceiptState).
+   */
+  safetyFeeReceiptStatus: DocStatus;
 
   /*
    * 여기부터는 반대 방향이다 — 한백이 협력사에게 내려주는 돈.

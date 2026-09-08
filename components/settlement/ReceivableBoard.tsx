@@ -22,7 +22,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { SettlementSummary } from '@/types/project';
 import {
-  safetyFeeApplies, safetyFeeCollected, safetyFeeDue, safetyFeeOpen, STEP_LABEL, STEP_TONE,
+  safetyFeeApplies, safetyFeeCollected, safetyFeeDue, safetyFeeOpen, safetyFeeReceiptState,
+  STEP_LABEL, STEP_TONE,
 } from '@/lib/settlement';
 import {
   Badge, Blank, Btn, Confirm, Empty, Err, FIELD, FIELD_BASE, FIELD_CELL, Tag, Td, Th,
@@ -364,6 +365,8 @@ function FeeCell({ row, canEdit }: { row: SettlementSummary; canEdit: boolean })
   }
 
   const done = row.safetyFeeCollectedAt !== null;
+  /* 판정은 조립·상세와 같은 함수로 한다 — 표만 다른 셈을 쓰면 두 화면이 갈린다 */
+  const receipt = safetyFeeReceiptState(row.safetyFeeReceiptStatus, row.safetyFeeReceiptCount);
   return (
     <Td>
       {row.safetyFee === null ? (
@@ -384,11 +387,17 @@ function FeeCell({ row, canEdit }: { row: SettlementSummary; canEdit: boolean })
         영수증은 여기서 세기만 한다 — 파일은 현장 상세에서 받는다.
         ★0장도 적는다★ (2026-09-08) — 청구액을 적었는데 근거가 안 온 현장이 표에서
         빈 칸과 구별되지 않았다. 청구액이 없으면 아직 물을 일이 아니라 조용히 둔다.
+
+        ★반려는 장수로 안 갈린다★ (2026-09-08 설계검증) — 반려는 파일을 지우지 않아서
+        돌려보낸 한 장이 「영수증 1장」으로, 곧 청구 근거가 온 것처럼 서 있었다.
+        반려는 청구액이 없어도 적는다 — 돌려보낸 서류는 그 자체로 사람이 볼 일이다.
       */}
-      {row.safetyFeeReceiptCount > 0 ? (
+      {receipt === 'arrived' ? (
         <span className="mt-0.5 block text-tiny font-semibold text-slate-400">
           영수증 {row.safetyFeeReceiptCount}장
         </span>
+      ) : receipt === 'rejected' ? (
+        <span className="mt-0.5 block text-tiny font-semibold text-red-700">영수증 반려</span>
       ) : row.safetyFee !== null && (
         <span className="mt-0.5 block text-tiny font-semibold text-amber-700">영수증 미제출</span>
       )}

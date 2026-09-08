@@ -10,7 +10,7 @@
  *   준공마감     — 한백이 판단해 지정한다. 공정 일정에서 유도하지 않는다.
  */
 import type {
-  ContractLineView, CpoName, NewPayoutEntry, PayoutCategory, PayoutEntry, PayoutKind, PayoutMilestones,
+  ContractLineView, CpoName, DocStatus, NewPayoutEntry, PayoutCategory, PayoutEntry, PayoutKind, PayoutMilestones,
   PricingRule, ProcessInfo, ProcessStatus,
   SettlementRule, SettlementStep, SettlementStepRule, StepBasis, StepState, Trigger,
 } from '@/types/project';
@@ -171,6 +171,28 @@ export function checkSafetyFee(amount: number | null, collectedAt: string | null
     bad.push('금액을 먼저 적어야 수금일을 기록할 수 있습니다.');
   }
   return bad;
+}
+
+/**
+ * 그 수수료 영수증이 ★청구 근거로 서 있는가★ — 판정은 이 함수 하나다.
+ *
+ * 세 값이다: 안 왔다(none) · 돌려보냈다(rejected) · 와 있다(arrived).
+ *
+ * ★반려된 한 장은 안 온 것과 같다★ (2026-09-08 설계검증) — 표와 기성 탭이 장수만 세어서
+ * 반려한 영수증이 「영수증 1장」, 곧 근거가 도착한 것으로 읽혔다. 그 파일로는 운영사에
+ * 청구할 수 없다. 반려는 파일을 지우지 않으므로(store/docs: 파일을 다 빼도 반려로 남긴다)
+ * ★장수로는 못 가른다★ — 상태를 같이 봐야 한다.
+ *
+ * 반려를 「미제출」로 뭉개지도 않는다: 협력사가 할 일이 다르다(내라 / 고쳐서 다시 내라).
+ * 안 낸 것과 퇴짜 맞은 것을 가르는 것은 서류 쪽에서 이미 쓰는 셈이다(rejectedEmpty).
+ *
+ * 검수 전(uploaded)은 와 있는 것으로 본다 — 계약·공정 서류가 「제출됐으면 통과로 본다」와
+ * 같은 자리다(components/project/parts docState). 한백이 반려하지 않는 한 청구를 막지 않는다.
+ */
+export type ReceiptState = 'none' | 'rejected' | 'arrived';
+export function safetyFeeReceiptState(status: DocStatus, count: number): ReceiptState {
+  if (status === 'rejected') return 'rejected';
+  return count > 0 ? 'arrived' : 'none';
 }
 
 /**

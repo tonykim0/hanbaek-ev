@@ -248,6 +248,8 @@ export function toDetail(r: ProjectRecord, rules: RuleMap, settles: SettleMap): 
     settlement,
     contractConfirmedAt: r.project.contractConfirmedAt,
   });
+  /* 영수증 칸은 한 번만 찾는다 — 파일과 검수 상태가 같은 칸에서 와야 갈리지 않는다 */
+  const receiptDoc = r.process.docs.find((d) => d.kind === 'safetyFeeReceipt') ?? null;
 
   return {
     // 진행현황은 조립하지 않는다 — 저장소가 읽어 그대로 실어 보낸다
@@ -275,7 +277,13 @@ export function toDetail(r: ProjectRecord, rules: RuleMap, settles: SettleMap): 
        * 실어 보낸다: 기성 탭은 그것을 읽기만 하고, 올리고 빼는 것은 시공 탭이 한다
        * (그 현장의 협력사도 한백도 올릴 수 있는 자리다).
        */
-      safetyFeeReceipts: r.process.docs.find((d) => d.kind === 'safetyFeeReceipt')?.files ?? [],
+      safetyFeeReceipts: receiptDoc?.files ?? [],
+      /*
+       * 검수 상태도 같이 싣는다 — ★없으면 반려된 한 장이 「근거 도착」으로 읽힌다★
+       * (2026-09-08 설계검증). 반려는 파일을 지우지 않아서 장수로는 안 갈린다.
+       */
+      safetyFeeReceiptStatus: receiptDoc?.status ?? 'none',
+      safetyFeeReceiptReason: receiptDoc?.rejectReason ?? null,
     },
     stage,
     // 계약 판정은 여기서 한 번만 한다 — 화면이 다시 세면 조건이 갈린다
@@ -413,6 +421,8 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
     safetyFeeCollectedAt: fee.safetyFeeCollectedAt,
     /* 표는 장수만 센다 — 파일 목록을 전 현장에 실어 보내면 응답이 통째로 무거워진다 */
     safetyFeeReceiptCount: applies ? admin.safetyFeeReceipts.length : 0,
+    /* 장수와 짝이다 — 이것 없이는 반려된 한 장이 표에서 「영수증 1장」으로 선다 */
+    safetyFeeReceiptStatus: applies ? admin.safetyFeeReceiptStatus : 'none',
     salesOrg: d.project.salesOrg,
     gcOrg: d.project.gcOrg,
     payoutMilestones: payoutMilestonesFor(r),

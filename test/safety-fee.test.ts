@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   checkSafetyFee, collectionRate, SAFETY_FEE_CPOS, safetyFeeApplies, safetyFeeCollected,
-  safetyFeeDue, safetyFeeOpen,
+  safetyFeeDue, safetyFeeOpen, safetyFeeReceiptState,
 } from '@/lib/settlement';
 import { CPO_NAMES } from '@/types/project';
 import type { CpoName } from '@/types/project';
@@ -134,7 +134,8 @@ describe('할 일 — 트리거가 없는 돈이라 여기서 재촉한다', () 
     stage: 'construction', status: '준공완료',
     ruleName: '착공 800,000원 → 준공마감 잔액',
     steps: [], planTotal: 0, collectedTotal: 0, cpoCloseDate: null,
-    safetyFee: null, safetyFeeCollectedAt: null, safetyFeeReceiptCount: 0,
+    safetyFee: null, safetyFeeCollectedAt: null,
+    safetyFeeReceiptCount: 0, safetyFeeReceiptStatus: 'none',
     salesOrg: null, gcOrg: null,
     payoutMilestones: { contractConfirmedAt: null, installCompletedAt: null, completedAt: null },
     salesPayoutDocsMissing: [], salesTotal: 0, consTotal: 0, marginTotal: 0, unpricedLines: 0,
@@ -218,7 +219,8 @@ describe('할 일 — 청구 근거가 안 온 현장', () => {
     stage: 'construction', status: '준공완료',
     ruleName: '착공 800,000원 → 준공마감 잔액',
     steps: [], planTotal: 0, collectedTotal: 0, cpoCloseDate: null,
-    safetyFee: null, safetyFeeCollectedAt: null, safetyFeeReceiptCount: 0,
+    safetyFee: null, safetyFeeCollectedAt: null,
+    safetyFeeReceiptCount: 0, safetyFeeReceiptStatus: 'none',
     salesOrg: null, gcOrg: null,
     payoutMilestones: { contractConfirmedAt: null, installCompletedAt: null, completedAt: null },
     salesPayoutDocsMissing: [], salesTotal: 0, consTotal: 0, marginTotal: 0, unpricedLines: 0,
@@ -233,8 +235,33 @@ describe('할 일 — 청구 근거가 안 온 현장', () => {
   });
 
   it('영수증이 오면 사라진다', () => {
-    expect(kinds(row({ safetyFee: 450_000, safetyFeeReceiptCount: 1 })))
-      .not.toContain('점검수수료 영수증');
+    expect(kinds(row({
+      safetyFee: 450_000, safetyFeeReceiptCount: 1, safetyFeeReceiptStatus: 'uploaded',
+    }))).not.toContain('점검수수료 영수증');
+  });
+
+  /*
+   * ★반려된 한 장은 근거가 아니다★ (2026-09-08 설계검증) — 장수만 세던 때는 돌려보낸
+   * 영수증이 있는 현장이 「근거 있음」으로 빠져서, 청구할 수 없는데 할 일에도 없었다.
+   */
+  it('반려된 영수증이 있어도 선다 — 그 파일로는 청구를 못 한다', () => {
+    expect(kinds(row({
+      safetyFee: 450_000, safetyFeeReceiptCount: 1, safetyFeeReceiptStatus: 'rejected',
+    }))).toContain('점검수수료 영수증');
+  });
+
+  it('반려와 미제출은 문구가 갈린다 — 협력사가 할 일이 다르다', () => {
+    const what = (over: Partial<SettlementSummary>) =>
+      receivableTodos([row(over)]).find((t) => t.kind === '점검수수료 영수증')?.what;
+    expect(what({ safetyFee: 450_000, safetyFeeReceiptCount: 1, safetyFeeReceiptStatus: 'rejected' }))
+      .toContain('반려');
+    expect(what({ safetyFee: 450_000 })).toContain('미제출');
+  });
+
+  /* 반려된 칸은 파일을 다 빼도 반려로 남는다(store/docs) — 그때도 할 일은 그대로다 */
+  it('반려인데 파일이 0장이어도 선다', () => {
+    expect(kinds(row({ safetyFee: 450_000, safetyFeeReceiptStatus: 'rejected' })))
+      .toContain('점검수수료 영수증');
   });
 
   it('청구액이 없으면 아직 물을 일이 아니다', () => {
@@ -243,5 +270,30 @@ describe('할 일 — 청구 근거가 안 온 현장', () => {
 
   it('안 받는 운영사는 안 선다', () => {
     expect(kinds(row({ cpo: '에버온', safetyFee: 450_000 }))).not.toContain('점검수수료 영수증');
+  });
+});
+
+describe('영수증 상태 — 장수만으로는 근거가 왔는지 알 수 없다', () => {
+  /*
+   * ★이 판정이 없어서 표와 기성 탭이 반려된 한 장을 「영수증 1장」으로 읽었다★
+   * (2026-09-08 설계검증). 반려는 파일을 지우지 않으므로 장수와 상태를 같이 봐야 한다.
+   */
+  it('반려는 파일이 있어도 근거가 아니다', () => {
+    expect(safetyFeeReceiptState('rejected', 2)).toBe('rejected');
+  });
+
+  it('반려는 파일이 없을 때도 반려다 — 미제출과 갈라 말한다', () => {
+    expect(safetyFeeReceiptState('rejected', 0)).toBe('rejected');
+    expect(safetyFeeReceiptState('none', 0)).toBe('none');
+  });
+
+  it('검수 전에도 와 있는 것으로 본다 — 반려하지 않는 한 청구를 막지 않는다', () => {
+    expect(safetyFeeReceiptState('uploaded', 1)).toBe('arrived');
+    expect(safetyFeeReceiptState('approved', 1)).toBe('arrived');
+  });
+
+  it('칸만 서고 파일이 없으면 안 온 것이다', () => {
+    expect(safetyFeeReceiptState('uploaded', 0)).toBe('none');
+    expect(safetyFeeReceiptState('approved', 0)).toBe('none');
   });
 });

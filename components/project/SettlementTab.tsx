@@ -13,14 +13,14 @@
 import { Fragment, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import type {
-  CpoName, DocFile, PayoutCategory, PayoutEntry, PayoutKind, ProjectDetail, SettlementRule,
+  CpoName, DocFile, DocStatus, PayoutCategory, PayoutEntry, PayoutKind, ProjectDetail, SettlementRule,
   SettlementRuleChoice, SettlementStep,
 } from '@/types/project';
 import { PAYOUT_CATEGORIES, replLabel } from '@/types/project';
 import {
   adjustEntriesOf, collectionRate, distributionUnit, entryTypeOf, payoutSideOf, payoutStepsOf,
   STEP_LABEL, STEP_TONE, triggerSource, turnkeyUnit,
-  safetyFeeApplies, safetyFeeDue,
+  safetyFeeApplies, safetyFeeDue, safetyFeeReceiptState,
 } from '@/lib/settlement';
 import type { Visibility } from '@/lib/roles';
 import type { RuleOptions } from '@/lib/pricing-match';
@@ -33,6 +33,8 @@ import {
   Td, Th,
 } from '@/components/ui';
 import { DatePicker } from '@/components/DatePicker';
+/* 반려 사유는 어디에 적히든 한 모양이다 (한백 지시 2026-09-04) */
+import { RejectReason } from '@/components/project/parts';
 
 // ── 정산 탭 ─────────────────────────────────────────────────────
 const STEP_STYLE: Record<SettlementStep['state'], string> = {
@@ -178,6 +180,8 @@ export function ReceivableTab({
           fee={admin?.safetyFee ?? null}
           collectedAt={admin?.safetyFeeCollectedAt ?? null}
           receipts={admin?.safetyFeeReceipts ?? []}
+          receiptStatus={admin?.safetyFeeReceiptStatus ?? 'none'}
+          receiptReason={admin?.safetyFeeReceiptReason ?? null}
           canEdit={canReview}
         />
       </div>
@@ -201,7 +205,7 @@ export function ReceivableTab({
  * 수금 자리가 아예 없다.
  */
 function SafetyFeeFact({
-  projectId, applies, due, fee, collectedAt, receipts, canEdit,
+  projectId, applies, due, fee, collectedAt, receipts, receiptStatus, receiptReason, canEdit,
 }: {
   projectId: string;
   /** 이 운영사에게서 따로 받는가 — 아니면 「해당없음」 */
@@ -212,6 +216,9 @@ function SafetyFeeFact({
   collectedAt: string | null;
   /** 협력사가 공정에서 낸 영수증 — 여기서는 읽기만 한다(정본은 시공 탭의 그 서류 칸) */
   receipts: DocFile[];
+  /** 그 칸의 검수 상태 — ★반려된 한 장은 근거가 아니다★. 장수와 같이 봐야 갈린다 */
+  receiptStatus: DocStatus;
+  receiptReason: string | null;
   canEdit: boolean;
 }) {
   const { busy, error, run } = useAction();
@@ -319,7 +326,12 @@ function SafetyFeeFact({
       )}
       <Err>{error}</Err>
       {/* 협력사가 낸 영수증 — 청구 근거가 와 있나. 올리는 자리는 시공 탭이다 */}
-      <ReceiptList files={receipts} wanted={applies && fee !== null} />
+      <ReceiptList
+        files={receipts}
+        status={receiptStatus}
+        reason={receiptReason}
+        wanted={applies && fee !== null}
+      />
     </div>
   );
 }
@@ -332,14 +344,28 @@ function SafetyFeeFact({
  * 그 자리에서 올리고 뺀다. 여기서 또 올릴 수 있게 두면 같은 파일의 정본이 두 곳이 된다
  * (dual-write 금지). 기성 탭은 「청구할 때 근거가 와 있나」를 보는 자리다.
  */
-function ReceiptList({ files, wanted }: { files: DocFile[]; wanted: boolean }) {
+function ReceiptList({
+  files, status, reason, wanted,
+}: {
+  files: DocFile[];
+  status: DocStatus;
+  reason: string | null;
+  wanted: boolean;
+}) {
+  /*
+   * ★파일이 있다는 것과 근거가 왔다는 것은 다르다★ (2026-09-08 설계검증) — 장수만 세어서
+   * 반려한 영수증이 「영수증 1장」으로, 곧 청구해도 되는 것처럼 읽혔다. 판정은 한 자리에서
+   * 한다(lib/settlement safetyFeeReceiptState): 안 왔다 · 돌려보냈다 · 와 있다.
+   */
+  const state = safetyFeeReceiptState(status, files.length);
+
   /*
    * ★없을 때도 말한다★ (2026-09-08) — 파일이 0장이면 줄을 안 그리고 있었다. 그래서
    * 「청구액은 적혔는데 근거가 안 왔다」가 이 자리에서 침묵했다. 이 탭을 만든 이유가
    * 「청구할 때 근거가 와 있나」를 보는 것인데 그 물음에 답을 안 했다.
    * 청구액이 없으면 아직 물을 일이 아니라 그때는 조용히 둔다.
    */
-  if (files.length === 0) {
+  if (state === 'none') {
     return wanted ? (
       <div className="mt-1.5 flex w-full flex-wrap items-center gap-2 border-t border-slate-100 pt-1.5">
         <span className="shrink-0 text-tiny font-bold text-slate-400">영수증</span>
@@ -350,6 +376,22 @@ function ReceiptList({ files, wanted }: { files: DocFile[]; wanted: boolean }) {
   }
   return (
     <div className="mt-1.5 flex w-full flex-col gap-1 border-t border-slate-100 pt-1.5">
+      {/*
+        돌려보낸 것은 위에 먼저 적는다 — 파일 이름만 보이면 그 아래 목록이 근거로 읽힌다.
+        파일은 그대로 두고 보여 준다: 무엇을 돌려보냈는지 봐야 다시 받을 수 있다.
+      */}
+      {state === 'rejected' && (
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span className="shrink-0 text-tiny font-bold text-slate-400">영수증</span>
+          <span className="text-small font-bold text-red-700">반려</span>
+          <span className="text-tiny text-slate-500">
+            {files.length > 0
+              ? '협력사가 고쳐서 다시 올려야 청구 근거가 된다'
+              : '협력사가 시공 탭 준공 구간에서 올린다'}
+          </span>
+        </div>
+      )}
+      {state === 'rejected' && reason && <RejectReason>{reason}</RejectReason>}
       {files.map((f) => (
         <div key={f.url} className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="shrink-0 text-tiny font-bold text-slate-400">영수증</span>

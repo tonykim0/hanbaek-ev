@@ -9,7 +9,9 @@
 import { phaseOfProject } from '@/lib/board';
 import { won } from '@/lib/format';
 import { daysSince } from '@/lib/date';
-import { safetyFeeApplies, safetyFeeDue, safetyFeeOpen } from '@/lib/settlement';
+import {
+  safetyFeeApplies, safetyFeeDue, safetyFeeOpen, safetyFeeReceiptState,
+} from '@/lib/settlement';
 import type { SettlementStep, SettlementSummary } from '@/types/project';
 import type { TodoItem } from '@/lib/todo-types';
 
@@ -142,17 +144,24 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
     }
 
     /*
-     * ★청구 근거가 안 왔다★ (2026-09-08) — 청구액은 적혔는데 협력사 영수증이 0장이다.
+     * ★청구 근거가 안 왔다★ (2026-09-08) — 청구액은 적혔는데 협력사 영수증이 없다.
      * 그 영수증으로 운영사에 청구하므로 없으면 청구를 못 한다. 재촉할 자리가 없어서
      * 「청구·수금까지 끝났는데 근거 파일이 0장인 현장」이 조용히 남던 자리다.
      * 담당은 그 현장 시공사다 — 올리는 자리는 시공 탭 준공 구간이다.
+     *
+     * ★반려도 여기 선다★ (2026-09-08 설계검증) — 처음에는 장수만 세어서, 돌려보낸 영수증이
+     * 있는 현장은 「근거가 있다」로 빠졌다. 그 파일로는 청구할 수 없으니 할 일은 그대로
+     * 남아 있다. 문구는 갈라 적는다 — 협력사가 할 일이 다르다(내라 / 고쳐서 다시 내라).
      */
-    if (safetyFeeApplies(r.cpo) && r.safetyFee !== null && r.safetyFeeReceiptCount === 0) {
+    const receipt = safetyFeeReceiptState(r.safetyFeeReceiptStatus, r.safetyFeeReceiptCount);
+    if (safetyFeeApplies(r.cpo) && r.safetyFee !== null && receipt !== 'arrived') {
       items.push({
         id: `safetyfee-receipt|${r.id}`,
         href: `/projects/${r.id}?tab=construction`,
         name: r.name,
-        what: '전기안전점검수수료 영수증 미제출',
+        what: receipt === 'rejected'
+          ? '전기안전점검수수료 영수증 반려 — 다시 받아야 함'
+          : '전기안전점검수수료 영수증 미제출',
         group: '기성',
         kind: '점검수수료 영수증',
         stalledDays: 0,
