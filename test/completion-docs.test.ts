@@ -21,20 +21,20 @@ const asks = (biz: Parameters<typeof ctxOf>[0], pw: Parameters<typeof ctxOf>[1])
 describe('준공완료가 묻는 서류', () => {
   it('환경부는 「(환경부)」 둘을 그대로 묻는다 — 예전과 같다', () => {
     expect(asks('환경부', '모자분리')).toEqual([
-      '설치완료확인서 (환경부)', '원가조사서 (환경부)', '사용전점검필증', '사용검사 필증', '준공도면',
+      '설치완료확인서 (환경부)', '원가조사서 (환경부)', '사용전점검/검사 필증', '사용검사 필증', '준공도면',
     ]);
   });
 
   it('★자체투자·기설치 연동은 그 둘을 안 묻는다★ — 환경부에 낼 일이 없는 사업이다', () => {
     for (const biz of ['자체투자', '기설치 연동'] as const) {
-      expect(asks(biz, '모자분리')).toEqual(['사용전점검필증', '사용검사 필증', '준공도면']);
+      expect(asks(biz, '모자분리')).toEqual(['사용전점검/검사 필증', '사용검사 필증', '준공도면']);
     }
   });
 
   it('나머지 넷은 사업구분과 무관하다 — 관공서 서류라 다 받는다', () => {
     for (const biz of ['환경부', '자체투자', '기설치 연동'] as const) {
       const l = asks(biz, '모자분리');
-      expect(l).toContain('사용전점검필증');
+      expect(l).toContain('사용전점검/검사 필증');
       expect(l).toContain('사용검사 필증');
       expect(l).toContain('준공도면');
     }
@@ -45,7 +45,7 @@ describe('준공완료가 묻는 서류', () => {
     expect(asks('자체투자', '모자분리')).not.toContain('전기안전관리자 선임신고증명서');
   });
 
-  it('★프로덕션에 걸려 있던 자리★ — 준공도면·사용전점검필증만 낸 자체투자 현장', () => {
+  it('★프로덕션에 걸려 있던 자리★ — 준공도면·사용전점검/검사 필증만 낸 자체투자 현장', () => {
     const have = P({ docs: [{ kind: 'asBuilt', status: 'uploaded' }, { kind: 'safety', status: 'uploaded' }] });
     const left = (b: Parameters<typeof ctxOf>[0]) =>
       (STATUS_GATES['준공완료']?.(have, ctxOf(b, '모자분리')) ?? []).map((x) => x.label);
