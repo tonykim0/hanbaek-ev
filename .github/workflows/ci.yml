@@ -1,0 +1,41 @@
+# CI 관문 — 하네스 2번 (2026-09-08).
+#
+# 브랜치를 푸시할 때마다 tsc · test · lint · 마이그레이션 번호 겹침을 검사한다. main 은 GitHub 브랜치
+# 보호로 이 검사(check)를 통과한 커밋만 받는다 — 그래서 main 자체에서는 돌리지 않는다: fast-forward 로
+# 올라가는 커밋은 브랜치에서 이미 검사된 같은 SHA 다.
+#
+# next build 는 여기서 안 한다 — 빌드가 먼저 마이그레이션을 돌려 DB 가 필요하고, 그 일은 Vercel 이 한다.
+# 검사는 전부 순수하다(DB·비밀 없음). 로컬에서 같은 것을 돌리는 명령: npx tsc --noEmit · npm test · npm run lint
+name: CI
+on:
+  push:
+    branches-ignore: [main]
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24        # Vercel 과 같다
+          cache: npm
+      - run: npm ci
+      - name: 마이그레이션 번호 겹침 (scripts/migrate.ts 와 같은 규칙 — 0011 둘은 원장에 그 이름으로 적용된 예외)
+        run: |
+          dups=$(ls migrations | grep -E '^[0-9]+_' | cut -d_ -f1 | sort | uniq -d | grep -v '^0011$' || true)
+          if [ -n "$dups" ]; then echo "마이그레이션 번호가 겹칩니다: $dups — 늦게 만든 파일을 디렉터리 최대 번호 + 1 로 바꾸세요"; exit 1; fi
+      - name: tsc
+        run: npx tsc --noEmit
+      - name: test
+        run: npm test
+      - name: lint
+        run: npm run lint

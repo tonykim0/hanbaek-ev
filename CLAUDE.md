@@ -53,10 +53,12 @@
     한다. 그물의 재료는 있었다(테스트 429개 0.5초 · tsc strict · lint · 마이그레이션 가드 · check:leak ·
     perf). 없던 것은 사람이 안 돌려도 도는 자리다 — 백업이 2주 조용히 실패한 것이 증거.
     ~~1 세션마다 워크트리·브랜치, main 은 머지로만, 브랜치마다 프리뷰~~ 했다(2026-09-08, 「협업 방식」).
-    **다음: 2 CI 관문** — GitHub Actions 한 파일로 tsc·test·lint(합쳐 10초), main 을 보호 브랜치로 두고
-    통과해야 머지. 그 뒤 3 경계 테스트(남은 감사 63건을 고칠 때 개발 DB 에 대고 라우트를 부르는 재현
-    테스트를 먼저 쓴다 — `check:leak` 이 그 모양) · 4 실패가 소리 나게(백업·빌드·런타임 `[db]`/`[auth]`
-    알림) · 5 이 문서의 「지켜라」를 lint 규칙·테스트로.
+    ~~2 CI 관문~~ 했다(2026-09-08) — `.github/workflows/ci.yml` 이 브랜치 푸시마다 tsc·test·lint·마이그레이션
+    번호 검사를 돌린다(약 2분). main 보호 규칙(검사 `check` 통과 필수 · 관리자 포함 · 강제 푸시·삭제 금지 ·
+    선형 이력)은 GitHub 설정이다 — 켜져 있는지는 저장소 Settings → Branches 에서 본다.
+    **다음: 3 경계 테스트** — 남은 감사 63건을 고칠 때 개발 DB 에 대고 라우트를 부르는 재현 테스트를 먼저
+    쓴다(`check:leak` 이 그 모양). 그 뒤 4 실패가 소리 나게(백업·빌드·런타임 `[db]`/`[auth]` 알림) ·
+    5 이 문서의 「지켜라」를 lint 규칙·테스트로.
     ★발견★ 프로덕션 DB 주간 백업(launchd, 월 09:30)이 08-31·09-07 「DIRECT_URL 없음」으로 실패했다 —
     launchd 는 `~/Documents` 를 못 읽는다(macOS 폴더 보호). 접속 파일의 진짜를 `~/hanbaek-backups/.env.prod-db`
     로 옮기고 저장소 `.env.prod-db` 는 그리로 가는 링크로 두었다. 09-14 스케줄에서 성공을 확인한다.
@@ -479,7 +481,9 @@ bulletpoint는 다 왼쪽정렬로」). 단가표의 조건 행(설치조건·�
   있다(301개, 0.5초). 대상은 `lib/process`(게이트·전이·권한) · `lib/roles`(가시성) ·
   `lib/settlement`(기성·지급 회차) · `lib/payout-board`(배치) · `lib/pricing-match`(단가 축) ·
   `lib/doc-rules`(서류) · `lib/date`(한국 달력). 화면 테스트는 넣지 않는다 — 느려지면 안 돌린다.
-  빌드에는 묶지 않았다: 배포가 테스트로 막히면 급한 고침이 못 나간다. 고친 사람이 돌린다.
+  2026-09-08 부터 CI 가 모든 브랜치 푸시에서 tsc·test·lint·마이그레이션 번호를 검사하고 main 은 통과한 커밋만 받는다
+  (하네스 2번). 「급한 고침이 막힌다」는 2분짜리 검사에는 맞지 않았다. 고친 사람이 먼저 돌리는 습관은 그대로다 —
+  CI 는 잊었을 때의 그물이다.
 - `next build` 를 `next dev` 가 돌고 있는 중에 실행하지 않는다. `.next` 가 깨진다.
 - 비밀번호·접속 문자열을 대화에 남기지 않는다. `.env.local` 에 직접 넣는다.
 - **함수 지역은 `icn1`(서울) 이다** — `vercel.json` 의 `regions`. DB(Supabase `ap-northeast-2`)와
@@ -512,11 +516,15 @@ bulletpoint는 다 왼쪽정렬로」). 단가표의 조건 행(설치조건·�
     `npx vercel ls` 로). DB 는 개발 DB(시드 5건 · `admin`/`dev1234!`). ★Blob 은 프로덕션 스토어를 같이
     쓴다★ — 파일 올리기 시험은 프로덕션 자료실에 남는다. 실데이터가 걸린 확인만 머지 뒤 프로덕션에서.
   - **머지 = 배포**: 사용자가 「올려」 하면 워크트리에서
-    `git fetch origin && git rebase origin/main && npm test && npx tsc --noEmit && git push origin HEAD:main`.
-    fast-forward 만 된다(원격이 그 외를 거부). 본 저장소는 건드리지 않는다 — 워크트리 세션이 본 저장소로
-    보내는 git 은 Claude Code 가 막는다. 본 저장소의 로컬 `main` 은 뒤처져도 상관없다(새 워크트리는
-    `origin/main` 에서 갈라진다). 급한 고침은 프리뷰를 안 보고 바로 머지해도 된다 — main 에 직접 커밋만
-    하지 않는다.
+    `git fetch origin && git rebase origin/main && git push --force-with-lease origin <브랜치>` 로 브랜치를 최신
+    main 위에 세운다. 그러면 CI(`.github/workflows/ci.yml` 의 `check` — tsc·test·lint·마이그레이션 번호, 약 2분)가
+    그 SHA 를 검사한다. ★초록이 된 뒤★ `git push origin HEAD:main`. main 은 보호 브랜치다 — 검사를 통과한
+    커밋만 받고(관리자도 못 우회) 강제 푸시·삭제·머지 커밋을 거부한다. 통과 전에 밀면 원격이
+    「Required status check "check" is expected」로 거부한다. 상태는 `https://github.com/tonykim0/hanbaek-ev/actions`
+    또는 `https://api.github.com/repos/tonykim0/hanbaek-ev/commits/<sha>/check-runs` 로 본다(공개 저장소라 인증 없이).
+    fast-forward 만 된다. 본 저장소는 건드리지 않는다 — 워크트리 세션이 본 저장소로 보내는 git 은 Claude Code 가
+    막는다. 본 저장소의 로컬 `main` 은 뒤처져도 상관없다(새 워크트리는 `origin/main` 에서 갈라진다). 급한 고침도
+    같은 길이다 — 건너뛸 수 있는 것은 프리뷰 확인뿐이고 검사는 아니다.
   - **정리**: 머지가 끝난 워크트리는 지운다 — 세션을 끝낼 때 Claude Code 가 묻는다(remove). 원격 브랜치는
     `git push origin --delete <브랜치>`.
   - **훅** `.claude/hooks/guard-git.sh`(PreToolUse) 가 기계적으로 지킨다: 본 저장소·main 에서의
