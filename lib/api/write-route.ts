@@ -35,7 +35,9 @@ import { canWrite } from '@/lib/roles';
  * 「관리자 계정은 여기서 못 바꾼다」는 값은 맞지만 규칙이 막는 것이다. 둘을 같은 코드로
  * 두면 화면이 「다시 입력하세요」와 「할 수 없는 일입니다」를 구분해 말할 수 없다.
  */
-export class BadRequest extends Error {}
+// 오류 종류와 분류는 순수 모듈에 있다 — 라우트는 여기서, 시험은 거기서 가져온다
+export { BadRequest, isUnexpectedError, SERVER_ERROR_MESSAGE } from './errors';
+import { BadRequest, isUnexpectedError, SERVER_ERROR_MESSAGE } from './errors';
 
 type Handler<P, B> = (input: {
   body: B;
@@ -93,6 +95,10 @@ function wrap<P, B>(adminOnly: boolean, deny: string, handle: Handler<P, B>) {
         extra && typeof extra === 'object' ? { ok: true, ...extra } : { ok: true }
       );
     } catch (err) {
+      if (isUnexpectedError(err)) {
+        console.error('[api]', request.method, new URL(request.url).pathname, err);
+        return NextResponse.json({ error: SERVER_ERROR_MESSAGE }, { status: 500 });
+      }
       const status = err instanceof BadRequest ? 400 : 422;
       return NextResponse.json({ error: (err as Error).message }, { status });
     }

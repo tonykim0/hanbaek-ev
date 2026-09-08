@@ -61,8 +61,11 @@
     ~~3 경계 테스트~~ 했다(2026-09-08) — `test/db/`(13개 · 개발 DB · 약 9초) · `npm run test:db`. 라우트 응답
     계약·저장소의 문·협력사 가시성·동시 업로드를 본다. M10(같은 칸 동시 업로드 유실)을 시험이 먼저 잡고
     자문 잠금으로 고쳤다. 남은 감사 항목은 이 방식으로 — 재현 시험 → 고침 → 초록.
-    **다음: 4 실패가 소리 나게** — 백업·빌드·런타임 `[db]`/`[auth]` 에러가 알림 한 줄로 온다. 그 뒤
-    5 이 문서의 「지켜라」를 lint 규칙·테스트로.
+    ~~4 실패가 소리 나게~~ 했다(2026-09-09) — 감시 `~/hanbaek-backups/watch-prod.sh`(launchd 10분)가 배포·CI·
+    백업·런타임 넷을 보고 상태가 바뀔 때 macOS 알림 한 줄(「운영」 절). 주간 백업 스크립트도 실패·경고·성공을
+    알린다. 라우트의 예상 밖 오류는 500 + `[api]` 로그로 바꿔 감시가 볼 수 있게 했다(코드 규칙).
+    **다음: 5 이 문서의 「지켜라」를 lint 규칙·테스트로** — multipart 라우트의 canWrite 손 검사 · Promise.all
+    금지(allSlots) · `/admin` 아래 새 화면은 `(write)` 안에 · 대괄호 태그 없는 console.error 같은 것부터.
     ★발견★ 프로덕션 DB 주간 백업(launchd, 월 09:30)이 08-31·09-07 「DIRECT_URL 없음」으로 실패했다 —
     launchd 는 `~/Documents` 를 못 읽는다(macOS 폴더 보호). 접속 파일의 진짜를 `~/hanbaek-backups/.env.prod-db`
     로 옮기고 저장소 `.env.prod-db` 는 그리로 가는 링크로 두었다. 09-14 스케줄에서 성공을 확인한다.
@@ -173,6 +176,13 @@
 - **프로덕션이 왜 그러는지는 런타임 로그로 본다** — `npx vercel logs --environment production
   -x --since 30m`. 화면에 안 나오는 조용한 실패(위 표 없음이 그랬다)는 여기 `[auth]`·`[db]`
   줄이 유일한 신호다. `npx vercel ls` 로 배포가 실제로 Ready 인지도 먼저 확인한다.
+  ★2026-09-09 부터 사람이 열지 않아도 감시가 본다★ — `~/hanbaek-backups/watch-prod.sh`(launchd
+  `com.hanbaek.prod-watch`, 10분마다)가 최근 production 배포 상태 · CI 마지막 실행 · 백업 덤프 나이 · 최근 15분
+  런타임 로그(error·5xx·대괄호 태그)를 보고, 상태가 바뀔 때 macOS 알림 한 줄을 띄운다(계속 나쁘면 하루 한 번).
+  지금 상태는 `zsh ~/hanbaek-backups/watch-prod.sh --print` — 세션을 시작할 때 한 번 보면 프로덕션이 깨진 채
+  일하는 것을 막는다. 알림 판단은 `watch-notify.py`, 상태·로그는 `~/hanbaek-backups/auto/watch-*`.
+  저장소 밖에 두는 이유: launchd 는 `~/Documents` 를 못 읽는다(주간 백업 `backup-prod.sh` 가 그래서 2주 실패했다).
+  한계: 이 Mac 이 켜져 있고 로그인돼 있을 때만 — Slack·메일로 보내려면 `watch-notify.py` 의 notify 에 웹훅 한 줄.
 - 프로덕션 DB 를 봐야 할 때만 접속 문자열을 바꿔 쓰고, 끝나면 개발 DB 로 되돌린다.
 - 프로덕션의 첫 관리자는 `npm run auth:bootstrap`, 다음 사람부터는 `/admin/accounts`.
 
@@ -496,6 +506,12 @@ bulletpoint는 다 왼쪽정렬로」). 단가표의 조건 행(설치조건·�
   재현 시험을 먼저 쓴다★ — M10 이 그렇게 갔다(시험이 첫 실행에서 빨갔고, 자문 잠금을 넣자 초록).
   setup 이 DATABASE_URL 의 프로젝트 ref 를 보고 개발 DB 가 아니면 멈춘다. 시험 현장은 이름에 실행 표지를
   박고 끝나면 지운다. CI 의 `db-check` 는 `DEV_DATABASE_URL`·`AUTH_SECRET` 비밀이 있을 때만 돈다(없으면 건너뜀).
+- **예상 밖 오류는 500 과 `[api]` 로그다** (2026-09-09, 하네스 4번) — 쓰기 껍데기(`lib/api/write-route.ts`)가
+  `isUnexpectedError`(`lib/api/errors.ts`, 순수 모듈)로 가른다: 저장소의 규칙 위반(맨 Error·한글 메시지)은 422,
+  값 잘못(BadRequest)은 400, 그 밖(DB 드라이버·드리즐·TypeError 류·Error 아닌 것)은 `console.error('[api]', …)`
+  뒤 500 과 일반 문구. 그전에는 전부 422 로 삼켜져 협력사 화면에 드라이버 메시지가 나가고 로그에는 아무 줄도
+  없었다. 서버에서 「사람이 봐야 할」 일이 생기면 `[db]`·`[auth]`·`[api]` 처럼 대괄호 태그로 console.error 를
+  남긴다 — 감시(아래 「운영 감시」)가 그 태그를 본다.
 - `next build` 를 `next dev` 가 돌고 있는 중에 실행하지 않는다. `.next` 가 깨진다.
 - 비밀번호·접속 문자열을 대화에 남기지 않는다. `.env.local` 에 직접 넣는다.
 - **함수 지역은 `icn1`(서울) 이다** — `vercel.json` 의 `regions`. DB(Supabase `ap-northeast-2`)와
