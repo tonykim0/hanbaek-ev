@@ -589,6 +589,20 @@ const missingLabels = (list: Array<string | false | null | undefined>): string[]
  * 세부 칸을 다 채워도 「준공서류 미제출 — 완료 불가」에서 멈췄다 — 콘솔로는 준공을
  * 끝낼 수 없었다. 조건이 화면에 없는 칸을 가리키면 그건 막다른 길이다.
  */
+/**
+ * ★준공 조건 서류인가★ — 반려가 단계를 움직이는 것도, 준공보완 탈출을 막는 것도
+ * 이 목록에 든 서류만이다(2026-09-08). 그 밖의 칸(전기안전점검수수료 영수증 — 준공
+ * 「뒤에」 오는 서류)이 단계를 움직이면 조건이 아닌 것이 조건처럼 구는 것이다.
+ */
+export function isCompletionDoc(kind: string): boolean {
+  return (COMPLETION_DOCS as readonly string[]).includes(kind);
+}
+
+/** 위 판정을 SQL 에서 쓸 때 — 저장소가 반려 수를 셀 때 본다 */
+export const COMPLETION_DOC_KEYS: readonly string[] = [
+  'completeConfirm', 'costSurvey', 'safety', 'safetyMgr', 'useInspect', 'asBuilt',
+];
+
 const COMPLETION_DOCS: readonly ProcessDocKey[] = [
   'completeConfirm', 'costSurvey', 'safety', 'safetyMgr', 'useInspect', 'asBuilt',
 ];

@@ -21,6 +21,7 @@ import type { TodoItem } from '@/lib/todo-types';
  *   정산 규칙 미지정  규칙이 없어 기성이 계산조차 안 된다
  *   점검수수료 수금   청구액을 적었는데 아직 안 들어왔다 — ★여는 사건이 없는 돈이다★
  *   점검수수료 미기재 준공완료인데 청구액을 안 적었다 (적지 않으면 청구 자체가 없다)
+ *   점검수수료 영수증   청구액은 적었는데 협력사 영수증이 안 왔다 (청구 근거가 없다)
  *
  * ★조건 대기는 넣지 않는다.★ 아직 안 찬 차수는 우리가 할 일이 없다 — 기다리는 것을
  * 할 일로 세우면 목록이 영영 줄지 않는다. 무엇을 기다리는지는 기성관리 화면이 말한다.
@@ -135,6 +136,26 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
          * 열린 날을 기록하지 않으므로 날수로 잴 근거가 없다 — 정산 규칙 미지정과 같은 자리에
          * 놓는다(문턱 7일). 꾸민 날짜로 순위를 만들지 않는다.
          */
+        urgency: 7,
+        urgencyLabel: null,
+      });
+    }
+
+    /*
+     * ★청구 근거가 안 왔다★ (2026-09-08) — 청구액은 적혔는데 협력사 영수증이 0장이다.
+     * 그 영수증으로 운영사에 청구하므로 없으면 청구를 못 한다. 재촉할 자리가 없어서
+     * 「청구·수금까지 끝났는데 근거 파일이 0장인 현장」이 조용히 남던 자리다.
+     * 담당은 그 현장 시공사다 — 올리는 자리는 시공 탭 준공 구간이다.
+     */
+    if (safetyFeeApplies(r.cpo) && r.safetyFee !== null && r.safetyFeeReceiptCount === 0) {
+      items.push({
+        id: `safetyfee-receipt|${r.id}`,
+        href: `/projects/${r.id}?tab=construction`,
+        name: r.name,
+        what: '전기안전점검수수료 영수증 미제출',
+        group: '기성',
+        kind: '점검수수료 영수증',
+        stalledDays: 0,
         urgency: 7,
         urgencyLabel: null,
       });

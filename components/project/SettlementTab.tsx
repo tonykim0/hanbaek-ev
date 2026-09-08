@@ -319,7 +319,7 @@ function SafetyFeeFact({
       )}
       <Err>{error}</Err>
       {/* 협력사가 낸 영수증 — 청구 근거가 와 있나. 올리는 자리는 시공 탭이다 */}
-      <ReceiptList files={receipts} />
+      <ReceiptList files={receipts} wanted={applies && fee !== null} />
     </div>
   );
 }
@@ -332,8 +332,22 @@ function SafetyFeeFact({
  * 그 자리에서 올리고 뺀다. 여기서 또 올릴 수 있게 두면 같은 파일의 정본이 두 곳이 된다
  * (dual-write 금지). 기성 탭은 「청구할 때 근거가 와 있나」를 보는 자리다.
  */
-function ReceiptList({ files }: { files: DocFile[] }) {
-  if (files.length === 0) return null;
+function ReceiptList({ files, wanted }: { files: DocFile[]; wanted: boolean }) {
+  /*
+   * ★없을 때도 말한다★ (2026-09-08) — 파일이 0장이면 줄을 안 그리고 있었다. 그래서
+   * 「청구액은 적혔는데 근거가 안 왔다」가 이 자리에서 침묵했다. 이 탭을 만든 이유가
+   * 「청구할 때 근거가 와 있나」를 보는 것인데 그 물음에 답을 안 했다.
+   * 청구액이 없으면 아직 물을 일이 아니라 그때는 조용히 둔다.
+   */
+  if (files.length === 0) {
+    return wanted ? (
+      <div className="mt-1.5 flex w-full flex-wrap items-center gap-2 border-t border-slate-100 pt-1.5">
+        <span className="shrink-0 text-tiny font-bold text-slate-400">영수증</span>
+        <span className="text-small font-bold text-amber-700">미제출</span>
+        <span className="text-tiny text-slate-500">협력사가 시공 탭 준공 구간에서 올린다</span>
+      </div>
+    ) : null;
+  }
   return (
     <div className="mt-1.5 flex w-full flex-col gap-1 border-t border-slate-100 pt-1.5">
       {files.map((f) => (

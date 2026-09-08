@@ -24,7 +24,8 @@ import {
 } from '@/lib/doc-rules';
 import { constructionLabelOf, HANDOFF_STATUS } from '@/lib/board';
 import { advanceBlockers,
-  canEnter, gateContextOf, isHanbaekOnlyProcessField, nextStatusOf, prevStatusOf, statusIndex,
+  canEnter, gateContextOf, isCompletionDoc, isHanbaekOnlyProcessField, nextStatusOf, prevStatusOf,
+  statusIndex,
   STATUS_GATES, stepsOf,
   type ProcessEdit,
 } from '@/lib/process';
@@ -490,7 +491,15 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
                             이미 준공보완이면 옮길 것이 없다.
                           */
                           onReject={
-                            p.status === '준공서류 접수/검토'
+                            /*
+                             * ★준공 조건 서류만 단계를 되돌린다★ (2026-09-08).
+                             * 이 패널의 모든 칸에 이 손을 주고 있었다. 그런데 전기안전점검수수료
+                             * 영수증은 준공 「뒤에」 오는 서류라 준공완료의 조건에서 일부러 뺐다
+                             * (COMPLETION_DOCS). 그 칸을 반려하면 준공 검토가 준공보완으로
+                             * 되돌아갔다 — 조건이 아닌 서류가 단계를 움직였다.
+                             * 판정은 lib/process 한 곳이다: 그 목록에 든 서류만 되돌린다.
+                             */
+                            p.status === '준공서류 접수/검토' && isCompletionDoc(kind)
                               ? () => moveStatus('준공보완')
                               : undefined
                           }

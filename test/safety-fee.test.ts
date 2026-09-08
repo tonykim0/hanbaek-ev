@@ -12,6 +12,9 @@ import {
   safetyFeeDue, safetyFeeOpen,
 } from '@/lib/settlement';
 import { CPO_NAMES } from '@/types/project';
+import type { CpoName } from '@/types/project';
+import { processDocsFor } from '@/lib/doc-rules';
+import { COMPLETION_DOC_KEYS, isCompletionDoc } from '@/lib/process';
 import type { SettlementStep, SettlementSummary } from '@/types/project';
 import { receivableTodos } from '@/lib/todo-receivables';
 
@@ -163,5 +166,82 @@ describe('할 일 — 트리거가 없는 돈이라 여기서 재촉한다', () 
     const 에버온 = kinds(row({ cpo: '에버온', status: '준공완료', safetyFee: 450_000 }));
     expect(에버온).not.toContain('점검수수료 미기재');
     expect(에버온).not.toContain('점검수수료 수금');
+  });
+});
+
+describe('서류 칸 — 받는 운영사만 서고, 준공을 막지 않는다', () => {
+  const 준공서류 = [
+    'completeConfirm', 'costSurvey', 'safety', 'safetyFeeReceipt', 'safetyMgr',
+    'useInspect', 'asBuilt',
+  ] as const;
+  const names = (cpo: CpoName | null) =>
+    processDocsFor(준공서류, { powerType: '모자분리', bizType: '환경부', cpo }).map((d) => d.name);
+
+  /* 116곳과 43곳이 갈리는 자리다 — 판정 정본은 safetyFeeApplies 하나여야 한다 */
+  it('SK·나이스·현대엔지니어링 현장에는 칸이 선다', () => {
+    for (const cpo of ['SK일렉링크', '나이스인프라', '현대엔지니어링'] as const) {
+      expect(names(cpo)).toContain('전기안전점검수수료 영수증');
+    }
+  });
+
+  it('플러그링크·에버온 현장에는 칸이 아예 없다', () => {
+    for (const cpo of ['플러그링크', '에버온'] as const) {
+      expect(names(cpo)).not.toContain('전기안전점검수수료 영수증');
+    }
+  });
+
+  it('운영사를 모르면 칸을 세우지 않는다 — 없는 서류를 요구하지 않는다', () => {
+    expect(names(null)).not.toContain('전기안전점검수수료 영수증');
+  });
+
+  /*
+   * ★준공완료의 조건이 아니다★ — 준공 「뒤에」 오는 서류라, 조건에 들면 영수증이 없어
+   * 준공을 못 끝내고 준공을 못 끝내서 영수증이 안 오는 교착이 된다. 반려가 단계를
+   * 되돌리는 것도 이 목록에 든 서류만이다(isCompletionDoc).
+   */
+  it('준공 조건 서류가 아니다 — 반려도 단계를 안 움직인다', () => {
+    expect(isCompletionDoc('safetyFeeReceipt')).toBe(false);
+    for (const k of ['completeConfirm', 'costSurvey', 'safety', 'safetyMgr', 'useInspect', 'asBuilt']) {
+      expect(isCompletionDoc(k)).toBe(true);
+    }
+  });
+
+  it('그 판정이 SQL 쪽 목록과 같다 — 두 벌이면 갈린다', () => {
+    for (const k of COMPLETION_DOC_KEYS) expect(isCompletionDoc(k)).toBe(true);
+    expect(COMPLETION_DOC_KEYS).not.toContain('safetyFeeReceipt');
+  });
+});
+
+describe('할 일 — 청구 근거가 안 온 현장', () => {
+  const row = (over: Partial<SettlementSummary>): SettlementSummary => ({
+    id: 'p1', name: '테스트아파트', cpo: 'SK일렉링크', qty: 3,
+    stage: 'construction', status: '준공완료',
+    ruleName: '착공 800,000원 → 준공마감 잔액',
+    steps: [], planTotal: 0, collectedTotal: 0, cpoCloseDate: null,
+    safetyFee: null, safetyFeeCollectedAt: null, safetyFeeReceiptCount: 0,
+    salesOrg: null, gcOrg: null,
+    payoutMilestones: { contractConfirmedAt: null, installCompletedAt: null, completedAt: null },
+    salesPayoutDocsMissing: [], salesTotal: 0, consTotal: 0, marginTotal: 0, unpricedLines: 0,
+    salesAdjust: 0, salesPaid: 0, salesLastPaidAt: null,
+    consAdjust: 0, consPaid: 0, consLastPaidAt: null,
+    payNote: null, ...over,
+  } as SettlementSummary);
+  const kinds = (r: SettlementSummary) => receivableTodos([r]).map((t) => t.kind);
+
+  it('청구액은 적혔는데 영수증이 0장이면 선다 — 그 근거로 청구한다', () => {
+    expect(kinds(row({ safetyFee: 450_000 }))).toContain('점검수수료 영수증');
+  });
+
+  it('영수증이 오면 사라진다', () => {
+    expect(kinds(row({ safetyFee: 450_000, safetyFeeReceiptCount: 1 })))
+      .not.toContain('점검수수료 영수증');
+  });
+
+  it('청구액이 없으면 아직 물을 일이 아니다', () => {
+    expect(kinds(row({}))).not.toContain('점검수수료 영수증');
+  });
+
+  it('안 받는 운영사는 안 선다', () => {
+    expect(kinds(row({ cpo: '에버온', safetyFee: 450_000 }))).not.toContain('점검수수료 영수증');
   });
 });

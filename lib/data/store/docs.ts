@@ -15,8 +15,8 @@ import { auditLog, documents, processDocuments, processes, projects } from '@/li
 import { today } from '@/lib/date';
 import { canAccessProject, canWrite, isHanbaek } from '@/lib/roles';
 import {
-  asProcessStatus, canChangeContractDocs, contractDocsLockedWhy, COURT_AFTER_STATUS,
-  statusIndex,
+  asProcessStatus, canChangeContractDocs, COMPLETION_DOC_KEYS, contractDocsLockedWhy,
+  COURT_AFTER_STATUS, statusIndex,
 } from '@/lib/process';
 import { isProcessDocKind } from '../assemble';
 import { PROCESS_DOCS } from '@/lib/doc-rules';
@@ -491,12 +491,20 @@ async function putProcessDoc(
        * 되돌아가는 자리는 「준공서류 접수/검토」다 — 반려가 그 칸에서 내려온 것이고,
        * 담당은 COURT_AFTER_STATUS 가 정한다(한백). 정체일은 위에서 이미 찍었다.
        */
+      /*
+       * ★준공 조건 서류의 반려만 센다★ (2026-09-08). 이 셈의 뜻은 「준공서류 보완이
+       * 끝났나」인데 공정 서류 전체를 세고 있었다. 그래서 준공 조건이 아닌 칸
+       * (전기안전점검수수료 영수증 — 준공 뒤에 오는 서류다)이 반려로 남아 있으면,
+       * 보완을 다 끝낸 현장이 준공보완에서 못 나왔다. 영수증은 안전공사가 발행한
+       * 한 장뿐이라 협력사가 다시 만들 수도 없다.
+       */
       const [pending] = await tx
         .select({ n: sql<number>`count(*)::int` })
         .from(processDocuments)
         .where(and(
           eq(processDocuments.projectId, input.projectId),
-          eq(processDocuments.status, 'rejected')
+          eq(processDocuments.status, 'rejected'),
+          inArray(processDocuments.kind, [...COMPLETION_DOC_KEYS])
         ));
 
       const [cur] = await tx

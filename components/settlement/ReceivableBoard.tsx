@@ -380,11 +380,17 @@ function FeeCell({ row, canEdit }: { row: SettlementSummary; canEdit: boolean })
           </span>
         </>
       )}
-      {/* 영수증은 여기서 세기만 한다 — 파일은 현장 상세에서 받는다 */}
-      {row.safetyFeeReceiptCount > 0 && (
+      {/*
+        영수증은 여기서 세기만 한다 — 파일은 현장 상세에서 받는다.
+        ★0장도 적는다★ (2026-09-08) — 청구액을 적었는데 근거가 안 온 현장이 표에서
+        빈 칸과 구별되지 않았다. 청구액이 없으면 아직 물을 일이 아니라 조용히 둔다.
+      */}
+      {row.safetyFeeReceiptCount > 0 ? (
         <span className="mt-0.5 block text-tiny font-semibold text-slate-400">
           영수증 {row.safetyFeeReceiptCount}장
         </span>
+      ) : row.safetyFee !== null && (
+        <span className="mt-0.5 block text-tiny font-semibold text-amber-700">영수증 미제출</span>
       )}
       {canEdit && (
         <Btn size="sm" kind="quiet" className="mt-0.5" onClick={() => setEditing(true)}>
