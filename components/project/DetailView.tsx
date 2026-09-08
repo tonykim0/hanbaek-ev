@@ -24,7 +24,8 @@ import { Badge, Btn, Confirm, Empty, Err, FIELD, Tag, type Tone, Val } from '@/c
 import { buildDocContext, evaluateDocs, processDocsFor, PROCESS_DOCS } from '@/lib/doc-rules';
 import { BAND_TONE, bandOfColumn, boardColumnOf, phaseOfProject } from '@/lib/board';
 import type { BoardBand, BoardColumn } from '@/lib/board';
-import { statusIndex, type ProcessEdit } from '@/lib/process';
+import { gateContextOf, statusIndex, type ProcessEdit } from '@/lib/process';
+import { shownProcessDocs } from './construction/milestones';
 import type { Visibility } from '@/lib/roles';
 import type { RuleOptions } from '@/lib/pricing-match';
 import { ConstructionTab } from './ConstructionTab';
@@ -157,11 +158,14 @@ export default function ProjectDetailView({
    * 현장의 분모가 또 하나 늘었다 — 그 현장에는 낼 수 없는 칸이다.
    * 조건 판정은 doc-rules 한 곳이 한다(processDocsFor).
    */
-  const processTake = processDocsFor(PROCESS_DOCS.map((d) => d.key), {
-    powerType: detail.project.powerType,
-    bizType: detail.project.bizType,
-    cpo: detail.project.cpo,
-  });
+  /*
+   * ★분모는 화면이 실제로 그리는 서류다★ (2026-09-08 검증) — 전에는 PROCESS_DOCS
+   * 전체에서 조건만 걸렀는데, 그리는 것은 그보다 좁다: 옛 「준공서류」 칸은 이미 올린
+   * 현장에만 그려지고, 그 사업구분이 안 지나는 칸의 상자는 아예 안 그려진다.
+   * 아무도 안 쓴 옛 칸 하나 때문에 159건 전부가 N/N 에 못 닿고 있었다.
+   * 세는 곳과 그리는 곳을 한 함수로 묶었다(shownProcessDocs).
+   */
+  const processTake = shownProcessDocs(process, gateContextOf(detail.project));
   const processDone = processTake.filter((d) =>
     process.docs.find((x) => x.kind === d.key && (x.status === 'uploaded' || x.status === 'approved'))
   ).length;

@@ -19,6 +19,7 @@ import {
 import {
   advanceBlockers, missingCompletionDocs, type GateContext,
   nextStatusOf,
+  stepsOf,
 } from '@/lib/process';
 
 /** 고칠 수 있는 날짜 칸 — 이름은 서버(ProcessPatch)와 같아야 한다 */
@@ -103,6 +104,32 @@ export interface Group {
   opensNext?: boolean;
   /** 날짜·서류 말고 이 상자가 그리는 줄 — 적힌 순서대로 rows 아래에 선다 */
   extras?: GroupExtra[];
+}
+
+/**
+ * ★그 현장의 시공 탭이 실제로 그리는 서류★ — 배지의 분모는 이것이어야 한다.
+ *
+ * 전에는 분모를 PROCESS_DOCS 전체에서 조건(only)만 걸러 셌는데, 화면이 그리는 것은
+ * 그보다 좁다: ① 옛 「준공서류」 칸은 이미 올린 현장에만 그려지고 ② 그 사업구분이
+ * 안 지나는 칸의 상자는 아예 안 그려진다(기설치 연동의 발주 상자 — 견적서·충전시설
+ * 설치 신고서). 그래서 아무도 안 쓴 옛 칸 하나 때문에 ★159건 전부가 N/N 에 못 닿았고★
+ * (프로덕션 실측 2026-09-08: completion 을 쓴 현장 0건), 연동은 올릴 자리도 없는 둘이
+ * 분모에 들었다.
+ *
+ * 세는 곳과 그리는 곳을 한 함수로 묶는다 — 갈라 두면 또 어긋난다.
+ */
+export function shownProcessDocs(
+  p: ProjectDetail['process'],
+  ctx: GateContext
+): Array<{ key: ProcessDocKey; name: string }> {
+  const groups = groupsByStatus(p, ctx);
+  const keys: ProcessDocKey[] = [];
+  for (const st of stepsOf(ctx)) {
+    for (const g of groups[st] ?? []) {
+      for (const k of g.docs ?? []) if (!keys.includes(k)) keys.push(k);
+    }
+  }
+  return processDocsFor(keys, { powerType: ctx.powerType, bizType: ctx.bizType, cpo: ctx.cpo });
 }
 
 /** 구간마다의 묶음 — 화면이 이 정의를 받아 그린다 */
