@@ -1,4 +1,4 @@
-node_modules/
+node_modules
 .next/
 .env*
 out/
@@ -24,3 +24,6 @@ out/
 
 # 다른 도구의 로컬 설정 — Authorization 헤더가 들어가는 자리가 있어 올리지 않는다
 .codex/
+
+# Claude Code 세션의 워크트리 — 세션마다 하나(CLAUDE.md 협업 방식). 본 저장소의 status 에 안 뜨게.
+.claude/worktrees/

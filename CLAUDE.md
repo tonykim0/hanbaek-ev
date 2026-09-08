@@ -49,6 +49,18 @@
     멈췄다. 반달마을푸르지오 초과 지급 28.5만도 같은 엘앤에스 건이라 함께 정리하면 된다
     (아래 5번 항목의 남은 일). 잔액 보는 자리: `scripts/check-org-balance.ts`.
 
+00-1. **하네스 — 바이브코딩에서 관문으로** (2026-09-08 시작). 규모가 커져 사람 눈 대신 기계가 잡아야
+    한다. 그물의 재료는 있었다(테스트 429개 0.5초 · tsc strict · lint · 마이그레이션 가드 · check:leak ·
+    perf). 없던 것은 사람이 안 돌려도 도는 자리다 — 백업이 2주 조용히 실패한 것이 증거.
+    ~~1 세션마다 워크트리·브랜치, main 은 머지로만, 브랜치마다 프리뷰~~ 했다(2026-09-08, 「협업 방식」).
+    **다음: 2 CI 관문** — GitHub Actions 한 파일로 tsc·test·lint(합쳐 10초), main 을 보호 브랜치로 두고
+    통과해야 머지. 그 뒤 3 경계 테스트(남은 감사 63건을 고칠 때 개발 DB 에 대고 라우트를 부르는 재현
+    테스트를 먼저 쓴다 — `check:leak` 이 그 모양) · 4 실패가 소리 나게(백업·빌드·런타임 `[db]`/`[auth]`
+    알림) · 5 이 문서의 「지켜라」를 lint 규칙·테스트로.
+    ★발견★ 프로덕션 DB 주간 백업(launchd, 월 09:30)이 08-31·09-07 「DIRECT_URL 없음」으로 실패했다 —
+    launchd 는 `~/Documents` 를 못 읽는다(macOS 폴더 보호). 접속 파일의 진짜를 `~/hanbaek-backups/.env.prod-db`
+    로 옮기고 저장소 `.env.prod-db` 는 그리로 가는 링크로 두었다. 09-14 스케줄에서 성공을 확인한다.
+
 0. **리팩토링** — 정본은 `doc/REFACTOR_PLAN_3.md`(클린코드 층까지). 2 번 문서의 항목은
    거기서 층에 맞춰 다시 배치했다. ~~B 무로그인 상한~~(=T0, 2026-08-27) · ~~F 단위 테스트~~
    (2026-08-28, 146개) · ~~G 배치 헬퍼~~(`lib/payout-board.ts`) 완료.
@@ -143,7 +155,7 @@
 - ★**프로덕션 DATABASE_URL 은 Vercel 에서 Sensitive 다 — 값을 되읽을 수 없다.**★
   `vercel env pull`·`vercel env run` 으로도 안 나온다(`env run` 은 `.env.local` 을 덧씌운다).
   **로컬에서 붙는 길은 `.env.prod-db`(비추적, `DIRECT_URL` 하나) 뿐이다** — 스크립트는
-  `--env .env.prod-db` 로 받는다(`scripts/apply-nice-h2-pricing.ts` 의 방식). 값이 낡으면
+  `--env .env.prod-db` 로 받는다(`scripts/apply-nice-h2-pricing.ts` 의 방식). ★진짜 파일은 `~/hanbaek-backups/.env.prod-db` 고 저장소의 것은 링크다★(2026-09-08 — launchd 백업이 `~/Documents` 를 못 읽어서). 워크트리에는 복사되지 않으니 프로덕션 DB 스크립트는 본 저장소에서 돌린다. 값이 낡으면
   (Supabase 비밀번호 rotate — 2026-08-23 실제로 겪음) Supabase 대시보드의 프로덕션
   프로젝트에서 Session pooler 접속 문자열을 다시 받아 그 파일만 고친다.
   일상 스키마·데이터 반영은 그래도 **마이그레이션**이 기본이다 — 접속 문자열이 있는
@@ -477,23 +489,41 @@ bulletpoint는 다 왼쪽정렬로」). 단가표의 조건 행(설치조건·�
 
 ## 협업 방식
 
-- 커밋은 확인을 받고 한다. `main` 에 푸시하면 Vercel 이 프로덕션에 자동 배포된다.
-- ★**이 저장소는 Claude 세션 여러 개가 동시에 작업한다 — 커밋은 반드시 경로를 지정한다.**★
-  모든 세션이 같은 git index 를 공유하므로 `git add -A`·`git add .`·경로 없는 `git commit` 은
-  다른 세션이 스테이징해 둔 파일을 삼킨다 (실사고: 2026-08-21, 재발행 수정이 시공 탭
-  커밋에 섞여 그대로 배포됨). 규칙:
-  - `git add <파일들>` — 새 파일만. 전체 스테이징 금지.
-  - `git commit -m "..." -- <파일들>` — 지정한 경로만 커밋되고 남의 스테이징은 남는다.
-  - 커밋 직후 `git show --stat HEAD` 로 내 변경만 들어갔는지 확인한다.
-  - `git commit` 이 "nothing to commit" 이라면 다른 세션이 가로챈 것일 수 있다 — HEAD 부터 본다.
-  - ★경로 지정도 「같은 파일」은 못 막는다 (2026-08-29 실사고).★ 다른 세션이 그 파일에
-    작업 중이면 그 미완성 코드가 내 커밋에 그대로 실려 나간다. 실제로 저장소 리팩토링
-    커밋(002183f)이 옆 세션이 쓰던 `listTodoSources` 구현을 삼켰는데 인터페이스 선언은
-    아직 커밋 전이라, 프로덕션 빌드가 두 번 깨졌다(`'listTodoSources' does not exist in
-    type 'ProjectRepository'`). 내 로컬 tsc 는 통과했다 — 작업 트리에는 양쪽이 다 있었으니까.
-    **뜨거운 파일(pg-store·CLAUDE.md·큰 화면)을 커밋하기 전에는 `git diff <파일>` 로
-    내가 만든 변경만 있는지 눈으로 본다.** 남의 것이 섞였으면 그 세션이 커밋할 때까지 기다린다.
-  - `.claude/hooks/guard-git.sh` (PreToolUse 훅)가 위반을 기계적으로 막는다.
+- ★**세션은 워크트리에서 일한다 — main 은 머지로만 바뀐다**★ (2026-09-08 도입, 하네스 1번). 이 저장소는
+  Claude 세션 여럿이 동시에 쓴다. 한 작업 트리를 나눠 쓰면 인덱스도 파일도 섞인다 — 실사고 셋: 남의
+  스테이징을 커밋에 삼킴(2026-08-21) · 옆 세션의 미완성 코드가 내 커밋에 실려 프로덕션 빌드 두 번 깨짐
+  (2026-08-29, 인터페이스 없는 `listTodoSources`) · 세션 둘이 마이그레이션 0064 를 같이 집어 프로덕션 빌드
+  깨짐(2026-09-07). 워크트리는 세션마다 작업 트리·인덱스·브랜치를 따로 준다. 충돌은 사라지는 게 아니라
+  rebase 때 내 워크트리에서 **눈에 보이게** 난다 — 그게 낫다.
+  - **시작**: `cd ~/Documents/hanbaek-ev && claude -w <이름>` — `.claude/worktrees/<이름>/` 에 브랜치
+    `worktree-<이름>` 이 `origin/main` 에서 갈라진다. 이름을 빼면 무작위 이름. `claude` 로 그냥 시작했으면
+    ★첫 일로 `EnterWorktree` 를 부른다★. 본 저장소(main 이 체크아웃된 `~/Documents/hanbaek-ev` 자체)에서는
+    일하지 않는다. 홈 디렉터리에서 시작하면 저장소 설정(훅)을 안 읽으니 저장소에서 시작한다.
+  - **준비는 자동이다**: `.claude/settings.json` 의 `worktree.symlinkDirectories` 가 `node_modules` 를
+    링크하고, `.worktreeinclude` 가 `.env.local`·`.vercel/project.json` 을 복사한다. 그래서 워크트리에서
+    바로 `npm test`·`npx tsc --noEmit`·`npx vercel` 이 된다. `git worktree add` 로 손으로 만들었으면
+    `bash scripts/worktree-setup.sh` 가 같은 일을 한다. `.env.prod-db` 는 복사하지 않는다 — 프로덕션
+    DB 스크립트는 본 저장소에서 돌린다.
+  - **커밋**은 브랜치에 자유롭게. 경로 지정 규칙(옛 `commit -- <파일>`)은 필요 없다 — 인덱스가 내 것이다.
+    커밋·브랜치 푸시는 세션이 알아서 한다.
+  - **프리뷰**: `git push -u origin <브랜치>` → 약 1분 뒤
+    `https://hanbaek-form-git-<브랜치>-kjw5757-1767s-projects.vercel.app` (브랜치 이름의 `/` 는 `-`).
+    ★사용자는 프리뷰를 보고 판단한다★ — 프로덕션이 아니라. Vercel 로그인이 필요하다(curl 은 401, 상태는
+    `npx vercel ls` 로). DB 는 개발 DB(시드 5건 · `admin`/`dev1234!`). ★Blob 은 프로덕션 스토어를 같이
+    쓴다★ — 파일 올리기 시험은 프로덕션 자료실에 남는다. 실데이터가 걸린 확인만 머지 뒤 프로덕션에서.
+  - **머지 = 배포**: 사용자가 「올려」 하면 워크트리에서
+    `git fetch origin && git rebase origin/main && npm test && npx tsc --noEmit && git push origin HEAD:main`.
+    fast-forward 만 된다(원격이 그 외를 거부). 본 저장소는 건드리지 않는다 — 워크트리 세션이 본 저장소로
+    보내는 git 은 Claude Code 가 막는다. 본 저장소의 로컬 `main` 은 뒤처져도 상관없다(새 워크트리는
+    `origin/main` 에서 갈라진다). 급한 고침은 프리뷰를 안 보고 바로 머지해도 된다 — main 에 직접 커밋만
+    하지 않는다.
+  - **정리**: 머지가 끝난 워크트리는 지운다 — 세션을 끝낼 때 Claude Code 가 묻는다(remove). 원격 브랜치는
+    `git push origin --delete <브랜치>`.
+  - **훅** `.claude/hooks/guard-git.sh`(PreToolUse) 가 기계적으로 지킨다: 본 저장소·main 에서의
+    commit·rebase·reset·cherry-pick·revert 거부 · main 으로 강제 푸시·삭제 거부 · main 으로 푸시 전
+    마이그레이션 번호 겹침 검사(겹치면 거부 — 올라가면 프로덕션 빌드가 깨지니까).
+  - 마이그레이션 번호는 워크트리에서도 「디렉터리 최대 번호 + 1」. 다른 브랜치가 같은 번호를 먹었을 수
+    있으니 rebase 뒤 다시 본다 — 훅과 러너가 잡아 주지만, 잡히면 그때 고치는 것이 일이다.
 - 커밋 메시지는 한글 — 제목이 결론, 본문이 왜. 기능 단위로 잘게.
 - 규칙·우선순위가 바뀌면 이 파일을 같이 고친다 — md 가 낡으면 다음 세션이 옛 규칙으로 일한다.
   「다음 할 일」은 끝난 것을 지우고 새것을 위에 놓는다.

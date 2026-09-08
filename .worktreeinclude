@@ -1,0 +1,7 @@
+# Claude Code 가 새 워크트리에 복사해 주는 비추적 파일 (gitignore 문법 · 추적 파일은 복사되지 않는다).
+# claude -w · EnterWorktree · 서브에이전트 워크트리 전부에 적용된다. node_modules 는 복사가 아니라 링크다
+# (.claude/settings.json 의 worktree.symlinkDirectories). 손으로 만든 워크트리는 scripts/worktree-setup.sh 가 같은 일을 한다.
+#
+# 개발 DB·개발 Blob 접속만 넣는다. .env.prod-db(프로덕션)는 넣지 않는다 — 프로덕션 DB 스크립트는 본 저장소에서 돌린다.
+.env.local
+.vercel/project.json

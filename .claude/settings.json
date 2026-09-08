@@ -25,5 +25,11 @@
         ]
       }
     ]
+  },
+  "worktree": {
+    "baseRef": "fresh",
+    "symlinkDirectories": [
+      "node_modules"
+    ]
   }
 }

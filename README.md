@@ -36,7 +36,7 @@ npm run dev    # http://localhost:3000
 
 ## 배포
 
-`main` 에 푸시하면 Vercel 이 자동 배포한다. 주소가 둘이고 배포는 하나다:
+`main` 이 바뀌면 Vercel 이 프로덕션에 자동 배포한다. main 은 브랜치를 머지해서만 바꾸고, 브랜치를 푸시하면 프리뷰가 먼저 뜬다(`CLAUDE.md` 협업 방식). 주소가 둘이고 배포는 하나다:
 
 - 포털 https://hanbaek-form.vercel.app — 협력사의 입구. 콘솔 경로는 404 다.
 - 콘솔 https://hanbaek-ev.vercel.app — 한백의 자리. `/` 는 `/projects` 로 보낸다.
