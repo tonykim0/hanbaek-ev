@@ -47,18 +47,18 @@ describe('batchStateOf — 확정 여부 × 지급일, 네 자리', () => {
   });
 });
 
-describe('payDateChoices — 익월 10일·25일', () => {
+describe('payDateChoices — 익월 10일·25일 (오늘을 넘긴 날만, 감사 M20)', () => {
   it('이달 조건 충족분은 다음 달 두 날이 후보다', () => {
-    expect(payDateChoices('2026-08-14')).toEqual(['2026-09-10', '2026-09-25']);
+    expect(payDateChoices('2026-08-14', '2026-08-15')).toEqual(['2026-09-10', '2026-09-25']);
   });
 
   it('★12월은 해를 넘긴다★', () => {
-    expect(payDateChoices('2026-12-31')).toEqual(['2027-01-10', '2027-01-25']);
+    expect(payDateChoices('2026-12-31', '2026-12-31')).toEqual(['2027-01-10', '2027-01-25']);
   });
 
   it('월은 두 자리로 적는다 — 문자열 비교로 정렬하므로', () => {
-    expect(payDateChoices('2026-08-01')[0]).toBe('2026-09-10');
-    expect(payDateChoices('2026-01-05')[0]).toBe('2026-02-10');
+    expect(payDateChoices('2026-08-01', '2026-08-02')[0]).toBe('2026-09-10');
+    expect(payDateChoices('2026-01-05', '2026-01-06')[0]).toBe('2026-02-10');
   });
 });
 

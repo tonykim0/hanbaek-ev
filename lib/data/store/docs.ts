@@ -436,7 +436,7 @@ async function putProcessDoc(
   day: string
 ): Promise<void> {
       const [before] = await tx
-        .select({ filename: processDocuments.filename, files: processDocuments.files })
+        .select({ filename: processDocuments.filename, files: processDocuments.files, status: processDocuments.status })
         .from(processDocuments)
         .where(and(
           eq(processDocuments.projectId, input.projectId),
@@ -543,7 +543,8 @@ async function putProcessDoc(
         .where(eq(projects.id, input.projectId));
       await writeAudit(tx, {
         projectId: input.projectId, actor,
-        action: '공정 서류 올림', field: `process.${input.kind}`,
+        // 반려된 칸을 다시 올린 것은 검수의 왕복이다 — 이력에 「반려」만 있고 해소가 없으면 반쪽이다 (감사 L12)
+        action: before?.status === 'rejected' ? '서류 재업로드' : '공정 서류 올림', field: before?.status === 'rejected' ? input.kind : `process.${input.kind}`,   // 재업로드는 반려 기록(field=kind)과 같은 이름으로 묶인다
         oldValue: before?.filename ?? null, newValue: input.filename,
       });
       /* 단계를 되돌린 것은 따로 남긴다 — 서류 한 장의 기록에 묻히면 왜 올라왔는지 모른다 */

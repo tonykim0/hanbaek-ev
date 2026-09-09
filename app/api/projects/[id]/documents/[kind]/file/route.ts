@@ -106,7 +106,8 @@ export async function POST(
     kind: params.kind,
     filename: body.filename ?? '',
     blobUrl: body.blobUrl ?? '',
-    has: (detail.documents.find((d) => d.kind === params.kind)?.files.length ?? 0) > 0,
+    // 「이미 붙었다」는 그 파일 이름으로 본다 — 칸에 다른 장이 있다고 이 장의 유실을 성공으로 답하지 않는다 (감사 L9)
+    has: (detail.documents.find((d) => d.kind === params.kind)?.files ?? []).some((f) => f.name === (body.filename ?? '').trim()),
     session,
   });
   if (!result.ok) {

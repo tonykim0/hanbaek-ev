@@ -32,7 +32,7 @@ import { useRouter } from 'next/navigation';
 import { PAYOUT_KINDS, type BatchFinal, type PayoutKind } from '@/types/project';
 import { payoutReleaseOf } from '@/lib/settlement';
 import {
-  batchKey, batchStateOf, isPayoutSubject, payDateChoices, workGroupOf, workOf,
+  batchKey, batchStateOf, isPayoutSubject, payDateChoiceLabel, payDateChoices, workGroupOf, workOf,
   type PayoutRowInput, type PayoutWork, type WorkGroup,
 } from '@/lib/payout-board';
 import { DatePicker } from '@/components/DatePicker';
@@ -547,7 +547,7 @@ function StepCells({
           <p className="text-small font-bold text-slate-500">{at ?? '지급됨'}</p>
         ) : openHere && p.state === '지급 가능' && release.metAt ? (
           <p className="text-tiny font-bold text-slate-400">
-            {Number(payDateChoices(release.metAt)[0].slice(5, 7))}월 10·25일
+            {payDateChoiceLabel(payDateChoices(release.metAt))}
           </p>
         ) : (
           <span className="text-slate-300">—</span>
@@ -702,9 +702,9 @@ function ConfirmBar({ chosen, onDone }: { chosen: PayoutWork[]; onDone: () => vo
     const met = p.open ? payoutReleaseOf(p.kind, p.open.no, p.milestones).metAt : null;
     return met && (!last || met > last) ? met : last;
   }, null);
-  const [d10, d25] = payDateChoices(latestMet ?? today());
+  const [first, second] = payDateChoices(latestMet ?? today());   // 앞으로 올 10·25일 둘 (감사 M20)
   const custom = customDate !== null;
-  const pickedAt = customDate ?? (at === d10 || at === d25 ? at : d10);
+  const pickedAt = customDate ?? (at === first || at === second ? at : first);
   const sum = chosen.reduce((n, p) => n + (p.open?.amount ?? 0), 0);
   const orgCount = new Set(chosen.map((p) => p.org)).size;
 
@@ -725,7 +725,7 @@ function ConfirmBar({ chosen, onDone }: { chosen: PayoutWork[]; onDone: () => vo
         {chosen.length}건 · 지급처 {orgCount}곳 · <span className="tabular-nums">{won(sum)}</span>원
       </span>
       <span className="flex items-center gap-1">
-        {[d10, d25].map((d) => (
+        {[first, second].map((d) => (
           <Choice
             key={d}
             on={!custom && pickedAt === d}

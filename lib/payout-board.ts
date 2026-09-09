@@ -223,11 +223,31 @@ export function workOf(p: PayoutRowInput): PayoutWork {
 }
 
 /** 지급일 후보 — 트리거 충족일의 익월 10일·25일 (지급 규칙, 한백 확인) */
-export function payDateChoices(metAt: string): [string, string] {
-  const [y, m] = metAt.split('-').map(Number);
-  const ny = m === 12 ? y + 1 : y;
-  const mm = String(m === 12 ? 1 : m + 1).padStart(2, '0');
-  return [`${ny}-${mm}-10`, `${ny}-${mm}-25`];
+export function payDateChoices(metAt: string, now: string = today()): [string, string] {
+  /*
+   * 이달 조건 충족분은 익월 10·25일이 기본이다. ★그런데 트리거가 두 달 넘게 지난 줄이면 익월은 이미
+   * 지난 날이다★ (감사 M20) — 그대로 내면 배치가 만들어지자마자 「확정 누락」이고 협력사의 계산서 할 일은
+   * 아예 뜨지 않았다. 그래서 익월부터 세되 오늘보다 앞선 날은 건너뛰고, 앞으로 올 10·25일 둘을 준다.
+   * 둘이 한 달을 넘을 수 있다(9월 25일 · 10월 10일) — 표시는 payDateChoiceLabel 이 맡는다.
+   */
+  let [y, m] = metAt.split('-').map(Number);
+  const out: string[] = [];
+  for (let guard = 0; out.length < 2 && guard < 36; guard += 1) {
+    if (m === 12) { y += 1; m = 1; } else { m += 1; }
+    const mm = String(m).padStart(2, '0');
+    for (const dd of ['10', '25']) {
+      const d = `${y}-${mm}-${dd}`;
+      if (d >= now && out.length < 2) out.push(d);
+    }
+  }
+  return [out[0], out[1]];
+}
+
+/** 후보 둘의 표시 — 같은 달이면 「10월 10·25일」, 달이 갈리면 「9월 25일 · 10월 10일」 */
+export function payDateChoiceLabel([a, b]: [string, string]): string {
+  const [, am, ad] = a.split('-').map(Number);
+  const [, bm, bd] = b.split('-').map(Number);
+  return am === bm ? `${am}월 ${ad}·${bd}일` : `${am}월 ${ad}일 · ${bm}월 ${bd}일`;
 }
 
 /* ── 배치 — 지급처 × 구분 × 지급일 ──────────────────────────────────────────
