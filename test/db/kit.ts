@@ -29,6 +29,10 @@ export const viewerOf = (u: User): Viewer => ({ role: u.role, org: u.org });
 export async function signIn(u: User): Promise<void> {
   jar.set(SESSION_COOKIE, await createSessionToken(u));
 }
+/** 관리자가 협력사 계정으로 대행하는 세션 — getSessionUser 가 id·role·org 를 그 계정으로 바꾸고 via 에 본인을 남긴다 */
+export async function signInAs(adminUser: User, asId: string): Promise<void> {
+  jar.set(SESSION_COOKIE, await createSessionToken(adminUser, asId));
+}
 export function signOut(): void {
   jar.clear();
 }

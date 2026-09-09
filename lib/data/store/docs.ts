@@ -584,6 +584,7 @@ async function putContractDoc(
       // 다시 올리면 반려가 풀린다 — 반려 상태로 남겨두면 고쳐도 계약이 안 넘어간다
       status: 'uploaded',
       rejectReason: null,
+      askedAt: null,   // 보완요청의 표시도 걷는다 — 채워졌으니 되돌릴 것이 없다
       uploadedBy: actor.name,
       uploadedAt: day,
     };
@@ -687,6 +688,16 @@ async function applyReviewSideEffects(
     .where(eq(processes.projectId, projectId))
     .limit(1);
   const started = statusIndex(asProcessStatus(proc?.status)) >= statusIndex('착공');
+  /*
+   * 반려를 풀었는데 남은 반려가 없으면 공은 한백으로 돌아온다 (감사 L6). 예전에는 해제가 담당을
+   * 안 건드려, 반려 0건인데 협력사 차례로 남았다 — 협력사는 할 일이 없고 한백 목록에는 안 뜨는 정체.
+   */
+  const [left] = rejected
+    ? [{ n: 1 }]
+    : await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(documents)
+        .where(and(eq(documents.projectId, projectId), eq(documents.status, 'rejected')));
 
   await tx
     .update(projects)
@@ -717,7 +728,7 @@ async function applyReviewSideEffects(
              */
             court: started ? ('한백' as const) : ('영업사' as const),
           }
-        : {}),
+        : (left?.n ?? 0) === 0 ? { court: '한백' as const } : {}),
     })
     .where(eq(projects.id, projectId));
 }

@@ -14,6 +14,7 @@ export const dynamic = 'force-dynamic';
 export async function POST() {
   const session = await getSessionUser();
   if (!session) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
-  await getRepository().markNoticesRead(session.id);
+  // 대행(asId) 중이면 화면을 연 것은 관리자 본인이다 — 대행 대상 협력사에 읽음을 찍지 않는다 (감사 L20)
+  await getRepository().markNoticesRead(session.via?.id ?? session.id);
   return NextResponse.json({ ok: true });
 }

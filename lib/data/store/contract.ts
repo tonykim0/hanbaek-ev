@@ -8,7 +8,7 @@
  * 「계약서 접수하기」(contract_submitted_at), 한백이 「계약 확인 완료」(contract_confirmed_at),
  * 서류를 반려하면 보완(contract_fix_asked_at). 칸 이름을 저장하는 자리는 없다(lib/board.ts).
  */
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql, isNotNull } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
 import { documents, projects } from '@/lib/db/schema';
@@ -188,9 +188,23 @@ export const contractStore: Pick<
      * 취소가 필수 여부를 다시 묻지 않는 이유는, 요청한 뒤에 조건이 바뀌어(수전방식·운영사)
      * 그 칸이 필수에서 빠질 수 있기 때문이다 — 그러면 되돌릴 수 없는 반려가 남는다.
      */
+    /*
+     * 요청은 ★빈 칸에만★ 세운다. 이미 반려된 칸(파일을 뺐어도)은 한백의 사유가 붙어 있는 협력사 차례라
+     * 다시 세울 것이 없고, 세우면 그 사유를 일반 문구로 덮어쓴다(감사 L11 의 부류).
+     */
+    const rejectedKinds = new Set(record.documents.filter((d) => d.status === 'rejected').map((d) => d.kind));
+    /*
+     * 취소는 ★보완요청이 세운 반려★만 되돌린다 (감사 M11). 예전에는 「반려인데 파일이 없는 칸」을
+     * 전부 되돌렸는데, 한백이 사유와 함께 반려한 뒤 협력사가 파일을 빼 버린 칸도 같은 모양이라 그
+     * 반려·사유까지 지워졌다. 그래서 요청이 만든 행에 asked_at 을 찍고(migrations/0068) 그것만 본다.
+     */
     const kinds = ask
-      ? missingRequiredDocs(record).map((d) => d.kind)
-      : record.documents.filter((d) => d.status === 'rejected' && !d.blobUrl).map((d) => d.kind);
+      ? missingRequiredDocs(record).map((d) => d.kind).filter((k) => !rejectedKinds.has(k))
+      : (await getDb()
+          .select({ kind: documents.kind })
+          .from(documents)
+          .where(and(eq(documents.projectId, projectId), isNotNull(documents.askedAt))))
+          .map((d) => d.kind);
 
     if (kinds.length === 0) {
       throw new Error(ask ? '누락된 필수 서류가 없습니다.' : '되돌릴 보완요청이 없습니다.');
@@ -198,7 +212,7 @@ export const contractStore: Pick<
 
     const db = getDb();
     await db.transaction(async (tx) => {
-      for (const kind of kinds) await markMissing(tx, projectId, kind, ask, why);
+      for (const kind of kinds) await markMissing(tx, projectId, kind, ask, why, day);
       await applyAskSideEffects(tx, projectId, ask, day);
 
       await writeAudit(tx, {
@@ -263,19 +277,21 @@ async function markMissing(
   projectId: string,
   kind: string,
   ask: boolean,
-  why: string
+  why: string,
+  day: string
 ): Promise<void> {
   const status = ask ? 'rejected' : 'none';
   const rejectReason = ask ? why : null;
+  const askedAt = ask ? day : null;   // 요청이 세운 반려라는 표시 — 취소·업로드가 비운다
   await tx
     .insert(documents)
     .values({
       projectId, kind, filename: null, blobUrl: null,
-      status, rejectReason, uploadedBy: null, uploadedAt: null,
+      status, rejectReason, uploadedBy: null, uploadedAt: null, askedAt,
     })
     .onConflictDoUpdate({
       target: [documents.projectId, documents.kind],
-      set: { status, rejectReason },
+      set: { status, rejectReason, askedAt },
     });
 }
 
@@ -289,6 +305,16 @@ async function applyAskSideEffects(
   ask: boolean,
   day: string
 ): Promise<void> {
+  /*
+   * 취소 뒤 담당은 ★반려가 하나도 없을 때만★ 한백이다 (감사 M11). 요청을 거둬도 한백이 따로 반려한
+   * 칸이 남아 있으면 그것은 여전히 협력사가 고칠 차례다.
+   */
+  const [left] = ask
+    ? [{ n: 0 }]
+    : await tx
+        .select({ n: sql<number>`count(*)::int` })
+        .from(documents)
+        .where(and(eq(documents.projectId, projectId), eq(documents.status, 'rejected')));
   await tx
     .update(projects)
     .set({
@@ -301,7 +327,7 @@ async function applyAskSideEffects(
             contractFixAskedAt: sql`coalesce(${projects.contractFixAskedAt}, ${day})`,
             court: '영업사' as const,
           }
-        : { court: '한백' as const }),
+        : (left?.n ?? 0) > 0 ? {} : { court: '한백' as const }),
     })
     .where(eq(projects.id, projectId));
 }

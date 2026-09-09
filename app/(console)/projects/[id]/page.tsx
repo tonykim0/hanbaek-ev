@@ -108,6 +108,8 @@ export default async function ProjectPage({
       vis={effectiveVisibility(session.role, session.org, detail.project)}
       // 검수·담당는 한백만 한다. vis.cost 로 유추하지 않고 명시적으로 넘긴다.
       canReview={canEdit}
+      // 기성 탭은 한백의 눈이면 본다(열람 전용 포함) — 검수 권한과 다르다 (감사 M29)
+      canSeeReceivable={seesAll}
       /*
        * 진행현황을 남길 때 붙는 이름. 서버(addNote)가 실제로 쓰는 값과 같은 규칙이다 —
        * 화면이 「한백으로 남깁니다」라고 하고 서버가 다른 이름을 적으면 기록을 믿을 수 없다.

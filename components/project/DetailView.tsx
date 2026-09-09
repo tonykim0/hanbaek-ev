@@ -44,6 +44,7 @@ export default function ProjectDetailView({
   detail,
   vis,
   canReview,
+  canSeeReceivable,
   noteAuthor,
   knownOrgs,
   ruleOptions,
@@ -59,6 +60,8 @@ export default function ProjectDetailView({
   vis: Visibility;
   /** 검수·담당를 움직일 수 있는가 (한백만) */
   canReview: boolean;
+  /** 운영사 기성관리 탭을 보는가 — 한백의 눈(관리자·열람 전용). 검수(canReview)는 손이라 여기 쓰지 않는다 (감사 M29) */
+  canSeeReceivable: boolean;
   /** 진행현황을 남길 때 붙는 이름 (한백 · 협력사 이름) */
   noteAuthor: string;
   /** 이미 쓰이고 있는 업체 이름 — 영업사·시공사를 고칠 때 골라 넣는다 */
@@ -105,7 +108,7 @@ export default function ProjectDetailView({
   const [tab, setTab] = useState<TabKey>(() => {
     if (!initialTab) return byPhase;
     if (initialTab === 'construction' && detail.stage === 'intake') return byPhase;
-    if (initialTab === 'receivable' && !canReview) return byPhase;
+    if (initialTab === 'receivable' && !canSeeReceivable) return byPhase;
     return initialTab;
   });
   /**
@@ -212,7 +215,7 @@ export default function ProjectDetailView({
       locked: false,
     },
     // 기성은 한백만 — 운영사에게서 받는 돈이라 협력사에게는 탭 자체가 없다
-    ...(canReview
+    ...(canSeeReceivable
       ? [{
           key: 'receivable' as TabKey,
           label: '운영사 기성관리',

@@ -683,7 +683,8 @@ export function collectionRate(steps: SettlementStep[]): number | null {
   const plan = steps.reduce((s, x) => s + (x.planAmount ?? 0), 0);
   if (plan <= 0) return null;
   const got = steps
+  // 실수금액이 있으면 그것이 받은 돈이다 — 협의로 계획액과 다르게 받는 현장이 있다 (감사 M30, 익산 예다음아르띠에)
     .filter((x) => x.state === 'collected')
-    .reduce((s, x) => s + (x.planAmount ?? 0), 0);
+    .reduce((s, x) => s + (x.collectedAmount ?? x.planAmount ?? 0), 0);
   return Math.round((got / plan) * 1000) / 10;
 }

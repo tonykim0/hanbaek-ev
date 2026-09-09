@@ -262,6 +262,8 @@ export const documents = pgTable('documents', {
    * 파일 목록의 정본이다. 위 filename·blob_url 은 첫 파일의 사본이다(옛 코드·SQL 이 본다).
    */
   files: jsonb('files').notNull().default([]),
+  /** 보완요청이 세운 반려인가 — 취소는 이것만 되돌린다 (migrations/0068, 감사 M11) */
+  askedAt: text('asked_at'),
 }, (t) => ({
   pk: primaryKey({ columns: [t.projectId, t.kind] }),
 }));
