@@ -535,12 +535,15 @@ export const pgRepository: ProjectRepository = {
        * ★files 배열이 정본이다★ (migrations/0021) — blob_url 은 첫 장의 사본이라, 그것만
        * 보면 두 번째 장부터가 목록에서 빠진다.
        */
-      const [docRows, procDocRows] = await Promise.all([
-        tx.select({ blobUrl: documents.blobUrl, files: documents.files }).from(documents)
-          .where(eq(documents.projectId, projectId)),
-        tx.select({ blobUrl: processDocuments.blobUrl, files: processDocuments.files })
-          .from(processDocuments).where(eq(processDocuments.projectId, projectId)),
-      ]);
+      // 한 트랜잭션은 커넥션 하나다 — 두 쿼리를 나란히 던져도 줄 서므로 차례로 읽는다
+      const docRows = await tx
+        .select({ blobUrl: documents.blobUrl, files: documents.files })
+        .from(documents)
+        .where(eq(documents.projectId, projectId));
+      const procDocRows = await tx
+        .select({ blobUrl: processDocuments.blobUrl, files: processDocuments.files })
+        .from(processDocuments)
+        .where(eq(processDocuments.projectId, projectId));
       const blobUrls = [...new Set(
         [...docRows, ...procDocRows].flatMap((d) => [
           d.blobUrl,

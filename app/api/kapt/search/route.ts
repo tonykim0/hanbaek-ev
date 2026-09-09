@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
       const candidates = await searchOfficialCandidates(query);
       if (candidates.length) return NextResponse.json({ mode: "official", candidates });
     } catch (error) {
-      console.error("Official apartment search failed", error);
+      console.error("[kapt] Official apartment search failed", error);
     }
   }
 
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
         : "검색 결과가 없습니다. 단지명이나 주소를 다시 확인해주세요.",
     });
   } catch (error) {
-    console.error("K-apt public search failed", error);
+    console.error("[kapt] K-apt public search failed", error);
     return NextResponse.json({
       mode: "kapt",
       candidates: [],

@@ -160,7 +160,7 @@ export async function GET(
       notice: "K-apt 공개 조회 화면의 기본정보와 전기차 충전시설 정보입니다.",
     });
   } catch (error) {
-    console.error("K-apt apartment detail failed", error);
+    console.error("[kapt] K-apt apartment detail failed", error);
     return NextResponse.json({
       notice: "K-apt 상세정보를 불러오지 못했습니다. 잠시 후 다시 시도해주세요.",
     }, { status: 502 });

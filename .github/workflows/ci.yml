@@ -24,11 +24,23 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # 아래 「적용된 마이그레이션은 고치지 않는다」가 main 과의 공통 조상을 찾는다
       - uses: actions/setup-node@v4
         with:
           node-version: 24        # Vercel 과 같다
           cache: npm
       - run: npm ci
+      - name: 적용된 마이그레이션은 고치지 않는다 — migrations/ 는 추가만 (CLAUDE.md, 하네스 5번)
+        run: |
+          git fetch -q origin main
+          base=$(git merge-base origin/main HEAD)
+          changed=$(git diff --name-status "$base" HEAD -- migrations | grep -E '^(M|D|R)' || true)
+          if [ -n "$changed" ]; then
+            echo "$changed"
+            echo "migrations/ 의 기존 파일을 고치거나 지웠다 — 원장(db_migrations)에 그 이름으로 적용된 파일은 다시 안 돈다. 새 번호로 새 파일을 만든다."
+            exit 1
+          fi
       - name: 마이그레이션 번호 겹침 (scripts/migrate.ts 와 같은 규칙 — 0011 둘은 원장에 그 이름으로 적용된 예외)
         run: |
           dups=$(ls migrations | grep -E '^[0-9]+_' | cut -d_ -f1 | sort | uniq -d | grep -v '^0011$' || true)

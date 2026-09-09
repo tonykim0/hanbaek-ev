@@ -1,5 +1,33 @@
 {
-  "extends": [
-    "next/core-web-vitals"
+  "extends": ["next/core-web-vitals"],
+  "overrides": [
+    {
+      "files": ["lib/**/*.ts", "lib/**/*.tsx", "app/**/*.ts", "app/**/*.tsx", "components/**/*.tsx", "middleware.ts"],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "CallExpression[callee.object.name='Promise'][callee.property.name=/^(all|allSettled)$/] > ArrayExpression > CallExpression MemberExpression[property.name='from']",
+            "message": "DB 쿼리를 Promise.all 로 직접 묶지 않는다 — lib/data/db-slot.ts 의 allSlots 를 쓴다. 풀보다 많이 던지면 큐가 풀리지 않고 요청이 통째로 죽는다(2026-08-21 실사고, CLAUDE.md 코드 규칙)."
+          }
+        ]
+      }
+    },
+    {
+      "files": ["lib/**/*.ts", "app/api/**/*.ts", "middleware.ts"],
+      "rules": {
+        "no-restricted-syntax": [
+          "error",
+          {
+            "selector": "CallExpression[callee.object.name='Promise'][callee.property.name=/^(all|allSettled)$/] > ArrayExpression > CallExpression MemberExpression[property.name='from']",
+            "message": "DB 쿼리를 Promise.all 로 직접 묶지 않는다 — lib/data/db-slot.ts 의 allSlots 를 쓴다. 풀보다 많이 던지면 큐가 풀리지 않고 요청이 통째로 죽는다(2026-08-21 실사고, CLAUDE.md 코드 규칙)."
+          },
+          {
+            "selector": "CallExpression[callee.object.name='console'][callee.property.name='error']:not([arguments.0.value=/^\\[[a-z][a-z0-9/-]*\\]/]):not([arguments.0.quasis.0.value.raw=/^\\[[a-z][a-z0-9/-]*\\]/])",
+            "message": "서버의 console.error 는 '[db]' '[auth]' '[api]' 처럼 [태그] 로 시작한다 — 감시(~/hanbaek-backups/watch-prod.sh)가 그 태그를 보고 알린다(CLAUDE.md 코드 규칙)."
+          }
+        ]
+      }
+    }
   ]
 }

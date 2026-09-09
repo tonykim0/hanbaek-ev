@@ -17,6 +17,9 @@ import { NextResponse, type NextRequest } from 'next/server';
 import { verifyPayload } from '@/lib/auth/crypto';
 import { SESSION_COOKIE, type SessionPayload } from '@/lib/auth/types';
 import { canWrite, isHanbaek } from '@/lib/roles';
+import {
+  ADMIN_ONLY, ADMIN_READABLE, CONSOLE_PATHS, HANBAEK_ONLY, OPEN_IN_CONSOLE, WRITER_ONLY,
+} from '@/lib/routes-map';
 
 function secret(): string {
   const s = process.env.AUTH_SECRET;
@@ -42,38 +45,9 @@ const PORTAL_HOSTS = hostList(process.env.PORTAL_HOSTS, ['hanbaek-form.vercel.ap
  * (admin) 그룹의 /admin · /design · /pricing · /receivables 도 여기 있다.
  * 포털 주소에서는 이 목록이 통째로 404 다.
  */
-const CONSOLE_PATHS = [
-  '/todos',
-  /*
-   * /notices 화면은 콘솔이다. 정적 안내문(/notices/*.html)은 여기 안 걸린다 —
-   * matcher 가 점 붙은 경로(정적 파일)를 빼므로 포털 주소에서도 그대로 열린다.
-   */
-  '/notices',
-  '/dashboard',
-  '/projects',
-  '/construction',
-  '/contracts',
-  '/reissue',
-  '/split',
-  '/payments',
-  '/payouts',
-  '/receivables',
-  '/statements',
-  '/settings',
-  '/pricing',
-  '/admin',
-  '/design',
-  // 조회·자료 — 포털에도 같은 화면이 있지만 이쪽은 로그인 뒤에 둔다
-  '/library',
-  '/lookup',
-  '/apartments',
-  '/login',
-];
+// 경로 목록은 lib/routes-map.ts 에 있다 — 화면 폴더와 맞는지 시험이 본다
 
-/** 콘솔 구역이지만 세션 없이 들어가는 자리 — 여기서 세션을 물으면 로그인이 자기를 물게 된다 */
-const OPEN_IN_CONSOLE = ['/login'];
-
-function hits(path: string, list: string[]): boolean {
+function hits(path: string, list: readonly string[]): boolean {
   return list.some((p) => path === p || path.startsWith(`${p}/`));
 }
 
@@ -125,12 +99,9 @@ export async function middleware(request: NextRequest) {
      * (한백 지시 2026-08-25). 목록을 「열린 것만」으로 뒤집지 않는 이유는, 그러면 새로
      * 만드는 /admin 화면이 저절로 열리기 때문이다. 막는 쪽이 기본이어야 빠뜨려도 안전하다.
      */
-    const starts = (list: string[]) => hits(path, list);
+    const starts = (list: readonly string[]) => hits(path, list);
 
-    const adminOnly = ['/admin'];
     /** /admin 이지만 한백의 눈이면 보는 자리 — 보기만 하고 쓰기는 API 가 막는다 */
-    const adminReadable = ['/admin/partners'];
-    const hanbaekOnly = ['/receivables', '/pricing', '/design'];
     /*
      * 재발행도 「내는 자리」다 — 서류를 만들어 내보내는 일이라 열람 전용의 자리가 아니다.
      * PDF 분류·분할도 같다: 부를 때마다 판독 비용이 나가므로 보기만 하는 계정에는 안 연다.
@@ -145,12 +116,11 @@ export async function middleware(request: NextRequest) {
      * 제 사업자등록증을 적는 자리다. 여기까지 열면 「열람 전용」이 아니게 된다 —
      * 재무가 실제로 그 일을 해야 하면 계정 구분을 올리는 것이 맞다.
      */
-    const writerOnly = ['/projects/new', '/contracts', '/settings'];
 
     const blocked =
-      (starts(adminOnly) && !starts(adminReadable) && (session.role !== 'admin' || session.asId))
-      || ((starts(hanbaekOnly) || starts(adminReadable)) && (!isHanbaek(session.role) || session.asId))
-      || (starts(writerOnly) && !canWrite(session.role));
+      (starts(ADMIN_ONLY) && !starts(ADMIN_READABLE) && (session.role !== 'admin' || session.asId))
+      || ((starts(HANBAEK_ONLY) || starts(ADMIN_READABLE)) && (!isHanbaek(session.role) || session.asId))
+      || (starts(WRITER_ONLY) && !canWrite(session.role));
 
     if (blocked) return NextResponse.redirect(new URL('/projects', request.url));
     return NextResponse.next();

@@ -30,8 +30,8 @@ function create() {
    */
   if (process.env.NODE_ENV === 'production' && /:5432(\/|\?|$)/.test(url)) {
     console.error(
-      '[db] DATABASE_URL 이 5432 입니다. 서버리스에서는 Transaction pooler(6543)를 써야 합니다 — '
-        + 'Supabase 대시보드 → Connect → Transaction pooler.'
+      '[db] DATABASE_URL 이 5432 입니다. 서버리스에서는 Transaction pooler(6543)를 써야 합니다.',
+      'Supabase 대시보드 → Connect → Transaction pooler.'
     );
   }
 

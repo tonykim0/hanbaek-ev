@@ -56,11 +56,10 @@ async function seedRules() {
     }))
   ).onConflictDoNothing();
 
-  const [sCount, pCount] = await Promise.all([
-    db.select({ n: sql<number>`count(*)::int` }).from(settlementRules),
-    db.select({ n: sql<number>`count(*)::int` }).from(pricingRules),
-  ]);
-  console.log(`  정산 규칙 ${sCount[0].n}개 · 단가 규칙 ${pCount[0].n}개`);
+  // 시드는 CLI 라 풀 걱정은 없지만, 「쿼리를 Promise.all 로 묶지 않는다」는 lint 가 어디서나 본다 — 차례로
+  const [sCount] = await db.select({ n: sql<number>`count(*)::int` }).from(settlementRules);
+  const [pCount] = await db.select({ n: sql<number>`count(*)::int` }).from(pricingRules);
+  console.log(`  정산 규칙 ${sCount.n}개 · 단가 규칙 ${pCount.n}개`);
 
   /*
    * 덮어쓰지 않기로 했으니, 어긋난 게 있으면 조용히 넘기지 않고 드러낸다.
@@ -255,6 +254,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('시드 실패:', err);
+  console.error('[seed] 시드 실패:', err);
   process.exit(1);
 });
