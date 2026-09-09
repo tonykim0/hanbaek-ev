@@ -66,7 +66,10 @@ const SORTS: Array<{ key: SortKey; label: string }> = [
  * 받을 수 있는 돈 — 조건이 찬 차수 + ★아직 안 받은 전기안전점검수수료★.
  * 수수료에는 트리거가 없다: 청구액을 적은 순간부터 받을 수 있다(lib/settlement safetyFeeOpen).
  * 그래서 「조건 대기」로 서는 일이 없고, planTotal 에 이미 들어 있으므로 여기서도 세야
- * 「총액 = 수금 완료 + 미수금」·「미수금 = 받을 수 있는 돈 + 조건 대기」 두 관계가 유지된다.
+ * 「총액 = 수금 완료 + 미수금」·「미수금 = 받을 수 있는 돈 + 조건 대기 + 실수금 차액」 관계가 유지된다.
+ *
+ * 실수금 차액: 차수를 계획액보다 적게 받은 만큼(수금 완료인데 실수금액 < 계획액). 예전에는 이것이 「조건 대기」로
+ * 부기됐다 — 조건은 이미 찼는데 덜 받은 돈을 「기다리는 돈」이라 부른 것이다 (감사 L13).
  */
 /* 안 받는 운영사면 0 — 조립도 null 로 보내지만 판정하는 자리마다 cpo 를 같이 본다 */
 const feeOpenOf = (r: SettlementSummary) => (safetyFeeApplies(r.cpo) ? safetyFeeOpen(r) : 0);
@@ -84,6 +87,11 @@ const openOf = (r: SettlementSummary) =>
  * 「미수금 = 받을 수 있는 돈 + 조건 대기」가 깨진다 — 받을 수 있는 돈은 수수료를 세는데
  * 미수금은 0 이 된다. 차수 초과분이 수수료를 지우는 것은 다른 돈끼리의 상계다.
  */
+/** 수금 완료인데 계획액보다 적게 받은 만큼 — 조건 대기가 아니라 「덜 받은 돈」이다 (감사 L13) */
+const shortfallOf = (r: SettlementSummary) =>
+  r.steps
+    .filter((s) => s.state === 'collected' && s.collectedAmount !== null && s.planAmount !== null && s.collectedAmount < s.planAmount)
+    .reduce((n, s) => n + ((s.planAmount ?? 0) - (s.collectedAmount ?? 0)), 0);
 const unpaidOf = (r: SettlementSummary) => {
   const feePlan = safetyFeeApplies(r.cpo) ? r.safetyFee ?? 0 : 0;
   const stepPlan = r.planTotal - feePlan;
@@ -165,7 +173,8 @@ export default function ReceivableBoard({ rows, canEdit }: {
       feeCollected: sum(feeGotOf),
       unpaid: sum(unpaidOf),
       /* 미수금에서 아직 조건이 안 찬 몫 — 총액의 나머지 한 토막이다 */
-      waiting: Math.max(0, sum(unpaidOf) - sum(openOf)),
+      shortfall: sum(shortfallOf),
+      waiting: Math.max(0, sum(unpaidOf) - sum(openOf) - sum(shortfallOf)),
     };
   }, [shown]);
 
@@ -213,7 +222,13 @@ export default function ReceivableBoard({ rows, canEdit }: {
           {/* 다 받은 목록에 부기가 뜨면 안 된다 — 0원에는 아무것도 달지 않는다 */}
           <Tile label="미수금" value={money.unpaid}
             note={money.unpaid === 0 ? undefined
-              : money.waiting > 0 ? `조건 대기 ${won(money.waiting)}원 포함` : '전부 받을 수 있음'} />
+              : (() => {
+                const parts = [
+                  money.waiting > 0 ? `조건 대기 ${won(money.waiting)}원` : null,
+                  money.shortfall > 0 ? `실수금 차액 ${won(money.shortfall)}원` : null,
+                ].filter(Boolean);
+                return parts.length > 0 ? `${parts.join(' · ')} 포함` : '전부 받을 수 있음';
+              })()} />
         </div>
       </section>
 
@@ -513,7 +528,7 @@ function FeeEdit({ row, onDone }: { row: SettlementSummary; onDone: () => void }
 function StepCell({
   step,
 }: {
-  step: Pick<SettlementSummary['steps'][number], 'state' | 'planAmount' | 'trigger' | 'collectedAt'> | null;
+  step: Pick<SettlementSummary['steps'][number], 'state' | 'planAmount' | 'trigger' | 'collectedAt' | 'collectedAmount'> | null;
 }) {
   // 규칙상 없는 차수는 배지가 아니라 빈 값이다(화면 규칙 10번)
   if (!step || step.state === 'na') {
@@ -528,7 +543,10 @@ function StepCell({
     <Td className="whitespace-nowrap">
       <Badge tone={STEP_TONE[step.state]}>{STEP_LABEL[step.state]}</Badge>
       <p className="mt-0.5 text-tiny font-bold tabular-nums text-slate-700">
-        {step.planAmount === null ? '—' : won(step.planAmount)}
+        {/* 수금 완료면 실제로 받은 돈을 적는다 — 계획액과 다르면 계획액을 곁에 (감사 L13) */}
+        {step.state === 'collected' && step.collectedAmount !== null
+          ? <>{won(step.collectedAmount)}{step.planAmount !== null && step.collectedAmount !== step.planAmount && <span className="ml-1 font-semibold text-slate-400">(계획 {won(step.planAmount)})</span>}</>
+          : step.planAmount === null ? '—' : won(step.planAmount)}
         {note && <span className="ml-1 font-semibold text-slate-400">· {note}</span>}
       </p>
     </Td>

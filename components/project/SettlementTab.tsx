@@ -1497,7 +1497,7 @@ function PayNoteBox({
     run({
       url: `/api/projects/${projectId}/payment`,
       method: 'PATCH',
-      body: { payNote: next.join('\n') },
+      body: { payNote: next.join('\n'), basePayNote: payNote },   // 내가 본 값 — 다른 사람이 먼저 고쳤으면 서버가 거절한다 (감사 M32)
       fail: '저장에 실패했습니다.',
       key,
     });

@@ -236,17 +236,18 @@ export default function PayChart({
                     얼룩이 되어 정작 나간 돈이 묻힌다(2026-08-30 에 배운 것).
                   */}
                   <span className="flex flex-col justify-center gap-[3px]" title={
-                    future ? `${m.month} · 아직 없음`
-                      : `${m.month} · ${kinds.map((k) => `${k.label} ${wonCompact(k.of(m))}`).join(' · ')}`
+                    future && !m.has ? `${m.month} · 아직 없음`
+                      : `${m.month} · ${future ? '예정 · ' : ''}${kinds.map((k) => `${k.label} ${wonCompact(k.of(m))}`).join(' · ')}`
                   }>
                     {kinds.map((k) => {
                       const v = Math.max(0, k.of(m));
                       return (
                         <span key={k.label} className="h-[7px]">
-                          {!future && v > 0 && (
+                          {/* 미래 달의 예정 지급도 그린다(옅게) — 머리의 연간 합계에 들어 있는 돈이 줄에서는 안 보이면 둘이 어긋난다 (감사 M21) */}
+                          {v > 0 && (
                             <span
                               aria-hidden
-                              className={`block h-full rounded-full ${k.fill}`}
+                              className={`block h-full rounded-full ${k.fill}${future ? ' opacity-40' : ''}`}
                               style={{ width: `${Math.max(1.5, (v / max) * 100)}%` }}
                             />
                           )}
@@ -258,7 +259,7 @@ export default function PayChart({
                   {/* 금액 — 칸마다 같은 너비라 위아래로 훑어 견줄 수 있다 */}
                   {kinds.map((k) => (
                     <span key={k.label} className="text-right text-small tabular-nums text-slate-600">
-                      {future ? <span className="text-slate-300">—</span>
+                      {future && !m.has ? <span className="text-slate-300">—</span>
                         : k.of(m) === 0 ? <span className="text-slate-300">0</span>
                         : wonCompact(k.of(m))}
                     </span>
@@ -266,12 +267,12 @@ export default function PayChart({
                   {kinds.length === 1 && <span />}
 
                   <span className="text-right text-small font-black tabular-nums text-slate-900">
-                    {future ? <span className="font-bold text-slate-300">—</span>
+                    {future && !m.has ? <span className="font-bold text-slate-300">—</span>
                       : total === 0 ? <span className="font-bold text-slate-300">0</span>
                       : wonCompact(total)}
                   </span>
                   <span className="text-right text-tiny tabular-nums text-slate-400">
-                    {future ? '' : `${m.count}건`}
+                    {future && !m.has ? '' : `${m.count}건${future ? ' 예정' : ''}`}
                   </span>
                 </li>
               );

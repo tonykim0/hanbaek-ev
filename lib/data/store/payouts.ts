@@ -113,7 +113,7 @@ export const payoutStore: Pick<
     });
   },
 
-  async setPayment(projectId, patch: PaymentPatch, actor): Promise<void> {
+  async setPayment(projectId, patch: PaymentPatch, actor, expect?: PaymentPatch): Promise<void> {
     assertAdmin(actor, '지급 정보 저장');
     const fields = Object.keys(patch) as Array<keyof PaymentPatch>;
     if (fields.length === 0) return;
@@ -127,8 +127,21 @@ export const payoutStore: Pick<
        * 않았다 — 실제로 현장 149곳 중 129곳에 그 행이 없었다(접수도 이관도 안 만든다).
        * 「현장을 찾을 수 없습니다」라는 문구까지 틀렸다: 현장은 있고 정산 행이 없던 것이다.
        */
+      /*
+       * ★한 현장의 비고 저장을 줄 세우고, 내가 본 값과 다르면 거절한다★ (감사 M32). 비고는 전체 문자열
+       * 덮어쓰기라 두 사람이 겹치면 나중 저장이 앞사람의 메모를 소리 없이 지웠다. 화면이 「내가 본 값」을
+       * 같이 보내고, 여기서 잠금 안에 지금 값과 견준다 — 다르면 새로고침하라고 답한다.
+       */
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hb_settlement:${projectId}`}))`);
       const [row] = await tx.select().from(settlements).where(eq(settlements.projectId, projectId)).limit(1);
       const before = row ?? null;
+      if (expect) {
+        for (const f of Object.keys(expect) as Array<keyof PaymentPatch>) {
+          if ((before?.[f] ?? null) !== (expect[f] ?? null)) {
+            throw new Error('다른 사람이 먼저 메모를 고쳤습니다 — 새로고침한 뒤 다시 적어주세요.');
+          }
+        }
+      }
 
       const changed = fields.filter((f) => (before?.[f] ?? null) !== (patch[f] ?? null));
       if (changed.length === 0) return;

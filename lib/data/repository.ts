@@ -424,7 +424,12 @@ export interface ProjectRepository {
   deletePricingRule(id: string, actor: Actor): Promise<void>;
 
   /** 지급 비고 저장. [한백 전용] 넘긴 필드만 바뀐다. */
-  setPayment(projectId: string, patch: PaymentPatch, actor: Actor): Promise<void>;
+  /**
+   * 지급 정보(비고)를 저장한다. [한백 전용]
+   * `expect` 를 주면 ★내가 본 값★과 지금 값이 같을 때만 쓴다 — 다르면 다른 사람이 먼저 고친 것이라 거절한다
+   * (감사 M32: 비고는 전체 문자열 덮어쓰기라 동시 편집이 상대 메모를 소리 없이 지웠다).
+   */
+  setPayment(projectId: string, patch: PaymentPatch, actor: Actor, expect?: PaymentPatch): Promise<void>;
 
   /**
    * 현장의 정산 규칙을 적용하거나 바꾼다. [한백 전용]
