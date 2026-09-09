@@ -64,8 +64,10 @@ export async function POST(
     return NextResponse.json({ error: '이 현장에 올릴 수 없습니다.' }, { status: 404 });
   }
   /** 그 칸에 이미 파일이 있는가 — 임시본이 사라진 재시도를 성공으로 볼지 가른다 */
-  const hasOf = (kind: string) =>
-    (detail.documents.find((d) => d.kind === kind)?.files.length ?? 0) > 0;
+  // 칸에 이미 붙은 파일 이름들 — 재시도의 「이미 붙었다」는 그 파일로 본다. 칸에 다른 장이 있다고 이 장의 유실을
+  // 성공으로 답하면 여러 장 접수에서 뒷장이 조용히 빠졌다 (감사 L9)
+  const namesOf = (kind: string) =>
+    new Set((detail.documents.find((d) => d.kind === kind)?.files ?? []).map((f) => f.name));
 
   const failed: Array<{ kind: string; error: string }> = [];
   let attached = 0;
@@ -93,8 +95,8 @@ export async function POST(
     const wave = await Promise.all(
       lists.slice(i, i + WAVE).map(async ([kind, list]) => {
         const out: Array<{ kind: string; result: Awaited<ReturnType<typeof attachDocument>> }> = [];
-        /* 앞 장이 붙었으면 그 칸에는 이미 파일이 있다 — 뒷장의 has 는 그것까지 본다 */
-        let has = hasOf(kind);
+        /* 이 요청에서 앞 장이 붙었으면 그 이름도 「이미 붙은 것」이다 — 같은 장의 재시도만 성공으로 본다 */
+        const names = namesOf(kind);
         for (const d of list) {
           const result = await attachDocument({
             projectId: params.id,
@@ -103,10 +105,10 @@ export async function POST(
             blobUrl: d.blobUrl ?? '',
             title: d.title ?? null,
             photo: Array.isArray(d.photo) ? d.photo.filter((x) => typeof x === 'string') : null,
-            has,
+            has: names.has((d.filename ?? '').trim()),
             session,
           });
-          if (result.ok) has = true;
+          if (result.ok) names.add((d.filename ?? '').trim());
           out.push({ kind, result });
         }
         return out;

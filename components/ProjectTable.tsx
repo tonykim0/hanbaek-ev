@@ -499,6 +499,11 @@ function QueueCell({ p, canEdit }: { p: ProjectSummary; canEdit: boolean }) {
 
   return (
     <input
+      /*
+       * 비제어 입력에 key 를 건다 — 다른 세션이 값을 바꿔 새로 그려지면 옛 DOM 값이 남아, 포커스만 옮겨도 그 옛 값을
+       * 되저장해 남의 편집을 덮었다 (감사 M7). 값이 바뀌면 칸을 새로 만든다.
+       */
+      key={p.envQueueNo ?? ''}
       aria-label={`${p.name} 환경부 대기번호`}
       defaultValue={p.envQueueNo ?? ''}
       placeholder="2026-595"

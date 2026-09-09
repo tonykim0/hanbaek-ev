@@ -7,7 +7,7 @@
  * ★케이스는 참조되면 불변이다★ — 고치는 것은 개정(새 행)과 중지뿐이고, 여기 있는
  * 수정 메서드도 참조 전에만 통한다. 그 판정은 lib/pricing-match 가 한다.
  */
-import { and, eq, isNotNull } from 'drizzle-orm';
+import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
 import { chargerModels, contractLines, pricingRules, projects, settlementRules } from '@/lib/db/schema';
@@ -129,6 +129,17 @@ export const pricingStore: Pick<
     for (let attempt = 0; ; attempt += 1) {
       try {
         return await db.transaction(async (tx) => {
+          /*
+           * ★추가를 줄 세우고 중복 판정을 잠금 안에서 다시 한다★ (감사 L14). 위의 판정은 트랜잭션 밖이라 두 요청이
+           * 겹치면 둘 다 「중복 없음」을 보고, id 충돌은 아래 재시도가 -2 접미사로 피해 가 같은 칸을 덮는 케이스가 두 벌
+           * 생겼다(test/db/pricing-rule-race 가 재현). 잠금을 잡은 뒤 읽으면 앞의 커밋이 보인다.
+           */
+          await tx.execute(sql`select pg_advisory_xact_lock(hashtext('hb_pricing_rules'))`);
+          const now = (await tx.select().from(pricingRules)).map(rowToRule);
+          const dupNow = duplicateOf(rule, now);
+          if (dupNow) {
+            throw new Error(`같은 조건을 덮는 케이스가 이미 있습니다 — ${dupNow.caseName}. 개정이라면 적용 시작을 다르게 적어주세요.`);
+          }
           const settleId = await resolveSettlementRule(tx, rule.settlementSteps, actor);
 
           const taken = await tx.select({ id: pricingRules.id }).from(pricingRules);
