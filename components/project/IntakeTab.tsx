@@ -7,6 +7,7 @@
  * 빠뜨린 것과 원래 필요 없는 것을 구별해야 한다(lib/doc-rules).
  */
 import { useState } from 'react';
+import { reviewKindLabel } from '@/lib/review-labels';
 import type { ContractState, ProcessStatus, ProjectDetail, ProjectDocument } from '@/types/project';
 import { PROCESS_STATUSES, replLabel } from '@/types/project';
 import { contractDocsLockedWhy, statusIndex } from '@/lib/process';
@@ -308,7 +309,7 @@ export function IntakeTab({
             <DownloadAll
               docs={evaluated.map((d) => byKind.get(d.key)).filter((d): d is ProjectDocument => Boolean(d))}
               siteName={siteName}
-              labelOf={(kind) => evaluated.find((d) => d.key === kind)?.label ?? kind}
+              labelOf={(kind) => evaluated.find((d) => d.key === kind)?.label ?? reviewKindLabel(kind)}
               extra={surveyText ? [{ name: '기설치 조사내역', text: surveyText }] : []}
             />
           </span>
@@ -503,6 +504,7 @@ export function IntakeTab({
                               kind={d.key}
                               rejected={rejected}
                               fileCount={doc?.files.length ?? 0}
+                              single={!canEditDocs && canFillEmpty && slotEmpty}
                             />
                           )}
                           {/* 남는 자리를 밀어 반려·삭제를 반대쪽 끝으로 보낸다 */}
@@ -657,7 +659,7 @@ export function IntakeTab({
       <section>
         <ReviewHistory
           projectId={project.id}
-          labelOf={(kind) => evaluated.find((d) => d.key === kind)?.label ?? kind}
+          labelOf={(kind) => evaluated.find((d) => d.key === kind)?.label ?? reviewKindLabel(kind)}
         />
       </section>
 

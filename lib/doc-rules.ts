@@ -241,6 +241,11 @@ export interface EvaluatedDoc {
  */
 export const DOC_KEYS: readonly string[] = SPECS.map((s) => s.key);
 
+/** 계약 서류 키의 이름 — 문맥 없는 자리(검수 이력 등)에서 쓴다. 모르는 키면 undefined */
+export function docNameOf(kind: string): string | undefined {
+  return SPECS.find((s) => s.key === kind)?.name;
+}
+
 /** 현장 조건에 따라 서류 15칸의 필수 여부를 확정한다 */
 export function evaluateDocs(ctx: DocContext): EvaluatedDoc[] {
   return SPECS.map((s) => ({

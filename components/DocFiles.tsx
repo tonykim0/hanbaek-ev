@@ -620,7 +620,7 @@ function Peek({ file, className, children }: {
 }
 
 export function DocUpload({
-  projectId, kind, rejected, fileCount = 0,
+  projectId, kind, rejected, fileCount = 0, single = false,
 }: {
   projectId: string;
   kind: string;
@@ -630,6 +630,8 @@ export function DocUpload({
    * 「줄여서 올렸다」는 말이 언제 걷힐지도 이 수가 정한다(아래 useEffect).
    */
   fileCount?: number;
+  /** 한 장만 받는다 — 잠긴 계약의 빈 칸(canFillEmpty)은 1장째가 붙는 순간 잠기므로 2장째는 오류로 튕겼다 (감사 M12) */
+  single?: boolean;
 }) {
   const hasFile = fileCount > 0;
   const router = useRouter();
@@ -692,7 +694,9 @@ export function DocUpload({
    * (pg-store uploadDocument) 두 개가 같이 들어오면 나중 것이 앞의 것을 덮는다.
    * 몇 장째인지 단추에 적는다 — 스캔본 다섯 장이면 한참 걸린다.
    */
-  async function uploadAll(files: File[]) {
+  async function uploadAll(picked: File[]) {
+    const files = single ? picked.slice(0, 1) : picked;   // 한 장만 받는 칸 (감사 M12)
+    if (single && picked.length > 1) setError('이 칸은 한 장만 받습니다 — 첫 장만 올립니다.');
     /* 비우는 것은 여기다 — upload 안에서 장마다 비우면 앞 장이 줄어든 사실이 지워진다 */
     setShrunk([]);
     setQueue({ done: 0, total: files.length });
@@ -838,7 +842,7 @@ export function DocUpload({
           }`}
         >
           여기에 놓기
-          <input type="file" multiple className="hidden" onChange={onPick} disabled={busy} />
+          <input type="file" multiple={!single} className="hidden" onChange={onPick} disabled={busy} />
         </label>
       )}
       <label
@@ -859,7 +863,7 @@ export function DocUpload({
             * 지금은 쌓이므로(migrations/0021) 바꾸기라고 적으면 앞 파일이 사라진다고 읽힌다.
             */
           : rejected && hasFile ? '다시 업로드' : hasFile ? '파일 추가' : '파일 업로드'}
-        <input type="file" multiple className="hidden" onChange={onPick} disabled={busy} />
+        <input type="file" multiple={!single} className="hidden" onChange={onPick} disabled={busy} />
       </label>
       <Err className="mt-1 block whitespace-pre-line">{error}</Err>
       {/* 원본과 다른 것을 올렸으면 말한다 — 조용히 바꿔치우지 않는다 */}

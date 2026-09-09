@@ -254,7 +254,15 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
           filename: d.filename, blobUrl: d.blobUrl, title: d.title, photo: d.photo, stamp: d.stamp,
         });
       }
-      setStaged(byKind);
+      // 먼저 손으로 올려 둔 서류를 지우지 않는다 — 칸마다 합치고 같은 파일(blobUrl)은 한 번만 (감사 L19)
+      setStaged((prev) => {
+        const next = { ...prev };
+        for (const [k, list] of Object.entries(byKind)) {
+          const have = prev[k] ?? [];
+          next[k] = [...have, ...list.filter((f) => !have.some((p) => p.blobUrl === f.blobUrl))];
+        }
+        return next;
+      });
       setAuto(filled);
       setReview(data.review);
       setNotes(data.warnings);

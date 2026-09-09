@@ -11,6 +11,7 @@
  * 증빙이 서류 열여섯 칸 사이에 섞여 있으면 조사가 됐는지 보이지 않는다.
  */
 import { useState } from 'react';
+import { reviewKindLabel } from '@/lib/review-labels';
 import type { PreInstall as PreInstallState, ProjectDetail, ProjectDocument } from '@/types/project';
 import { evaluateDocs, needsPreInstallCheck } from '@/lib/doc-rules';
 import { DocDelete, DocFileActions, DocUpload, DownloadAll } from '@/components/DocFiles';
@@ -95,7 +96,7 @@ export function PreInstall({
           <DownloadAll
             docs={docs.map((d) => byKind.get(d.key)).filter((d): d is ProjectDocument => Boolean(d))}
             siteName={siteName}
-            labelOf={(kind) => docs.find((d) => d.key === kind)?.label ?? kind}
+            labelOf={(kind) => docs.find((d) => d.key === kind)?.label ?? reviewKindLabel(kind)}
             extra={surveyText ? [{ name: '기설치 조사내역', text: surveyText }] : []}
           />
         </span>
@@ -170,6 +171,7 @@ export function PreInstall({
                     kind={d.key}
                     rejected={doc?.status === 'rejected'}
                     fileCount={doc?.files.length ?? 0}
+                    single={!canEditDocs && canFillEmpty && (!doc || doc.files.length === 0)}
                   />
                 )}
                 <span className="flex-1" />

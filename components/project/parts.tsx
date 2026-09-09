@@ -27,18 +27,8 @@ export function Fact({ label, value }: { label: string; value: string | null }) 
   );
 }
 
-export function docState(doc: ProjectDocument | undefined, req: DocReq) {
-  if (req === 'o') return { label: '해당없음', tone: 'text-slate-400' };
-  if (!doc || doc.status === 'none') {
-    return req === 'm'
-      ? { label: '미제출', tone: 'text-red-700' }
-      : { label: '미제출', tone: 'text-slate-400' };
-  }
-  if (doc.status === 'rejected') return { label: '반려', tone: 'text-red-700' };
-  // 제출된 것은 통과로 본다 — 반려하지 않는 한 계약 완료를 막지 않는다
-  if (doc.status === 'uploaded') return { label: '제출됨', tone: 'text-brand-700' };
-  return { label: '확인함', tone: 'text-brand-700' };
-}
+// 상태 글자의 판정은 순수 모듈(lib/doc-state.ts)에 있다 — 시험이 붙어 있다 (감사 L8)
+export { docState } from '@/lib/doc-state';
 
 /**
  * 서류 카드의 바탕 — ★색을 채우는 것은 「돌려보낸 것」과 「끝난 것」뿐★
