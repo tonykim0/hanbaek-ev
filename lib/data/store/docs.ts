@@ -113,6 +113,8 @@ export const docStore: Pick<
     const table = isProcessDocKind(input.kind) ? processDocuments : documents;
     const db = getDb();
     await db.transaction(async (tx) => {
+      // 계약 확인(confirmContract)과 같은 현장 잠금 — 반려와 확인이 겹치면 한쪽이 다른 쪽을 반드시 본다 (감사 L10)
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hb_project:${input.projectId}`}))`);
       const [row] = await tx
         .select()
         .from(table)

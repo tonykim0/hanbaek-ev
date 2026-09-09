@@ -83,27 +83,29 @@ export const contractStore: Pick<
 
   async confirmContract(projectId, confirmed, actor): Promise<void> {
     assertAdmin(actor, '계약 확인');
-
-    const rows = await getDb().select().from(projects).where(eq(projects.id, projectId)).limit(1);
-    if (!rows[0]) throw new Error('현장을 찾을 수 없습니다.');
-    const [record] = await recordsOf(rows);
-    if (!record) throw new Error('현장을 찾을 수 없습니다.');
-
-    /*
-     * 조건이 안 맞으면 확인해 주지 않는다.
-     * 필수 서류가 비었거나 반려가 남은 계약을 확인해 버리면, 그 뒤로는 무엇이 확인된
-     * 것인지 알 수 없어진다. 조건은 lib/stage.ts 가 정본이고 여기서 그것을 부른다.
-     */
-    if (confirmed && !contractStateFor(record).ready) {
-      throw new Error('서류가 다 차고 반려가 없고 단가가 붙어야 계약을 확인할 수 있습니다.');
-    }
-
-    const before = record.project.contractConfirmedAt;
-    const after = confirmed ? today() : null;
-    if (Boolean(before) === Boolean(after)) return;
-
     const db = getDb();
     await db.transaction(async (tx) => {
+      /*
+       * ★판정과 기록을 한 잠금 안에서★ (감사 L10). 예전에는 ready 를 트랜잭션 밖에서 읽고 안에서 썼다 —
+       * 그 사이에 반려가 커밋되면 「반려가 있는 계약」이 확인됐다. 반려(setDocumentStatus)도 같은
+       * 현장 잠금을 잡으므로, 여기서 잠금을 얻은 뒤 읽으면 먼저 온 반려를 반드시 본다.
+       */
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hb_project:${projectId}`}))`);
+      const rows = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+      if (!rows[0]) throw new Error('현장을 찾을 수 없습니다.');
+      const [record] = await recordsOf(rows);
+      if (!record) throw new Error('현장을 찾을 수 없습니다.');
+      /*
+       * 조건이 안 맞으면 확인해 주지 않는다.
+       * 필수 서류가 비었거나 반려가 남은 계약을 확인해 버리면, 그 뒤로는 무엇이 확인된
+       * 것인지 알 수 없어진다. 조건은 lib/stage.ts 가 정본이고 여기서 그것을 부른다.
+       */
+      if (confirmed && !contractStateFor(record).ready) {
+        throw new Error('서류가 다 차고 반려가 없고 단가가 붙어야 계약을 확인할 수 있습니다.');
+      }
+      const before = record.project.contractConfirmedAt;
+      const after = confirmed ? today() : null;
+      if (Boolean(before) === Boolean(after)) return;
       await tx
         .update(projects)
         .set({

@@ -78,6 +78,18 @@ export const batchStore: Pick<
       }
 
       // 옮겨간 날에 같은 지급처의 배치가 이미 있으면 합쳐진다 — 명세서도 한 장이 된다. 막지 않는다.
+      /*
+       * ★두 배치에 계산서가 다 붙어 있으면 합칠 수 없다★ (감사 M22). 계산서는 배치마다 한 장(유니크)이라 그대로
+       * 옮기면 DB 가 거부하고 그 오류가 화면에 날것으로 나갔다. 어느 계산서가 맞는지는 사람이 정한다.
+       */
+      const invoiceAt = async (day: string) => (await tx
+        .select({ id: taxInvoices.id })
+        .from(taxInvoices)
+        .where(and(eq(taxInvoices.org, org), eq(taxInvoices.kind, kind), eq(taxInvoices.payDate, day)))
+        .limit(1)).length > 0;
+      if (await invoiceAt(from) && await invoiceAt(to)) {
+        throw new Error(`${from} 배치와 ${to} 배치에 세금계산서가 둘 다 붙어 있습니다 — 한쪽 계산서를 지운 뒤 합치세요.`);
+      }
       await tx
         .update(payoutEntries)
         .set({ at: to })

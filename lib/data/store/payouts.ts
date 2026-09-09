@@ -12,7 +12,7 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
 import {
-  batchFinals, contractLines, payoutEntries, pricingRules, projects, settlementRules, settlements,
+  batchFinals, taxInvoices, contractLines, payoutEntries, pricingRules, projects, settlementRules, settlements,
 } from '@/lib/db/schema';
 import { allSlots } from '../db-slot';
 import { stampOf, today } from '@/lib/date';
@@ -218,6 +218,19 @@ export const payoutStore: Pick<
       if (lockedRule?.at) {
         throw new Error(`지급조건이 확정된 현장입니다(${lockedRule.at}) — 확정을 해제한 뒤 바꾸세요.`);
       }
+      /*
+       * ★수금 기록이 있으면 규칙을 못 바꾼다★ (감사 M31). 수금은 차수 번호(1·2·3)에 붙어 있어서, 규칙을 갈면
+       * 그 번호가 다른 정의로 옮겨 가고 없는 번호의 수금은 화면에서 사라졌다. 수금을 먼저 지운다.
+       */
+      const [collected] = await tx
+        .select({ c1: settlements.collected1At, c2: settlements.collected2At, c3: settlements.collected3At })
+        .from(settlements)
+        .where(eq(settlements.projectId, projectId))
+        .limit(1);
+      const recorded = [collected?.c1, collected?.c2, collected?.c3].filter(Boolean).length;
+      if (recorded > 0) {
+        throw new Error(`기성 수금 기록이 ${recorded}건 있는 현장입니다 — 수금을 먼저 해제한 뒤 규칙을 바꾸세요.`);
+      }
 
       // lastProgressAt 은 건드리지 않는다 — 규칙을 고르는 것은 설정이지 현장의 진척이 아니다
       await tx
@@ -404,6 +417,13 @@ export const payoutStore: Pick<
         const r = records.get(item.projectId);
         if (!r) throw new Error(`현장을 찾을 수 없습니다 — ${item.projectId}`);
         const open = openStepFor(r, item.kind, rules);
+        /*
+         * ★같은 현장·구분의 확정을 줄 세운다★ (감사 M19). assertBatchOpen 의 중복 검사는 SELECT 뒤 INSERT 라
+         * 두 요청이 동시에 오면 둘 다 「아직 없다」를 보고 같은 회차를 두 번 적으려 했다 — 0054 의 유니크 인덱스가
+         * 마지막에 막긴 했지만 날것의 DB 오류였다(test/db/payout-integrity 가 재현). 잠금을 잡으면 뒤에 온 쪽이
+         * 앞의 커밋을 보고 아래에서 우리 말로 걸린다.
+         */
+        await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hb_payout:${r.project.id}:${item.kind}`}))`);
         await assertBatchOpen(tx, r, item.kind, open.no, at);
         await writePayoutStep(tx, r.project.id, item.kind, open, at, actor);
         total += open.amount;
@@ -434,12 +454,30 @@ export const payoutStore: Pick<
     const db = getDb();
     await db.transaction(async (tx) => {
       const [project] = await tx
-        .select({ id: projects.id })
+        .select({ id: projects.id, salesOrg: projects.salesOrg, gcOrg: projects.gcOrg })
         .from(projects)
         .where(eq(projects.id, projectId))
         .limit(1);
       if (!project) throw new Error('현장을 찾을 수 없습니다.');
 
+      /*
+       * ★최종 확정된 배치에는 손으로도 못 적는다★ (감사 M18). 지급 성격의 기록(회수 등)은 지급처×구분×지급일
+       * 배치의 합계에 들어간다 — 확정 뒤 계산서까지 끊은 배치의 합계가 조용히 바뀌었다. 지급 확정(assertBatchOpen)·
+       * 줄 빼기(deletePayoutEntry)는 이 잠금을 보는데 여기만 안 봤다.
+       */
+      for (const { input } of rows) {
+        if (entryTypeOf(input.category) !== '지급') continue;
+        const org = input.kind === '영업비' ? project.salesOrg : project.gcOrg;
+        if (!org) continue;
+        const [fin] = await tx
+          .select({ id: batchFinals.id })
+          .from(batchFinals)
+          .where(and(eq(batchFinals.org, org), eq(batchFinals.kind, input.kind), eq(batchFinals.payDate, input.at)))
+          .limit(1);
+        if (fin) {
+          throw new Error(`${input.at} ${org} ${input.kind} 배치는 최종 확정돼 잠겨 있습니다 — 확정을 해제한 뒤 적으세요.`);
+        }
+      }
       const stamp = stampOf(new Date());
       for (const { id, input, note } of rows) {
         await tx.insert(payoutEntries).values({
@@ -506,6 +544,29 @@ export const payoutStore: Pick<
             .limit(1);
           if (fin) {
             throw new Error('최종 확정된 배치의 지급입니다 — 빼려면 먼저 확정을 해제하세요.');
+          }
+          /*
+           * ★계산서가 붙은 배치의 마지막 줄은 못 뺀다★ (감사 M23). 배치를 통째로 무르는 cancelPayoutBatch 는
+           * 계산서 존재를 막는데, 줄 단위 삭제는 확정만 봐서 마지막 줄을 빼면 계산서가 고아가 됐다.
+           */
+          const [inv] = await tx
+            .select({ id: taxInvoices.id })
+            .from(taxInvoices)
+            .where(and(eq(taxInvoices.org, org), eq(taxInvoices.kind, row.kind), eq(taxInvoices.payDate, row.at)))
+            .limit(1);
+          if (inv) {
+            const others = await tx
+              .select({ id: payoutEntries.id, category: payoutEntries.category, salesOrg: projects.salesOrg, gcOrg: projects.gcOrg })
+              .from(payoutEntries)
+              .innerJoin(projects, eq(payoutEntries.projectId, projects.id))
+              .where(and(eq(payoutEntries.at, row.at), eq(payoutEntries.kind, row.kind)));
+            const left = others.filter((o) =>
+              o.id !== entryId
+              && entryTypeOf(o.category as PayoutCategory) === '지급'
+              && (row.kind === '영업비' ? o.salesOrg : o.gcOrg) === org);
+            if (left.length === 0) {
+              throw new Error('이 배치의 마지막 지급이고 세금계산서가 붙어 있습니다 — 먼저 계산서를 지우세요.');
+            }
           }
         }
       }
