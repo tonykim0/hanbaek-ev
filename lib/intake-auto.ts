@@ -212,7 +212,8 @@ export async function autoIntakeFromZip(
     docs.push({
       kind, category: item.category, filename: item.standardName, blobUrl: blob.url,
       title: item.title ?? null,
-      photo: photoBy.get(item.originalName.normalize('NFC')) ?? null,
+      // 사진대지·기설치 증빙은 원래 사진이다 — 「휴대폰 사진으로 보임」을 붙이면 잘 낸 서류를 의심하게 한다 (감사 L18)
+      photo: kind === 'survey' || kind === 'legacyev' ? null : (photoBy.get(item.originalName.normalize('NFC')) ?? null),
       stamp: item.stamp ?? null,
     });
     }

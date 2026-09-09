@@ -15,6 +15,7 @@
  * 누르면 되돌아간다(조건은 누적이라 뒤로는 늘 열려 있다).
  */
 import { Fragment, useEffect, useState } from 'react';
+import { reviewKindLabel } from '@/lib/review-labels';
 import type {
   ProcessStatus, ProjectDetail,
 } from '@/types/project';
@@ -273,7 +274,7 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
           <DownloadAll
             docs={p.docs}
             siteName={detail.project.name}
-            labelOf={(kind) => PROCESS_DOCS.find((x) => x.key === kind)?.name ?? kind}
+            labelOf={(kind) => PROCESS_DOCS.find((x) => x.key === kind)?.name ?? reviewKindLabel(kind)}
           />
         </div>
 
