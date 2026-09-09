@@ -36,11 +36,11 @@ export default async function ContractsPage() {
       <h1 className="mb-6 text-h1 font-black text-slate-900">계약서 작성</h1>
 
       <div className="grid max-w-[880px] gap-2 sm:grid-cols-2">
+        {/* ?org 를 실어 보내던 것을 걷었다 — 포털 양식은 소속을 읽지 않고, 포털 접수가 닫혀 그 값이 갈 곳이 없다 (감사 M33) */}
         {FORMS.map((f) => (
           <a
             key={f.path}
-            /* 소속은 있을 때만 싣는다 — 빈 org= 를 달고 가면 양식이 빈 소속을 채운다 */
-            href={session.org ? `${f.path}?org=${encodeURIComponent(session.org)}` : f.path}
+            href={f.path}
             target="_blank"
             rel="noopener"
             className="flex items-center justify-between gap-3 rounded-panel border border-slate-200 bg-white p-4 transition hover:border-brand-300 hover:bg-brand-50/40"

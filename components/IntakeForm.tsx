@@ -746,7 +746,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
       <div className="flex flex-wrap items-center gap-3">
         <Btn
           onClick={() => void submit()}
-          disabled={check.errors.length > 0 || busy !== null || (!isAdmin && !org)}
+          disabled={check.errors.length > 0 || uploading ||   /* 임시 자리로 올라가는 중(picking)에도 잠근다 — 올리던 파일이 빠진 채 접수됐다 (감사 M25) */ (!isAdmin && !org)}
         >
           {busy ?? '접수하기'}
         </Btn>

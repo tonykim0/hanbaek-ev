@@ -20,6 +20,7 @@
  */
 import { useState } from 'react';
 import JSZip from 'jszip';
+import { uniqueFileName } from '@/lib/files';
 import { downloadBlob } from '@/lib/download';
 import { Badge, Blank, Btn, Err, FIELD_CELL, PANEL } from '@/components/ui';
 import type { SortResult, SortedDoc } from '@/lib/pdf-sort';
@@ -171,11 +172,12 @@ export default function PdfSorter() {
     try {
       const zip = new JSZip();
       const failed: string[] = [];
+      const used = new Set<string>();   // 같은 이름이 서로를 덮지 않게 (감사 M26)
       for (const [i, d] of docs.entries()) {
         try {
           const res = await fetch(d.blobUrl);
           if (!res.ok) throw new Error(String(res.status));
-          zip.file(nameOf(d, i), await res.blob());
+          zip.file(uniqueFileName(nameOf(d, i), used), await res.blob());
         } catch {
           failed.push(d.category);
         }

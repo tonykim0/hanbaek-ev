@@ -332,7 +332,7 @@ export default function ChargerHistoryLookup({
           <input
             id="charger-history-address"
             value={road}
-            onChange={(e) => setRoad(e.target.value)}
+            onChange={(e) => { setRoad(e.target.value); setJibun(''); }}   // 손으로 고친 주소에 지난 검색의 지번을 남기지 않는다 (감사 M34)
             onKeyDown={(e) => {
               if (e.key === 'Enter' && road.trim()) {
                 e.preventDefault();

@@ -203,3 +203,17 @@ export function buildStandardName(
     : '';
   return `${safeName}_${catShort}${tail}.${ext}`;
 }
+
+/**
+ * ZIP 안에서 이름이 겹치면 뒷것이 앞것을 조용히 덮는다 (감사 2026-09-04 M26) — 같은 이름은 「이름 (2).pdf」로 비켜 간다.
+ * used 에 쓴 이름을 쌓아 두고 부른다.
+ */
+export function uniqueFileName(name: string, used: Set<string>): string {
+  const dot = name.lastIndexOf('.');
+  const base = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : '';
+  let candidate = name;
+  for (let n = 2; used.has(candidate); n += 1) candidate = `${base} (${n})${ext}`;
+  used.add(candidate);
+  return candidate;
+}
