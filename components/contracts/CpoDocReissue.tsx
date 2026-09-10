@@ -141,8 +141,9 @@ function DocReissueCard({
 
   const busy = phase !== null;
 
-  const pick = (selected: FileList | null) => {
-    const picked = selected?.[0];
+  /* ★FileList 가 아니라 File[] 을 받는다★ — 부르는 자리가 먼저 복사한다 */
+  const pick = (selected: File[]) => {
+    const picked = selected[0];
     if (!picked) return;
     if (!picked.name.toLowerCase().endsWith('.pdf') && picked.type !== 'application/pdf') {
       setError('PDF 파일만 판독할 수 있습니다.');
@@ -281,7 +282,7 @@ function FileSlot({
   description: string;
   file: File | null;
   busy: boolean;
-  onPick: (files: FileList | null) => void;
+  onPick: (files: File[]) => void;
 }) {
   return (
     <label
@@ -294,8 +295,13 @@ function FileSlot({
         className="hidden"
         disabled={busy}
         onChange={(event) => {
-          onPick(event.target.files);
+          /*
+           * ★목록을 먼저 복사하고 나서 비운다★ — `input.value = ''` 는 `event.target.files`
+           * 가 돌려준 그 FileList 를 비운다(실사고 2026-09-10, 접수 ZIP).
+           */
+          const picked = [...(event.target.files ?? [])];
           event.target.value = '';
+          onPick(picked);
         }}
       />
       <span className="block text-xs text-slate-500">{description}</span>

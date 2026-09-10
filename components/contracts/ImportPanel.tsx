@@ -36,8 +36,9 @@ export default function ImportPanel({
 
   const busy = phase !== null;
 
-  const pickFile = (selected: FileList | null) => {
-    const next = selected?.[0];
+  /* ★FileList 가 아니라 File[] 을 받는다★ — 부르는 자리가 먼저 복사한다(아래 onChange) */
+  const pickFile = (selected: File[]) => {
+    const next = selected[0];
     if (!next) return;
     if (!next.name.toLowerCase().endsWith('.pdf') && next.type !== 'application/pdf') {
       setError('PDF 파일만 판독할 수 있습니다.');
@@ -113,7 +114,7 @@ export default function ImportPanel({
           onDrop={(e) => {
             e.preventDefault();
             setDragging(false);
-            if (!busy) pickFile(e.dataTransfer.files);
+            if (!busy) pickFile([...e.dataTransfer.files]);
           }}
           className={`rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors ${
             busy
@@ -129,8 +130,13 @@ export default function ImportPanel({
             accept=".pdf,application/pdf"
             className="hidden"
             onChange={(e) => {
-              pickFile(e.target.files);
+              /*
+               * ★목록을 먼저 복사하고 나서 비운다★ — `input.value = ''` 는 `e.target.files`
+               * 가 돌려준 그 FileList 를 비운다(실사고 2026-09-10, 접수 ZIP).
+               */
+              const picked = [...(e.target.files ?? [])];
               e.target.value = '';
+              pickFile(picked);
             }}
           />
           {file ? (

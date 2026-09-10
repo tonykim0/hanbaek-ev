@@ -12,10 +12,10 @@ export default function UploadZone({ files, onFilesChange }: UploadZoneProps) {
   const [isDragActive, setIsDragActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleFiles = (selected: FileList | null) => {
-    if (!selected || selected.length === 0) return;
+  /* ★FileList 가 아니라 File[] 을 받는다★ — 부르는 자리가 먼저 복사한다(아래 onChange) */
+  const handleFiles = (all: File[]) => {
+    if (all.length === 0) return;
 
-    const all = Array.from(selected);
     const accepted = all.filter((file) => (
       file.name.toLowerCase().endsWith('.zip')
       || file.type === 'application/zip'
@@ -61,7 +61,7 @@ export default function UploadZone({ files, onFilesChange }: UploadZoneProps) {
       onDrop={(e) => {
         e.preventDefault();
         setIsDragActive(false);
-        handleFiles(e.dataTransfer.files);
+        handleFiles([...e.dataTransfer.files]);
       }}
       className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
         isDragActive
@@ -75,8 +75,13 @@ export default function UploadZone({ files, onFilesChange }: UploadZoneProps) {
         accept=".zip,application/zip,application/x-zip-compressed"
         className="hidden"
         onChange={(e) => {
-          handleFiles(e.target.files);
+          /*
+           * ★목록을 먼저 복사하고 나서 비운다★ — `input.value = ''` 는 `e.target.files` 가
+           * 돌려준 그 FileList 를 비운다(실사고 2026-09-10, 접수 ZIP).
+           */
+          const picked = [...(e.target.files ?? [])];
           e.target.value = '';
+          handleFiles(picked);
         }}
       />
       <div className="space-y-2">

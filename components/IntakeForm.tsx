@@ -482,8 +482,8 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
   const filesInFlight = useFileDragging();
   const zipDropOpen = filesInFlight && busy === null;
 
-  const takeZip = (files: FileList | null) => {
-    const list = [...(files ?? [])];
+  /* ★FileList 가 아니라 File[] 을 받는다★ — 이유는 아래 pickZip 에 적었다 */
+  const takeZip = (list: File[]) => {
     if (list.length === 0) return;
     if (list.length > 1) {
       setError('ZIP 하나만 놓아주세요 — 여러 묶음은 한 번에 풀지 않습니다.');
@@ -497,10 +497,23 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
     void applyZip(f);
   };
 
+  /*
+   * ★목록을 먼저 복사하고 나서 비운다★ (실사고 2026-09-10).
+   *
+   * `input.value = ''` 는 「선택된 파일 목록을 비운다」인데, 그 목록이 바로 조금 전
+   * `e.target.files` 가 돌려준 ★그★ FileList 다 — 사본이 아니라 입력칸이 들고 있는
+   * 물건이라, 참조만 쥐고 있으면 비운 뒤에 빈 목록을 읽는다. 그래서 창에서 ZIP 을 골라도
+   * 아무 일도 안 일어났다: takeZip 이 빈 목록을 받고 조용히 돌아섰다(에코일렉 2026-09-10 —
+   * 세 건을 손으로 접수했다). 끌어다 놓기는 dataTransfer 라 멀쩡했다.
+   *
+   * 8/31 「끌어다 놓기」 전까지 이 자리는 `e.target.files?.[0]` 으로 ★File 을 먼저★
+   * 꺼내고 있었다 — 두 길을 하나로 합치면서 FileList 를 그대로 넘기게 됐다.
+   * 이 저장소의 나머지 파일 입력 여덟 곳은 전부 먼저 꺼낸다(test/conventions/file-input).
+   */
   const pickZip = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
+    const picked = [...(e.target.files ?? [])];
     e.target.value = ''; // 같은 파일을 다시 고를 수 있게 비운다
-    takeZip(files);
+    takeZip(picked);
   };
 
   const catchZip = {
@@ -515,7 +528,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
       e.preventDefault();
       setOverZip(false);
       if (busy !== null) return;
-      takeZip(e.dataTransfer.files);
+      takeZip([...e.dataTransfer.files]);
     },
   };
 

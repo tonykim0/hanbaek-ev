@@ -453,8 +453,9 @@ function FileFact({
 
   const mb = (n: number) => (n / 1024 / 1024).toFixed(1);
 
-  async function upload(files: FileList | null) {
-    const picked = files?.[0];
+  /* ★FileList 가 아니라 File[] 을 받는다★ — 부르는 자리가 먼저 복사한다(아래 onChange) */
+  async function upload(files: File[]) {
+    const picked = files[0];
     if (!picked) return;
     onError(null);
     setShrunk(null);
@@ -524,8 +525,14 @@ function FileFact({
         className="hidden"
         disabled={busy || shrinking || !dbReady}
         onChange={(e) => {
-          void upload(e.target.files);
+          /*
+           * ★목록을 먼저 복사하고 나서 비운다★ — `input.value = ''` 는 `e.target.files` 가
+           * 돌려준 그 FileList 를 비운다(실사고 2026-09-10, 접수 ZIP). upload 가 async 라
+           * 지금은 첫 줄에서 꺼내 무사하지만, 그 앞에 await 한 줄이면 조용히 깨진다.
+           */
+          const picked = [...(e.target.files ?? [])];
           e.target.value = '';
+          void upload(picked);
         }}
       />
       <span className="flex items-center gap-2 whitespace-nowrap">

@@ -140,9 +140,10 @@ export default function PhotoScanner() {
 
   const shot = shots[at] ?? null;
 
-  const take = useCallback(async (files: FileList | null) => {
+  /* ★FileList 가 아니라 File[] 을 받는다★ — 이유는 아래 파일 입력에 적었다 */
+  const take = useCallback(async (files: File[]) => {
     const isPdf = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
-    const picked = [...(files ?? [])].filter((f) => f.type.startsWith('image/') || isPdf(f));
+    const picked = files.filter((f) => f.type.startsWith('image/') || isPdf(f));
     if (picked.length === 0) {
       setError('사진(JPG·PNG·HEIC)이나 PDF 를 넣어주세요.');
       return;
@@ -217,7 +218,7 @@ export default function PhotoScanner() {
       e.preventDefault();
       setOver(false);
       if (busy) return;
-      void take(e.dataTransfer.files);
+      void take([...e.dataTransfer.files]);
     },
   };
 
@@ -236,10 +237,16 @@ export default function PhotoScanner() {
           multiple
           className="hidden"
           disabled={busy !== null}
+          /*
+           * ★목록을 먼저 복사하고 나서 비운다★ (실사고 2026-09-10 — 접수 ZIP 이 같은
+           * 모양으로 깨져 있었다). `input.value = ''` 는 `e.target.files` 가 돌려준 ★그★
+           * FileList 를 비운다 — 참조만 쥐고 있으면 빈 목록을 읽는다. 여기서는 조용히
+           * 넘어가지도 않고 「사진이나 PDF 를 넣어주세요」라는 ★틀린★ 말이 떴다.
+           */
           onChange={(e) => {
-            const files = e.target.files;
+            const picked = [...(e.target.files ?? [])];
             e.target.value = '';
-            void take(files);
+            void take(picked);
           }}
         />
         {dragging && !busy && (
