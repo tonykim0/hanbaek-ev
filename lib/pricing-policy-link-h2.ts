@@ -68,11 +68,12 @@ export function linkRules(): NewPricingRule[] {
   return [
     {
       ...BASE,
-      caseName: 'SK일렉링크 (2026년 7월 20일) | 전체 | 7·10년 기설치 연동 | 모자분리',
+      /* 구간 표기 — 0074 가 이름·시작일을 「7월 20일 ~ 8월 31일」로 맞췄다(한백 2026-09-10) */
+      caseName: 'SK일렉링크 (2026년 7월 20일 ~ 8월 31일) | 전체 | 7·10년 기설치 연동 | 모자분리',
       cpo: 'SK일렉링크',
       termYears: [7, 10],
       bldgTypes: ['공동주택', '상업시설'],
-      startDate: '2026년 7월 20일',
+      startDate: '2026년 7월 20일 ~ 8월 31일',
       salesUnit: 1_500_000 - MARGIN,
       installTerms: SK_LINK_INSTALL,
       miscTerms: SK_LINK_MISC,

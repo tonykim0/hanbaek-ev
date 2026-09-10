@@ -103,7 +103,9 @@ describe('축 — 7/20 케이스와 어긋나지 않게', () => {
   });
 
   it('★시작일이 7/20 뒤라 후보 목록 맨 위에 선다★ (lib/pricing-match byStart)', () => {
-    expect(SK_2609_START).toBe('2026년 9월 1일');
+    /* ★구간으로 적는다★ — PL 과 같은 꼴(한백 2026-09-10). 정렬은 앞 날짜를 읽는다 */
+    expect(SK_2609_START).toBe('2026년 9월 1일 ~ 12월 31일');
+    for (const r of rules) expect(r.caseName).toContain(`(${SK_2609_START})`);
     for (const r of rules) {
       expect(startKey(r) > startKey({ startDate: '2026년 7월 20일', bizYear: 2026 })).toBe(true);
     }

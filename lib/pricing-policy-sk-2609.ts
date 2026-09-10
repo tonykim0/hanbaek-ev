@@ -31,7 +31,18 @@
  */
 import type { NewPricingRule, SettlementStepRule } from '@/types/project';
 
-export const SK_2609_START = '2026년 9월 1일';
+/**
+ * ★끝도 적는다 — 「2026년 9월 1일 ~ 12월 31일」★ (한백 지시 2026-09-10 「SK일렉링크도
+ * 플러그링크처럼 구간별로 날짜를 표시해줘야지」). 시작일만 적혀 있으면 열려 있는 것처럼
+ * 읽히고, 어느 계약일에 어느 케이스가 맞는지 사람이 해석해야 한다 — 계약일과 견줄 수 있는
+ * 구간이어야 한다. 플러그링크가 먼저 그렇게 갔다(PL_START · migrations/0057).
+ *
+ * 12/31 은 연 단위 정책 관행이다 — SK 문서가 9/1 정책의 종료일을 말한 적은 없다(부속합의서의
+ * 9/30 은 7/20 정책의 것이었고 9/1 정책이 덮었다). 10월에 새 단가가 오면 그때 고친다.
+ *
+ * 정렬·시기 탭·중복 판정은 앞 날짜를 읽는다(lib/pricing-match startKey → 2026-09-01).
+ */
+export const SK_2609_START = '2026년 9월 1일 ~ 12월 31일';
 
 /* ── 시공비 — 유형마다 하나 ── */
 /** 보조(환경부) — 수전방식 무관. 하반기 100 → 9/1 부터 110 (한백 지시 2026-09-10) */
@@ -48,7 +59,7 @@ const MARGIN_40 = 400_000;
 
 /* ── 조건 칸 — 7/20 케이스(lib/pricing-policy-sk-h2)의 문장을 잇고 기간만 9/1 로 ── */
 const SK_REGION = '수도권 · 6개 광역시 · 시 단위의 상면';
-const SK_PERIOD = '적용: 2026-09-01 ~ 계약일 기준(접수된 설치 계약서의 계약일)';
+const SK_PERIOD = '적용: 2026-09-01 ~ 12-31 계약일 기준(접수된 설치 계약서의 계약일)';
 const SK_TARGET = '아파트 · 주거형 오피스텔 · 지식산업센터 · 일반 상업시설·기타 부지(병원·골프장 등)';
 const SK_INSTALL_SUB = `대상: ${SK_TARGET} · 지역: ${SK_REGION} · ${SK_PERIOD}`;
 const SK_INSTALL_INV = `모자분리 조건 · 대상: ${SK_TARGET} · 지역: ${SK_REGION} · ${SK_PERIOD}`;
@@ -110,7 +121,7 @@ function sub(power: '모자분리' | '한전불입', years: 7 | 10, total: numbe
   return {
     ...BASE,
     id: `sk-2609-y${years}-${slug}-new`,
-    caseName: `SK일렉링크 (2026년 9월 1일) | 전체 | ${years}년 신규 | ${power}`,
+    caseName: `SK일렉링크 (${SK_2609_START}) | 전체 | ${years}년 신규 | ${power}`,
     bizType: '환경부',
     powerType: power,
     replType: '환경부 신규',
@@ -136,7 +147,7 @@ function inv(years: 7 | 10, total: number): Sk2609Rule {
   return {
     ...BASE,
     id: `sk-2609-y${years}-mother-inplace-both`,
-    caseName: `SK일렉링크 (2026년 9월 1일) | 전체 | ${years}년 자체투자 | 모자분리`,
+    caseName: `SK일렉링크 (${SK_2609_START}) | 전체 | ${years}년 자체투자 | 모자분리`,
     bizType: '자체투자',
     replType: '자체투자 (제자리교체)',
     termYears: [years],
@@ -155,7 +166,7 @@ function link(years: 7 | 10, total: number): Sk2609Rule {
   return {
     ...BASE,
     id: `sk-2609-y${years}-mother-link-both`,
-    caseName: `SK일렉링크 (2026년 9월 1일) | 전체 | ${years}년 기설치 연동 | 모자분리`,
+    caseName: `SK일렉링크 (${SK_2609_START}) | 전체 | ${years}년 기설치 연동 | 모자분리`,
     bizType: '기설치 연동',
     replType: '기설치 연동',
     termYears: [years],
