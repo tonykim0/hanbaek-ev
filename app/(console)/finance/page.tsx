@@ -4,7 +4,7 @@ import { getRepository } from '@/lib/data';
 import { allSlots } from '@/lib/data/db-slot';
 import { getSessionUser, viewerOf } from '@/lib/auth/session';
 import { isHanbaek } from '@/lib/roles';
-import { safetyFeeApplies, safetyFeeDue, safetyFeeOpen } from '@/lib/settlement';
+import { safetyFeeApplies, safetyFeeDue, safetyFeeOpen, unitMarginOf } from '@/lib/settlement';
 import { won, wonCompact } from '@/lib/format';
 import YearTabs from '@/components/YearTabs';
 import { Blank, PANEL, Tag } from '@/components/ui';
@@ -135,6 +135,11 @@ export default async function FinancePage({
   const margin = settlements.reduce((sum, s) => sum + s.marginTotal, 0);
   /* 마진이 실제보다 적게 나오는 현장 수 — 단가가 안 붙은 라인은 셀 금액이 없다 */
   const unpricedSites = settlements.filter((s) => s.unpricedLines > 0).length;
+  /*
+   * 1기당 마진 (한백 지시 2026-09-10). 위아래를 같은 범위로 맞추고 점검수수료를 빼는
+   * 이유는 lib/settlement unitMarginOf 에 적었다 — 합계와 달리 이 값은 정확할 수 있다.
+   */
+  const unit = unitMarginOf(settlements);
 
   if (collected.length === 0 && paid.length === 0 && overview.plans.length === 0) {
     return (
@@ -207,14 +212,31 @@ export default async function FinancePage({
               틀리는 방식이 다르다(한백 2026-09-06 「정산현황에서는 한백 마진으로 들어가게」).
               없으면 줄을 만들지 않는다 — 0 원 줄은 「받는데 안 적었다」로 읽힌다.
             */}
+            {/*
+              ★1기당 마진은 맨 아래다★ (한백 지시 2026-09-10). 합계 다음에 두는 것은 그것이
+              합계에서 나온 값이라서다 — 위에 두면 무엇을 나눈 것인지 읽는 순서가 뒤집힌다.
+              분모를 곁말로 적는다: 총 수주대수가 아니라 ★단가가 붙은★ 대수라, 안 적으면
+              사람이 계약대수로 검산했다가 안 맞아 숫자를 못 믿게 된다.
+              셀 대수가 없으면 줄을 만들지 않는다 — 0 원 줄은 「마진이 0」으로 읽힌다.
+            */}
             <Facts
-              rows={safetyFeeIn > 0
-                ? [
-                    { label: '단가 마진', value: margin - safetyFeeIn, tone: 'in' as const },
-                    { label: '전기안전점검수수료', value: safetyFeeIn, tone: 'in' as const },
-                    { label: '합계', value: margin, tone: 'in' as const },
-                  ]
-                : [{ label: '합계', value: margin, tone: 'in' as const }]}
+              rows={[
+                ...(safetyFeeIn > 0
+                  ? [
+                      { label: '단가 마진', value: margin - safetyFeeIn, tone: 'in' as const },
+                      { label: '전기안전점검수수료', value: safetyFeeIn, tone: 'in' as const },
+                    ]
+                  : []),
+                { label: '합계', value: margin, tone: 'in' as const },
+                ...(unit
+                  ? [{
+                      label: '1기당 마진',
+                      value: unit.perUnit,
+                      tone: 'in' as const,
+                      note: `단가가 붙은 ${unit.qty}기 기준${safetyFeeIn > 0 ? ' · 점검수수료 제외' : ''}`,
+                    }]
+                  : []),
+              ]}
             />
           </Panel>
         )}
@@ -286,7 +308,13 @@ function Panel({
 function Facts({
   rows,
 }: {
-  rows: Array<{ label: string; value: number; tone?: 'in' | 'out' | 'wait' }>;
+  rows: Array<{
+    label: string;
+    value: number;
+    tone?: 'in' | 'out' | 'wait';
+    /** 라벨 밑의 곁말 — 이 숫자가 무엇으로 나온 것인지(분모 등). 없으면 줄이 안 는다. */
+    note?: string;
+  }>;
 }) {
   const color = (tone?: 'in' | 'out' | 'wait') =>
     tone === 'in' ? 'text-brand-800' : tone === 'out' ? 'text-sky-800' : tone === 'wait' ? 'text-amber-700' : 'text-slate-900';
@@ -294,8 +322,14 @@ function Facts({
     <dl className="flex flex-col gap-2.5">
       {rows.map((row) => (
         <div key={row.label} className="flex items-baseline justify-between gap-3 border-t border-slate-100 pt-2.5 first:border-0 first:pt-0">
-          <dt className="text-base font-bold text-slate-500">{row.label}</dt>
-          <dd className={`text-h3 font-black tabular-nums ${color(row.tone)}`}>{won(row.value)}</dd>
+          <dt className="min-w-0 text-base font-bold text-slate-500">
+            {row.label}
+            {/* 곁말은 라벨 밑이다 — 숫자 옆에 두면 자릿수 훑기를 방해한다 */}
+            {row.note && (
+              <span className="mt-0.5 block text-tiny font-semibold text-slate-400">{row.note}</span>
+            )}
+          </dt>
+          <dd className={`shrink-0 text-h3 font-black tabular-nums ${color(row.tone)}`}>{won(row.value)}</dd>
         </div>
       ))}
     </dl>

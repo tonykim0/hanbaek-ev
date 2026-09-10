@@ -1208,6 +1208,14 @@ export interface SettlementSummary {
   cpo: CpoName;
   /** 계약 총 대수 */
   qty: number;
+  /**
+   * 그중 단가가 붙은 라인의 대수 — ★1기당 마진의 분모★ (한백 지시 2026-09-10).
+   *
+   * qty 로 나누면 안 된다: marginTotal 은 단가가 붙은 라인만 세는데 qty 는 전부를 세서,
+   * 단가 미지정 라인이 있는 순간 1기당 마진이 실제보다 ★적게★ 나온다. 위아래를 같은
+   * 범위로 맞춰야 그 값이 「지금 아는 만큼은 정확한」 수가 된다.
+   */
+  pricedQty: number;
   stage: Stage;
   status: ProcessStatus;
   /** 적용된 정산 규칙 이름. null 이면 기성이 계산되지 않는다. */
