@@ -8,8 +8,8 @@
  */
 import { useState } from 'react';
 import type { ContractState, ProcessStatus, ProjectDetail, ProjectDocument } from '@/types/project';
-import { PROCESS_STATUSES, replLabel } from '@/types/project';
-import { contractDocsLockedWhy, statusIndex } from '@/lib/process';
+import { replLabel } from '@/types/project';
+import { contractDocsLockedWhy, gateContextOf, nextStatusOf, prevStatusOf } from '@/lib/process';
 import { HANDOFF_STATUS } from '@/lib/board';
 import { evaluateDocs, needsPreInstallCheck, type DocReq } from '@/lib/doc-rules';
 import { DocDelete, DocFileActions, DocUpload, DownloadAll } from '@/components/DocFiles';
@@ -172,9 +172,15 @@ export function IntakeTab({
    *
    * 계약완료일 때만이다. 그 앞(접수·검토)은 확인이 먼저고, 그 뒤는 시공 탭 스테퍼가
    * 민다 — 한 걸음을 두 자리에서 밀면 어느 것이 정본인지 알 수 없다(화면 규칙 5).
-   * 이름은 PROCESS_STATUSES 에서 뽑는다: 손으로 적으면 순서가 바뀔 때 여기만 옛말이 된다.
+   * ★이웃 칸은 nextStatusOf 에게 묻는다 — 색인에 ±1 을 하지 않는다.★ PROCESS_STATUSES 는
+   * 흐름 ★하나★가 아니라 모든 칸의 목록이고, 현장마다 지나는 칸이 다르다(stepsOf — 기설치
+   * 연동은 충전기 발주·수령을 안 지난다). 색인 산술은 그 갈래도, 반려로만 들어가는 칸
+   * (BRANCH_ONLY 준공보완)도 못 본다. 지금은 계약완료 다음이 모든 흐름에서 같아 우연히
+   * 맞지만, 그 사이에 칸이 하나 생기거나 어느 흐름이 이 자리를 건너뛰면 조용히 틀린 칸을
+   * 가리킨다 — 시공 탭은 이미 nextStatusOf 로 묻는다(ConstructionTab).
    */
-  const nextStep = status === '계약완료' ? PROCESS_STATUSES[statusIndex(status) + 1] : null;
+  const gate = gateContextOf(project);
+  const nextStep = status === '계약완료' ? nextStatusOf(status, gate) : null;
 
   /*
    * ★밀었으면 되돌릴 자리도 같이 둔다★ (한백 지적 2026-09-01, 화면 규칙 7).
@@ -187,7 +193,7 @@ export function IntakeTab({
    * 「운영사 계약서 제출」일 때만이다. 그 뒤(행위신고부터)는 시공 탭 스테퍼가 민다 —
    * 한 걸음을 두 자리에서 밀면 어느 것이 정본인지 알 수 없다(화면 규칙 5).
    */
-  const backStep = status === HANDOFF_STATUS ? PROCESS_STATUSES[statusIndex(status) - 1] : null;
+  const backStep = status === HANDOFF_STATUS ? prevStatusOf(status, gate) : null;
 
   const requiredHere = evaluated.filter((d) => d.req === 'm' && !d.preinstall);
   const requiredDone = requiredHere.filter((d) => {
