@@ -16,13 +16,14 @@ import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ProcessStatus, ProjectSummary } from '@/types/project';
 import { PROCESS_STATUSES } from '@/types/project';
-import { BOARD_COLUMNS, boardColumnOf, partnerWaitingOf, type BoardColumn } from '@/lib/board';
+import { BOARD_COLUMNS, boardColumnOf, isMyCourt, partnerWaitingOf, waitingSinceOf, type BoardColumn } from '@/lib/board';
+import type { Role } from '@/lib/roles';
 import { prevStatusOf, statusIndex } from '@/lib/process';
 import { Btn, Tag } from '@/components/ui';
 import { StopControl } from '@/components/project/StopControl';
 
 export default function ProjectBoard({
-  projects, band, canMove, onMove, busyId,
+  projects, band, canMove, onMove, busyId, role,
 }: {
   /** 이미 걸러진 목록. 임시 위치도 반영돼 있다. */
   projects: ProjectSummary[];
@@ -35,6 +36,8 @@ export default function ProjectBoard({
   band: '계약' | '시공';
   /** 다음 단계로 넘길 수 있는가 (한백만) — 카드의 넘기기 단추가 이것으로 갈린다 */
   canMove: boolean;
+  /** 보는 사람의 구분 — 어느 칸이 「내 차례」인지 가르는 데만 쓴다(lib/board isMyCourt) */
+  role: Role;
   onMove: (p: ProjectSummary, status: ProcessStatus) => void;
   busyId: string | null;
 }) {
@@ -133,24 +136,38 @@ export default function ProjectBoard({
               >
                 {cols.map((col) => {
                   const list = columns.get(col.key) ?? [];
+                  /*
+                   * ★내 차례인 칸을 도드라지게★ (한백 지시 2026-09-10). 담당은 칸이 정하므로
+                   * (lib/board courtOfColumn) 강조도 칸에 붙는다 — 카드마다 붙이면 같은 칸의
+                   * 모든 카드에 같은 표시가 반복돼 아무것도 도드라지지 않는다.
+                   *
+                   * 비어 있는 칸은 강조하지 않는다 — 할 일이 없는데 눈이 가면 표시가 값을 잃는다.
+                   * 멈춤 칸도 아니다: 거기 있는 것은 처리할 일이 아니라 멈춘 일이다.
+                   */
+                  const mine = col.band !== '멈춤' && list.length > 0 && isMyCourt(col.key, role);
                   return (
                     <section
                       key={col.key}
-                      aria-label={labelOf(col)}
+                      aria-label={`${labelOf(col)}${mine ? ' (내 차례)' : ''}`}
                       /* 멈춤 칸은 같은 줄 끝에 서므로 색으로만 가른다 — 흐름 칸과 다른 것임이 보여야 한다 */
                       className={`flex min-h-0 min-w-0 flex-col rounded-panel border p-2.5 ${
                         col.band === '멈춤'
                           ? 'border-slate-300 bg-slate-100/80'
-                          : 'border-slate-200 bg-slate-50/60'
+                          : mine
+                            ? 'border-brand-300 bg-brand-50/60'
+                            : 'border-slate-200 bg-slate-50/60'
                       }`}
                     >
                       <header className="flex items-baseline justify-between gap-2 px-1.5 pb-2">
-                        <h3 className="text-base font-black tracking-[-0.01em] text-slate-800">
+                        <h3 className={`text-base font-black tracking-[-0.01em] ${
+                          mine ? 'text-brand-900' : 'text-slate-800'
+                        }`}>
                           {labelOf(col)}
                         </h3>
                         <span
                           className={`text-lead font-black tabular-nums ${
-                            list.length > 0 ? 'text-slate-700' : 'text-slate-300'
+                            mine ? 'text-brand-800'
+                              : list.length > 0 ? 'text-slate-700' : 'text-slate-300'
                           }`}
                         >
                           {list.length}
@@ -166,6 +183,7 @@ export default function ProjectBoard({
                             canMove={canMove}
                             onMove={onMove}
                             tab={tab}
+                            column={col.key}
                           />
                         ))}
                         {list.length === 0 && (
@@ -192,7 +210,7 @@ export default function ProjectBoard({
  * 키보드로도 들어갈 수 있게 role·tabIndex·Enter 를 둔다.
  */
 function Card({
-  p, busy, canMove, onMove, tab,
+  p, busy, canMove, onMove, tab, column,
 }: {
   p: ProjectSummary;
   busy: boolean;
@@ -200,6 +218,8 @@ function Card({
   onMove: (p: ProjectSummary, status: ProcessStatus) => void;
   /** 상세를 열 때 먼저 보일 탭 — 이 보드의 국면을 따라간다 */
   tab: 'intake' | 'construction';
+  /** 이 카드가 선 칸 — 무엇을 기다린 지 세는 기준이 칸마다 다르다 */
+  column: BoardColumn;
 }) {
   const router = useRouter();
   const qty = p.lines.reduce((sum, l) => sum + l.qty, 0);
@@ -255,6 +275,14 @@ function Card({
    */
   const hint = waiting ?? (next && !next.ready ? `다음: ${next.need}` : null);
 
+  /*
+   * ★반려·검토 요청 이후 며칠★ (한백 지시 2026-09-10). 옆의 정체일(stalledDays)과 다른
+   * 값이다 — 저것은 「마지막 움직임 후」라 협력사가 파일 한 장만 올려도 0 이 된다.
+   * 여기서 세는 것은 그 판정 자체의 시각이라 반려가 살아 있는 동안 계속 자란다.
+   * 어느 칸에서 무엇을 세는지는 lib/board 가 정한다.
+   */
+  const waited = waitingSinceOf(column, p);
+
   return (
     <article
       role="link"
@@ -286,6 +314,17 @@ function Card({
         )}
         {p.holdState && (
           <Tag tone="hold">{p.holdState}</Tag>
+        )}
+        {/*
+          * 기다린 날은 ★늘 적는다★ — 며칠이 됐든 「그 칸에 언제부터 있었나」가 이 카드에서
+          * 가장 먼저 알아야 하는 값이다. 정체일(오른쪽)은 14일부터만 뜨는 경고라 성격이
+          * 다르다: 저것은 「너무 오래됐다」고 말하고, 이것은 「언제부터인가」를 말한다.
+          * 색은 열흘을 넘으면 짙어진다 — 숫자만으로는 급한지 아닌지 안 읽힌다.
+          */}
+        {waited && (
+          <Tag tone={waited.days >= 10 ? 'stop' : undefined}>
+            {waited.label} {waited.days}일째
+          </Tag>
         )}
         {p.stalledDays >= 14 && (
           <span

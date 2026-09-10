@@ -23,7 +23,7 @@ export default async function ConstructionPage() {
     <>
       <h1 className="mb-5 text-h1 font-black text-slate-900">시공관리</h1>
 
-      <ProjectsView projects={projects} band="시공" canMove={session.role === 'admin'} />
+      <ProjectsView projects={projects} band="시공" canMove={session.role === 'admin'} role={session.role} />
 
     </>
   );

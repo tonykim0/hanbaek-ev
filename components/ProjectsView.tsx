@@ -24,6 +24,7 @@ import {
 } from '@/lib/project-filter';
 import { ALL_YEARS, businessYearsOf, inBusinessYear } from '@/lib/business-year';
 import ProjectBoard from './ProjectBoard';
+import type { Role } from '@/lib/roles';
 import ProjectTable, { ColumnPicker, useTableColumns } from '@/components/ProjectTable';
 
 type ViewKey = 'board' | 'table';
@@ -96,6 +97,7 @@ export default function ProjectsView({
   projects,
   band,
   canMove,
+  role,
 }: {
   /** 이 페이지 국면의 현장들 — 페이지(서버)가 이미 국면으로 걸러서 넘긴다 */
   projects: ProjectSummary[];
@@ -103,6 +105,8 @@ export default function ProjectsView({
   band: '계약' | '시공';
   /** 단계를 옮길 수 있는가 (한백만) */
   canMove: boolean;
+  /** 보는 사람의 구분 — 보드가 「내 차례」 칸을 가리는 데 쓴다 */
+  role: Role;
 }) {
   const sp = useSearchParams();
 
@@ -436,7 +440,7 @@ export default function ProjectsView({
       {error && <Note tone="stop" className="mb-4">{error}</Note>}
 
       {view === 'board' ? (
-        <ProjectBoard projects={filtered} band={band} canMove={canMove} onMove={move} busyId={busyKey} />
+        <ProjectBoard projects={filtered} band={band} canMove={canMove} role={role} onMove={move} busyId={busyKey} />
       ) : (
         <ProjectTable
           projects={filtered}
