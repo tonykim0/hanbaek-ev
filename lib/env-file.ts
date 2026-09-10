@@ -13,7 +13,13 @@ import path from 'path';
 export function loadEnvFile(file = '.env.local'): void {
   let raw: string;
   try {
-    raw = readFileSync(path.join(process.cwd(), file), 'utf8');
+    /*
+     * 절대경로는 그대로 쓴다 — path.join 은 '/Users/…' 도 cwd 뒤에 이어 붙여 없는 파일을 만들고,
+     * 아래 catch 가 그것을 「파일 없음」으로 조용히 넘겼다. 워크트리에는 .env.prod-db 링크가
+     * 없어서(CLAUDE.md 협업 방식) 프로덕션 점검 스크립트가 백업 폴더의 파일을 절대경로로
+     * 가리키는데, 그 길이 소리 없이 막혔다(2026-09-10). 상대경로는 전과 같다.
+     */
+    raw = readFileSync(path.isAbsolute(file) ? file : path.join(process.cwd(), file), 'utf8');
   } catch {
     return; // 파일이 없으면 조용히 넘어간다 (운영에서는 플랫폼이 환경변수를 준다)
   }
