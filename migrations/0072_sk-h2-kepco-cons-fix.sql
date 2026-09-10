@@ -18,7 +18,7 @@ begin
 
   -- 감사기록 — 저장소(updatePricingRule)가 남기는 것과 같은 모양
   insert into audit_log (id, project_id, actor, action, field, old_value, new_value)
-  values (gen_random_uuid()::text, null, '마이그레이션 0070 (한백 확인 2026-09-10)', '단가 케이스 수정',
+  values (gen_random_uuid()::text, null, '마이그레이션 0072 (한백 확인 2026-09-10)', '단가 케이스 수정',
           'sk-h2-y10-kepco-new', '영업 100만 · 시공 120만', '영업 120만 · 시공 100만 — 노션 오기 정정');
 
   -- 참조 현장의 협력사 정산관리 메모 맨 위에 한 줄 (settlements 행이 없는 현장은 만든다)

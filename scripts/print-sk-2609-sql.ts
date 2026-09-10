@@ -26,7 +26,7 @@ const n = (v: number | null) => (v === null ? 'null' : String(v));
 const j = (v: unknown | null) => (v === null ? 'null' : `'${JSON.stringify(v)}'::jsonb`);
 
 /*
- * 두 마이그레이션으로 나뉜다 — 0069 는 9/1 케이스 8건(--기본), 0070 은 7/20 한전불입 정정만
+ * 두 마이그레이션으로 나뉜다 — 0071 은 9/1 케이스 8건(--기본), 0072 는 7/20 한전불입 정정만
  * (--kepco-fix-only). 한 파일에 같이 넣지 않은 이유: 8건은 먼저 확정됐고 정정은 참조 현장을 본 뒤
  * 한백이 따로 결정했다 — 결정이 갈린 것은 파일도 갈라야 「무엇이 언제 들어갔나」가 읽힌다.
  * --with-kepco-fix 는 둘을 한 번에 찍는 확인용이다.
@@ -131,7 +131,7 @@ begin
 
   -- 감사기록 — 저장소(updatePricingRule)가 남기는 것과 같은 모양
   insert into audit_log (id, project_id, actor, action, field, old_value, new_value)
-  values (gen_random_uuid()::text, null, '마이그레이션 0070 (한백 확인 2026-09-10)', '단가 케이스 수정',
+  values (gen_random_uuid()::text, null, '마이그레이션 0072 (한백 확인 2026-09-10)', '단가 케이스 수정',
           '${id}', '영업 ${before.salesUnit / 10_000}만 · 시공 ${before.consUnit / 10_000}만', '영업 ${after.salesUnit / 10_000}만 · 시공 ${after.consUnit / 10_000}만 — 노션 오기 정정');
 
   -- 참조 현장의 협력사 정산관리 메모 맨 위에 한 줄 (settlements 행이 없는 현장은 만든다)
@@ -148,7 +148,7 @@ end $$;\n`);
 /*
  * 검산 — 여덟 id 의 금액이 정의와 다르면 예외를 던진다(빌드가 깨진다 = 배포가 멈춘다).
  * 「적용 N건」 만 보는 러너로는 조용한 실패를 못 잡는다 — 값을 다시 읽어 견준다.
- * 정정만 찍는 모드(0070)에서는 뺀다 — 그 파일의 일이 아니다.
+ * 정정만 찍는 모드(0072)에서는 뺀다 — 그 파일의 일이 아니다.
  */
 if (KEPCO_FIX_ONLY) process.exit(0);
 const expectRows = rules
