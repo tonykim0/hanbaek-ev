@@ -32,6 +32,9 @@ export const BUILDING_TYPES = ['공동주택', '상업시설'] as const satisfie
 /** 노션에 없는 신규 필드. 회의록 종류를 결정한다. */
 export type ContractParty = '입주자대표회의' | '관리단' | '건설사';
 export type PowerType = '한전불입' | '모자분리' | '한전불입+모자분리';
+
+/** 고를 수 있는 수전방식 — 「한전불입+모자분리」는 섞인 현장이라 접수에서만 쓴다 */
+export const POWER_TYPES = ['모자분리', '한전불입', '한전불입+모자분리'] as const satisfies readonly PowerType[];
 /**
  * 교체유형 — 사업구분과 묶여 있다.
  *
@@ -64,6 +67,9 @@ export const CHANNELS = ['턴키', '영업', '시공'] as const satisfies readon
  * migrations/0062). 케이스 id 는 축의 영문 약칭(link)이라 안 바뀐다(lib/pricing-match).
  */
 export type BizType = '환경부' | '자체투자' | '기설치 연동';
+
+/** 화면의 후보와 서버 검사가 같은 목록을 본다 — 손으로 두 벌 적으면 갈린다 */
+export const BIZ_TYPES = ['환경부', '자체투자', '기설치 연동'] as const satisfies readonly BizType[];
 
 /**
  * 교체유형이 허용하는 수전방식 — ★한전불입이 붙는 것은 환경부 신규뿐이다.★
@@ -602,6 +608,8 @@ export interface ProjectDocument {
  */
 export type ProjectFactsPatch = {
   addr?: string | null;
+  /** 계약접수일 — 수주 현황의 월·사업연도가 이 날짜로 묶인다(lib/business-year) */
+  createdAt?: string;
   bldgType?: BuildingType | null;
   contractParty?: ContractParty | null;
   parkTotal?: number | null;
@@ -609,6 +617,19 @@ export type ProjectFactsPatch = {
   tel?: string | null;
   mail?: string | null;
   note?: string | null;
+};
+
+/**
+ * 단가·흐름을 고르는 ★축★ (repository setProjectAxes).
+ *
+ * 위 ProjectFactsPatch 와 갈라 두는 이유는 파급이 다르기 때문이다 — 이 셋은 단가 케이스를
+ * 고르는 축이고, 사업구분은 공정 흐름(stepsOf)까지 바꾼다. 그래서 문이 따로고, 잠금과
+ * 흐름 검사와 단가 해제가 이 문에만 붙는다.
+ */
+export type ProjectAxesPatch = {
+  cpo?: CpoName;
+  bizType?: BizType;
+  powerType?: PowerType | null;
 };
 
 /** 계약 라인에서 고칠 수 있는 것 (repository setLineFacts) — 대수는 돈이라 잠금을 본다 */

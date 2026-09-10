@@ -15,7 +15,7 @@ import type {
   Court, DocStatus, HoldState, IntakeDraft, LineAxes, NewPayoutEntry, NewPricingRule, PayoutKind, PayoutRow, PreInstall, PricingRule,
   ChargerModel,
   PayoutPlanRow, ProcessInfo, ProcessStatus, ProjectDetail, ProjectSummary, Settlement, SettlementRule, SettlementSummary, BatchFinal, TaxInvoice,
-  Notice, NoticeFile, ReviewEvent, ProjectFactsPatch, LineFactsPatch,
+  Notice, NoticeFile, ReviewEvent, ProjectFactsPatch, LineFactsPatch, ProjectAxesPatch,
 } from '@/types/project';
 import type { Actor, Viewer } from '@/lib/auth/types';
 
@@ -226,6 +226,26 @@ export interface ProjectRepository {
    * 넷은 지금도 접수를 다시 받거나 DB 로 고친다 — 제대로 하려면 흐름 재판정이 함께 와야 한다.
    */
   setProjectFacts(projectId: string, patch: ProjectFactsPatch, actor: Actor): Promise<void>;
+
+  /**
+   * 단가·흐름의 ★축★을 고친다 — 운영사·사업구분·수전방식. [한백 전용]
+   *
+   * 값을 바로잡는 것은 같은데 파급이 다르다(한백 지시 2026-09-10 — 「여기도 수정하게끔
+   * 해줘」). 그래서 설명하는 값(setProjectFacts)과 문을 갈랐고, 이 문에만 셋이 붙는다.
+   *
+   *  ① ★잠금★ — 셋 다 단가 케이스를 고르는 축이라 금액이 따라 움직인다. 지급조건이
+   *     확정된 현장에서는 거절한다(assertTermsOpen — 대수·단가 지정과 같은 문).
+   *  ② ★흐름 검사★ — 사업구분은 지나는 칸을 바꾼다(stepsOf: 기설치 연동은 「충전기 발주」·
+   *     「충전기 수령」을 안 지난다). 지금 서 있는 칸이 새 흐름에 없으면 그 현장은 갈 곳
+   *     없는 자리에 멈춘다 — 그래서 거절하고, 어느 칸이 문제인지 말한다.
+   *  ③ ★단가 해제★ — 축이 움직이면 붙어 있던 케이스가 이 현장과 안 맞는다. 라인의 단가
+   *     지정을 푼다(연수를 고칠 때와 같은 이유). 화면이 「단가 미지정」으로 세운다.
+   *
+   * 수전방식은 현장과 라인 두 곳에 같은 값이 산다 — ★양쪽을 함께 쓴다.★ 한쪽만 고치면
+   * 단가 매칭(라인)과 화면(현장)이 갈린다. 교체유형도 운영사가 바뀌면 다시 눕힌다
+   * (normalizeRepl — 안 가르는 운영사의 「신규위치」는 제자리교체다).
+   */
+  setProjectAxes(projectId: string, patch: ProjectAxesPatch, actor: Actor): Promise<void>;
 
   /**
    * 계약 라인의 대수·연수를 고친다. [한백 전용]

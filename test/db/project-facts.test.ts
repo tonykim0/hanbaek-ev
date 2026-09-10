@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest';
 import { getRepository } from '@/lib/data';
 import { actorOf, USERS, withProject } from './kit';
-import { withPayableProject } from './money-kit';
+import { adminView, withPayableProject } from './money-kit';
 
 const repo = getRepository();
 const admin = actorOf(USERS.admin);
@@ -117,6 +117,77 @@ describe('계약 라인 고치기', () => {
     await withProject(async (id) => {
       const line = await lineOf(id);
       await expect(repo.setLineFacts(line.id, { qty: 99 }, partner)).rejects.toThrow();
+    });
+  });
+});
+
+describe('단가·흐름의 축 고치기', () => {
+  it('운영사·사업구분·수전방식을 고친다 — 라인의 수전방식도 함께 간다', async () => {
+    await withProject(async (id) => {
+      await repo.setProjectAxes(id, { cpo: '나이스인프라', powerType: '한전불입' }, admin);
+      const d = (await repo.getProject(id, { role: 'admin', org: null }))!;
+      expect(d.project.cpo).toBe('나이스인프라');
+      expect(d.project.powerType).toBe('한전불입');
+      // ★현장과 라인이 갈리면 화면과 단가 매칭이 다른 값을 본다★
+      expect(d.lines[0].powerType).toBe('한전불입');
+    });
+  });
+
+  it('★축이 움직이면 단가 지정이 풀린다★ — 붙어 있던 케이스가 이 현장과 안 맞는다', async () => {
+    await withPayableProject(async ({ id, lineId }) => {
+      expect((await lineOf(id)).pricingRuleId).not.toBeNull();
+      await repo.setProjectAxes(id, { bizType: '환경부' }, admin);
+      expect((await lineOf(id)).pricingRuleId).toBeNull();
+      expect(lineId).toBe((await lineOf(id)).id);
+    });
+  });
+
+  /*
+   * ★이 시험이 이 문의 존재 이유다.★ 사업구분을 바꾸면 지나는 칸이 바뀌는데(stepsOf),
+   * 지금 서 있는 칸이 새 흐름에 없으면 그 현장은 갈 곳 없는 자리에 멈춘다 — 화면에는
+   * 아무 말도 안 뜨고 다음 단추만 조용히 사라진다.
+   *
+   * 계약이 끝나야 공정을 옮길 수 있어서(store/process) 지급이 열린 현장으로 시험한다.
+   * 그 현장은 자체투자라 「충전기 발주」 게이트가 환경부 승인일을 안 묻는다 — 행위신고를
+   * 「대상 아님」으로 두면 거기까지 갈 수 있다.
+   */
+  it('★지금 서 있는 칸이 새 흐름에 없으면 거절한다★ — 기설치 연동은 충전기 발주를 안 지난다', async () => {
+    await withPayableProject(async ({ id }) => {
+      await repo.setProcessStatus(id, '운영사 계약서 제출', admin);
+      await repo.setProcessStatus(id, '행위신고', admin);
+      await repo.updateProcess(id, { notifySkippedAt: '2026-09-01' }, admin);
+      if ((await repo.getProject(id, adminView))!.process.status !== '충전기 발주') {
+        await repo.setProcessStatus(id, '충전기 발주', admin);
+      }
+
+      await expect(repo.setProjectAxes(id, { bizType: '기설치 연동' }, admin))
+        .rejects.toThrow(/충전기 발주[\s\S]*지나지 않습니다/);
+
+      // 그 흐름이 지나는 칸으로 물러나면 바꿀 수 있다
+      await repo.setProcessStatus(id, '행위신고', admin);
+      await repo.setProjectAxes(id, { bizType: '기설치 연동' }, admin);
+      expect((await factOf(id)).bizType).toBe('기설치 연동');
+    });
+  });
+
+  it('목록 밖의 값은 거절한다', async () => {
+    await withProject(async (id) => {
+      await expect(repo.setProjectAxes(id, { cpo: '없는운영사' as never }, admin)).rejects.toThrow(/운영사/);
+      await expect(repo.setProjectAxes(id, { bizType: '없는사업' as never }, admin)).rejects.toThrow(/사업구분/);
+      await expect(repo.setProjectAxes(id, { powerType: '없는수전' as never }, admin)).rejects.toThrow(/수전방식/);
+    });
+  });
+
+  it('★지급조건이 확정되면 잠긴다★ — 축은 금액을 움직인다', async () => {
+    await withPayableProject(async ({ id }) => {
+      await repo.setPayoutTermsConfirmed(id, true, admin);
+      await expect(repo.setProjectAxes(id, { bizType: '환경부' }, admin)).rejects.toThrow(/지급조건/);
+    });
+  });
+
+  it('★협력사는 못 고친다★', async () => {
+    await withProject(async (id) => {
+      await expect(repo.setProjectAxes(id, { bizType: '환경부' }, partner)).rejects.toThrow();
     });
   });
 });

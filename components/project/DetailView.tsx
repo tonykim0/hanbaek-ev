@@ -16,7 +16,7 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { ContractState, ProjectDetail, SettlementRuleChoice } from '@/types/project';
-import { subsidized } from '@/types/project';
+import { BIZ_TYPES, CPO_NAMES, POWER_TYPES, subsidized, TERM_YEARS } from '@/types/project';
 import { safetyFeeApplies } from '@/lib/settlement';
 import { useAction } from '@/lib/use-action';
 import { DatePicker } from '@/components/DatePicker';
@@ -456,6 +456,15 @@ function SiteHeader({
   const { project, lines, process } = detail;
   const qty = lines.reduce((s, l) => s + l.qty, 0);
   const terms = [...new Set(lines.map((l) => l.termYears))];
+  /* 라인이 하나뿐이면 머리말에서 곧장 고친다 — 합계와 그 라인이 같은 값이다 */
+  const soleLine = lines.length === 1 ? lines[0] : null;
+  /*
+   * 축·대수는 돈이 굳으면 잠긴다(저장소 assertTermsOpen). 화면에서도 단추를 안 낸다 —
+   * 눌러 보고 나서 거절당하는 것보다, 못 누르는 것이 먼저 보이는 편이 낫다.
+   */
+  const termsLocked = project.payoutTermsConfirmedAt !== null;
+  const canEditAxes = canReview && !termsLocked;
+  const canEditLines = canReview && !termsLocked;
 
 
   /** 이 현장을 지금 세우고 있는 것 */
@@ -547,7 +556,19 @@ function SiteHeader({
           empty="미지정"
           placeholder="2026"
         />
-        <Fact label="운영사" value={project.cpo} />
+        {/*
+          * ★축은 잠기면 못 고친다★ — 운영사·사업구분·수전방식은 단가 케이스를 고르는
+          * 축이라, 지급조건이 확정된 현장에서는 단추를 안 낸다. 못 하는 일은 눌리지 않게
+          * 한다(화면 규칙 3·저장소도 같은 판정을 본다).
+          */}
+        <EditableFact
+          label="운영사"
+          value={project.cpo}
+          canEdit={canEditAxes}
+          url={`/api/projects/${project.id}/axes`}
+          field="cpo"
+          suggestions={[...CPO_NAMES]}
+        />
         <EditableFact
           label="영업사"
           value={project.salesOrg}
@@ -571,11 +592,65 @@ function SiteHeader({
       </dl>
 
       <dl className={`mt-5 ${FACT_GRID}`}>
-        <Fact label="사업구분" value={project.bizType} />
-        <Fact label="계약대수" value={`${qty}대`} />
-        <Fact label="계약연수" value={terms.length ? `${terms.join('·')}년` : null} />
-        <Fact label="수전방식" value={project.powerType} />
-        <Fact label="계약접수일" value={project.createdAt} />
+        <EditableFact
+          label="사업구분"
+          value={project.bizType}
+          canEdit={canEditAxes}
+          url={`/api/projects/${project.id}/axes`}
+          field="bizType"
+          empty="미지정"
+          suggestions={[...BIZ_TYPES]}
+        />
+        {/*
+          * ★대수·연수는 라인의 값이다★ — 여기 보이는 것은 합계이고 연수는 모아 놓은
+          * 것이다. 라인이 하나면 그 라인을 곧장 고친다(162 건 중 160 건). 둘 이상이면
+          * 어느 라인인지 말할 수 없으니 고치는 자리를 계약 탭 한 곳으로 보낸다.
+          */}
+        {soleLine ? (
+          <>
+            <EditableFact
+              label="계약대수"
+              value={`${qty}대`}
+              editValue={String(soleLine.qty)}
+              numeric
+              canEdit={canEditLines}
+              url={`/api/projects/${project.id}/lines/${soleLine.id}`}
+              field="qty"
+            />
+            <EditableFact
+              label="계약연수"
+              value={`${soleLine.termYears}년`}
+              editValue={String(soleLine.termYears)}
+              numeric
+              canEdit={canEditLines}
+              url={`/api/projects/${project.id}/lines/${soleLine.id}`}
+              field="termYears"
+              suggestions={TERM_YEARS.map(String)}
+            />
+          </>
+        ) : (
+          <>
+            <Fact label="계약대수" value={`${qty}대 (라인 ${lines.length})`} />
+            <Fact label="계약연수" value={terms.length ? `${terms.join('·')}년` : null} />
+          </>
+        )}
+        <EditableFact
+          label="수전방식"
+          value={project.powerType}
+          canEdit={canEditAxes}
+          url={`/api/projects/${project.id}/axes`}
+          field="powerType"
+          empty="미지정"
+          suggestions={[...POWER_TYPES]}
+        />
+        <EditableFact
+          label="계약접수일"
+          value={project.createdAt}
+          canEdit={canReview}
+          url={`/api/projects/${project.id}/facts`}
+          field="createdAt"
+          placeholder="2026-09-10"
+        />
       </dl>
 
       <ApprovalFacts

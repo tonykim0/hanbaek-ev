@@ -12,11 +12,12 @@ import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
 import {
-  batchFinals, taxInvoices, contractLines, payoutEntries, pricingRules, projects, settlementRules, settlements,
+  batchFinals, taxInvoices, contractLines, payoutEntries, pricingRules, projects, settlementRules, settlements, processes
 } from '@/lib/db/schema';
 import { allSlots } from '../db-slot';
 import { stampOf, today } from '@/lib/date';
 import { isHanbaek } from '@/lib/roles';
+import { asProcessStatus, stepsOf } from '@/lib/process';
 import {
   checkPayoutEntry, checkSafetyFee, entryTypeOf, payoutPrerequisiteBlockersOf, payoutReleaseOf,
   payoutSideOf, payoutStepsOf, safetyFeeApplies,
@@ -27,9 +28,10 @@ import {
 import type { ProjectRecord, RuleMap } from '../assemble';
 import type { Viewer } from '@/lib/auth/types';
 import type {
-  CpoName, NewPayoutEntry, NoticeFile, PayoutCategory, PayoutKind, PayoutRow, SettlementSummary,
+  BizType, CpoName, NewPayoutEntry, NoticeFile, PayoutCategory, PayoutKind, PayoutRow,
+  ReplType, SettlementSummary,
 } from '@/types/project';
-import { TERM_YEARS } from '@/types/project';
+import { BIZ_TYPES, CPO_NAMES, normalizeRepl, POWER_TYPES, TERM_YEARS } from '@/types/project';
 import type { Actor, PaymentPatch, ProjectRepository } from '../repository';
 import {
   accessWhere, assertAdmin, recordsOf, resolveSettlementRule, ruleMap, settleMap,
@@ -39,7 +41,8 @@ import type { TxLike } from './shared';
 /** pgRepository 가 펼쳐 담는 조각 — 이름과 시그니처는 인터페이스가 정한다 */
 export const payoutStore: Pick<
   ProjectRepository,
-  'listSettlements' | 'listPayouts' | 'listPayoutOverview' | 'setLinePricing' | 'setLineFacts' | 'setPayment'
+  'listSettlements' | 'listPayouts' | 'listPayoutOverview' | 'setLinePricing' | 'setLineFacts'
+  | 'setProjectAxes' | 'setPayment'
   | 'setPayoutTermsConfirmed' | 'setSettlementRule' | 'setCpoCloseDate' | 'setSettlementCollected'
   | 'setSafetyFee'
   | 'runPayoutBatch' | 'addPayoutEntry' | 'addPayoutEntries' | 'deletePayoutEntry'
@@ -77,6 +80,96 @@ export const payoutStore: Pick<
       plans: records.flatMap((r) => payoutPlansOf(r, viewer, rules, settles)),
       history: records.flatMap((r) => payoutRowsOf(r, viewer, rules, settles)),
     };
+  },
+
+  async setProjectAxes(projectId, patch, actor): Promise<void> {
+    assertAdmin(actor, '현장 축 수정');
+    if (patch.cpo !== undefined && !(CPO_NAMES as readonly string[]).includes(patch.cpo)) {
+      throw new Error(`운영사는 ${CPO_NAMES.join('·')} 중 하나입니다.`);
+    }
+    if (patch.bizType !== undefined && !(BIZ_TYPES as readonly string[]).includes(patch.bizType)) {
+      throw new Error(`사업구분은 ${BIZ_TYPES.join('·')} 중 하나입니다.`);
+    }
+    if (patch.powerType != null && !(POWER_TYPES as readonly string[]).includes(patch.powerType)) {
+      throw new Error(`수전방식은 ${POWER_TYPES.join('·')} 중 하나입니다.`);
+    }
+
+    const db = getDb();
+    await db.transaction(async (tx) => {
+      const [row] = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+      if (!row) throw new Error('현장을 찾을 수 없습니다.');
+
+      const cpo = (patch.cpo ?? row.cpo) as CpoName;
+      const bizType = (patch.bizType ?? row.bizType) as BizType | null;
+      const powerType = 'powerType' in patch ? patch.powerType ?? null : row.powerType;
+
+      const moved = cpo !== row.cpo || bizType !== row.bizType || powerType !== row.powerType;
+      if (!moved) return;
+
+      // 축이 움직이면 금액이 따라 움직인다 — 굳은 현장에서는 못 바꾼다
+      await assertTermsOpen(tx, projectId);
+
+      /*
+       * ★사업구분은 지나는 칸을 바꾼다★ — 지금 서 있는 칸이 새 흐름에 없으면 그 현장은
+       * 갈 곳 없는 자리에 멈춘다(기설치 연동은 「충전기 발주」·「충전기 수령」을 안 지난다).
+       * 여기서 막지 않으면 화면에는 아무 말도 안 뜨고 다음 단추만 조용히 사라진다.
+       */
+      if (bizType !== row.bizType) {
+        const [proc] = await tx
+          .select({ status: processes.status })
+          .from(processes)
+          .where(eq(processes.projectId, projectId))
+          .limit(1);
+        const at = asProcessStatus(proc?.status ?? null);
+        if (!stepsOf({ bizType }).includes(at)) {
+          throw new Error(
+            `이 현장은 지금 「${at}」에 서 있는데 ${bizType} 은(는) 그 칸을 지나지 않습니다`
+            + ' — 공정을 먼저 그 앞으로 되돌린 뒤 사업구분을 바꾸세요.'
+          );
+        }
+      }
+
+      /* 안 가르는 운영사의 「신규위치」는 제자리교체다 — 운영사가 바뀌면 다시 눕힌다 */
+      const replType = normalizeRepl(cpo, row.replType as ReplType | null);
+
+      await tx.update(projects).set({ cpo, bizType, powerType, replType }).where(eq(projects.id, projectId));
+
+      /*
+       * ★수전방식은 라인에도 산다★ — 단가 매칭은 라인의 값을 본다. 한쪽만 고치면
+       * 화면(현장)과 매칭(라인)이 갈린다. 교체유형도 같이 눕힌다.
+       * ★단가 지정은 푼다★ — 축이 움직였으니 붙어 있던 케이스가 이 현장과 안 맞는다.
+       */
+      const lines = await tx
+        .select({ id: contractLines.id, replType: contractLines.replType })
+        .from(contractLines)
+        .where(eq(contractLines.projectId, projectId));
+      for (const l of lines) {
+        await tx
+          .update(contractLines)
+          .set({
+            ...(powerType !== row.powerType ? { powerType } : {}),
+            replType: normalizeRepl(cpo, l.replType as ReplType | null),
+            pricingRuleId: null,
+            pricedAt: null,
+          })
+          .where(eq(contractLines.id, l.id));
+      }
+
+      for (const [field, before, after] of [
+        ['cpo', row.cpo, cpo], ['bizType', row.bizType, bizType], ['powerType', row.powerType, powerType],
+      ] as Array<[string, unknown, unknown]>) {
+        if (before === after) continue;
+        await writeAudit(tx, {
+          projectId, actor, action: '현장 축 수정', field,
+          oldValue: before === null ? null : String(before),
+          newValue: after === null ? null : String(after),
+        });
+      }
+      await writeAudit(tx, {
+        projectId, actor, action: '단가 케이스 지정 해제 (축 변경)',
+        field: `라인 ${lines.length}건`, oldValue: null, newValue: null,
+      });
+    });
   },
 
   async setLineFacts(lineId, patch, actor): Promise<void> {

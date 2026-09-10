@@ -11,7 +11,9 @@ import { getRepository } from '@/lib/data';
 import { adminWrite, BadRequest } from '@/lib/api/write-route';
 import type { ProjectFactsPatch } from '@/types/project';
 
-const FIELDS = ['addr', 'bldgType', 'contractParty', 'parkTotal', 'mgr', 'tel', 'mail', 'note'] as const;
+const FIELDS = [
+  'addr', 'bldgType', 'contractParty', 'parkTotal', 'mgr', 'tel', 'mail', 'note', 'createdAt',
+] as const;
 
 export const PATCH = adminWrite<{ id: string }, ProjectFactsPatch>(
   '한백 관리자만 현장 정보를 고칠 수 있습니다.',

@@ -130,6 +130,18 @@ function cleanFacts(patch: ProjectFactsPatch): Record<string, unknown> {
     }
     out.contractParty = v;
   }
+  /*
+   * ★계약접수일은 timestamp 칸이다★ — 화면은 「2026-09-10」 꼴로 읽고 쓰는데 DB 는 시각까지
+   * 담는다. 글자를 그대로 넣으면 drizzle 이 거절하므로 Date 로 바꿔 넣는다. 이 날짜로
+   * 수주 현황의 월과 사업연도가 묶이므로(lib/business-year) 아무 글자나 받지 않는다.
+   */
+  if ('createdAt' in patch) {
+    const v = text(patch.createdAt);
+    if (!v || !/^\d{4}-\d{2}-\d{2}$/.test(v) || Number.isNaN(Date.parse(v))) {
+      throw new Error('계약접수일은 2026-09-10 꼴로 넣어주세요.');
+    }
+    out.createdAt = new Date(`${v}T00:00:00+09:00`);
+  }
   if ('parkTotal' in patch) {
     const v = patch.parkTotal;
     if (v !== null && v !== undefined && (!Number.isInteger(v) || v < 0)) {
