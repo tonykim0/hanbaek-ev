@@ -588,6 +588,35 @@ export interface ProjectDocument {
  *
  * 순서가 곧 진행이다. 배열 순서를 바꾸면 화면의 진행 표시가 함께 바뀐다.
  */
+/**
+ * 현장을 설명하는 값 중 한백이 고칠 수 있는 것 (repository setProjectFacts).
+ *
+ * 접수 판독이 채우는 칸들이라 틀릴 수 있다. 「돈도 흐름도 안 건드리는 값」만 여기 있다 —
+ * 운영사·사업구분·수전방식·교체유형이 빠진 이유는 setProjectFacts 머리말에 적었다.
+ */
+export type ProjectFactsPatch = {
+  addr?: string | null;
+  bldgType?: BuildingType | null;
+  contractParty?: ContractParty | null;
+  parkTotal?: number | null;
+  mgr?: string | null;
+  tel?: string | null;
+  mail?: string | null;
+  note?: string | null;
+};
+
+/** 계약 라인에서 고칠 수 있는 것 (repository setLineFacts) — 대수는 돈이라 잠금을 본다 */
+export type LineFactsPatch = {
+  qty?: number;
+  termYears?: number;
+};
+
+/** 계약주체로 고를 수 있는 값 — 화면의 후보와 서버 검사가 같은 목록을 본다 */
+export const CONTRACT_PARTIES = ['입주자대표회의', '관리단', '건설사'] as const satisfies readonly ContractParty[];
+
+/** 계약연수로 고를 수 있는 값 — 단가 케이스의 축이라 아무 숫자나 받지 않는다 */
+export const TERM_YEARS = [5, 7, 10] as const;
+
 export const PROCESS_STATUSES = [
   /*
    * 첫 상태는 「계약이 끝났고 공정은 아직 시작 안 됐다」는 뜻이다.

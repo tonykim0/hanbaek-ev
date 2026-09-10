@@ -29,6 +29,7 @@ import type { Viewer } from '@/lib/auth/types';
 import type {
   CpoName, NewPayoutEntry, NoticeFile, PayoutCategory, PayoutKind, PayoutRow, SettlementSummary,
 } from '@/types/project';
+import { TERM_YEARS } from '@/types/project';
 import type { Actor, PaymentPatch, ProjectRepository } from '../repository';
 import {
   accessWhere, assertAdmin, recordsOf, resolveSettlementRule, ruleMap, settleMap,
@@ -38,7 +39,7 @@ import type { TxLike } from './shared';
 /** pgRepository 가 펼쳐 담는 조각 — 이름과 시그니처는 인터페이스가 정한다 */
 export const payoutStore: Pick<
   ProjectRepository,
-  'listSettlements' | 'listPayouts' | 'listPayoutOverview' | 'setLinePricing' | 'setPayment'
+  'listSettlements' | 'listPayouts' | 'listPayoutOverview' | 'setLinePricing' | 'setLineFacts' | 'setPayment'
   | 'setPayoutTermsConfirmed' | 'setSettlementRule' | 'setCpoCloseDate' | 'setSettlementCollected'
   | 'setSafetyFee'
   | 'runPayoutBatch' | 'addPayoutEntry' | 'addPayoutEntries' | 'deletePayoutEntry'
@@ -76,6 +77,70 @@ export const payoutStore: Pick<
       plans: records.flatMap((r) => payoutPlansOf(r, viewer, rules, settles)),
       history: records.flatMap((r) => payoutRowsOf(r, viewer, rules, settles)),
     };
+  },
+
+  async setLineFacts(lineId, patch, actor): Promise<void> {
+    assertAdmin(actor, '계약 라인 수정');
+    if (patch.qty !== undefined && (!Number.isInteger(patch.qty) || patch.qty < 1)) {
+      throw new Error('계약대수는 1 이상의 정수여야 합니다.');
+    }
+    if (patch.termYears !== undefined && !(TERM_YEARS as readonly number[]).includes(patch.termYears)) {
+      throw new Error(`계약연수는 ${TERM_YEARS.join('·')}년 중 하나입니다.`);
+    }
+
+    const db = getDb();
+    await db.transaction(async (tx) => {
+      const [line] = await tx
+        .select({
+          projectId: contractLines.projectId, qty: contractLines.qty,
+          termYears: contractLines.termYears, ruleId: contractLines.pricingRuleId,
+        })
+        .from(contractLines)
+        .where(eq(contractLines.id, lineId))
+        .limit(1);
+      if (!line) throw new Error('계약 라인을 찾을 수 없습니다.');
+
+      // 대수는 지급·기성 계획의 곱하는 수다 — 굳은 현장에서는 못 바꾼다(단가 지정과 같은 문)
+      await assertTermsOpen(tx, line.projectId);
+
+      const qty = patch.qty ?? line.qty;
+      const termYears = patch.termYears ?? line.termYears;
+      if (qty === line.qty && termYears === line.termYears) return;
+
+      /*
+       * ★연수가 바뀌면 단가 지정을 푼다★ — 연수는 케이스를 고르는 축이라(7년과 10년은
+       * 다른 케이스다), 그대로 두면 현장의 축과 붙어 있는 케이스가 어긋난 채 금액만 남는다.
+       * 화면은 그 라인을 「단가 미지정」으로 세우므로 한백이 다시 고른다.
+       * 대수는 곱하는 수라 축이 아니다 — 케이스를 그대로 둔다.
+       */
+      const axisMoved = termYears !== line.termYears;
+      await tx
+        .update(contractLines)
+        .set({
+          qty, termYears,
+          ...(axisMoved ? { pricingRuleId: null, pricedAt: null } : {}),
+        })
+        .where(eq(contractLines.id, lineId));
+
+      if (qty !== line.qty) {
+        await writeAudit(tx, {
+          projectId: line.projectId, actor, action: '계약 라인 수정',
+          field: `${lineId} 계약대수`, oldValue: String(line.qty), newValue: String(qty),
+        });
+      }
+      if (axisMoved) {
+        await writeAudit(tx, {
+          projectId: line.projectId, actor, action: '계약 라인 수정',
+          field: `${lineId} 계약연수`, oldValue: String(line.termYears), newValue: String(termYears),
+        });
+        if (line.ruleId) {
+          await writeAudit(tx, {
+            projectId: line.projectId, actor, action: '단가 케이스 지정 해제 (연수 변경)',
+            field: lineId, oldValue: line.ruleId, newValue: null,
+          });
+        }
+      }
+    });
   },
 
   async setLinePricing(lineId, pricingRuleId, actor): Promise<void> {

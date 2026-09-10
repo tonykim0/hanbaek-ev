@@ -15,7 +15,7 @@ import type {
   Court, DocStatus, HoldState, IntakeDraft, LineAxes, NewPayoutEntry, NewPricingRule, PayoutKind, PayoutRow, PreInstall, PricingRule,
   ChargerModel,
   PayoutPlanRow, ProcessInfo, ProcessStatus, ProjectDetail, ProjectSummary, Settlement, SettlementRule, SettlementSummary, BatchFinal, TaxInvoice,
-  Notice, NoticeFile, ReviewEvent,
+  Notice, NoticeFile, ReviewEvent, ProjectFactsPatch, LineFactsPatch,
 } from '@/types/project';
 import type { Actor, Viewer } from '@/lib/auth/types';
 
@@ -209,6 +209,37 @@ export interface ProjectRepository {
    * 이름은 저장소에서 다듬는다(normalizeOrg) — 붙여넣기로 들어온 NBSP·전각공백이 눈에
    * 안 보이는 채로 소유권을 갈라놓는 일이 실제로 생긴다.
    */
+  /**
+   * 현장을 설명하는 값을 고친다. [한백 전용]
+   *
+   * ★접수는 사람이 아니라 판독이 채운다★ — 계약서 스캔을 AI 가 읽어 열두 칸을 미리
+   * 넣는다(lib/intake-auto). 잘 맞지만 틀릴 때가 있고, 틀린 채로 굳으면 고칠 자리가
+   * 없었다(한백 지적 2026-09-10 — HB-2026-164 의 계약대수가 732 대로 들어왔다.
+   * 그 현장 주차면수가 728 면이라 그 근처 숫자를 대수로 읽은 것이다).
+   *
+   * 여기서 고치는 것은 ★현장을 설명하는 값★뿐이다 — 돈도 흐름도 안 건드린다.
+   * 다음 넷은 일부러 뺐다(2026-09-10):
+   *   운영사·사업구분 — 흐름(stepsOf)·서류 규칙·양식을 통째로 바꾼다. 공정이 도는
+   *     현장의 사업구분을 갈면 지금 서 있는 칸이 그 흐름에 없을 수 있다.
+   *   수전방식·교체유형 — 단가 케이스를 고르는 ★축★이고, 현장과 라인 두 곳에 값이 있다.
+   *     한쪽만 고치면 갈린다.
+   * 넷은 지금도 접수를 다시 받거나 DB 로 고친다 — 제대로 하려면 흐름 재판정이 함께 와야 한다.
+   */
+  setProjectFacts(projectId: string, patch: ProjectFactsPatch, actor: Actor): Promise<void>;
+
+  /**
+   * 계약 라인의 대수·연수를 고친다. [한백 전용]
+   *
+   * ★대수는 돈이다★ — 지급·기성 계획이 전부 「단가 × 대수」다. 그래서 지급조건이
+   * 확정된 현장에서는 거절한다(assertTermsOpen — 단가 지정과 같은 문). 확정을 풀면
+   * 고칠 수 있고, 그 해제는 관리자만 한다(CLAUDE.md 「지급조건은 확정하면 잠긴다」).
+   *
+   * ★연수를 고치면 단가 지정이 풀린다★ — 연수는 케이스를 고르는 축이라(7년과 10년은
+   * 다른 케이스다) 그대로 두면 현장의 축과 케이스가 어긋난 채 금액만 남는다.
+   * 대수는 곱하는 수라 축이 아니다 — 케이스를 그대로 둔다.
+   */
+  setLineFacts(lineId: string, patch: LineFactsPatch, actor: Actor): Promise<void>;
+
   setOrgs(
     projectId: string,
     patch: { salesOrg?: string | null; gcOrg?: string | null },

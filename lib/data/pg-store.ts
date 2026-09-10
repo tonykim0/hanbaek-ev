@@ -27,8 +27,9 @@ import type {
   ProjectDetail, ProjectDocument, ProjectSummary, ReplType, Settlement, SettlementRule,
   BatchFinal, SettlementStepRule, SettlementSummary, TaxInvoice,
 } from '@/types/project';
-import { normalizeRepl, PROCESS_STATUSES, subsidized } from '@/types/project';
+import { BUILDING_TYPES, CONTRACT_PARTIES, normalizeRepl, PROCESS_STATUSES, subsidized, TERM_YEARS } from '@/types/project';
 import type { Viewer } from '@/lib/auth/types';
+import type { ProjectFactsPatch } from '@/types/project';
 import { canAccessProject, canWrite, effectiveVisibility, isHanbaek, normalizeOrg } from '@/lib/roles';
 import { withRegionPrefix } from '@/lib/region';
 import { needsPreInstallCheck, PROCESS_DOCS } from '@/lib/doc-rules';
@@ -96,6 +97,53 @@ async function maxSeqIn(tx: TxLike): Promise<number> {
 
 
 
+
+
+/**
+ * 현장 정보 패치를 다듬는다 — 보낸 칸만, 값은 정리해서.
+ *
+ * 안 보낸 칸은 결과에 없어야 한다(undefined 를 넣으면 drizzle 이 그 칸을 null 로 밀어버린다).
+ * 빈 문자열은 null 이다 — 「비웠다」와 「공백 한 칸」이 다른 값이면 화면에서 구별이 안 된다.
+ * 고를 값이 정해진 칸(건축물유형·계약주체)은 목록 밖이면 거절한다 — 화면의 후보와 같은 목록이다.
+ */
+function cleanFacts(patch: ProjectFactsPatch): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const text = (v: string | null | undefined) => (typeof v === 'string' ? v.trim() || null : null);
+
+  if ('addr' in patch) out.addr = text(patch.addr);
+  if ('mgr' in patch) out.mgr = text(patch.mgr);
+  if ('tel' in patch) out.tel = text(patch.tel);
+  if ('mail' in patch) out.mail = text(patch.mail);
+  if ('note' in patch) out.note = text(patch.note);
+
+  if ('bldgType' in patch) {
+    const v = text(patch.bldgType) as ProjectFactsPatch['bldgType'];
+    if (v && !(BUILDING_TYPES as readonly string[]).includes(v)) {
+      throw new Error(`건축물유형은 ${BUILDING_TYPES.join('·')} 중 하나입니다.`);
+    }
+    out.bldgType = v;
+  }
+  if ('contractParty' in patch) {
+    const v = text(patch.contractParty) as ProjectFactsPatch['contractParty'];
+    if (v && !(CONTRACT_PARTIES as readonly string[]).includes(v)) {
+      throw new Error(`계약주체는 ${CONTRACT_PARTIES.join('·')} 중 하나입니다.`);
+    }
+    out.contractParty = v;
+  }
+  if ('parkTotal' in patch) {
+    const v = patch.parkTotal;
+    if (v !== null && v !== undefined && (!Number.isInteger(v) || v < 0)) {
+      throw new Error('총 주차면수는 0 이상의 정수여야 합니다.');
+    }
+    out.parkTotal = v ?? null;
+  }
+  return out;
+}
+
+/** 감사기록은 글자로 남는다 — null 은 빈 값 그대로 두어 「비웠다」가 보이게 한다 */
+function strOf(v: unknown): string | null {
+  return v === null || v === undefined ? null : String(v);
+}
 
 export const pgRepository: ProjectRepository = {
   // 단가·정산 규칙·충전기 모델은 store/pricing.ts 에 있다 (REFACTOR_PLAN_3 2-1)
@@ -392,6 +440,37 @@ export const pgRepository: ProjectRepository = {
 
 
 
+
+  async setProjectFacts(projectId, patch, actor): Promise<void> {
+    assertAdmin(actor, '현장 정보 수정');
+    const next = cleanFacts(patch);
+    if (Object.keys(next).length === 0) throw new Error('고칠 값이 없습니다.');
+
+    const db = getDb();
+    await db.transaction(async (tx) => {
+      const [row] = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+      if (!row) throw new Error('현장을 찾을 수 없습니다.');
+
+      const changed = Object.entries(next).filter(
+        ([k, v]) => (row as Record<string, unknown>)[k] !== v
+      );
+      if (changed.length === 0) return;
+
+      await tx.update(projects).set(next).where(eq(projects.id, projectId));
+      /*
+       * 칸마다 한 줄씩 남긴다 — 「현장 정보 수정」 한 줄로 뭉치면 무엇이 무엇으로
+       * 바뀌었는지 이력에서 못 읽는다. 정체일(lastProgressAt)은 안 건드린다:
+       * 값을 바로잡는 것은 현장의 진척이 아니다(setOrgs 와 같은 판단).
+       */
+      for (const [field, value] of changed) {
+        await writeAudit(tx, {
+          projectId, actor, action: '현장 정보 수정', field,
+          oldValue: strOf((row as Record<string, unknown>)[field]),
+          newValue: strOf(value),
+        });
+      }
+    });
+  },
 
   async setOrgs(projectId, patch, actor): Promise<void> {
     assertAdmin(actor, '영업사·시공사 지정');
