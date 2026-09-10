@@ -37,6 +37,28 @@ const SIDO: Array<[RegExp, string]> = [
   [/^제주(특별자치도|도)?$/, '제주'],
 ];
 
+/**
+ * 통합 명칭은 ★뒤 토막을 봐야★ 부르는 이름이 정해져 위 표에 못 넣는다.
+ *
+ * 「전남광주통합특별시 광양시」는 ★전남 광양★, 「전남광주통합특별시 광산구」는
+ * ★광주 광산★ — 옛 경계로 되돌려 부른다(한백 결정 2026-09-10). 통합 명칭을 그대로
+ * 줄이면(「전남광주 광양」) 실무에서 아무도 안 쓰는 말이 현장명에 박힌다.
+ *
+ * 가르는 자리는 자치구다 — 옛 광주광역시는 구 다섯으로만 이뤄져 있었고, 옛 전라남도의
+ * 시(여수·순천·목포·나주·광양)에는 구가 없다. 그래서 「구면 광주」가 곧 옛 경계다.
+ * 다섯을 적어 두는 것은 규칙이 왜 성립하는지 보이게 하려는 것이다.
+ *
+ * 충전기 이력 쪽은 반대 방향으로 이 이름을 안다(lib/charger-history SIDO_ALIAS) —
+ * 거기는 공공 데이터에 맞추느라 통합 명칭으로 모으고, 여기는 사람이 읽을 이름을 만든다.
+ */
+const MERGED_SIDO_RE = /^전남광주통합특별시$/;
+const GWANGJU_GU = new Set(['동구', '서구', '남구', '북구', '광산구']);
+
+/** 통합 시·도의 옛 이름. 뒤 토막이 없으면 넓은 쪽(전남)으로 둔다 — 구는 반드시 적히는 말이다. */
+function oldSidoOf(next: string | undefined): string {
+  return next && GWANGJU_GU.has(next) ? '광주' : '전남';
+}
+
 /** 시·군·구 한 조각. 「태평2길」·「대학로」 같은 도로명에 걸리지 않게 끝 글자로만 본다. */
 const CITY_RE = /^(.{1,10}?)(시|군|구)$/;
 
@@ -86,9 +108,13 @@ export function regionPartsOf(addr: string | null | undefined): string[] {
   const parts: string[] = [];
 
   let i = 0;
-  const sido = SIDO.find(([re]) => re.test(tokens[0] ?? ''));
+  const head = tokens[0] ?? '';
+  const sido = SIDO.find(([re]) => re.test(head));
   if (sido) {
     parts.push(sido[1]);
+    i = 1;
+  } else if (MERGED_SIDO_RE.test(head)) {
+    parts.push(oldSidoOf(tokens[1]));
     i = 1;
   }
 
@@ -131,6 +157,18 @@ export function withRegionPrefix(name: string, addr: string | null | undefined):
   const trimmed = name.trim();
   const parts = regionPartsOf(addr);
   if (!trimmed || parts.length === 0) return trimmed;
+
+  /*
+   * ★이름이 시·도로 시작하면 손대지 않는다 — 그 말이 주소와 어긋나도 그렇다.★
+   *
+   * 아래 갈래는 「맞는 시·도가 들어 있는가」만 보므로, ★틀린★ 시·도가 적힌 이름에는
+   * 맞는 것을 앞에 덧대 두 개가 나란히 선다. 실제로 그런 현장이 있다(HB-2026-072
+   * 「충북 천안 청솔아파트」 — 주소는 충청남도 천안시라 「충남 충북 천안 청솔아파트」가
+   * 된다). 사람이 적은 지역이 주소와 다르면 그것은 붙이기가 아니라 ★오타★고, 오타는
+   * 덧대서 고쳐지지 않는다 — 이름을 고치는 자리가 따로 있다(setProjectName).
+   */
+  const head = trimmed.split(/\s+/)[0] ?? '';
+  if (SIDO.some(([re]) => re.test(head))) return trimmed;
 
   const [sido, city] = parts;
   if (city && trimmed.includes(city)) {

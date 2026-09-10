@@ -30,6 +30,7 @@ import type {
 import { normalizeRepl, PROCESS_STATUSES, subsidized } from '@/types/project';
 import type { Viewer } from '@/lib/auth/types';
 import { canAccessProject, canWrite, effectiveVisibility, isHanbaek, normalizeOrg } from '@/lib/roles';
+import { withRegionPrefix } from '@/lib/region';
 import { needsPreInstallCheck, PROCESS_DOCS } from '@/lib/doc-rules';
 import {
   asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES, COURT_AFTER_STATUS,
@@ -594,7 +595,20 @@ function projectRowOf(id: string, draft: IntakeDraft, actor: Actor, day: string)
     cpo: draft.cpo,
     salesOrg: actor.role === 'admin' ? normalizeOrg(draft.salesOrg) : actor.org,
     gcOrg: actor.role === 'admin' ? normalizeOrg(draft.gcOrg) : actor.org,
-    name: draft.name,
+    /*
+     * ★지역은 여기서 붙는다★ (한백 지시 2026-09-10 「왜 현장명에 도 + 시 안 붙어?」).
+     *
+     * 접수 화면에 「앞에 붙이기」 단추가 있지만 그것은 ★권유★였다 — 안 눌러도 접수가
+     * 되고 서버는 받은 이름을 그대로 넣었다. 그래서 같은 날 들어온 세 건이 「해원하나로
+     * 타운2차」처럼 지역 없이 남았다(162·163·164). 지역이 없으면 162건 중 어느 현장인지
+     * 보드·표·정산 어디서도 안 가려진다(lib/region 머리말).
+     *
+     * 판독(lib/intake-auto)도 같은 함수를 부르는데, 두 번 붙지 않는다 — 이미 들어 있는
+     * 말은 그냥 둔다. 화면 없이 부르는 접수 API 도 여기를 지난다(normalizeRepl 과 같은 이유).
+     * ★고치는 자리는 막지 않는다★ — 한백이 현장 상세에서 고친 이름은 그대로 산다
+     * (setProjectName 은 이 함수를 안 지난다, 화면 규칙 7).
+     */
+    name: withRegionPrefix(draft.name, draft.addr),
     addr: draft.addr,
     bldgType: draft.bldgType,
     contractParty: draft.contractParty,
