@@ -483,8 +483,15 @@ type CellProps = {
   rowSpan?: number;
 };
 
-/** 표의 머리 칸. 정렬은 제 몸(num)을 따르고, 절대 줄바꿈하지 않는다. */
-export function Th({ tight = false, left = false, money = false, className = '', children, ...rest }: CellProps) {
+/**
+ * 표의 머리 칸. 정렬은 제 몸(num)을 따르고, 절대 줄바꿈하지 않는다.
+ *
+ * ★num 은 받아서 버린다★ — 머리는 글자라 자릿수 고정 글꼴이 필요 없다. 그래도 ★받아야★
+ * 한다: 빠뜨리면 ...rest 를 타고 <th num="true"> 로 나가 React 가 매 렌더마다 경고하고
+ * (실측 2026-09-10, /statements·/payouts) 뜻 없는 속성이 DOM 에 박힌다. 몸 칸(Td)과
+ * 같은 CellProps 를 쓰는 자리라 「머리에도 num 을 준다」가 자연스러운 실수다.
+ */
+export function Th({ num: _num = false, tight = false, left = false, money = false, className = '', children, ...rest }: CellProps) {
   return (
     <th
       {...rest}
