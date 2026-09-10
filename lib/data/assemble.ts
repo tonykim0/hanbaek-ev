@@ -119,6 +119,15 @@ export interface ProjectRecord {
   court: Court;
   lastProgressAt: string;
   /**
+   * 마지막 반려 시각 — 감사기록에서 접어 온다(store/shared recordsOf).
+   *
+   * ★lastProgressAt 과 다른 값이다★ — 저것은 「마지막 움직임」이라 협력사가 파일 한 장만
+   * 올려도 0 이 된다. 이것은 반려 그 자체의 시각이라, 반려가 살아 있는 동안 계속 자란다.
+   * 지금 반려가 없는 현장에도 값이 있을 수 있다(옛 반려) — 세는 자리에서 반려 건수를 같이 본다.
+   * 파일 저장소(mock)에는 감사기록이 없어 늘 null 이다.
+   */
+  lastRejectedAt?: string | null;
+  /**
    * 진행현황. 상세를 열 때만 읽는다 — 목록·보드는 쓰지 않으므로 없으면 빈 배열로 본다.
    */
   notes?: ProjectNote[];
@@ -317,6 +326,12 @@ export function summaryOf(r: ProjectRecord, rules: RuleMap, settles: SettleMap):
     gcOrg: d.project.gcOrg,
     court: d.court,
     stalledDays: d.stalledDays,
+    /*
+     * 카드가 「반려 N일째」·「검토 요청 N일째」를 적는 데 쓴다(lib/board waitingSinceOf).
+     * stalledDays 와 다른 값이다 — 저것은 마지막 움직임이고 이것은 반려·요청 그 자체다.
+     */
+    rejectedAt: r.lastRejectedAt ?? null,
+    submittedAt: d.project.contractSubmittedAt,
     // 세 값 모두 d.contract 에서 온다 — 목록이 자기 식으로 다시 세면 보드와 상세가 갈린다
     priced: d.contract.allPriced,
     rejectedDocs: d.contract.rejected,

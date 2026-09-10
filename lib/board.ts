@@ -17,6 +17,8 @@
  */
 import type { Court, HoldState, ProcessStatus, Stage } from '@/types/project';
 import { COURT_AFTER_STATUS } from '@/lib/process';
+import { daysSince } from '@/lib/date';
+import { isHanbaek, type Role } from '@/lib/roles';
 import { PROCESS_STATUSES } from '@/types/project';
 
 /** 공정에 들어가기 전(계약)과 흐름에서 빠진 것(계약중단)은 공정 상태로 표현할 수 없어 따로 둔다 */
@@ -190,6 +192,59 @@ export function courtOfColumn(key: BoardColumn): Court {
   if (key === '계약보완') return '영업사'; // 반려를 고칠 차례
   if (key === '계약중단') return '한백'; // 멈춘 현장 — 할 일에서는 이미 걸러진다
   return COURT_AFTER_STATUS[key];
+}
+
+/**
+ * 이 역할이 맡는 담당 — 「지금 내 차례인가」를 보드가 묻는 자리 (한백 지시 2026-09-10
+ * 「한백 그리고 협력사가 칸반에서 어떤 부분을 처리해야하는지 Highlight」).
+ *
+ * ★칸마다 담당이 하나다★(courtOfColumn) — 그래서 강조는 카드가 아니라 ★칸★에 붙인다.
+ * 카드마다 붙이면 같은 칸의 모든 카드에 같은 표시가 반복돼 아무것도 도드라지지 않는다.
+ *
+ * 턴키는 영업과 시공을 다 한다 — 두 담당을 다 맡는다. 「운영사」는 아무의 차례도 아니다:
+ * 우리 손 밖이라 기다리는 자리다(운영사 계약서 제출).
+ */
+export function courtsOfRole(role: Role): readonly Court[] {
+  if (isHanbaek(role)) return ['한백'];
+  if (role === 'salesCons') return ['영업사', '시공사'];
+  if (role === 'cons') return ['시공사'];
+  if (role === 'sales') return ['영업사'];
+  return [];
+}
+
+/** 이 칸이 그 역할의 차례인가 */
+export function isMyCourt(key: BoardColumn, role: Role): boolean {
+  return courtsOfRole(role).includes(courtOfColumn(key));
+}
+
+/**
+ * 이 카드가 무엇을 기다린 지 며칠인가 — 「반려 이후 또는 검토 요청 이후」
+ * (한백 지시 2026-09-10).
+ *
+ * ★stalledDays 로는 못 답한다★ — 그것은 「마지막 움직임 후」라, 반려는 그대로인데
+ * 협력사가 파일 한 장만 올려도 0 이 된다. 여기서 세는 것은 ★그 판정 자체★의 시각이다:
+ *   계약보완·준공보완 — 한백이 반려한 날부터 (협력사가 안 고치고 있는 기간)
+ *   계약검토        — 협력사가 낸 날부터   (한백이 안 보고 있는 기간)
+ *
+ * 다른 칸에는 안 적는다. 「기다린다」가 아니라 「하는 중」인 자리(착공·개통)에 날짜를
+ * 붙이면 늦었다는 말로 읽힌다 — 그 자리의 지연은 정체일(stalledDays)이 이미 말한다.
+ *
+ * 반려 시각이 없으면(옛 현장·파일 저장소) 아무것도 안 적는다 — 0 일로 적으면 오늘
+ * 반려한 것처럼 보인다(화면 규칙 10: 없는 것과 0 은 다른 말이다).
+ */
+export function waitingSinceOf(
+  key: BoardColumn,
+  p: { rejectedAt: string | null; submittedAt: string | null; rejectedDocs: number },
+  now: Date = new Date()
+): { label: string; days: number } | null {
+  const at = key === '계약검토' ? p.submittedAt
+    : (key === '계약보완' || key === '준공보완') && p.rejectedDocs > 0 ? p.rejectedAt
+    : null;
+  if (!at) return null;
+  return {
+    label: key === '계약검토' ? '검토 요청' : '반려',
+    days: daysSince(at.slice(0, 10), now),
+  };
 }
 
 /**

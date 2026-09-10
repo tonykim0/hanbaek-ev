@@ -17,7 +17,7 @@ export type TxLike = Parameters<Parameters<ReturnType<typeof getDb>['transaction
 import { and, eq, inArray, or, sql } from 'drizzle-orm';
 import {
   contractLines, documents, payoutEntries, pricingRules, processDocuments, processes,
-  projectNotes, projects, settlementRules, settlements,
+  projectNotes, projects, settlementRules, settlements, auditLog
 } from '@/lib/db/schema';
 import { allSlots } from '../db-slot';
 import { dayOf } from '@/lib/date';
@@ -302,20 +302,47 @@ export function toCollected(
 }
 
 /** 현장 행들을 받아 관련 행을 한 번에 긁어와 ProjectRecord 로 묶는다 */
+/**
+ * 반려로 읽는 감사 행동 — 공을 협력사에게 넘긴 판정들.
+ *
+ * 「기설치 조사 반려」는 옛 이름이다(migrations/0050 이 그 자리를 서류 두 칸의 반려로
+ * 옮겼다). 지금은 안 쓰이지만 옛 현장의 기록이라 같이 센다 — 그 현장에도 「반려 N일째」가
+ * 맞는 말이다. 「반려 취소」·「반려 해제」는 푸는 쪽이라 넣지 않는다.
+ */
+const REJECT_ACTIONS = ['서류 반려', '기설치 조사 반려'];
+
 export async function recordsOf(rows: ProjectRow[]): Promise<ProjectRecord[]> {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const db = getDb();
 
   // 여섯 방을 한꺼번에 던지면 풀보다 많아 큐가 막힌다 — 슬롯 안에서 돈다(db-slot)
-  const [lineRows, docRows, procRows, procDocRows, settlementRows, payoutRows] = await allSlots([
+  const [lineRows, docRows, procRows, procDocRows, settlementRows, payoutRows, rejectRows] = await allSlots([
     () => db.select().from(contractLines).where(inArray(contractLines.projectId, ids)),
     () => db.select().from(documents).where(inArray(documents.projectId, ids)),
     () => db.select().from(processes).where(inArray(processes.projectId, ids)),
     () => db.select().from(processDocuments).where(inArray(processDocuments.projectId, ids)),
     () => db.select().from(settlements).where(inArray(settlements.projectId, ids)),
     () => db.select().from(payoutEntries).where(inArray(payoutEntries.projectId, ids)),
+    /*
+     * ★마지막 반려가 언제였나 — 감사기록이 정본이다★ (한백 지시 2026-09-10 「반려 이후
+     * … 며칠이 지났는지도 표시」).
+     *
+     * 서류 표에는 반려 시각 칸이 없다. 있는 것은 lastProgressAt 인데 그것은 「마지막
+     * 움직임」이라 협력사가 파일 한 장만 올려도 다시 0 이 된다 — 반려는 그대로인데
+     * 「방금 뭔가 했다」로 보인다. contractFixAskedAt 도 coalesce 라 ★첫★ 보완요청일이다.
+     *
+     * 감사기록에는 반려마다 시각이 남아 있고(프로덕션 「서류 반려」 95건 · 「기설치 조사
+     * 반려」 37건, 2026-09-10) 옛 현장도 값이 있다 — 칸을 새로 만들고 채우는 것보다
+     * 이미 있는 정본을 읽는 편이 낫다. 셈은 현장마다 한 줄로 접어서 가져온다.
+     */
+    () => db
+      .select({ projectId: auditLog.projectId, at: sql<string>`max(${auditLog.at})` })
+      .from(auditLog)
+      .where(and(inArray(auditLog.projectId, ids), inArray(auditLog.action, REJECT_ACTIONS)))
+      .groupBy(auditLog.projectId),
   ] as const);
+  const rejectedAtBy = new Map(rejectRows.map((r) => [r.projectId as string, r.at]));
 
   const group = <T extends { projectId: string }>(list: T[]): Map<string, T[]> => {
     const m = new Map<string, T[]>();
@@ -340,6 +367,7 @@ export async function recordsOf(rows: ProjectRow[]): Promise<ProjectRecord[]> {
       lines: (linesBy.get(row.id) ?? []).map(toLine),
       documents: mergeDocs(ALL_DOC_KEYS, docsBy.get(row.id) ?? []),
       process: toProcess(row.id, procBy.get(row.id), procDocsBy.get(row.id) ?? []),
+      lastRejectedAt: rejectedAtBy.get(row.id) ?? null,
       settlementRaw: toSettlementRaw(row.id, settlementRow),
       collected: toCollected(settlementRow),
       payoutEntries: (payoutsBy.get(row.id) ?? []).map(toPayoutEntry),

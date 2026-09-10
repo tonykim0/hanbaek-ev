@@ -1069,6 +1069,13 @@ export interface ProjectSummary {
   court: Court;
   /** 마지막 진척 후 경과일. 노션엔 없는 지표. */
   stalledDays: number;
+  /**
+   * 마지막으로 반려한 시각 (감사기록에서 온다). 반려가 살아 있는 동안 계속 자란다 —
+   * stalledDays 는 파일 한 장만 올려도 0 이 되므로 「반려한 지 며칠」을 못 답한다.
+   */
+  rejectedAt: string | null;
+  /** 협력사가 계약서 접수·재검토 요청을 누른 날 — 한백이 안 본 지 며칠인가의 기준 */
+  submittedAt: string | null;
   priced: boolean;
   /** 반려된 서류 칸의 수 — 협력사가 목록에서 바로 알아야 한다(기설치 두 칸도 든다) */
   rejectedDocs: number;
