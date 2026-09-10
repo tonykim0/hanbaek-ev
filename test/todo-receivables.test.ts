@@ -27,7 +27,7 @@ function step(over: Partial<SettlementStep> & { no: 1 | 2 | 3 }): SettlementStep
 /** 기성에 쓰이는 값만 채운다 — 협력사 지급 쪽(반대 방향)은 이 조립이 안 본다 */
 function row(over: Partial<SettlementSummary> = {}): SettlementSummary {
   return {
-    id: 'p1', name: '테스트아파트', cpo: '에버온', qty: 3, pricedQty: 3,
+    id: 'p1', name: '테스트아파트', cpo: '에버온', qty: 3,
     stage: 'construction', status: '착공' as ProcessStatus,
     ruleName: '환경부 승인 300,000원 → 준공마감 잔액',
     steps: [step({ no: 1 }), step({ no: 2 }), step({ no: 3 })],

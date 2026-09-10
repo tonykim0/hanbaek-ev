@@ -412,8 +412,6 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
     name: d.project.name,
     cpo: d.project.cpo,
     qty: d.lines.reduce((n, l) => n + l.qty, 0),
-    /* 1기당 마진의 분모 — marginTotal 과 같은 범위여야 한다(단가 붙은 라인만) */
-    pricedQty: d.lines.reduce((n, l) => n + (l.rule ? l.qty : 0), 0),
     stage: d.stage,
     status: d.process.status,
     ruleName: admin.settlementRule?.name ?? null,

@@ -689,27 +689,3 @@ export function collectionRate(steps: SettlementStep[]): number | null {
   return Math.round((got / plan) * 1000) / 10;
 }
 
-/**
- * 1기당 한백 마진 — 정산현황이 「한백 마진 ÷ 총 수주대수」를 적는 자리
- * (한백 지시 2026-09-10 「한백 마진에서 총 수주대수를 나눠서 1기당 마진을 표시」).
- *
- * ★위아래의 범위를 맞춘다.★ marginTotal 은 단가가 붙은 라인만 세므로 분모도 그 대수다
- * (pricedQty). 계약 총 대수(qty)로 나누면 단가 미지정 라인이 있는 순간 1기당 마진이
- * 실제보다 ★적게★ 나오고, 그 숫자는 아무 데도 안 맞는 값이 된다 — 합계는 「지금 아는
- * 만큼」이라 적다는 사실을 꼬리표가 말해 주지만(단가 미지정 N건), 1기당은 평균이라
- * 범위만 맞으면 ★정확한★ 수가 될 수 있다.
- *
- * ★전기안전점검수수료는 뺀다.★ marginTotal 에 들어 있지만 그것은 현장마다 한 번 받는
- * 돈이라 대수로 나눌 값이 아니다 — 섞으면 대수가 적은 현장일수록 1기당 마진이 커 보인다.
- * 화면도 그 둘을 이미 두 줄로 가른다.
- *
- * 셀 대수가 없으면 null 이다 — 0 으로 적으면 「마진이 0」으로 읽힌다(화면 규칙 10).
- */
-export function unitMarginOf(
-  rows: ReadonlyArray<{ marginTotal: number; pricedQty: number; safetyFee: number | null }>
-): { perUnit: number; qty: number } | null {
-  const qty = rows.reduce((n, r) => n + r.pricedQty, 0);
-  if (qty <= 0) return null;
-  const margin = rows.reduce((n, r) => n + r.marginTotal - (r.safetyFee ?? 0), 0);
-  return { perUnit: Math.round(margin / qty), qty };
-}
