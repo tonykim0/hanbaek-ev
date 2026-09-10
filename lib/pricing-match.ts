@@ -299,3 +299,30 @@ export function normalizePricingRule(r: NewPricingRule): NewPricingRule {
     bldgTypes: BUILDING_TYPES.filter((b) => r.bldgTypes.includes(b)),
   };
 }
+
+/**
+ * 저장할 적용 시작 — ★사람이 안 건드렸으면 적힌 그대로 둔다.★
+ *
+ * 폼은 적용 시작을 startKey 로 한 번 접었다가(연·월·일) 다시 편다. 그래서 기간으로 적힌
+ * 값(「2026년 9월 1일 ~ 12월 31일」)이 시작일 하나(「2026년 9월 1일」)로 줄어든다.
+ *
+ * ★그 글자는 표시용이 아니다★ — 매트릭스의 시기 탭이 이 문자열 그대로이고(Grid 의
+ * periods), 케이스 이름에도 박힌다. 그래서 금액만 고쳤는데 케이스가 다른 탭으로 옮겨
+ * 가고, 원래 탭에는 이전 시기 값이 이월돼 「고친 게 안 먹었다」로 보인다.
+ * ★실사고 2026-09-10★: 플러그링크 9월 케이스 9개 중 8개가 이렇게 갈라졌다(한백 지적
+ * 「매트릭스 시공비랑 영업비를 수정했는데 단가케이스는 그대로네?」 — 금액은 저장돼
+ * 있었다).
+ *
+ * 가리키는 날이 같으면(startKey 가 같으면) 원래 글자를 살린다. 날이 달라졌으면 사람이
+ * 정말 시작을 옮긴 것이므로 새 글자를 쓴다.
+ */
+export function keepStartDate(
+  original: string | undefined,
+  composed: string,
+  bizYear: number
+): string {
+  if (!original) return composed;
+  const same = startKey({ startDate: original, bizYear })
+    === startKey({ startDate: composed, bizYear });
+  return same ? original : composed;
+}

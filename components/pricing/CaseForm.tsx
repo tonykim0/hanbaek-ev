@@ -9,7 +9,7 @@ import { won } from '@/lib/format';
 import { useAction } from '@/lib/use-action';
 
 import {
-  startKey,
+  startKey, keepStartDate
 } from '@/lib/pricing-match';
 import { checkSettlementSteps, stepUnits } from '@/lib/settlement';
 import { Btn, Choice, Err, FIELD, PANEL, Tag } from '@/components/ui';
@@ -178,7 +178,16 @@ export function CaseForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cpo, bizType, stepsLocked]);
 
-  const startDate = dayMode && startDay ? koDate(startDay) : `${year}년 ${half}반기`;
+  /*
+   * 사람이 시작일을 안 옮겼으면 원래 적힌 글자를 살린다 — 이유는 lib/pricing-match 의
+   * keepStartDate 에 적었다(기간 표기가 시작일 하나로 줄어 케이스가 다른 시기 탭으로
+   * 옮겨 가던 실사고, 2026-09-10).
+   */
+  const startDate = keepStartDate(
+    prefill.startDate,
+    dayMode && startDay ? koDate(startDay) : `${year}년 ${half}반기`,
+    year
+  );
 
   /*
    * caseName 은 사람이 짓지 않는다 — 시기·축에서 유도되는 표시용 라벨이고, 현장 상세의
