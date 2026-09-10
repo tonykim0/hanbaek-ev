@@ -21,8 +21,21 @@ describe('지급·정산 원장의 문', () => {
         const rows = (await entriesOf(id)).filter((r) => r.kind === '영업비' && r.label === '1차');
         expect(rows.length, `${round + 1}번째: 영업비 1차 기록 수`).toBe(1);
         expect(results.filter((r) => r.status === 'fulfilled').length, '성공한 확정 수').toBe(1);
+        /*
+         * ★진 쪽의 거절 사유는 둘 중 하나다 — 문구 하나로 못 박으면 깜빡인다.★
+         *
+         * 지는 쪽이 언제 상태를 읽느냐로 갈린다: 먼저 것이 커밋되기 ★전★에 읽으면 1차를
+         * 다시 시도해 중복 문(「이미 지급 확정된 회차」)에 걸리고, ★뒤★에 읽으면 1차가
+         * 이미 있으니 2차를 셈해 그 회차의 조건(「준공완료 후」)에 걸린다. 둘 다 옳은
+         * 거절이고, 어느 쪽이 나오든 이 시험이 지키려는 것(한 번만 기록된다)은 위의 두
+         * 단정이 이미 증명한다. 문구를 하나로 박아 두었더니 3회 중 1회 빨간불이었다
+         * (실측 2026-09-10) — 돈 시험이 깜빡이면 사람이 빨간불을 무시하게 된다.
+         *
+         * 그래도 ★아무 오류나★ 통과시키지는 않는다: 교착·터짐이 아니라 고의로 막은
+         * 것이어야 한다.
+         */
         const rejected = results.find((r) => r.status === 'rejected') as PromiseRejectedResult;
-        expect(String(rejected.reason?.message)).toMatch(/이미 지급 확정된 회차/);
+        expect(String(rejected.reason?.message)).toMatch(/이미 지급 확정된 회차|준공완료 후 지급/);
       });
     }
   });
