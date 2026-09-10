@@ -8,12 +8,13 @@
  */
 import { useState } from 'react';
 import type { ContractState, ProcessStatus, ProjectDetail, ProjectDocument } from '@/types/project';
-import { replLabel } from '@/types/project';
+import { BUILDING_TYPES, CONTRACT_PARTIES, replLabel, TERM_YEARS } from '@/types/project';
 import { contractDocsLockedWhy, gateContextOf, nextStatusOf, prevStatusOf } from '@/lib/process';
 import { HANDOFF_STATUS } from '@/lib/board';
 import { evaluateDocs, needsPreInstallCheck, type DocReq } from '@/lib/doc-rules';
 import { DocDelete, DocFileActions, DocUpload, DownloadAll } from '@/components/DocFiles';
 import { useAction } from '@/lib/use-action';
+import { EditableFact } from './EditableFact';
 import { DocReview } from './DocReview';
 import { ReviewHistory } from './ReviewHistory';
 import { PreInstall } from './PreInstall';
@@ -42,7 +43,27 @@ const DOC_GROUPS: Array<{ req: DocReq; label: string; note?: string }> = [
  *
  * 고치는 자리는 아니다 — 값이 틀렸으면 서류가 정본이고, 고치는 일은 따로 만든다.
  */
-function SiteFacts({ project }: { project: ProjectDetail['project'] }) {
+type FactRow = {
+  label: string;
+  value: string | null;
+  /** 고칠 수 있는 칸이면 — 보낼 칸 이름과, 눌러 넣을 후보 */
+  edit?: {
+    field: string;
+    placeholder?: string;
+    suggestions?: readonly string[];
+    /** 단위가 붙어 보이는 칸 — 입력칸은 숫자만 연다 (「728면」 → 「728」) */
+    editValue?: string;
+    numeric?: boolean;
+  };
+};
+
+function SiteFacts(
+  { project, projectId, canEdit, lines, termsLocked }:
+  {
+    project: ProjectDetail['project']; projectId: string; canEdit: boolean;
+    lines: ProjectDetail['lines']; termsLocked: boolean;
+  }
+) {
   /*
    * 두 묶음으로 가른다.
    *
@@ -54,43 +75,60 @@ function SiteFacts({ project }: { project: ProjectDetail['project'] }) {
    * 환경부 대기번호도 여기 없다 — 머리말로 올렸다(한백이 넣고 협력사가 본다).
    * 영업사·시공사도 여기 없다 — 머리말로 올렸다(진행현황 바로 위).
    */
-  const apt: Array<[string, string | null]> = [
-    ['건축물유형', project.bldgType],
-    ['총 주차면수', project.parkTotal ? `${project.parkTotal}면` : null],
-    ['계약주체', project.contractParty],
-    ['현장 담당자', project.mgr],
-    ['연락처', project.tel],
-    ['이메일', project.mail],
+  const apt: FactRow[] = [
+    { label: '건축물유형', value: project.bldgType,
+      edit: { field: 'bldgType', suggestions: BUILDING_TYPES } },
+    /* 값에 「면」을 붙여 보여주고, 고칠 때는 숫자만 받는다 — 서버가 정수만 받는다 */
+    { label: '총 주차면수', value: project.parkTotal === null ? null : `${project.parkTotal}면`,
+      edit: {
+        field: 'parkTotal', placeholder: '728', numeric: true,
+        editValue: project.parkTotal === null ? '' : String(project.parkTotal),
+      } },
+    { label: '계약주체', value: project.contractParty,
+      edit: { field: 'contractParty', suggestions: CONTRACT_PARTIES } },
+    { label: '현장 담당자', value: project.mgr, edit: { field: 'mgr' } },
+    { label: '연락처', value: project.tel, edit: { field: 'tel', placeholder: '010-0000-0000' } },
+    { label: '이메일', value: project.mail, edit: { field: 'mail' } },
   ];
-  const biz: Array<[string, string | null]> = [
-    ['현장관리번호', project.mgmtNo],
-    ['사업구분', project.bizType],
-    ['수전방식', project.powerType],
+  const biz: FactRow[] = [
+    /*
+     * 아래 셋은 고치는 자리를 주지 않는다 (2026-09-10).
+     *   현장관리번호 — 접수 번호 그 자체다.
+     *   사업구분 — 흐름(stepsOf)·서류 규칙·양식을 통째로 바꾼다. 공정이 도는 현장에서
+     *     갈면 지금 서 있는 칸이 그 흐름에 없을 수 있다.
+     *   수전방식 — 단가 케이스의 축이고 현장과 라인 두 곳에 값이 있다. 한쪽만 고치면 갈린다.
+     * 셋을 고쳐야 하면 지금은 접수를 다시 받는다 — 흐름 재판정이 함께 와야 하는 일이다.
+     */
+    { label: '현장관리번호', value: project.mgmtNo },
+    { label: '사업구분', value: project.bizType },
+    { label: '수전방식', value: project.powerType },
     // 안 가르는 운영사는 괄호를 떼고 「자체투자」 — 다른 화면과 같은 함수를 본다(replLabel)
-    ['교체유형', project.replType
+    { label: '교체유형', value: project.replType
       ? replLabel(project.cpo, project.replType)
-      : project.bizType ? '라인별로 다름' : null],
+      : project.bizType ? '라인별로 다름' : null },
     /*
      * 세 날짜가 순서대로 선다 — 계약서를 받은 날 · 협력사가 다 냈다고 누른 날 ·
      * 한백이 확인한 날. 한 칸에 뭉치면 「누가 언제 무엇을 했나」가 사라진다.
      * 이관 현장은 접수일과 확인일이 같은 값이다(노션에는 수령일만 있었다).
      */
-    ['계약서 수령일', project.createdAt],
+    { label: '계약서 수령일', value: project.createdAt },
     /*
      * 보완요청을 받은 계약에서는 이 날짜가 「접수」가 아니라 「재검토 요청」이다
      * (한백 지시 2026-08-25) — 협력사가 누른 단추 이름과 같아야 한다.
      */
-    [project.contractFixAskedAt ? '재검토 요청' : '계약서 접수', project.contractSubmittedAt],
-    ['계약 확인', project.contractConfirmedAt],
+    { label: project.contractFixAskedAt ? '재검토 요청' : '계약서 접수', value: project.contractSubmittedAt },
+    { label: '계약 확인', value: project.contractConfirmedAt },
   ];
 
   return (
     <section>
       <h2 className="mb-3 text-h3 font-black text-slate-900">현장 정보</h2>
       <div className="grid gap-4 lg:grid-cols-2">
-        <FactGroup title="아파트" rows={apt} />
-        <FactGroup title="사업·계약" rows={biz} />
+        <FactGroup title="아파트" rows={apt} projectId={projectId} canEdit={canEdit} />
+        <FactGroup title="사업·계약" rows={biz} projectId={projectId} canEdit={canEdit} />
       </div>
+
+      {canEdit && <ContractLineFacts projectId={projectId} lines={lines} termsLocked={termsLocked} />}
 
       {project.note && (
         <p className="mt-3 rounded-box border border-slate-200 px-4 py-3 text-base leading-relaxed text-slate-700">
@@ -106,19 +144,103 @@ function SiteFacts({ project }: { project: ProjectDetail['project'] }) {
  * 현장 정보 한 묶음 — 값이 없는 칸도 자리를 지킨다. 비어 있는 것이 보이는 것도 정보다.
  * 줄마다 한 칸이던 것을 두 칸씩 접었다 — 열두 값에 상자가 화면 반을 먹었다(한백 지적).
  */
-function FactGroup({ title, rows }: { title: string; rows: Array<[string, string | null]> }) {
+/**
+ * 계약 라인의 사실 — 대수와 연수. ★한백만 본다★ (한백 지적 2026-09-10).
+ *
+ * 판독이 계약서에서 읽어 넣는 값인데 틀릴 때가 있다 — HB-2026-164 는 계약대수가 732 대로
+ * 들어와 있었다(그 현장 주차면수가 728 면이라 그 근처 숫자를 집었다). 고칠 자리가 없어서
+ * 접수를 다시 받아야 했다.
+ *
+ * ★머리말의 「계약대수」는 합계라 여기서 고친다★ — 라인이 둘인 현장이 있다(162 건 중 2 건).
+ * 합계 칸을 고치게 두면 그 둘에서 어느 라인을 고치는 것인지 말할 수 없다.
+ *
+ * ★지급조건이 확정되면 잠긴다★ — 대수는 지급·기성 계획의 곱하는 수라, 돈이 나간 뒤에
+ * 바뀌면 이미 나간 지급과 앞으로 받을 기성이 같이 뒤틀린다. 푸는 자리는 정산 탭이다
+ * (CLAUDE.md 「지급조건은 확정하면 잠긴다」). 못 하는 이유를 그 자리에 적는다(화면 규칙 3).
+ */
+function ContractLineFacts(
+  { projectId, lines, termsLocked }:
+  { projectId: string; lines: ProjectDetail['lines']; termsLocked: boolean }
+) {
+  return (
+    <section className="mt-4">
+      <p className="mb-1.5 text-tiny font-black tracking-[0.06em] text-slate-500">계약 라인</p>
+      <div className="rounded-box border border-slate-200 px-3.5 py-2.5">
+        {termsLocked && (
+          <p className="mb-2 text-tiny font-bold text-slate-400">
+            지급조건이 확정돼 잠겼습니다 — 정산 탭에서 해제하면 고칠 수 있습니다.
+          </p>
+        )}
+        <div className="flex flex-col gap-1">
+          {lines.map((l, i) => (
+            <dl
+              key={l.id}
+              className="grid grid-cols-1 gap-x-5 gap-y-1 border-t border-slate-100 pt-1.5 first:border-0 first:pt-0 sm:grid-cols-2"
+            >
+              {lines.length > 1 && (
+                <p className="col-span-full text-micro font-bold text-slate-400">{i + 1}번째 라인</p>
+              )}
+              <EditableFact
+                row
+                label="계약대수"
+                value={`${l.qty}대`}
+                editValue={String(l.qty)}
+                numeric
+                canEdit={!termsLocked}
+                url={`/api/projects/${projectId}/lines/${l.id}`}
+                field="qty"
+                placeholder="6"
+              />
+              {/* 연수를 고치면 단가 지정이 풀린다 — 축이 바뀌면 케이스도 다시 고른다(저장소) */}
+              <EditableFact
+                row
+                label="계약연수"
+                value={`${l.termYears}년`}
+                editValue={String(l.termYears)}
+                numeric
+                canEdit={!termsLocked}
+                url={`/api/projects/${projectId}/lines/${l.id}`}
+                field="termYears"
+                suggestions={TERM_YEARS.map(String)}
+              />
+            </dl>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FactGroup(
+  { title, rows, projectId, canEdit }:
+  { title: string; rows: FactRow[]; projectId: string; canEdit: boolean }
+) {
   return (
     <div className="rounded-box border border-slate-200 px-3.5 py-2.5">
       <p className="mb-1.5 text-tiny font-black tracking-[0.06em] text-slate-500">{title}</p>
       <dl className="grid grid-cols-1 gap-x-5 gap-y-1 sm:grid-cols-2">
-        {rows.map(([label, value]) => (
-          <div key={label} className="flex items-baseline gap-2">
-            <dt className="w-20 shrink-0 text-tiny font-bold text-slate-400">{label}</dt>
-            <dd className={`min-w-0 break-keep text-small font-semibold ${value ? 'text-slate-800' : 'text-slate-300'}`}>
-              {value ?? '—'}
+        {rows.map((r) => (r.edit ? (
+          <EditableFact
+            key={r.label}
+            row
+            label={r.label}
+            value={r.value}
+            canEdit={canEdit}
+            url={`/api/projects/${projectId}/facts`}
+            field={r.edit.field}
+            placeholder={r.edit.placeholder}
+            suggestions={r.edit.suggestions ? [...r.edit.suggestions] : []}
+            editValue={r.edit.editValue}
+            numeric={r.edit.numeric}
+          />
+        ) : (
+          <div key={r.label} className="flex items-baseline gap-2">
+            <dt className="w-20 shrink-0 text-tiny font-bold text-slate-400">{r.label}</dt>
+            <dd className={`min-w-0 break-keep text-small font-semibold ${r.value ? 'text-slate-800' : 'text-slate-300'}`}>
+              {r.value ?? '—'}
             </dd>
           </div>
-        ))}
+        )))}
       </dl>
     </div>
   );
@@ -273,7 +395,13 @@ export function IntakeTab({
         canReview={canReview}
       />
 
-      <SiteFacts project={project} />
+      <SiteFacts
+        project={project}
+        projectId={projectId}
+        canEdit={canReview}
+        lines={lines}
+        termsLocked={project.payoutTermsConfirmedAt !== null}
+      />
 
       <PreInstall
         project={project}

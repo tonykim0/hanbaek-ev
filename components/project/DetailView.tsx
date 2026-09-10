@@ -518,7 +518,7 @@ function SiteHeader({
           <Tag key={b.label} tone={b.tone}>{b.label}</Tag>
         ))}
       </div>
-      {project.addr && <p className="mt-1 text-base text-slate-500">{project.addr}</p>}
+      <AddrLine projectId={project.id} addr={project.addr} canEdit={canReview} />
 
       {/*
         * 네 줄로 나눈다 (한백 확인 2026-08-21).
@@ -839,6 +839,73 @@ function DateFact({
  * 현장명 — 평소엔 제목 글자, 수정을 눌러야 입력칸(화면 규칙 4). [한백 전용 동작]
  * 접수 때 협력사가 적는 값이라 오타가 흔한데 고칠 길이 없었다(규칙 7).
  */
+/**
+ * 이름 밑의 주소 줄 — 평소엔 글자, 고칠 때만 입력칸 (화면 규칙 4).
+ *
+ * ★주소는 표시용이 아니다★ — 현장명 앞의 지역이 여기서 나오고(lib/region), 기설치
+ * 충전기 이력 조회도 이 문자열로 한다(PreInstall). 판독이 잘못 읽으면 그 둘이 같이
+ * 틀리는데 고칠 자리가 없었다(한백 지적 2026-09-10).
+ *
+ * ★비어 있어도 줄이 선다★ — 예전에는 주소가 없으면 줄 자체가 사라져서, 없는 것인지
+ * 아직 안 넣은 것인지 구별이 안 되고 넣을 자리도 없었다(화면 규칙 6).
+ *
+ * ★이름은 따라 고치지 않는다★ — 주소를 바로잡아도 이미 붙은 「경북 포항」은 그대로 둔다.
+ * 한백이 고친 이름이 정본이고(setProjectName), 이름 줄에 고치는 자리가 따로 있다.
+ */
+function AddrLine({
+  projectId, addr, canEdit,
+}: {
+  projectId: string;
+  addr: string | null;
+  canEdit: boolean;
+}) {
+  const { busy, error, run } = useAction();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(addr ?? '');
+
+  const save = async () => {
+    const ok = await run({
+      url: `/api/projects/${projectId}/facts`,
+      body: { addr: draft.trim() || null },
+      fail: '주소를 바꾸지 못했습니다.',
+    });
+    if (ok) setEditing(false);
+  };
+
+  if (!editing) {
+    if (!addr && !canEdit) return null;
+    return (
+      <p className="mt-1 flex flex-wrap items-baseline gap-1.5 text-base text-slate-500">
+        <span className={addr ? '' : 'text-slate-300'}>{addr ?? '주소 미지정'}</span>
+        {canEdit && (
+          <Btn size="sm" kind="quiet" onClick={() => { setDraft(addr ?? ''); setEditing(true); }}>
+            {addr ? '수정' : '입력'}
+          </Btn>
+        )}
+      </p>
+    );
+  }
+
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-2">
+      <input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        autoFocus
+        placeholder="경상북도 포항시 북구 우미길 90"
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') void save();
+          if (e.key === 'Escape') setEditing(false);
+        }}
+        className={`${FIELD} max-w-[420px]`}
+      />
+      <Btn size="sm" busy={busy} busyLabel="저장 중…" onClick={() => void save()}>저장</Btn>
+      <Btn size="sm" kind="quiet" disabled={busy} onClick={() => setEditing(false)}>취소</Btn>
+      <Err>{error}</Err>
+    </div>
+  );
+}
+
 function NameTitle({
   projectId, name, canEdit,
 }: {
