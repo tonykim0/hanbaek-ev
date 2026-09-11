@@ -23,6 +23,7 @@ import JSZip from 'jszip';
 import { uniqueFileName } from '@/lib/files';
 import { downloadBlob } from '@/lib/download';
 import { Badge, Blank, Btn, Err, FIELD_CELL, PANEL } from '@/components/ui';
+import { useFileDragging } from '@/components/DocFiles';
 import type { SortResult, SortedDoc } from '@/lib/pdf-sort';
 
 /** 가른 한 장 — 어느 묶음(현장)에서 나왔는지 같이 들고 다닌다 */
@@ -53,6 +54,14 @@ export default function PdfSorter() {
   /** 사람이 고쳐 놓은 종류 — 판독 값을 덮는다(받을 때 이름에 들어간다) */
   const [fixed, setFixed] = useState<Record<number, string>>({});
   const [zipping, setZipping] = useState(false);
+  /** 이 상자 위에 끌고 있나 — 창 전체의 「파일을 끌고 있나」와 다른 신호다 */
+  const [over, setOver] = useState(false);
+  /*
+   * ★창에 한 쌍뿐인 리스너를 같이 쓴다★ — 이것을 부르는 순간 「빗맞힌 드롭 삼키기」도
+   * 같이 붙는다(DocFiles). 상자를 빗나가면 브라우저가 그 PDF 를 열어 버리는데, 이 화면은
+   * 가른 결과가 화면에만 있어서 그대로 사라진다.
+   */
+  const dragging = useFileDragging();
 
   const nameOf = (d: Sorted, i: number) => {
     const cat = fixed[i];
@@ -70,8 +79,9 @@ export default function PdfSorter() {
    * 고른 묶음을 차례로 가른다 — 한 번에 하나씩 보낸다(판독 한 번이 40MB·80장이다).
    * 한 묶음이 막히면 멈추고 거기까지 가른 것은 그대로 둔다 — 다시 다 올리지 않게.
    */
-  async function sortAll(files: File[]) {
-    setError(null);
+  async function sortAll(files: File[], note?: string) {
+    /* 뺀 것이 있으면 그 말로 시작한다 — 비우고 나서 적어야 안 지워진다 */
+    setError(note ?? null);
     setDocs([]);
     setSources([]);
     setWarnings([]);
@@ -80,6 +90,25 @@ export default function PdfSorter() {
       if (!(await sort(file, i, files.length))) break;
     }
     setBusy(null);
+  }
+
+  /**
+   * 넣은 것을 받는다 — 고르기와 끌어다 놓기가 여기 한 자리로 모인다.
+   *
+   * ★PDF 를 손으로 거른다★ — 끌어다 놓기에는 accept 가 없다(그건 고르기 창에만 듣는다).
+   * 거르지 않으면 스캔 묶음이 아닌 것이 판독으로 올라가 돈을 쓰고 실패한다.
+   * ★뺀 것은 말한다★ — 조용히 빼면 다 넣은 줄 알고 결과를 기다린다.
+   */
+  function take(files: File[]) {
+    if (busy !== null || files.length === 0) return;
+    const isPdf = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+    const pdfs = files.filter(isPdf);
+    if (pdfs.length === 0) {
+      setError('PDF 만 가릅니다 — 사진은 「사진 → 스캔본」에서 PDF 로 만든 뒤 넣어주세요.');
+      return;
+    }
+    const skipped = files.length - pdfs.length;
+    void sortAll(pdfs, skipped > 0 ? `PDF 가 아닌 ${skipped}개는 뺐습니다.` : undefined);
   }
 
   /** 묶음 하나를 가른다 — 갈랐으면 true. 진행은 단추가 말한다 */
@@ -193,32 +222,64 @@ export default function PdfSorter() {
     }
   }
 
+  const catchDrop = {
+    onDragEnter: (e: React.DragEvent) => { e.preventDefault(); setOver(true); },
+    onDragOver: (e: React.DragEvent) => { e.preventDefault(); setOver(true); },
+    onDragLeave: (e: React.DragEvent) => {
+      // 자식으로 들어간 것은 떠난 것이 아니다 — 안 걸러내면 깜빡인다
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+      setOver(false);
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      setOver(false);
+      take([...e.dataTransfer.files]);
+    },
+  };
+
   return (
     <div className="flex flex-col gap-5">
-      {/* 올리는 자리 — 파일을 고르면 바로 시작한다. 「시작」 단추를 따로 두지 않는다 */}
-      <section className="rounded-2xl border-2 border-dashed border-brand-300 bg-brand-50/40 p-5">
-        <label className="flex cursor-pointer flex-col items-start gap-1.5">
-          <span className="rounded-ctl bg-brand-700 px-4 py-2 text-base font-bold text-white transition hover:bg-brand-800">
-            {busy ?? 'PDF 고르기'}
-          </span>
-          <span className="text-tiny text-slate-500">
-            스캔 묶음 여럿 · 묶음마다 최대 40MB · 앞 80장까지 · 차례로 가릅니다
-          </span>
-          <input
-            type="file"
-            accept="application/pdf,.pdf"
-            multiple
-            disabled={busy !== null}
-            className="hidden"
-            onChange={(e) => {
-              const picked = [...(e.target.files ?? [])];
-              e.target.value = ''; // 같은 파일을 다시 고를 수 있게 비운다
-              if (picked.length > 0) void sortAll(picked);
-            }}
-          />
-        </label>
-        <Err>{error}</Err>
-      </section>
+      {/*
+       * 올리는 자리 — 파일을 고르면 바로 시작한다. 「시작」 단추를 따로 두지 않는다.
+       * ★상자째 누르고 끌어다 놓는다★ (한백 지시 2026-09-11) — 옆 화면인 「사진 → 스캔본」
+       * 과 같은 꼴이다. 점선 상자는 원래 놓는 자리처럼 생겼는데 실제로는 안 받고 있었다.
+       */}
+      <label
+        {...catchDrop}
+        className={`relative block rounded-2xl border-2 border-dashed p-5 transition ${
+          busy ? 'cursor-default opacity-60' : 'cursor-pointer'
+        } ${over ? 'border-brand-500 bg-brand-50' : 'border-brand-300 bg-brand-50/40'}`}
+      >
+        <input
+          type="file"
+          accept="application/pdf,.pdf"
+          multiple
+          disabled={busy !== null}
+          className="hidden"
+          onChange={(e) => {
+            const picked = [...(e.target.files ?? [])];
+            e.target.value = ''; // 같은 파일을 다시 고를 수 있게 비운다
+            take(picked);
+          }}
+        />
+        {/* 끌기 시작할 때만 뜬다 — 평소에 깔려 있으면 상자 안을 다 가린다 */}
+        {dragging && !busy && (
+          <div
+            className={`absolute inset-0 z-10 flex items-center justify-center rounded-2xl border-2 border-dashed text-small font-bold transition ${
+              over ? 'border-brand-500 bg-brand-50/95 text-brand-800' : 'border-slate-300 bg-white/90 text-slate-500'
+            }`}
+          >
+            여기에 PDF 를 놓기
+          </div>
+        )}
+        <span className="inline-flex rounded-ctl bg-brand-700 px-4 py-2 text-base font-bold text-white transition hover:bg-brand-800">
+          {busy ?? 'PDF 고르기 · 끌어다 놓기'}
+        </span>
+        <span className="mt-1.5 block text-tiny text-slate-500">
+          스캔 묶음 여럿 · 묶음마다 최대 40MB · 앞 80장까지 · 차례로 가릅니다
+        </span>
+      </label>
+      <Err className="block">{error}</Err>
 
       {sources.length > 0 && (
         <section className={`${PANEL} p-5`}>
