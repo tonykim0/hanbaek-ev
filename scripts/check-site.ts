@@ -44,7 +44,22 @@ async function main() {
   const all = await pgRepository.listProjects(HANBAEK);
   const hits = all.filter((p) => p.name.includes(NAME));
   if (hits.length === 0) {
-    console.log('맞는 현장이 없습니다.');
+    console.log(`맞는 현장이 없습니다 (전체 ${all.length}건).`);
+    /*
+     * ★없다고 끝내지 않는다★ — 「그런 곳 있었나」는 대개 철자가 한 글자 다르다(띄어쓰기·
+     * 차수·아파트 유무). 두 글자씩 끊어 하나라도 걸리는 이름을 같이 보여 준다.
+     */
+    const grams = new Set<string>();
+    for (let i = 0; i + 2 <= NAME.length; i += 1) grams.add(NAME.slice(i, i + 2));
+    const near = all
+      .map((p) => ({ p, n: [...grams].filter((g) => p.name.includes(g)).length }))
+      .filter((x) => x.n > 0)
+      .sort((a, b) => b.n - a.n)
+      .slice(0, 12);
+    if (near.length > 0) {
+      console.log(`\n비슷한 이름 ${near.length}건 (겹치는 두 글자 수 순)`);
+      for (const { p, n } of near) console.log(`   ${n}  ${p.name}  (${p.id})`);
+    }
     process.exit(0);
   }
 
