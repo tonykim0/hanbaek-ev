@@ -62,6 +62,15 @@ export interface GroupCheck {
   label: string;
   ready: boolean;
   blocked: string;
+  /**
+   * 조건이 안 찼어도 ★한백은 그대로 찍을 수 있는가★ — 빠진 것의 이름을 담는다
+   * (한백 지시 2026-09-14 「이거 없이 한백이 강제로 버튼을 누를 수 있게 해줘」).
+   *
+   * 없으면 예전대로 조건이 차야만 눌린다. 시공사에게는 주지 않는다 — 「다 냈다」는
+   * 시공사의 선언이고, 안 내고 냈다고 말할 수 있으면 그 선언이 뜻을 잃는다.
+   * 누를 때 무엇이 빠졌는지 되묻는다(화면 규칙 7 — 되돌릴 길은 「되돌리기」가 이미 있다).
+   */
+  force?: { missing: string[] };
 }
 
 export interface Group {
@@ -321,6 +330,16 @@ export function groupsByStatus(
           field: 'completionSubmitAt', label: '준공서류 제출 완료',
           ready: missingDocs.length === 0,
           blocked: `${missingDocs[0] ?? '준공서류'} 미제출 — 완료 불가`,
+          /*
+           * ★한백은 서류가 덜 와도 찍을 수 있다★ (한백 지시 2026-09-14). 이 선언은 단계를
+           * 옮기지 않는다 — 「준공서류 접수/검토」에 서서 「다 받았다」고 말하는 것이고,
+           * 그 말이 한백 자신의 검토 판정(CompletionReview)을 여는 자리다. 종이 한 장이
+           * 늦게 오는 현장에서 한백이 자기 판단으로 검토를 시작할 수 있어야 한다.
+           * ★준공완료로 넘어가는 문은 그대로다★ — 거기서 같은 서류를 다시 묻는다
+           * (lib/process 의 canEnter '준공완료'). 2차 지급 30% 가 열리는 문이라
+           * (2026-09-04 감사에서 뚫려 있던 자리), 이 강제는 그 문까지 열지 않는다.
+           */
+          force: { missing: missingDocs },
         },
       },
     ],

@@ -11,7 +11,7 @@ import { useState } from 'react';
 
 import type { CheckField, GroupCheck } from './milestones';
 
-import { Btn, Empty, FIELD } from '@/components/ui';
+import { Btn, Confirm, Empty, FIELD } from '@/components/ui';
 
 import { ROW, RowLabel } from './shell';
 
@@ -118,15 +118,24 @@ export function NeedRow({
  * 끝낸 뒤에는 날짜와 함께 굳고, 되돌리는 단추가 반대쪽 끝에 선다(규칙 7·8).
  */
 export function CheckRow({
-  check, value, canEdit, busy, onToggle,
+  check, value, canEdit, canForce = false, busy, onToggle,
 }: {
   check: GroupCheck;
   value: string | null;
   canEdit: boolean;
+  /** 조건이 안 차도 찍을 수 있는 사람인가 — 한백만(ProcessEdit 'all') */
+  canForce?: boolean;
   busy: boolean;
   onToggle: (field: CheckField, checked: boolean) => void;
 }) {
   const done = Boolean(value);
+  /*
+   * ★조건이 안 찼는데 한백이 그대로 찍는 자리★ (한백 지시 2026-09-14).
+   * 흐린 단추 대신 눌리는 단추를 주되, 무엇이 빠졌는지 되묻고 나서 찍는다 — 「강제」라는
+   * 낱말을 이름에 넣지 않는다(빠진 것의 수가 그 말을 이미 한다).
+   */
+  const forcing = !check.ready && canForce && Boolean(check.force);
+  const [asking, setAsking] = useState(false);
 
   return (
     <div className={ROW}>
@@ -149,16 +158,32 @@ export function CheckRow({
           )}
         </>
       ) : canEdit ? (
-        <Btn
-          size="sm"
-          disabled={!check.ready}
-          busy={busy}
-          busyLabel="처리 중…"
-          onClick={() => onToggle(check.field, true)}
-        >
-          {/* 막는 것을 이름에 적는다 — 흐린 단추만으로는 왜 안 되는지 알 수 없다 */}
-          {check.ready ? check.label : check.blocked}
-        </Btn>
+        <>
+          <Btn
+            size="sm"
+            disabled={!check.ready && !forcing}
+            busy={busy}
+            busyLabel="처리 중…"
+            onClick={() => (forcing ? setAsking(true) : onToggle(check.field, true))}
+          >
+            {/* 막는 것을 이름에 적는다 — 흐린 단추만으로는 왜 안 되는지 알 수 없다 */}
+            {check.ready ? check.label
+              : forcing ? `${check.label} — ${check.force!.missing.length}건 미제출`
+                : check.blocked}
+          </Btn>
+          {forcing && (
+            <Confirm
+              open={asking}
+              title={`${check.force!.missing.length}건이 아직 안 왔습니다.`}
+              detail={`${check.force!.missing.join(' · ')} — 그래도 ${check.label}로 표시합니다.`}
+              confirmLabel={`예, ${check.label}`}
+              busy={busy}
+              busyLabel="처리 중…"
+              onCancel={() => setAsking(false)}
+              onConfirm={() => { setAsking(false); onToggle(check.field, true); }}
+            />
+          )}
+        </>
       ) : (
         <span className="font-bold text-slate-400">미완</span>
       )}

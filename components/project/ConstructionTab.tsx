@@ -541,6 +541,8 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
                          * 지급이 열렸다(2026-08-26). 서버도 같은 판정을 한다.
                          */
                         canEdit={canEdit && selState !== 'future'}
+                        /* 강제는 한백만 — 「다 냈다」는 시공사의 선언이라 대신 말해 주지 않는다 */
+                        canForce={edit === 'all' && selState !== 'future'}
                         busy={busyKey === g.check.field}
                         onToggle={saveCheck}
                       />

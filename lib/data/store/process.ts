@@ -16,7 +16,7 @@ import { today } from '@/lib/date';
 import {
   advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES, CHECK_HOME,
   COURT_AFTER_STATUS, nextStatusOf, prevStatusOf, STATUS_GATES, type GateContext,
-  declarationBlockers, gateContextOf, statusIndex,
+  declarationBlockers, gateContextOf, mayForceDeclaration, statusIndex,
 } from '@/lib/process';
 import { PROCESS_STATUSES } from '@/types/project';
 import type { ProcessStatus } from '@/types/project';
@@ -60,7 +60,7 @@ export const processStore: Pick<
       unchecked = uncheckedField(fields, patch, before);
       /* as never — 위 select 가 문자열로 읽어 온다(363행이 같은 방식이다) */
       checkStepWindow(fields, patch, before, unchecked, gateContextOf(project as never));
-      await checkDeclarations(tx, projectId, project, fields, patch, before);
+      await checkDeclarations(tx, projectId, project, fields, patch, before, actor);
 
       // 공정 행이 없는 현장이 있다 — update 는 0행을 조용히 지나가므로 없으면 만들어 넣는다
       if (before) {
@@ -360,7 +360,8 @@ async function checkDeclarations(
   project: { bizType: string | null; powerType: string | null },
   fields: Array<keyof ProcessPatch>,
   patch: ProcessPatch,
-  before: ProcRowLike | undefined
+  before: ProcRowLike | undefined,
+  actor: Actor
 ): Promise<void> {
   const declaring = fields.filter((f) => f in CHECK_ADVANCES && patch[f] != null);
   if (declaring.length === 0) return;
@@ -374,9 +375,26 @@ async function checkDeclarations(
 
   for (const f of declaring) {
     const lack = declarationBlockers(f as string, merged, ctx);
-    if (lack.length > 0) {
-      throw new Error(`${lack.join(' · ')} 이(가) 아직입니다.`);
+    if (lack.length === 0) continue;
+    /*
+     * ★한백은 준공서류 제출 완료를 서류가 덜 와도 찍는다★ (한백 지시 2026-09-14).
+     * 이 선언은 단계를 옮기지 않는다 — 「다 받았다」고 말해 자기 검토 판정을 여는 자리다
+     * (lib/process 의 CHECK_AT 에 이 값이 없는 까닭). 종이 한 장이 늦는 현장에서 한백이
+     * 자기 판단으로 검토를 시작할 수 있어야 한다.
+     * ★한백만이다★ — 시공사가 안 내고 「냈다」고 말할 수 있으면 그 선언이 뜻을 잃는다.
+     * ★다른 선언은 그대로 막는다★ — 설치완료·개통완료는 지급 트리거라(payoutReleaseOf)
+     * 강제로 찍으면 사진도 착공일도 없이 돈이 열린다(감사 2026-09-04 H2 가 그 자리다).
+     * ★준공완료로 넘어가는 문도 그대로다★ — 거기서 같은 서류를 다시 묻는다(canEnter).
+     */
+    if (mayForceDeclaration(f as string, actor.role)) {
+      /* 강행은 로그에 남긴다 — 나중에 「왜 서류도 없이 완료였나」를 되짚을 자리가 여기뿐이다 */
+      await writeAudit(tx, {
+        projectId, actor, action: '준공서류 제출 완료 — 미제출 강행',
+        field: f as string, oldValue: null, newValue: lack.join(' · '),
+      });
+      continue;
     }
+    throw new Error(`${lack.join(' · ')} 이(가) 아직입니다.`);
   }
 }
 

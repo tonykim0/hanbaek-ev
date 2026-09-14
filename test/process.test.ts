@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   advanceBlockers, advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES,
   CHECK_AT, CHECK_HOME, entryOkOf, nextStatusOf, prevStatusOf, STATUS_GATES, stepsOf,
-  COURT_AFTER_STATUS, declarationBlockers, isHanbaekOnlyProcessField, statusIndex,
+  COURT_AFTER_STATUS, declarationBlockers, isHanbaekOnlyProcessField, mayForceDeclaration, statusIndex,
   canChangeContractDocs, CONTRACT_DOCS_LOCK_AT, contractDocsLockedWhy, PARTNER_DOCS_CLOSED_AT,
 } from '@/lib/process';
 import type { GateContext } from '@/lib/process';
@@ -758,5 +758,33 @@ describe('준공서류 — SK일렉링크는 운영시작확인서 (프로모션
   it('SK 가 아니면 묻지 않는다', () => {
     const p = P({ status: '준공서류 접수/검토', docs: ALL.map(doc) });
     expect(advanceBlockers('준공완료', 'completionSubmitAt', p, SELF)).toEqual([]);
+  });
+});
+
+/*
+ * ★한백은 준공서류 제출 완료를 서류가 덜 와도 찍는다★ (한백 지시 2026-09-14).
+ * 그 선언은 단계를 옮기지 않는다 — 한백 자신의 검토 판정을 여는 자리다. 나머지 선언은
+ * 지급 트리거라 그대로 막고(감사 2026-09-04 H2), 준공완료로 가는 문도 그대로다.
+ */
+describe('mayForceDeclaration — 강행은 준공서류 제출 완료 하나뿐', () => {
+  it('한백은 준공서류 제출 완료를 강행할 수 있다', () => {
+    expect(mayForceDeclaration('completionSubmitAt', 'admin')).toBe(true);
+  });
+
+  it('시공사·영업사·턴키·열람전용은 못 한다 — 안 내고 「냈다」고 말하면 선언이 뜻을 잃는다', () => {
+    for (const role of ['cons', 'sales', 'salesCons', 'viewer'] as const) {
+      expect(mayForceDeclaration('completionSubmitAt', role)).toBe(false);
+    }
+  });
+
+  it('지급 트리거 선언은 한백도 못 강행한다 — 사진도 착공일도 없이 돈이 열린다', () => {
+    for (const f of ['installConfirmedAt', 'openDoneAt', 'chargerDoneAt', 'notifyDoneAt']) {
+      expect(mayForceDeclaration(f, 'admin')).toBe(false);
+    }
+  });
+
+  it('★강행해도 준공완료의 문은 그대로다★ — 거기서 같은 서류를 다시 묻는다', () => {
+    const p = P({ status: '준공서류 접수/검토', docs: [], completionSubmitAt: '2026-09-15' });
+    expect(advanceBlockers('준공완료', 'completionSubmitAt', p, ENV).length).toBeGreaterThan(0);
   });
 });
