@@ -604,7 +604,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
         </ul>
       )}
 
-      <Card title="현장">
+      <Card title="현장정보">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="운영사" required auto={auto.has('cpo')}>
             <Select value={cpo} onChange={(v) => { setCpo(v as CpoName); touched('cpo'); }} options={CPOS} />
@@ -765,7 +765,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
         </Btn>
         {check.errors.length > 0 && (
           <span className="text-xs text-slate-400">
-            별표(<span className="text-red-500">*</span>) 칸과 필수 서류를 채우면 접수할 수 있습니다
+            별표(<span className="text-red-500">*</span>) 칸을 채우면 접수할 수 있습니다
           </span>
         )}
       </div>
