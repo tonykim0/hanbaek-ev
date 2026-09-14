@@ -679,6 +679,25 @@ export function mayForceDeclaration(field: string, role: Role): boolean {
 }
 
 /**
+ * 조건이 안 찼는데도 그 칸으로 넘길 수 있는가 (한백 지시 2026-09-15 「준공완료 해도
+ * 어차피 취소 가능해」).
+ *
+ * ★준공완료 하나뿐이고, 한백만이다.★ 준공서류 제출 완료를 강행해도 여기서 같은 서류를
+ * 다시 물어(missingCompletionDocs) 문이 안 열렸다 — 종이 한 장이 늦는 현장이 준공을 못
+ * 끝냈다. 한백이 자기 판단으로 끝낼 수 있게 한다.
+ *
+ * ★되돌릴 수 있어서 연다★ — 준공완료에서 내려오면 completeDoneAt 이 지워진다
+ * (lib/data/store/process 의 setProcessStatus). 다만 그 사이에 2차 지급을 ★확정★했으면
+ * 원장 줄은 남는다 — 되돌아가는 것은 단계지 나간 돈이 아니다.
+ *
+ * ★나머지 칸은 그대로 막는다★ — 착공·설치완료 같은 앞 칸의 조건은 그 칸에서 할 일이
+ * 실제로 끝났는지를 묻는 것이고, 건너뛰면 날짜도 선언도 없이 뒤 칸이 열린다.
+ */
+export function mayForceStatus(status: ProcessStatus, role: Role): boolean {
+  return status === '준공완료' && role === 'admin';
+}
+
+/**
  * 화면의 「다음 단계로 진행」 단추를 막는 것들 — 없으면 빈 배열이고, 그때 단추가 열린다.
  *
  * ★화면은 판정하지 않는다★ — 조건을 화면에도 적으면 두 벌이 되고 어긋난다(2026-08-26 에

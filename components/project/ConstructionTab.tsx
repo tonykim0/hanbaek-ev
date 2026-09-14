@@ -25,7 +25,8 @@ import {
 } from '@/lib/doc-rules';
 import { constructionLabelOf, HANDOFF_STATUS } from '@/lib/board';
 import { advanceBlockers,
-  canEnter, gateContextOf, isCompletionDoc, isHanbaekOnlyProcessField, nextStatusOf, prevStatusOf,
+  canEnter, gateContextOf, isCompletionDoc, isHanbaekOnlyProcessField, mayForceStatus,
+  nextStatusOf, prevStatusOf,
   statusIndex,
   STATUS_GATES, stepsOf,
   type ProcessEdit,
@@ -37,7 +38,7 @@ import {
 import { today } from '@/lib/date';
 import { useAction } from '@/lib/use-action';
 import {
-  Badge, Btn, Note,
+  Badge, Btn, Confirm, Note,
 } from '@/components/ui';
 import {
   groupsByStatus, type CheckField, type CountField, type DateField, type GroupExtra,
@@ -90,6 +91,8 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
   /** 스테퍼에서 보고 있는 구간 — 단계가 바뀌면 그 구간을 따라간다 */
   const [selected, setSelected] = useState<ProcessStatus>(anchor);
   useEffect(() => setSelected(anchor), [anchor]);
+  /** 조건이 덜 찬 칸으로 넘기기 전에 되묻는 자리 — 한백의 준공완료에서만 선다 */
+  const [forcing, setForcing] = useState<ProcessStatus | null>(null);
 
   /** 그 칸을 이 사람이 적을 수 있나 — 이름으로 판정한다(서버와 같은 목록을 본다) */
   const canEditField = (field: DateField | CountField | 'chargerModelId') =>
@@ -372,24 +375,45 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
                   */}
                 {edit === 'all' && selState !== 'current'
                   && (selState === 'past' || selected === nextStatusOf(p.status, gate)) && (
-                  selEntry.ok ? (
+                  /*
+                   * ★한백은 준공완료를 조건이 덜 차도 넘긴다★ (한백 지시 2026-09-15
+                   * 「준공완료 해도 어차피 취소 가능해」). 자물쇠 글자 대신 눌리는 단추를
+                   * 주되, 무엇이 덜 왔는지 이름에 적고 누르면 한 번 되묻는다.
+                   * 서버도 같은 판정을 본다(lib/process 의 mayForceStatus).
+                   */
+                  selEntry.ok || mayForceStatus(selected, 'admin') ? (
                     <button
                       type="button"
                       disabled={busyKey === 'status'}
-                      onClick={() => moveStatus(selected)}
+                      onClick={() => (selEntry.ok ? moveStatus(selected) : setForcing(selected))}
                       className={`rounded-ctl border px-3 py-1 text-small font-bold transition disabled:opacity-50 ${
                         selState === 'past'
                           ? 'border-slate-300 bg-white text-slate-600 hover:border-slate-400'
                           : 'border-brand-300 bg-brand-50 text-brand-800 hover:bg-brand-100'
                       }`}
                     >
-                      {selState === 'past' ? `← 이 구간으로 되돌리기` : `이 구간으로 넘기기 →`}
+                      {selState === 'past' ? `← 이 구간으로 되돌리기`
+                        : selEntry.ok ? `이 구간으로 넘기기 →`
+                          : `이 구간으로 넘기기 → ${(STATUS_GATES[selected]?.(p, gate) ?? []).length}건 미충족`}
                     </button>
                   ) : (
                     <p className="text-tiny font-semibold text-slate-400">
                       🔒 {(STATUS_GATES[selected]?.(p, gate) ?? []).map((b) => b.label).join(' · ')} 필요
                     </p>
                   )
+                )}
+                {/* 조건이 덜 찬 채로 넘기기 전에 무엇이 빠졌는지 되묻는다(화면 규칙 7·12) */}
+                {forcing && (
+                  <Confirm
+                    open
+                    title={`${(STATUS_GATES[forcing]?.(p, gate) ?? []).length}건이 아직입니다.`}
+                    detail={`${(STATUS_GATES[forcing]?.(p, gate) ?? []).map((b) => b.label).join(' · ')} — 그래도 ${constructionLabelOf(forcing)} 로 넘깁니다. 되돌리면 준공완료일이 지워집니다.`}
+                    confirmLabel={`예, ${constructionLabelOf(forcing)} 로`}
+                    busy={busyKey === 'status'}
+                    busyLabel="옮기는 중…"
+                    onCancel={() => setForcing(null)}
+                    onConfirm={() => { const t = forcing; setForcing(null); moveStatus(t); }}
+                  />
                 )}
               </div>
 

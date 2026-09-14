@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import {
   advanceBlockers, advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES,
   CHECK_AT, CHECK_HOME, entryOkOf, nextStatusOf, prevStatusOf, STATUS_GATES, stepsOf,
-  COURT_AFTER_STATUS, declarationBlockers, isHanbaekOnlyProcessField, mayForceDeclaration, statusIndex,
+  COURT_AFTER_STATUS, declarationBlockers, isHanbaekOnlyProcessField, mayForceDeclaration, mayForceStatus, statusIndex,
   canChangeContractDocs, CONTRACT_DOCS_LOCK_AT, contractDocsLockedWhy, PARTNER_DOCS_CLOSED_AT,
 } from '@/lib/process';
 import type { GateContext } from '@/lib/process';
@@ -785,6 +785,35 @@ describe('mayForceDeclaration — 강행은 준공서류 제출 완료 하나뿐
 
   it('★강행해도 준공완료의 문은 그대로다★ — 거기서 같은 서류를 다시 묻는다', () => {
     const p = P({ status: '준공서류 접수/검토', docs: [], completionSubmitAt: '2026-09-15' });
+    expect(advanceBlockers('준공완료', 'completionSubmitAt', p, ENV).length).toBeGreaterThan(0);
+  });
+});
+
+/*
+ * ★한백은 준공완료를 조건이 덜 차도 넘긴다★ (한백 지시 2026-09-15 「준공완료 해도
+ * 어차피 취소 가능해」). 되돌리면 completeDoneAt 이 지워진다 — 그래서 여는 문이다.
+ */
+describe('mayForceStatus — 강행은 준공완료 하나뿐', () => {
+  it('한백은 준공완료를 강행할 수 있다', () => {
+    expect(mayForceStatus('준공완료', 'admin')).toBe(true);
+  });
+
+  it('협력사·열람전용은 못 한다', () => {
+    for (const role of ['cons', 'sales', 'salesCons', 'viewer'] as const) {
+      expect(mayForceStatus('준공완료', role)).toBe(false);
+    }
+  });
+
+  it('앞 칸들은 한백도 못 강행한다 — 날짜도 선언도 없이 뒤 칸이 열린다', () => {
+    for (const st of ['착공', '개통 및 통신확인', '준공서류 접수/검토', '충전기 수령'] as const) {
+      expect(mayForceStatus(st, 'admin')).toBe(false);
+    }
+  });
+
+  /* 판정은 열어 주되 「무엇이 덜 왔는지」는 그대로 센다 — 확인창이 그 수를 적는다 */
+  it('강행해도 막는 것의 목록은 그대로 나온다', () => {
+    const p = P({ status: '준공서류 접수/검토', docs: [], completionSubmitAt: '2026-09-15' });
+    expect(canEnter('준공완료', p, ENV).ok).toBe(false);
     expect(advanceBlockers('준공완료', 'completionSubmitAt', p, ENV).length).toBeGreaterThan(0);
   });
 });

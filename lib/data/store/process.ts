@@ -16,7 +16,7 @@ import { today } from '@/lib/date';
 import {
   advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES, CHECK_HOME,
   COURT_AFTER_STATUS, nextStatusOf, prevStatusOf, STATUS_GATES, type GateContext,
-  declarationBlockers, gateContextOf, mayForceDeclaration, statusIndex,
+  declarationBlockers, gateContextOf, mayForceDeclaration, mayForceStatus, statusIndex,
 } from '@/lib/process';
 import { PROCESS_STATUSES } from '@/types/project';
 import type { ProcessStatus } from '@/types/project';
@@ -105,7 +105,16 @@ export const processStore: Pick<
       throw new Error('계약이 끝나기 전에는 진행 단계를 옮길 수 없습니다.');
     }
     const entry = canEnter(status, record.process, gateContextOf(record.project));
-    if (!entry.ok) throw new Error(`${status} 로 넘기려면 ${entry.blockedBy} 이(가) 필요합니다.`);
+    /*
+     * ★한백은 준공완료를 조건이 덜 차도 넘길 수 있다★ (한백 지시 2026-09-15
+     * 「준공완료 해도 어차피 취소 가능해」). 되돌리면 completeDoneAt 이 지워진다 —
+     * 다만 그 사이에 2차 지급을 확정했으면 원장 줄은 남는다.
+     * 강행은 로그에 따로 남긴다 — 「왜 서류도 없이 준공이었나」를 되짚을 자리가 여기뿐이다.
+     */
+    const forcing = !entry.ok && mayForceStatus(status, actor.role);
+    if (!entry.ok && !forcing) {
+      throw new Error(`${status} 로 넘기려면 ${entry.blockedBy} 이(가) 필요합니다.`);
+    }
 
     /*
      * 「운영사 계약서 제출」은 넘기는 것이 곧 선언이다 — 낸 날을 여기서 찍는다.
@@ -169,6 +178,13 @@ export const processStore: Pick<
         projectId, actor, action: '진행 단계 변경',
         field: 'process.status', oldValue: row?.status ?? null, newValue: status,
       });
+      if (forcing) {
+        /* 무엇이 덜 왔는지까지 적는다 — 단계만 남으면 나중에 왜 강행했는지 알 수 없다 */
+        await writeAudit(tx, {
+          projectId, actor, action: `${status} — 조건 미충족 강행`,
+          field: 'process.status', oldValue: null, newValue: entry.blockedBy ?? null,
+        });
+      }
       if ('cpoSubmitDate' in stamp) {
         await writeAudit(tx, {
           projectId, actor, action: '운영사 계약서 제출',
