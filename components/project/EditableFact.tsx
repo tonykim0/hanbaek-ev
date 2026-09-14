@@ -24,7 +24,7 @@ import { Btn, Empty, Err, FIELD, Picks, Val } from '@/components/ui';
 
 export function EditableFact({
   label, value, canEdit, url, field, method = 'PATCH', empty = '—', placeholder,
-  suggestions = [], na = false, row = false, editValue, numeric = false,
+  suggestions = [], na = false, row = false, editValue, numeric = false, lockNote,
 }: {
   label: string;
   value: string | null;
@@ -73,6 +73,18 @@ export function EditableFact({
    * 숫자가 아닌 글자는 여기서 막는다 — 왕복하지 않고 그 자리에서 말한다(화면 규칙 9).
    */
   numeric?: boolean;
+  /**
+   * 고칠 수 없는 까닭 — canEdit 이 false 일 때 「수정」 자리에 대신 적는다.
+   *
+   * ★단추가 그냥 없으면 고장처럼 보인다★ (한백 지적 2026-09-14 — 「이거 항목들 수정
+   * 가능하게끔 해줘야해」). 지급조건이 확정된 현장은 축·대수가 잠기는데(DetailView 의
+   * termsLocked), 화면에는 그 다섯 칸만 「수정」이 없는 것으로 보였다. 푸는 자리는
+   * 이미 있었다 — 없던 것은 「왜 안 되는지」다(화면 규칙 3: 막는 것을 그 자리에 적는다).
+   *
+   * ★권한에는 쓰지 않는다★ — 협력사에게 「한백만 고칩니다」라고 적을 이유가 없다.
+   * 되돌릴 길이 있는 잠금에만 준다.
+   */
+  lockNote?: string;
 }) {
   const { busy, error, setError, run } = useAction();
   const [editing, setEditing] = useState(false);
@@ -160,11 +172,11 @@ export function EditableFact({
           <span className={`text-small font-semibold ${value ? 'text-slate-800' : 'text-slate-300'}`}>
             {value ?? empty}
           </span>
-          {canEdit && (
+          {canEdit ? (
             <Btn size="sm" kind="quiet" onClick={() => { setDraft(seed); setEditing(true); }}>
               {value ? '수정' : '입력'}
             </Btn>
-          )}
+          ) : lockNote ? <LockNote note={lockNote} /> : null}
         </dd>
       </div>
     );
@@ -177,12 +189,24 @@ export function EditableFact({
       <dd className="mt-0.5 flex flex-wrap items-baseline gap-1.5 break-keep">
         {/* 비어 있음은 「빠뜨린 것」이라 노랑이다 — 아직 올 때가 아닌 것(—)과 다른 말이다 */}
         {value ? <Val value={value} /> : <Empty kind="miss" label={empty === '—' ? undefined : empty} />}
-        {canEdit && (
+        {canEdit ? (
           <Btn size="sm" kind="quiet" onClick={() => { setDraft(seed); setEditing(true); }}>
             {value ? '수정' : '입력'}
           </Btn>
-        )}
+        ) : lockNote ? <LockNote note={lockNote} /> : null}
       </dd>
     </div>
+  );
+}
+
+/**
+ * 잠긴 까닭 — 「수정」이 섰을 자리에 같은 크기로 선다.
+ *
+ * 단추가 아니라 상태다(화면 규칙 11 — 각진 것은 누르는 것, 이것은 안 눌린다).
+ * 문장이 아니라 낱말로 적는다(규칙 2) — 어디서 푸는지만 말한다.
+ */
+function LockNote({ note }: { note: string }) {
+  return (
+    <span className="whitespace-nowrap text-tiny font-semibold text-slate-400">{note}</span>
   );
 }

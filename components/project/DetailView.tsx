@@ -465,6 +465,13 @@ function SiteHeader({
   const termsLocked = project.payoutTermsConfirmedAt !== null;
   const canEditAxes = canReview && !termsLocked;
   const canEditLines = canReview && !termsLocked;
+  /*
+   * ★왜 못 고치는지를 그 자리에 적는다★ (한백 지적 2026-09-14). 단추가 그냥 없으면
+   * 고장으로 읽힌다 — 실제로 「이 항목들 수정 가능하게 해줘」로 왔다. 푸는 자리는 이미
+   * 있다(정산 탭의 「확정 해제」). 한백에게만 적는다 — 협력사에게 「수정」이 없는 것은
+   * 잠금이 아니라 권한이고, 되돌릴 길이 없는 것에는 이 쪽지를 주지 않는다.
+   */
+  const lockNote = canReview && termsLocked ? '지급조건 확정 — 정산 탭에서 해제' : undefined;
 
 
   /** 이 현장을 지금 세우고 있는 것 */
@@ -565,6 +572,7 @@ function SiteHeader({
           label="운영사"
           value={project.cpo}
           canEdit={canEditAxes}
+          lockNote={lockNote}
           url={`/api/projects/${project.id}/axes`}
           field="cpo"
           suggestions={[...CPO_NAMES]}
@@ -596,6 +604,7 @@ function SiteHeader({
           label="사업구분"
           value={project.bizType}
           canEdit={canEditAxes}
+          lockNote={lockNote}
           url={`/api/projects/${project.id}/axes`}
           field="bizType"
           empty="미지정"
@@ -614,6 +623,7 @@ function SiteHeader({
               editValue={String(soleLine.qty)}
               numeric
               canEdit={canEditLines}
+              lockNote={lockNote}
               url={`/api/projects/${project.id}/lines/${soleLine.id}`}
               field="qty"
             />
@@ -623,6 +633,7 @@ function SiteHeader({
               editValue={String(soleLine.termYears)}
               numeric
               canEdit={canEditLines}
+              lockNote={lockNote}
               url={`/api/projects/${project.id}/lines/${soleLine.id}`}
               field="termYears"
               suggestions={TERM_YEARS.map(String)}
@@ -638,6 +649,7 @@ function SiteHeader({
           label="수전방식"
           value={project.powerType}
           canEdit={canEditAxes}
+          lockNote={lockNote}
           url={`/api/projects/${project.id}/axes`}
           field="powerType"
           empty="미지정"
