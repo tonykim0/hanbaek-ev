@@ -769,14 +769,27 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
           onClick={() => void submit()}
           disabled={check.errors.length > 0 || uploading ||   /* 임시 자리로 올라가는 중(picking)에도 잠근다 — 올리던 파일이 빠진 채 접수됐다 (감사 M25) */ (!isAdmin && !org)}
         >
-          {busy ?? '접수하기'}
+          {/*
+            * ★못 하는 이유를 단추 이름에 적는다★ (화면 규칙 3 · 한백 지적 2026-09-14
+            * 「필수 서류 없이도 접수 가능하게 해달라고 했는데 안 된 거 같네」 — 서류는 이미
+            * 안 막고 있었고, 실제로 막던 것은 안 고른 별표 칸이었다. 단추가 흐리기만 하고
+            * 까닭을 안 적으니 앞서 고친 서류 쪽이 안 된 줄로 읽혔다).
+            */}
+          {busy ?? (check.errors.length > 0 ? `${check.errors.length}건 남음 — 접수 불가` : '접수하기')}
         </Btn>
-        {check.errors.length > 0 && (
-          <span className="text-xs text-slate-400">
-            별표(<span className="text-red-500">*</span>) 칸을 채우면 접수할 수 있습니다
-          </span>
+        {!isAdmin && !org && (
+          <span className="text-xs text-slate-400">소속이 없는 계정이라 접수할 수 없습니다</span>
         )}
       </div>
+      {/*
+        * 무엇이 막는지 그 자리에 적는다 — 「별표 칸을 채우세요」로는 어느 칸인지 알 수 없다.
+        * 검증이 내는 문구를 그대로 쓴다(lib/intake-validate) — 서버가 거절할 때와 같은 말이다.
+        */}
+      {check.errors.length > 0 && (
+        <ul className="flex flex-col gap-1 rounded-xl border-l-[3px] border-slate-300 bg-slate-50 px-4 py-3 text-xs font-semibold leading-relaxed text-slate-600">
+          {check.errors.map((e) => <li key={e}>{e}</li>)}
+        </ul>
+      )}
     </div>
   );
 }
