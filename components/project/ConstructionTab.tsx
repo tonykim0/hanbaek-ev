@@ -43,7 +43,7 @@ import {
 import {
   groupsByStatus, type CheckField, type CountField, type DateField, type GroupExtra,
 } from './construction/milestones';
-import { CountsRow, DateRow, DocRow, ModelRow } from './construction/rows';
+import { CloseDateRow, CountsRow, DateRow, DocRow, ModelRow } from './construction/rows';
 import { AdvanceRow, CheckRow, CompletionReview, NeedRow } from './construction/steps';
 
 export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit: ProcessEdit }) {
@@ -110,6 +110,19 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
   // 빈 칸은 「지운다」는 뜻이다. 잘못 적은 날짜를 되돌릴 길이 있어야 한다.
   const saveDate = (field: DateField, value: string) =>
     save(field, value === '' ? null : value, field);
+
+  /*
+   * 준공마감일만 다른 라우트로 간다 — 공정 칸이 아니라 정산 칸이다(settlements.close_date).
+   * 화면을 여기로 옮기면서 저장 자리는 그대로 뒀다: 칼럼을 공정으로 옮기면 기성 계산·
+   * 이관 기록·감사 로그가 같이 흔들린다.
+   */
+  const saveCloseDate = (value: string) =>
+    void run({
+      url: `/api/projects/${detail.project.id}/settlement`,
+      body: { closeDate: value === '' ? null : value },
+      fail: '준공마감일을 저장하지 못했습니다.',
+      key: 'cpoCloseDate',
+    });
 
   const saveCheck = (field: CheckField, checked: boolean) =>
     save(field, checked ? today() : null, field);
@@ -201,6 +214,22 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
               label: `계약 ${contractQty}대`,
               mismatch: p.installedUnits !== null && p.installedUnits !== contractQty,
             }}
+          />
+        );
+      case 'cpoCloseDate':
+        /*
+         * 준공마감일 — ★운영사가 통보해야 서는 날★ (한백 지시 2026-09-15). 값은 한백 전용
+         * 묶음에 실려 오므로 협력사 응답에는 아예 없다: 그때는 줄을 안 그린다(없는 값을
+         * 「비어 있음」으로 적으면 한백이 안 넣은 것처럼 읽힌다).
+         * 손은 한백 관리자만 — 저장소도 같은 판정을 한다(setCpoCloseDate 의 assertAdmin).
+         */
+        return detail.admin === undefined ? null : (
+          <CloseDateRow
+            key={x}
+            value={detail.admin.cpoCloseDate}
+            canEdit={edit === 'all'}
+            busy={busyKey === 'cpoCloseDate'}
+            onSave={saveCloseDate}
           />
         );
       default: {

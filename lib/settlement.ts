@@ -157,6 +157,31 @@ export function safetyFeeDue(status: ProcessStatus): boolean {
   return status === '준공완료';
 }
 
+/**
+ * 준공마감일을 기다리는 차수 — ★그 날짜 하나가 막고 있는 돈★.
+ *
+ * 준공마감은 운영사가 통보해야 서는 날이다(한백 2026-09-15 「운영사가 통보해줘야
+ * 준공마감인거야」). 날짜가 들어오면 그 차수는 곧바로 열리므로, 아직 waiting 인 것은
+ * 통보가 안 왔거나 받아 놓고 안 적은 것이다.
+ */
+export function closingSteps(steps: SettlementStep[]): SettlementStep[] {
+  return steps.filter((s) => s.trigger === '준공마감' && s.state === 'waiting');
+}
+
+/**
+ * 지금 준공마감일을 넣어야 하는 현장인가 — ★판정은 이 함수 하나다.★
+ *
+ * 할 일 카드와 기성관리 표의 꼬리표·거르는 축이 같은 답을 봐야 한다(2026-09-15):
+ * 할 일에는 서는데 표에서는 그 줄을 못 찾는 것이 이 자리의 지적이었다.
+ *
+ * 준공 전에는 세우지 않는다 — 아직 통보가 올 때가 아니라, 그때 띄우면 준공까지 내내
+ * 걸려 있다. 날짜를 조건에 넣지 않는 이유는 그것이 들어오는 순간 차수가 열려서
+ * (waiting → open) closingSteps 가 비기 때문이다.
+ */
+export function closeDateNeeded(status: ProcessStatus, steps: SettlementStep[]): boolean {
+  return status === '준공완료' && closingSteps(steps).length > 0;
+}
+
 /** 저장 전 검사 — 라우트와 저장소가 같은 규칙을 봐야 한다 */
 export function checkSafetyFee(amount: number | null, collectedAt: string | null): string[] {
   const bad: string[] = [];

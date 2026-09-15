@@ -10,7 +10,7 @@ import { phaseOfProject } from '@/lib/board';
 import { won } from '@/lib/format';
 import { daysSince } from '@/lib/date';
 import {
-  safetyFeeApplies, safetyFeeDue, safetyFeeOpen,
+  closeDateNeeded, closingSteps, safetyFeeApplies, safetyFeeDue, safetyFeeOpen,
 } from '@/lib/settlement';
 import type { SettlementStep, SettlementSummary } from '@/types/project';
 import type { TodoItem } from '@/lib/todo-types';
@@ -70,12 +70,17 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
      * 한백이 넣는다 — 안 왔으면 물어보는 것까지가 우리 일이다. 준공 전에는 세우지 않는다:
      * 아직 통보가 올 때가 아니라, 그때 띄우면 준공까지 내내 걸려 있다.
      */
-    const closing = r.steps.filter((s) => s.trigger === '준공마감' && s.state === 'waiting');
-    if (r.status === '준공완료' && closing.length > 0) {
+    const closing = closingSteps(r.steps);
+    if (closeDateNeeded(r.status, r.steps)) {
       const amount = closing.reduce((n, s) => n + (s.planAmount ?? 0), 0);
       items.push({
         id: `close|${r.id}`,
-        href: `/projects/${r.id}?tab=receivable`,
+        /*
+         * ★넣는 자리가 시공 탭으로 옮겨 갔다★ (한백 지시 2026-09-15) — 링크가 기성 탭을
+         * 가리키면 눌러 간 자리에 단추가 없다. 카드는 「기성」 묶음에 그대로 둔다:
+         * 막혀 있는 것은 돈이고, 그것을 세는 배지가 기성관리다.
+         */
+        href: `/projects/${r.id}?tab=construction`,
         name: r.name,
         what: `${nosOf(closing)} ${amount > 0 ? `${won(amount)}원` : '금액 미정'} · 준공마감일 없음`,
         group: '기성',

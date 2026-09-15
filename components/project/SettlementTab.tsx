@@ -132,11 +132,7 @@ export function ReceivableTab({
               수금률 <span className="tabular-nums text-slate-800">{rate}%</span>
             </span>
           )}
-          <CloseDateFact
-            projectId={detail.project.id}
-            date={admin?.cpoCloseDate ?? null}
-            canEdit={canReview}
-          />
+          <CloseDateFact date={admin?.cpoCloseDate ?? null} />
         </div>
       </div>
 
@@ -416,52 +412,25 @@ function ReceiptList({
 }
 
 /**
- * 준공마감일 — 운영사가 통보하는 날. 평소엔 글자, 고칠 때만 달력(화면 규칙 4).
+ * 준공마감일 — ★여기서는 읽기만 한다★ (한백 지시 2026-09-15 「준공완료 화면에 두는게
+ * UX 적으로 맞지않나」).
  *
- * 공정에서 유도할 수 없어 사람이 적는다. 대부분 마지막 기성(잔액)의 트리거라,
- * 이 칸이 비어 있으면 그 차수가 영원히 「대기」로 남는다 — 그래서 비었을 때를
- * 노랑으로 둔다(화면 규칙 10: 「미지정」은 넣어야 하는데 안 넣은 것이다).
+ * 넣는 자리는 시공 탭 준공완료 구간 하나다. 환경부 승인일과 같은 종류라서다 — 바깥이
+ * 한백에 통보하는 날짜고, 기성 트리거고, 시공사는 못 적는다. 그 칸들은 전부 공정에 있다.
+ * 여기에 단추를 같이 두면 고치는 자리가 둘이 되어 사람마다 다른 자리를 배운다.
+ *
+ * 그래도 값은 이 탭에 남긴다 — 마지막 기성이 무엇을 기다리는지가 이 화면의 물음이다.
+ * 비었을 때 노랑인 것도 그대로다(화면 규칙 10: 넣어야 하는데 안 넣은 것).
  */
-function CloseDateFact({
-  projectId, date, canEdit,
-}: {
-  projectId: string;
-  date: string | null;
-  canEdit: boolean;
-}) {
-  const { busy, error, run } = useAction();
-  const [editing, setEditing] = useState(false);
-
-  const save = (v: string | null) =>
-    void run({
-      url: `/api/projects/${projectId}/settlement`,
-      body: { closeDate: v },
-      fail: '준공마감일을 저장하지 못했습니다.',
-    }).then((ok) => { if (ok) setEditing(false); });
-
+function CloseDateFact({ date }: { date: string | null }) {
   return (
     <span className="flex flex-wrap items-center gap-2 text-tiny font-bold text-slate-500">
       준공마감{' '}
-      {editing ? (
-        <>
-          <DatePicker value={date} onChange={save} disabled={busy} ariaLabel="준공마감일" />
-          <Btn size="sm" kind="quiet" disabled={busy} onClick={() => setEditing(false)}>취소</Btn>
-        </>
+      {date ? (
+        <span className="tabular-nums text-slate-800">{date}</span>
       ) : (
-        <>
-          {date ? (
-            <span className="tabular-nums text-slate-800">{date}</span>
-          ) : (
-            <span className="text-amber-700">통보 없음</span>
-          )}
-          {canEdit && (
-            <Btn size="sm" kind="quiet" onClick={() => setEditing(true)}>
-              {date ? '수정' : '지정'}
-            </Btn>
-          )}
-        </>
+        <span className="text-amber-700">통보 없음</span>
       )}
-      <Err>{error}</Err>
     </span>
   );
 }

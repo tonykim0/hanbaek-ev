@@ -22,6 +22,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import type { SettlementSummary } from '@/types/project';
 import {
+  closeDateNeeded,
   safetyFeeApplies, safetyFeeCollected, safetyFeeDue, safetyFeeOpen, safetyFeeReceiptState,
   STEP_LABEL, STEP_TONE,
 } from '@/lib/settlement';
@@ -34,12 +35,18 @@ import CheckMenu from '@/components/CheckMenu';
 import { Frame, SiteLink, Tile, won } from './parts';
 
 /** 거르는 축 — 상태는 「그 현장에 그런 차수가 하나라도 있나」로 본다 */
-type Flag = 'open' | 'unpaid' | 'done' | 'norule' | 'feeopen' | 'feemiss';
+type Flag = 'open' | 'unpaid' | 'done' | 'norule' | 'closemiss' | 'feeopen' | 'feemiss';
 const FLAGS: Array<{ key: Flag; label: string }> = [
   { key: 'open', label: '받을 수 있는 돈' },
   { key: 'unpaid', label: '미수금' },
   { key: 'done', label: '수금 완료' },
   { key: 'norule', label: '정산 규칙 미지정' },
+  /*
+   * ★할 일인데 이 표에서 찾을 길이 없었다★ (한백 지적 2026-09-15 「이게 할일인지 아닌지
+   * 운영사 기성관리에는 뜨지 않아」). 그 줄의 차수 칸은 「대기 · 준공마감」이라 무엇을
+   * 기다리는지는 적혀 있었지만, 그 날짜를 지금 한백이 넣어야 한다는 것은 어디에도 없었다.
+   */
+  { key: 'closemiss', label: '준공마감일 미지정' },
   /*
    * 수수료 두 축 — 대상 현장이 116곳이라 이 축이 없으면 「청구액을 안 적은 현장」을
    * 현장 상세를 하나씩 열어야 안다(한백 「이것도 수금 관리를 해야해」).
@@ -144,7 +151,9 @@ export default function ReceivableBoard({ rows, canEdit }: {
               : f === 'feeopen' ? feeOpenOf(r) > 0
                 /* 준공완료 뒤에 청구액이 없는 것만 센다 — 준공 전에는 아직 올 때가 아니다 */
                 : f === 'feemiss' ? safetyFeeApplies(r.cpo) && r.safetyFee === null && safetyFeeDue(r.status)
-                  : r.ruleName === null
+                  /* 할 일 카드와 같은 함수를 본다 — 두 벌로 세면 배지와 표가 갈린다 */
+                  : f === 'closemiss' ? closeDateNeeded(r.status, r.steps)
+                    : r.ruleName === null
       );
     };
     const by: Record<SortKey, (a: SettlementSummary, b: SettlementSummary) => number> = {
@@ -327,6 +336,11 @@ export default function ReceivableBoard({ rows, canEdit }: {
                   <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-tiny text-slate-400">
                     <span>{r.cpo} · {r.qty}대 · {r.status}</span>
                     {r.ruleName === null && <Tag tone="warn">정산 규칙 미지정</Tag>}
+                    {/*
+                      마지막 기성을 그 날짜 하나가 막고 있다 — 넣는 자리는 시공 탭 준공완료
+                      구간이다(한백 지시 2026-09-15). 「정산 규칙 미지정」과 같은 꼴로 적는다.
+                    */}
+                    {closeDateNeeded(r.status, r.steps) && <Tag tone="warn">준공마감일 없음</Tag>}
                   </p>
                 </Td>
                 {([1, 2, 3] as const).map((no) => (

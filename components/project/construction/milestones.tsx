@@ -47,7 +47,7 @@ export type CountField =
  * 양쪽 다 문자열이라 타입 검사도 통과했다(한백 지적 2026-08-26). 이름은 라벨일 뿐이고,
  * 무엇을 그릴지는 이 목록이 정한다 — 목록에 없는 값을 적으면 컴파일이 깨진다.
  */
-export type GroupExtra = 'chargerModel' | 'orderQty' | 'recvQty' | 'installedQty';
+export type GroupExtra = 'chargerModel' | 'orderQty' | 'recvQty' | 'installedQty' | 'cpoCloseDate';
 
 export interface MilestoneRow {
   label: string;
@@ -358,8 +358,22 @@ export function groupsByStatus(
      */
     '준공완료': [
       {
-        title: '준공 후 정산 서류',
+        title: '준공 후 정산',
         rows: [],
+        /*
+         * ★준공마감일이 여기 선다★ (한백 지시 2026-09-15 「준공완료 화면에 두는게 UX 적으로
+         * 맞지않나? 그리고 운영사가 통보해줘야 준공마감인거야」).
+         *
+         * 정산 화면(기성 탭 머리, 수금률 옆)에서 넣고 있었다. 그런데 이 값은 환경부 승인일과
+         * 같은 종류다 — 바깥(운영사)이 한백에 통보하는 날짜고, 기성 트리거고, 시공사는 못
+         * 적는다. 그 칸은 진작 공정에 있는데 이것만 정산에 있었고, 날짜를 찾는 사람은
+         * 시공 탭을 본다. 통보가 준공완료 선언보다 먼저 와도 적을 수 있다 — 스테퍼의
+         * 「오지 않은 구간」 칩을 눌러 이 상자를 열면 된다(날짜 줄은 구간을 안 가린다).
+         *
+         * 값은 settlements.close_date 에 그대로 둔다 — 공정으로 옮기면 기성 계산·이관
+         * 기록·감사 로그가 같이 흔들린다. 옮긴 것은 화면뿐이다.
+         */
+        extras: ['cpoCloseDate'],
         docs: ['safetyFeeReceipt'],
       },
     ],

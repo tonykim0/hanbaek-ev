@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { receivableTodos } from '@/lib/todo-receivables';
+import { closeDateNeeded, closingSteps } from '@/lib/settlement';
 import type { ProcessStatus, SettlementStep, SettlementSummary } from '@/types/project';
 
 const 오늘 = new Date('2026-08-28T10:00:00+09:00');
@@ -121,6 +122,26 @@ describe('준공마감일 지정 — 마지막 기성이 열리지 않는 자리
     expect(t.kind).toBe('준공마감일 지정');
     expect(t.what).toBe('3차 기성 660,000원 · 준공마감일 없음');
     expect(t.urgency).toBe(30);
+  });
+
+  /*
+   * ★넣는 자리가 시공 탭이다★ (한백 지시 2026-09-15) — 기성 탭으로 보내면 눌러 간 자리에
+   * 단추가 없다. 카드 묶음은 「기성」 그대로다: 막혀 있는 것은 돈이다.
+   */
+  it('눌러 가는 곳은 시공 탭이다 — 넣는 단추가 거기 있다', () => {
+    const [t] = receivableTodos([row({ status: '준공완료', steps: 잔액대기 })], 오늘);
+    expect(t.href).toBe('/projects/p1?tab=construction');
+    expect(t.group).toBe('기성');
+  });
+
+  /* 표의 꼬리표·거르는 축이 이 함수를 같이 본다 — 두 벌로 세면 배지와 표가 갈린다 */
+  it('그 판정을 표도 쓴다 — closeDateNeeded 가 같은 답을 준다', () => {
+    expect(closeDateNeeded('준공완료', 잔액대기)).toBe(true);
+    expect(closeDateNeeded('개통 및 통신확인', 잔액대기)).toBe(false);
+    expect(closingSteps(잔액대기).map((s) => s.no)).toEqual([3]);
+    /* 날짜가 들어오면 그 차수가 열려서(waiting → open) 판정이 저절로 내려간다 */
+    const 열림 = [잔액대기[0], 잔액대기[1], { ...잔액대기[2], state: 'open' as const, openedAt: '2026-08-10' }];
+    expect(closeDateNeeded('준공완료', 열림)).toBe(false);
   });
 
   it('★준공 전에는 안 세운다★ — 통보가 올 때가 아니고, 띄우면 준공까지 내내 걸려 있다', () => {

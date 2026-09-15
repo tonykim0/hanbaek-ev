@@ -227,6 +227,50 @@ export function DateRow({
 }
 
 /**
+ * 준공마감일 — ★운영사가 통보해야 서는 날★ (한백 2026-09-15).
+ *
+ * 공정 날짜가 아니라 정산 칸(settlements.close_date)이라 DateRow 와 갈라 둔다: 저장이
+ * 다른 라우트로 가고(/settlement), 손은 한백 관리자만이며(저장소도 assertAdmin), 값이
+ * 한백 전용 묶음에 실려 와 협력사에게는 아예 안 내려간다 — 그래서 이 줄은 볼 수 있는
+ * 사람에게만 그린다(안 오는 값을 「비어 있음」으로 적으면 안 넣은 것처럼 읽힌다).
+ *
+ * 생김새는 DateRow 와 같다 — 같은 상자의 옆줄과 다르게 생기면 다른 종류로 읽힌다.
+ */
+export function CloseDateRow({
+  value, canEdit, busy, onSave,
+}: {
+  value: string | null;
+  canEdit: boolean;
+  busy: boolean;
+  onSave: (value: string) => void;
+}) {
+  return (
+    <div className={ROW}>
+      <RowLabel>준공마감일</RowLabel>
+      {canEdit ? (
+        <DatePicker
+          ariaLabel="준공마감일"
+          value={value}
+          disabled={busy}
+          onChange={(v) => onSave(v ?? '')}
+        />
+      ) : (
+        <span
+          className={`${DATE_CELL} font-semibold tabular-nums ${value ? 'text-slate-800' : 'text-slate-300'}`}
+          title="한백이 적는 칸입니다"
+        >
+          {value ?? '한백 입력 대기'}
+        </span>
+      )}
+      {/* 날짜가 들어오면 마지막 기성이 열린다 — 다른 트리거 줄과 같은 꼴이다 */}
+      <span className="ml-auto">
+        <Badge tone={value ? 'warn' : 'mute'}>준공마감 트리거</Badge>
+      </span>
+    </div>
+  );
+}
+
+/**
  * 서류 한 줄 — 이름·상태·날짜·액션이 한 줄에 선다.
  * 카드였을 때는 서류 하나가 화면 한 칸을 통째로 먹었다.
  * 「제출됨」이 통과다 — 공정 게이트(lib/process.ts)도 uploaded 를 통과로 본다.
