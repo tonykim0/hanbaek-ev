@@ -15,6 +15,7 @@
  */
 
 import { useState } from 'react';
+import { useFileDragging } from '@/components/DocFiles';
 import { buildContractFilename, DEFAULT_YEAR, SALES_DEFAULT } from '@/lib/contract-form';
 import { downloadBlob } from '@/lib/download';
 import {
@@ -145,6 +146,15 @@ function DocReissueCard({
   const pick = (selected: File[]) => {
     const picked = selected[0];
     if (!picked) return;
+    /*
+     * ★여러 장이 오면 말한다★ — 이 자리는 서류 한 장을 받고(누르기는 multiple 이 아니라
+     * 애초에 하나만 온다), 끌어다 놓기로만 여럿이 올 수 있다. 조용히 첫 장을 쓰면 나머지가
+     * 어디로 갔는지 사람이 모른다 — 접수 ZIP 자리가 같은 이유로 여럿을 거절한다.
+     */
+    if (selected.length > 1) {
+      setError(`PDF 한 장만 놓아주세요 — ${selected.length}장이 왔습니다.`);
+      return;
+    }
     if (!picked.name.toLowerCase().endsWith('.pdf') && picked.type !== 'application/pdf') {
       setError('PDF 파일만 판독할 수 있습니다.');
       return;
@@ -273,6 +283,22 @@ function DocReissueCard({
   );
 }
 
+/**
+ * PDF 한 장을 받는 자리 — ★끌어다 놓거나 눌러서★ (한백 지시 2026-09-16
+ * 「여기서 드래그해서 파일 올리게 해줘」).
+ *
+ * 점선 테두리라 놓는 자리처럼 보였는데 실제로는 누르는 것만 받았다 — 보이는 것과 되는
+ * 것이 달랐다. 접수 화면의 ZIP 자리가 같은 지적을 받고 고친 자리다(2026-08-31).
+ *
+ * ★창 단위 신호는 DocFiles 의 것을 쓴다★ — 거기 리스너가 빗맞힌 드롭도 삼킨다
+ * (swallowStrayDrop). 안 쓰면 살짝 빗나간 드롭에 브라우저가 그 PDF 로 튕겨 나가서,
+ * 판독해 둔 결과가 통째로 사라진다. ★세는 자리는 한 곳이어야 한다★ — 여기서 따로
+ * 리스너를 붙이면 창에 두 쌍이 생겨 어느 쪽이 먼저 막았는지에 따라 동작이 갈린다
+ * (useFileDragging 머리말).
+ *
+ * 끌고 있는 동안 자리 둘이 다 밝아진다 — 카드가 둘이라(별지5호·별지7호) 어디에 놓을 수
+ * 있는지 먼저 보이고, 그중 커서가 얹힌 쪽만 더 짙어진다.
+ */
 function FileSlot({
   description,
   file,
@@ -284,10 +310,40 @@ function FileSlot({
   busy: boolean;
   onPick: (files: File[]) => void;
 }) {
+  const inFlight = useFileDragging();
+  const [over, setOver] = useState(false);
+  const open = inFlight && !busy;
+
+  const catchFile = {
+    onDragEnter: (e: React.DragEvent) => { e.preventDefault(); setOver(true); },
+    onDragOver: (e: React.DragEvent) => { e.preventDefault(); setOver(true); },
+    onDragLeave: (e: React.DragEvent) => {
+      // 자식으로 들어간 것은 떠난 것이 아니다 — 안 걸러내면 깜빡인다
+      if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+      setOver(false);
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      setOver(false);
+      if (busy) return;
+      // PDF 인지는 onPick 이 본다 — 고르는 길과 놓는 길이 같은 판정을 지난다
+      onPick([...e.dataTransfer.files]);
+    },
+  };
+
   return (
     <label
+      {...catchFile}
       aria-disabled={busy}
-      className={`block rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 text-left transition hover:border-brand-400 hover:bg-brand-50 ${busy ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
+      className={`block rounded-xl border-2 border-dashed p-4 text-left transition ${
+        busy
+          ? 'cursor-not-allowed border-slate-300 bg-slate-50 opacity-70'
+          : over
+            ? 'cursor-pointer border-brand-500 bg-brand-100'
+            : open
+              ? 'cursor-pointer border-brand-400 bg-brand-50'
+              : 'cursor-pointer border-slate-300 bg-slate-50 hover:border-brand-400 hover:bg-brand-50'
+      }`}
     >
       <input
         type="file"
@@ -309,11 +365,13 @@ function FileSlot({
         <span className="mt-2 block break-all text-sm font-semibold text-brand-700">
           {file.name}
           <span className="mt-1 block text-xs font-normal text-slate-400">
-            {(file.size / 1024 / 1024).toFixed(1)}MB · 클릭해서 교체
+            {(file.size / 1024 / 1024).toFixed(1)}MB · 끌어다 놓거나 눌러서 교체
           </span>
         </span>
       ) : (
-        <span className="mt-2 block text-sm font-semibold text-slate-600">PDF 선택</span>
+        <span className="mt-2 block text-sm font-semibold text-slate-600">
+          {over ? '여기에 놓기' : 'PDF 를 끌어다 놓거나 눌러서 선택'}
+        </span>
       )}
     </label>
   );
