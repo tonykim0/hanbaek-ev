@@ -88,6 +88,9 @@ interface DocSpec {
   required: readonly ImportedFieldKey[];
 }
 
+/** 현대엔지니어링 재발행이 원본 대신 템플릿 값으로 덮는 칸 — buildDoc 의 hec 갈래와 짝이다 */
+const HEC_FIXED_FIELDS = ['salesCompany', 'salesName', 'salesTel'];
+
 const DOCS: readonly DocSpec[] = [
   {
     section: 'application',
@@ -201,14 +204,25 @@ function DocReissueCard({
     }
   };
 
+  /*
+   * 이 서류에서 ★실제로 읽어 쓰는★ 칸 — 못 읽었다고 알릴 값은 이것뿐이다.
+   *
+   * 현대엔지니어링의 모집대행사 셋은 템플릿 고정값으로 덮으므로(위 buildDoc) 원본에서
+   * 못 읽어도 결과가 달라지지 않는다. 그대로 세면 「모집대행사를 못 읽었습니다」가 뜨고
+   * 사람이 옛 PDF 를 다시 뒤진다 — 별지7호의 조사자 셋을 required 에서 뺀 것과 같은 이유다.
+   */
+  const checked = cpo === 'hec'
+    ? doc.required.filter((key) => !HEC_FIXED_FIELDS.includes(key as string))
+    : doc.required;
+
   const missing = result
-    ? doc.required.filter((key) => {
+    ? checked.filter((key) => {
         const value = result.fields[key];
         return value === null || value === undefined || value === '';
       })
     : [];
   const uncertain = result
-    ? doc.required.filter((key) => {
+    ? checked.filter((key) => {
         const score = result.confidence[key];
         return typeof score === 'number' && score < LOW_CONFIDENCE_THRESHOLD;
       })
@@ -510,6 +524,22 @@ async function fillLatestTemplate(
   if (cpo === 'hec') {
     const form: HecFormData = {
       ...common,
+      /*
+       * ★모집대행사는 템플릿의 값을 쓴다 — 옛 서류에서 읽지 않는다★
+       * (한백 지시 2026-09-16 「현대엔지니어링 템플릿에 있는 모집대행사 정보를 서류
+       * 재발행에도 적용해줘 (현대엔지니어링만)」).
+       *
+       * 계약서 자동생성(/hec)의 기본값과 같은 자리를 본다(SALES_DEFAULT.hec) — 두 화면이
+       * 같은 서류를 만드는데 한쪽만 옛 대행사를 찍으면 갈린다.
+       *
+       * ★2026-08-26 의 반대다★ — 그때는 「별지5호의 모집대행사는 그 현장의 사실이라 읽은
+       * 값을 쓴다」였다. 대행사가 (주) 우원으로 바뀐 뒤로는 옛 서류에서 따온 이름이
+       * 지금 누가 맡는지와 어긋난다. ★현대엔지니어링만★이다 — 나머지 셋은 읽은 값
+       * 그대로다(한백 지시).
+       */
+      salesCompany: SALES_DEFAULT.hec.company,
+      salesName: SALES_DEFAULT.hec.name,
+      salesTel: SALES_DEFAULT.hec.tel,
       custRepresentative: f.custRepresentative ?? '',
       siteManager: f.siteManager ?? '',
       parkingSlotsSlow: '',
