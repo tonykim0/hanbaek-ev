@@ -623,6 +623,44 @@ export const pgRepository: ProjectRepository = {
       if (!row) throw new Error('현장을 찾을 수 없습니다.');
 
       /*
+       * ★돈이 오간 현장은 못 지운다★ (한백 지시 2026-09-16 「거래명세서에 한 번 찍히면
+       * 이건 삭제 못하게 해줘」).
+       *
+       * 지급 원장 줄은 현장에 FK 로 매달려 cascade 로 딸려 나간다 — 확정된 배치는 원장에
+       * 줄을 더하지도 빼지도 못하게 잠겨 있는데(assertBatchOpen), 현장을 통째로 지우면
+       * 그 문을 안 지나고 빠져나갔다.
+       *
+       * ★실사고 2026-09-16★: 마곡럭스나인오피스텔(HB-2026-124)을 지웠더니 엘앤에스
+       * 영업비 2026-08-26 배치가 51,660,000 → 47,740,000 원으로 줄었다. 그 배치는 8/28 에
+       * 최종 확정됐고 8/30 에 세금계산서까지 붙어 있었다 — 계산서는 옛 합계 그대로인데
+       * 원장만 줄었다. 화면에는 아무 말도 안 떴다.
+       *
+       * 줄이 하나라도 있으면 거절한다. 「확정된 것만」으로 좁히지 않는다 — 거래명세서는
+       * 확정 전에도 그 원장으로 그려지고 인쇄물로 나간다. 지울 수 있어야 하는 현장(중복
+       * 접수·시험 입력)에는 애초에 지급 줄이 없다.
+       *
+       * 막는 것을 그 자리에 적는다(화면 규칙 3) — 몇 건·얼마·어느 배치인지 말해야 한백이
+       * 무엇을 먼저 정리할지 안다.
+       */
+      const paid = await tx
+        .select({
+          kind: payoutEntries.kind,
+          at: payoutEntries.at,
+          amount: payoutEntries.amount,
+        })
+        .from(payoutEntries)
+        .where(eq(payoutEntries.projectId, projectId));
+      if (paid.length > 0) {
+        const won = paid.reduce((n, e) => n + e.amount, 0).toLocaleString('ko-KR');
+        const batches = [...new Set(paid.map((e) => `${e.at} ${e.kind}`))].join(' · ');
+        throw new Error(
+          `지급 원장에 ${paid.length}건(${won}원)이 달려 있어 지울 수 없습니다`
+          + ` — 거래명세서에 이미 나간 줄입니다 (${batches}).`
+          + ' 원장을 먼저 정리한 뒤에 지우세요.'
+        );
+      }
+
+      /*
        * 이 현장에 딸린 파일 주소를 먼저 모은다 — cascade 뒤에는 물을 곳이 없다.
        * ★files 배열이 정본이다★ (migrations/0021) — blob_url 은 첫 장의 사본이라, 그것만
        * 보면 두 번째 장부터가 목록에서 빠진다.
