@@ -27,6 +27,7 @@ import { uprightPdfFiles } from './pdf-orient';
 import { checkImagePhoto, checkPdfPhoto } from './photo-check';
 import { buildUploadItems } from './notion';
 import { kindOfCategory, partyFromCategories, preInstallFromCategories } from './doc-category-map';
+import { docNameOf } from './doc-rules';
 import { withRegionPrefix } from './region';
 
 export type { AutoDoc, AutoFields, AutoIntakeResult };
@@ -183,7 +184,15 @@ export async function autoIntakeFromZip(
      * 앉는 것은 판독이 엇나간 신호일 수도 있어서, 사람이 한 번 보는 편이 낫다.
      */
     if (list.length > 1) {
-      warnings.push(`${kind} 칸에 서류 ${list.length}건이 왔습니다 — 둘 다 올렸습니다. 맞는지 확인해주세요.`);
+      /*
+       * ★사람이 읽는 이름으로 적는다★ (한백 지적 2026-09-17 「Etc칸이 뭔지 survey칸이
+       * 뭔지 한글로 적어줘야지」). kind 는 저장하는 열쇠고(etc·survey) 화면에 그대로
+       * 내보내면 어느 칸을 보라는 것인지 알 수 없다 — 이름의 정본은 doc-rules 다.
+       *
+       * 「둘 다」도 고쳤다 — 셋일 때가 있다(그때가 이 사고의 자리였다).
+       */
+      const label = docNameOf(kind) ?? kind;
+      warnings.push(`「${label}」 칸에 서류 ${list.length}건이 왔습니다 — 모두 올렸습니다. 맞는지 확인해주세요.`);
     }
   }
 
