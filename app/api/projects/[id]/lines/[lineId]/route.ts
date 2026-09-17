@@ -28,3 +28,16 @@ export const PATCH = adminWrite<{ id: string; lineId: string }, Body>(
     await getRepository().setLinePricing(params.lineId, body.pricingRuleId?.trim() || null, actor);
   }
 );
+
+/**
+ * DELETE — 계약 라인 떼기 [한백 전용]
+ *
+ * 다는 자리를 만들면 무르는 자리도 만든다(화면 규칙 7). 단가가 붙어 있으면 저장소가
+ * 거절한다 — 그 라인으로 계획이 이미 섰다는 뜻이라, 떼는 것이 아니라 단가를 먼저 푸는 일이다.
+ */
+export const DELETE = adminWrite<{ id: string; lineId: string }, Record<string, never>>(
+  '한백 관리자만 계약 라인을 뗄 수 있습니다.',
+  async ({ params, actor }) => {
+    await getRepository().deleteContractLine(params.lineId, actor);
+  }
+);

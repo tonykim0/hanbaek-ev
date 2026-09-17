@@ -16,7 +16,7 @@ import type {
   Court, DocStatus, HoldState, IntakeDraft, LineAxes, NewPayoutEntry, NewPricingRule, PayoutKind, PayoutRow, PreInstall, PricingRule,
   ChargerModel,
   PayoutPlanRow, ProcessInfo, ProcessStatus, ProjectDetail, ProjectSummary, Settlement, SettlementRule, SettlementSummary, BatchFinal, TaxInvoice,
-  Notice, NoticeFile, ReviewEvent, ProjectFactsPatch, LineFactsPatch, ProjectAxesPatch,
+  Notice, NoticeFile, ReviewEvent, ProjectFactsPatch, LineFactsPatch, ProjectAxesPatch, NewContractLine,
 } from '@/types/project';
 import type { Actor, Viewer } from '@/lib/auth/types';
 
@@ -247,6 +247,27 @@ export interface ProjectRepository {
    * (normalizeRepl — 안 가르는 운영사의 「신규위치」는 제자리교체다).
    */
   setProjectAxes(projectId: string, patch: ProjectAxesPatch, actor: Actor): Promise<void>;
+
+  /**
+   * 계약 라인을 새로 단다. [한백 전용]
+   *
+   * ★접수가 대수 없이 통과하기 때문에 필요하다★ — checkDraft 는 대수가 없으면 막지 않고
+   * 「현장 상세에서 채웁니다」로 넘긴다(계약접수 칸은 처음 모으는 자리다). 그 약속을
+   * 지키는 자리가 없어서, 라인 0개인 현장은 대수를 영영 못 넣었다(한백 지적 2026-09-17).
+   *
+   * 대수가 없으면 단가도 못 붙고 기성·지급 계획도 서지 않는다 — 그 현장은 돈 쪽이 통째로
+   * 멈춘다. 잠금은 대수를 고칠 때와 같다(assertTermsOpen).
+   */
+  addContractLine(projectId: string, input: NewContractLine, actor: Actor): Promise<string>;
+
+  /**
+   * 계약 라인을 뗀다. [한백 전용]
+   *
+   * 다는 자리를 만들면 무르는 자리도 만든다(화면 규칙 7). 단가가 붙어 있으면 거절한다 —
+   * 그 라인으로 계획이 이미 섰다는 뜻이라, 떼는 것이 아니라 단가를 먼저 푸는 일이다.
+   * 마지막 한 줄도 뗄 수 있다: 대수를 잘못 넣은 현장은 0 개로 돌아가 다시 넣는다.
+   */
+  deleteContractLine(lineId: string, actor: Actor): Promise<void>;
 
   /**
    * 계약 라인의 대수·연수를 고친다. [한백 전용]

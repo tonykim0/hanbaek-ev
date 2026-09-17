@@ -641,6 +641,20 @@ export type ProjectAxesPatch = {
   powerType?: PowerType | null;
 };
 
+/**
+ * 새로 다는 계약 라인 (repository addContractLine).
+ *
+ * ★접수는 대수 없이도 통과한다★ — checkDraft 가 「대수를 아직 안 적었습니다 — 현장
+ * 상세에서 채웁니다」로 넘긴다. 그런데 채울 자리가 없었다(한백 지적 2026-09-17
+ * 「이건 왜 계약대수 수정이 안 돼?」 — 라인이 0개인 현장이었다). 이것이 그 자리다.
+ */
+export type NewContractLine = {
+  qty: number;
+  termYears: number;
+  powerType: PowerType | null;
+  replType: ReplType | null;
+};
+
 /** 계약 라인에서 고칠 수 있는 것 (repository setLineFacts) — 대수는 돈이라 잠금을 본다 */
 export type LineFactsPatch = {
   qty?: number;

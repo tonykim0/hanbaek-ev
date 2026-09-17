@@ -42,7 +42,7 @@ import type { TxLike } from './shared';
 export const payoutStore: Pick<
   ProjectRepository,
   'listSettlements' | 'listPayouts' | 'listPayoutOverview' | 'setLinePricing' | 'setLineFacts'
-  | 'setProjectAxes' | 'setPayment'
+  | 'setProjectAxes' | 'addContractLine' | 'deleteContractLine' | 'setPayment'
   | 'setPayoutTermsConfirmed' | 'setSettlementRule' | 'setCpoCloseDate' | 'setSettlementCollected'
   | 'setSafetyFee'
   | 'runPayoutBatch' | 'addPayoutEntry' | 'addPayoutEntries' | 'deletePayoutEntry'
@@ -168,6 +168,93 @@ export const payoutStore: Pick<
       await writeAudit(tx, {
         projectId, actor, action: '단가 케이스 지정 해제 (축 변경)',
         field: `라인 ${lines.length}건`, oldValue: null, newValue: null,
+      });
+    });
+  },
+
+  async addContractLine(projectId, input, actor): Promise<string> {
+    assertAdmin(actor, '계약 라인 추가');
+    if (!Number.isInteger(input.qty) || input.qty < 1) {
+      throw new Error('계약대수는 1 이상의 정수여야 합니다.');
+    }
+    if (!(TERM_YEARS as readonly number[]).includes(input.termYears)) {
+      throw new Error(`계약연수는 ${TERM_YEARS.join('·')}년 중 하나입니다.`);
+    }
+
+    const db = getDb();
+    return db.transaction(async (tx) => {
+      const [row] = await tx
+        .select({ cpo: projects.cpo, powerType: projects.powerType, replType: projects.replType })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .limit(1);
+      if (!row) throw new Error('현장을 찾을 수 없습니다.');
+
+      // 라인이 늘면 계획액이 늘어난다 — 대수를 고칠 때와 같은 문이다
+      await assertTermsOpen(tx, projectId);
+
+      /*
+       * 안 적은 축은 현장 값을 따른다 — 라인이 하나인 현장(162 중 160)에서 같은 값을 두 번
+       * 묻지 않기 위해서다. 안 가르는 운영사의 「신규위치」는 눕힌다(normalizeRepl).
+       */
+      const powerType = input.powerType ?? row.powerType;
+      const replType = normalizeRepl(
+        row.cpo as CpoName,
+        (input.replType ?? row.replType) as ReplType | null
+      );
+
+      /*
+       * 번호는 ★그 현장에서 쓰인 적 없는 다음 수★다 — 지금 라인 수 + 1 로 매기면, 가운데를
+       * 뗐다가 다시 달 때 옛 번호와 부딪힌다(기본키다).
+       */
+      const used = await tx
+        .select({ id: contractLines.id })
+        .from(contractLines)
+        .where(eq(contractLines.projectId, projectId));
+      const taken = new Set(used.map((l) => l.id));
+      let n = used.length + 1;
+      while (taken.has(`${projectId}-L${n}`)) n += 1;
+      const lineId = `${projectId}-L${n}`;
+
+      await tx.insert(contractLines).values({
+        id: lineId, projectId, termYears: input.termYears, qty: input.qty,
+        powerType, replType, memo: null, pricingRuleId: null, pricedAt: null,
+      });
+      await tx.update(projects).set({ lastProgressAt: today() }).where(eq(projects.id, projectId));
+
+      await writeAudit(tx, {
+        projectId, actor, action: '계약 라인 추가', field: lineId,
+        oldValue: null,
+        newValue: `${input.termYears}년 × ${input.qty}대${powerType ? ` · ${powerType}` : ''}${replType ? ` · ${replType}` : ''}`,
+      });
+      return lineId;
+    });
+  },
+
+  async deleteContractLine(lineId, actor): Promise<void> {
+    assertAdmin(actor, '계약 라인 삭제');
+
+    const db = getDb();
+    await db.transaction(async (tx) => {
+      const [line] = await tx
+        .select({
+          projectId: contractLines.projectId, qty: contractLines.qty,
+          termYears: contractLines.termYears, ruleId: contractLines.pricingRuleId,
+        })
+        .from(contractLines)
+        .where(eq(contractLines.id, lineId))
+        .limit(1);
+      if (!line) throw new Error('계약 라인을 찾을 수 없습니다.');
+
+      await assertTermsOpen(tx, line.projectId);
+      if (line.ruleId) {
+        throw new Error('단가가 붙어 있어 뗄 수 없습니다 — 먼저 단가 지정을 푸세요.');
+      }
+
+      await tx.delete(contractLines).where(eq(contractLines.id, lineId));
+      await writeAudit(tx, {
+        projectId: line.projectId, actor, action: '계약 라인 삭제', field: lineId,
+        oldValue: `${line.termYears}년 × ${line.qty}대`, newValue: null,
       });
     });
   },

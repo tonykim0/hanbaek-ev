@@ -132,7 +132,7 @@ function SiteFacts(
         <FactGroup title="사업·계약" rows={biz} projectId={projectId} canEdit={canEdit} />
       </div>
 
-      {canEdit && <ContractLineFacts projectId={projectId} lines={lines} termsLocked={termsLocked} />}
+      {canEdit && <ContractLineFacts projectId={projectId} project={project} lines={lines} termsLocked={termsLocked} />}
 
       {project.note && (
         <p className="mt-3 rounded-box border border-slate-200 px-4 py-3 text-base leading-relaxed text-slate-700">
@@ -149,69 +149,209 @@ function SiteFacts(
  * 줄마다 한 칸이던 것을 두 칸씩 접었다 — 열두 값에 상자가 화면 반을 먹었다(한백 지적).
  */
 /**
- * 계약 라인의 사실 — 대수와 연수. ★한백만 본다★ (한백 지적 2026-09-10).
+ * 계약대수 — 대수·연수를 적고 고치는 자리. ★한백만 본다★.
  *
- * 판독이 계약서에서 읽어 넣는 값인데 틀릴 때가 있다 — HB-2026-164 는 계약대수가 732 대로
- * 들어와 있었다(그 현장 주차면수가 728 면이라 그 근처 숫자를 집었다). 고칠 자리가 없어서
- * 접수를 다시 받아야 했다.
+ * ★왜 「라인」인가★ 한 현장의 대수는 ★계약 조건이 같은 묶음★으로 나뉜다 — 연수·수전방식·
+ * 교체유형이 갈리면 붙는 단가가 달라서다(7년 3대 모자분리 + 10년 2대 한전불입). 그래서
+ * 대수는 현장에 한 수가 아니라 묶음마다 한 수다. 162건 중 160건은 묶음이 하나라 사실상
+ * 「이 현장 계약대수」와 같은 말이고, 그때는 제목도 그렇게 부른다 — 「계약 라인」이라는
+ * 말은 묶음이 둘 이상일 때만 뜻이 있다(한백 물음 2026-09-17 「계약라인은 뭐지」).
  *
- * ★머리말의 「계약대수」는 합계라 여기서 고친다★ — 라인이 둘인 현장이 있다(162 건 중 2 건).
- * 합계 칸을 고치게 두면 그 둘에서 어느 라인을 고치는 것인지 말할 수 없다.
+ * ★0개인 현장이 있다★ — 접수가 대수 없이 통과하기 때문이다(checkDraft 는 「현장 상세에서
+ * 채웁니다」로 넘긴다). 그 약속을 지키는 자리가 여기다. 예전에는 빈 상자만 떠서 무엇을
+ * 해야 하는지 알 수 없었다(한백 지적 2026-09-17 — 대수가 없어 단가도 기성도 못 서는
+ * 현장이 생겼다).
  *
- * ★지급조건이 확정되면 잠긴다★ — 대수는 지급·기성 계획의 곱하는 수라, 돈이 나간 뒤에
- * 바뀌면 이미 나간 지급과 앞으로 받을 기성이 같이 뒤틀린다. 푸는 자리는 정산 탭이다
- * (CLAUDE.md 「지급조건은 확정하면 잠긴다」). 못 하는 이유를 그 자리에 적는다(화면 규칙 3).
+ * ★지급조건이 확정되면 잠긴다★ — 대수는 지급·기성 계획의 곱하는 수다.
  */
 function ContractLineFacts(
-  { projectId, lines, termsLocked }:
-  { projectId: string; lines: ProjectDetail['lines']; termsLocked: boolean }
+  { projectId, project, lines, termsLocked }:
+  {
+    projectId: string;
+    project: ProjectDetail['project'];
+    lines: ProjectDetail['lines'];
+    termsLocked: boolean;
+  }
 ) {
+  const many = lines.length > 1;
   return (
     <section className="mt-4">
-      <p className="mb-1.5 text-tiny font-black tracking-[0.06em] text-slate-500">계약 라인</p>
+      <p className="mb-1.5 text-tiny font-black tracking-[0.06em] text-slate-500">
+        {many ? `계약대수 — 조건이 다른 ${lines.length}묶음` : '계약대수'}
+      </p>
       <div className="rounded-box border border-slate-200 px-3.5 py-2.5">
         {termsLocked && (
           <p className="mb-2 text-tiny font-bold text-slate-400">
             지급조건이 확정돼 잠겼습니다 — 정산 탭에서 해제하면 고칠 수 있습니다.
           </p>
         )}
-        <div className="flex flex-col gap-1">
-          {lines.map((l, i) => (
-            <dl
-              key={l.id}
-              className="grid grid-cols-1 gap-x-5 gap-y-1 border-t border-slate-100 pt-1.5 first:border-0 first:pt-0 sm:grid-cols-2"
-            >
-              {lines.length > 1 && (
-                <p className="col-span-full text-micro font-bold text-slate-400">{i + 1}번째 라인</p>
-              )}
-              <EditableFact
-                row
-                label="계약대수"
-                value={`${l.qty}대`}
-                editValue={String(l.qty)}
-                numeric
-                canEdit={!termsLocked}
-                url={`/api/projects/${projectId}/lines/${l.id}`}
-                field="qty"
-                placeholder="6"
-              />
-              {/* 연수를 고치면 단가 지정이 풀린다 — 축이 바뀌면 케이스도 다시 고른다(저장소) */}
-              <EditableFact
-                row
-                label="계약연수"
-                value={`${l.termYears}년`}
-                editValue={String(l.termYears)}
-                numeric
-                canEdit={!termsLocked}
-                url={`/api/projects/${projectId}/lines/${l.id}`}
-                field="termYears"
-                suggestions={TERM_YEARS.map(String)}
-              />
-            </dl>
-          ))}
-        </div>
+
+        {lines.length === 0 ? (
+          /*
+           * 빈 자리에 할 일을 둔다 — 「없음」만 적으면 접수 때 본 「현장 상세에서 채웁니다」가
+           * 어디를 말하는지 알 수 없다(화면 규칙 6: 빈 값도 자리를 지킨다).
+           */
+          <NewLine projectId={projectId} project={project} locked={termsLocked} empty />
+        ) : (
+          <div className="flex flex-col gap-1">
+            {lines.map((l, i) => (
+              <dl
+                key={l.id}
+                className="grid grid-cols-1 gap-x-5 gap-y-1 border-t border-slate-100 pt-1.5 first:border-0 first:pt-0 sm:grid-cols-2"
+              >
+                {many && (
+                  <p className="col-span-full flex items-baseline gap-2 text-micro font-bold text-slate-400">
+                    {i + 1}번째 묶음
+                    {[l.replType && replLabel(project.cpo, l.replType), l.powerType]
+                      .filter(Boolean).length > 0 && (
+                      <span className="font-semibold text-slate-400">
+                        {[l.replType && replLabel(project.cpo, l.replType), l.powerType]
+                          .filter(Boolean).join(' · ')}
+                      </span>
+                    )}
+                  </p>
+                )}
+                <EditableFact
+                  row
+                  label="계약대수"
+                  value={`${l.qty}대`}
+                  editValue={String(l.qty)}
+                  numeric
+                  canEdit={!termsLocked}
+                  url={`/api/projects/${projectId}/lines/${l.id}`}
+                  field="qty"
+                  placeholder="5"
+                />
+                {/* 연수를 고치면 단가 지정이 풀린다 — 축이 바뀌면 케이스도 다시 고른다(저장소) */}
+                <EditableFact
+                  row
+                  label="계약연수"
+                  value={`${l.termYears}년`}
+                  editValue={String(l.termYears)}
+                  numeric
+                  canEdit={!termsLocked}
+                  url={`/api/projects/${projectId}/lines/${l.id}`}
+                  field="termYears"
+                  suggestions={TERM_YEARS.map(String)}
+                />
+                {/* 뗄 수 있는 것은 단가가 안 붙은 묶음뿐 — 붙었으면 저장소가 이유를 말한다 */}
+                {!termsLocked && (
+                  <div className="col-span-full flex">
+                    <DropLine projectId={projectId} lineId={l.id} />
+                  </div>
+                )}
+              </dl>
+            ))}
+            {!termsLocked && (
+              <div className="border-t border-slate-100 pt-1.5">
+                <NewLine projectId={projectId} project={project} locked={termsLocked} />
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </section>
+  );
+}
+
+/**
+ * 묶음 하나를 새로 단다.
+ *
+ * 축(수전방식·교체유형)은 묻지 않는다 — 안 적으면 현장 값을 따른다(저장소). 묶음이 하나인
+ * 현장에서 같은 값을 두 번 묻지 않기 위해서다. 조건이 갈리는 현장은 단 뒤에 그 묶음의
+ * 축을 고친다(머리말의 수전방식·교체유형은 현장 값이다).
+ */
+function NewLine(
+  { projectId, project, locked, empty = false }:
+  { projectId: string; project: ProjectDetail['project']; locked: boolean; empty?: boolean }
+) {
+  const { busy, error, run } = useAction();
+  const [open, setOpen] = useState(false);
+  const [qty, setQty] = useState('');
+  const [term, setTerm] = useState('10');
+
+  const save = async () => {
+    const ok = await run({
+      url: `/api/projects/${projectId}/lines`,
+      method: 'POST',
+      body: { qty: Number(qty), termYears: Number(term) },
+      fail: '계약대수를 넣지 못했습니다.',
+    });
+    if (ok) { setOpen(false); setQty(''); }
+  };
+
+  if (locked) return null;
+
+  if (!open) {
+    return (
+      <div className="flex flex-wrap items-baseline gap-2">
+        {empty && (
+          <span className="text-small font-semibold text-slate-300">
+            대수를 아직 안 적었습니다
+          </span>
+        )}
+        <Btn size="sm" kind="quiet" onClick={() => setOpen(true)}>
+          {empty ? '계약대수 넣기' : '묶음 더하기'}
+        </Btn>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 py-1">
+      <label className="flex items-center gap-1.5 text-tiny font-bold text-slate-400">
+        대수
+        <input
+          value={qty}
+          onChange={(e) => setQty(e.target.value.replace(/\D/g, ''))}
+          autoFocus
+          inputMode="numeric"
+          placeholder="5"
+          className={`${FIELD} w-20`}
+        />
+      </label>
+      <label className="flex items-center gap-1.5 text-tiny font-bold text-slate-400">
+        연수
+        <select value={term} onChange={(e) => setTerm(e.target.value)} className={`${FIELD} w-24`}>
+          {TERM_YEARS.map((y) => <option key={y} value={y}>{y}년</option>)}
+        </select>
+      </label>
+      {/* 축은 현장 값을 따른다 — 무엇이 붙는지 그 자리에 적는다 */}
+      <span className="text-micro font-semibold text-slate-400">
+        {[project.powerType, project.replType && replLabel(project.cpo, project.replType)]
+          .filter(Boolean).join(' · ') || '축은 현장 값을 따릅니다'}
+      </span>
+      <Btn size="sm" busy={busy} busyLabel="넣는 중…" disabled={!qty} onClick={() => void save()}>
+        넣기
+      </Btn>
+      <Btn size="sm" kind="quiet" disabled={busy} onClick={() => { setOpen(false); setQty(''); }}>
+        취소
+      </Btn>
+      <Err>{error}</Err>
+    </div>
+  );
+}
+
+/** 묶음 떼기 — 단가가 붙었으면 저장소가 이유를 말한다(그때는 단가를 먼저 푼다) */
+function DropLine({ projectId, lineId }: { projectId: string; lineId: string }) {
+  const { busy, error, run } = useAction();
+  return (
+    <div className="ml-auto flex items-center gap-1.5">
+      <Err>{error}</Err>
+      <Btn
+        size="sm"
+        kind="quiet"
+        busy={busy}
+        busyLabel="떼는 중…"
+        onClick={() => void run({
+          url: `/api/projects/${projectId}/lines/${lineId}`,
+          method: 'DELETE',
+          fail: '묶음을 떼지 못했습니다.',
+        })}
+      >
+        이 묶음 떼기
+      </Btn>
+    </div>
   );
 }
 
