@@ -26,7 +26,7 @@
  * ★협력사도 본다.★ 자기 몫 줄만 내려오고(페이지가 가른다, lib/payout-board) 체크
  * 칸이 없다 — 이번에 받을 금액과 지급시기를 여기서 확인한다.
  */
-import { Fragment, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { PAYOUT_KINDS, type BatchFinal, type PayoutKind } from '@/types/project';
@@ -38,20 +38,20 @@ import {
 import { DatePicker } from '@/components/DatePicker';
 import { today } from '@/lib/date';
 import { useAction } from '@/lib/use-action';
-import { Badge, Blank, Btn, Choice, Empty, Err, FIELD_CELL, Segments, Td, Th } from '@/components/ui';
+import { Badge, Blank, Btn, Choice, Clear, Empty, Err, FIELD_BASE, Segments, Tag, Td, Th } from '@/components/ui';
+import CheckMenu from '@/components/CheckMenu';
 import { Frame, SiteLink, won } from './parts';
 import { useFinalizeBatch } from './use-batch';
 
 const dayLabel = (d: string) => `${Number(d.slice(5, 7))}월 ${Number(d.slice(8))}일`;
 
 /**
- * 줄 순서 (한백 지적 2026-08-30 「정렬도 안 되어 있고」).
+ * 줄 순서 — ★지급처로 묶어 세운다★ (byOrgThenSite).
  *
- * ★전에는 순서가 없었다★ — 저장소가 읽어 온 차례 그대로라 같은 지급처의 줄이 표 여기저기에
- * 흩어졌다. 이 표에서 하는 일이 「지금 낼 수 있는 줄을 지급처별로 추려 한 날짜로 묶는」
- * 것이라, 그 일의 순서가 곧 줄의 순서여야 한다.
- *
- * 기본은 ★낼 것 먼저★다 — 지급 가능한 줄이 위로 올라오고, 그 안에서 지급처로 뭉친다.
+ * 고르는 장치는 없앴다(한백 지시 2026-09-17 「정렬은 필요없어. 협력사별로 보는게 제일 중요」).
+ * 그렇다고 순서까지 버리면 안 된다: lib/data/store/payouts.ts 의 listPayoutOverview 는
+ * ORDER BY 없이 읽어 오므로, 정렬을 빼면 같은 지급처의 줄이 표 여기저기에 흩어져 묶음이
+ * 조각난다 — 이 화면의 축이 통째로 죽는다.
  */
 /**
  * 무엇부터 보나 — ★기본은 「지급 가능」이다★ (한백 지적 2026-08-31).
@@ -66,23 +66,15 @@ const dayLabel = (d: string) => `${Number(d.slice(5, 7))}월 ${Number(d.slice(8)
  * 이 화면에서 하는 일이 「낼 것을 추려 한 날짜로 묶는」 것이니, 열 때 그것만 서 있는 것이 맞다.
  * 나머지는 위 타일을 눌러 본다 — 몇 건인지는 늘 보인다.
  */
-const GROUPS: Array<{ key: WorkGroup; hint: string }> = [
-  { key: '지급 가능', hint: '조건이 다 찼다' },
-  { key: '보완 필요', hint: '서류·단가가 비거나 초과가 났다' },
-  { key: '공정 대기', hint: '설치·준공을 기다린다' },
-  { key: '지급 완료', hint: '더 낼 것이 없다' },
+const GROUPS: WorkGroup[] = [
+  '지급 가능',
+  '보완 필요',
+  '공정 대기',
+  '지급 완료',
   /*
    * 「전체」 타일은 없다 (한백 지시 2026-08-31 「전체는 필요없어」). 네 칸이 모든 줄을
    * 이미 나눠 갖고 있어 합계일 뿐이었고, 눌러 봐야 149줄이 섞여 나올 뿐이다.
    */
-];
-
-type SortKey = 'ready' | 'org' | 'amount' | 'name';
-const SORTS: Array<{ key: SortKey; label: string }> = [
-  { key: 'ready', label: '낼 것 먼저' },
-  { key: 'org', label: '지급처별' },
-  { key: 'amount', label: '금액 큰 순' },
-  { key: 'name', label: '현장명' },
 ];
 
 const byOrgThenSite = (a: PayoutWork, b: PayoutWork) =>
@@ -90,23 +82,34 @@ const byOrgThenSite = (a: PayoutWork, b: PayoutWork) =>
   || a.kind.localeCompare(b.kind)
   || a.projectName.localeCompare(b.projectName, 'ko');
 
-const SORTERS: Record<SortKey, (a: PayoutWork, b: PayoutWork) => number> = {
-  /* 지급 가능이 위로 — 체크할 것을 찾아 훑지 않게 한다 */
-  ready: (a, b) =>
-    Number(b.state === '지급 가능') - Number(a.state === '지급 가능') || byOrgThenSite(a, b),
-  org: byOrgThenSite,
-  amount: (a, b) => b.due - a.due || byOrgThenSite(a, b),
-  name: (a, b) => a.projectName.localeCompare(b.projectName, 'ko') || a.kind.localeCompare(b.kind),
-};
 
 /**
- * 필터 두 축 — 구분(영업비/시공비)과 지급시기(회차)를 따로 고른다(한백 확인).
- * 한 드롭다운에 「영업비 1차」로 묶으면 「영업비 전체」를 볼 방법이 없다.
- * 지급시기 1차·2차는 「지금 그 회차가 차례인 줄」이다 — 다 나간 줄은 전체에서만 보인다.
+ * 지급처 선택만 브라우저에 남긴다 — 다음에 다시 왔을 때를 위한 것이다.
+ * 갈래마다 키를 가른다(영업비 → 영업사 · 시공비 → 시공사 — 두 목록은 겹치지 않는다).
  */
+const orgKey = (kind: PayoutKind) => `hb.payouts.orgs.${kind}`;
 
-const STEP_FILTERS = ['전체', '1차', '2차'] as const;
-type StepFilter = (typeof STEP_FILTERS)[number];
+function readOrgs(kind: PayoutKind, allowed: readonly string[]): string[] {
+  // 사생활 보호 창·차단 설정에서는 읽기 자체가 던진다 — 그때는 조건 없이 시작한다
+  try {
+    const raw = window.localStorage.getItem(orgKey(kind));
+    if (!raw) return [];
+    const saved: unknown = JSON.parse(raw);
+    if (!Array.isArray(saved)) return [];
+    // 지금 목록에 없는 이름은 버린다 — 남기면 0건인데 그 체크를 풀 자리가 화면에 없다
+    return saved.filter((v): v is string => typeof v === 'string' && allowed.includes(v));
+  } catch {
+    return [];
+  }
+}
+
+function writeOrgs(kind: PayoutKind, picks: string[]): void {
+  try {
+    // 다 풀면 저장분도 지운다 — 「초기화」가 다음에도 초기화여야 한다
+    if (picks.length === 0) window.localStorage.removeItem(orgKey(kind));
+    else window.localStorage.setItem(orgKey(kind), JSON.stringify(picks));
+  } catch { /* 남기지 못해도 화면은 돈다 */ }
+}
 
 export default function PayoutWorkBoard({
   rows, finals, canConfirm,
@@ -117,10 +120,9 @@ export default function PayoutWorkBoard({
   /** 지급일을 골라 확정할 수 있는가 — 한백만. 협력사는 같은 표를 읽기만 한다. */
   canConfirm: boolean;
 }) {
-  const [org, setOrg] = useState<string | null>(null);
-  const [stepFilter, setStepFilter] = useState<StepFilter>('전체');
+  const [q, setQ] = useState('');
+  const [orgPicks, setOrgPicks] = useState<string[]>([]);
   const [picked, setPicked] = useState<Set<string>>(new Set());
-  const [sort, setSort] = useState<SortKey>('ready');
   const [group, setGroup] = useState<WorkGroup>('지급 가능');
 
   // 지급이라는 것이 애초에 없는 줄은 세지 않는다 — 「낼 것이 없다」와 「다 냈다」는 다르다
@@ -148,30 +150,51 @@ export default function PayoutWorkBoard({
     () => new Set(finals.map((f) => batchKey(f.payDate, f.org, f.kind))),
     [finals]
   );
-  const orgs = useMemo(
-    () => [...new Set(work.map((p) => p.org).filter(Boolean) as string[])]
-      .sort((a, b) => a.localeCompare(b, 'ko')),
-    [work]
+  /* 고른 갈래의 지급처만 — 영업비는 영업사, 시공비는 시공사라 목록이 아예 다르다 */
+  const orgOptions = useMemo(
+    () => [...new Set(
+      work.filter((p) => p.kind === kindNow).map((p) => p.org).filter(Boolean) as string[]
+    )].sort((a, b) => a.localeCompare(b, 'ko')),
+    [work, kindNow]
   );
 
-  /* 상태별 건수·금액 — 타일이 적는다. 다른 필터(구분·지급처·지급시기)는 먹인 뒤에 센다 */
-  const inOtherFilters = useMemo(
-    () => work
-      .filter((p) => org === null || p.org === org)
+  /*
+   * ★지급처 선택만 브라우저에 남긴다★ (한백 지시 2026-09-17 「필터도 저장하게 해주고」).
+   * 갈래마다 키를 가른다 — 받는 회사가 다르다. 한 키로 두면 시공사 이름이 영업비 화면에
+   * 걸려 0건이 된다. 검색어는 순간의 일이라 안 남기고, 갈래·타일은 늘 하나가 켜진 축이라
+   * 안 남긴다(「지급 가능」이 이 화면의 첫 문장이어야 한다).
+   *
+   * effect 안에서만 읽는다 — 게으른 초깃값으로 읽으면 서버 렌더와 어긋난다.
+   * 갈래가 바뀌면 그 갈래 것으로 다시 세운다: 마운트 한 번만 읽으면 반대편 갈래의 회사가
+   * 필터로 남아 0건이 되고, CheckMenu 는 자료에 있는 값만 그리므로 풀 자리가 없다.
+   */
+  useEffect(() => {
+    setOrgPicks(readOrgs(kindNow, orgOptions));
+  }, [kindNow, orgOptions]);
+
+  const pickOrgs = (v: string[]) => { setOrgPicks(v); writeOrgs(kindNow, v); };
+  /* 걸린 조건 수 — 「초기화」는 걸린 것이 있을 때만 선다 */
+  const active = orgPicks.length + (q.trim() ? 1 : 0);
+  const clear = () => { setQ(''); setOrgPicks([]); writeOrgs(kindNow, []); };
+
+  /* 상태별 건수·금액 — 타일이 적는다. 지급처·현장명은 먹인 뒤에 센다(숫자와 표가 같은 목록이다) */
+  const inOtherFilters = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return work
+      .filter((p) => orgPicks.length === 0 || (p.org !== null && orgPicks.includes(p.org)))
       .filter((p) => p.kind === kindNow)
-      .filter((p) => stepFilter === '전체' || p.open?.no === (stepFilter === '1차' ? 1 : 2)),
-    [work, org, kindNow, stepFilter]
-  );
+      .filter((p) => needle === '' || p.projectName.toLowerCase().includes(needle));
+  }, [work, orgPicks, kindNow, q]);
   /* 갈래에 적는 건수 — 「지금 낼 수 있는 것」이 몇 건인가. 안 보고 있는 쪽도 보여야 한다 */
   const readyByKind = useMemo(() => {
     const m = new Map<string, number>();
     for (const p of work) {
       if (workGroupOf(p) !== '지급 가능') continue;
-      if (org !== null && p.org !== org) continue;
       m.set(p.kind, (m.get(p.kind) ?? 0) + 1);
     }
     return m;
-  }, [work, org]);
+    /* 지급처·검색을 안 먹인다 — 먹이면 반대편 갈래 칩이 늘 0 이 되어 낼 돈이 감춰진다 */
+  }, [work]);
 
   /*
    * ★타일의 금액은 「이 칸이 풀리면 나갈 돈」 하나다★ (한백 지적 2026-08-31 「확정완료에
@@ -195,7 +218,7 @@ export default function PayoutWorkBoard({
 
   const shown = inOtherFilters
     .filter((p) => workGroupOf(p) === group)
-    .sort(SORTERS[sort]);
+    .sort(byOrgThenSite);
 
   const toggle = (key: string) =>
     setPicked((prev) => {
@@ -228,13 +251,13 @@ export default function PayoutWorkBoard({
         */}
       <div className="mb-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         {GROUPS.map((g) => {
-          const c = countByGroup.get(g.key) ?? { n: 0, won: 0 };
-          const on = group === g.key;
+          const c = countByGroup.get(g) ?? { n: 0, won: 0 };
+          const on = group === g;
           return (
             <button
-              key={g.key}
+              key={g}
               type="button"
-              onClick={() => setGroup(g.key)}
+              onClick={() => setGroup(g)}
               aria-pressed={on}
               className={`rounded-box border px-3 py-2 text-left transition ${
                 on
@@ -243,7 +266,7 @@ export default function PayoutWorkBoard({
               }`}
             >
               <span className={`block text-tiny font-bold ${on ? 'text-brand-800' : 'text-slate-500'}`}>
-                {g.key}
+                {g}
               </span>
               <span className="mt-0.5 flex items-baseline gap-1.5">
                 <span className={`text-lead font-black tabular-nums ${c.n === 0 ? 'text-slate-300' : 'text-slate-900'}`}>
@@ -260,42 +283,39 @@ export default function PayoutWorkBoard({
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
-        {/* 필터는 펼쳐 두지 않는다(한백 확인) — 칩 일곱 개가 표보다 먼저 눈을 먹었다 */}
-        <label className="flex items-center gap-1.5 whitespace-nowrap text-small font-bold text-slate-500">
-          지급시기
-          <select
-            value={stepFilter}
-            onChange={(e) => setStepFilter(e.target.value as StepFilter)}
-            className={`${FIELD_CELL} w-auto min-w-[92px]`}
-          >
-            {STEP_FILTERS.map((label) => <option key={label} value={label}>{label}</option>)}
-          </select>
+        {/*
+          * 왼쪽이 거르는 자리, 오른쪽 끝(ml-auto)이 동작이다.
+          * ★검색칸을 flex-1 로 늘리지 않는다★ — 늘어나는 칸이 남는 폭을 먼저 먹으면
+          * 오른쪽 가확정 바의 ml-auto 가 듣지 않는다. 폭은 FIELD 에 덧붙여 못 바꾼다
+          * (w-full 이 박혀 있다) — FIELD_BASE 에 폭을 준다.
+          */}
+        <label className="shrink-0">
+          <span className="sr-only">현장명 검색</span>
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="현장명 검색"
+            className={`${FIELD_BASE} w-[220px] bg-white`}
+          />
         </label>
 
-        <label className="flex items-center gap-1.5 whitespace-nowrap text-small font-bold text-slate-500">
-          정렬
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-            className={`${FIELD_CELL} w-auto min-w-[120px]`}
-          >
-            {SORTS.map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
-          </select>
-        </label>
-
-        {orgs.length > 1 && (
-          <label className="flex items-center gap-1.5 whitespace-nowrap text-small font-bold text-slate-500">
-            지급처
-            <select
-              value={org ?? ''}
-              onChange={(e) => setOrg(e.target.value || null)}
-              className={`${FIELD_CELL} w-auto min-w-[140px]`}
-            >
-              <option value="">전체</option>
-              {orgs.map((name) => <option key={name} value={name}>{name}</option>)}
-            </select>
-          </label>
+        {/*
+          * ★지급처는 여럿을 고른다★ (한백 지시 2026-09-17 「협력사별로 보는게 제일 중요」).
+          * 단일 select 로는 「엘앤에스와 차저스랩만」을 볼 수 없었다 — 지급일 하나로 여러
+          * 협력사를 함께 가확정하는 실무에서 그 둘을 나란히 보는 것이 이 화면의 일이다.
+          */}
+        {orgOptions.length > 1 && (
+          <CheckMenu
+            label="지급처"
+            options={orgOptions.map((name) => ({ value: name, label: name }))}
+            picked={orgPicks}
+            onChange={pickOrgs}
+            width={200}
+          />
         )}
+
+        {/* 거는 자리 곁에 푸는 자리를 둔다(화면 규칙 7) — 걸린 것이 있을 때만 */}
+        {active > 0 && <Clear onClick={clear} />}
 
         {/*
           가확정 바 — 표 오른쪽 위 (한백 요청 2026-08-25). 표 아래에 있었는데, 체크는
@@ -318,7 +338,7 @@ export default function PayoutWorkBoard({
           )}
         </div>
       ) : (
-        <Frame min={orgs.length > 1 ? (canConfirm ? '1420px' : '1200px') : (canConfirm ? '1280px' : '1060px')}>
+        <Frame min={orgOptions.length > 1 ? (canConfirm ? '1420px' : '1200px') : (canConfirm ? '1280px' : '1060px')}>
           {/*
             머리가 두 줄이다 — 「N차 지급」 한 칸에 배지·날짜·단추가 세로로 쌓여 있던 것을
             지급일·상태·동작 열로 폈다(한백 요청 2026-08-25). 쌓인 칸은 줄마다 높이가
@@ -333,7 +353,7 @@ export default function PayoutWorkBoard({
                 지급처가 하나뿐이면 열을 안 세운다 — 협력사에게는 모든 줄에 제 회사 이름이
                 되풀이된다(2026-08-30). 위 필터가 같은 조건으로 이미 감춰져 있었다.
               */}
-              {orgs.length > 1 && <Th rowSpan={2}>지급처</Th>}
+              {orgOptions.length > 1 && <Th rowSpan={2}>지급처</Th>}
               <Th rowSpan={2} money>총 지급액</Th>
               {/*
                 머리 두 줄에 무게를 준다 (2026-08-31) — 둘 다 같은 회색 tiny 라 「네 칸이
@@ -406,7 +426,7 @@ export default function PayoutWorkBoard({
                   <SiteLink id={p.projectId} name={p.projectName} tab="settlement" />
                   <p className="text-tiny text-slate-400">{p.cpo}</p>
                 </Td>
-                {orgs.length > 1 && (
+                {orgOptions.length > 1 && (
                   <Td className="text-slate-600">{p.org ?? <Empty kind="miss" />}</Td>
                 )}
                 {/*

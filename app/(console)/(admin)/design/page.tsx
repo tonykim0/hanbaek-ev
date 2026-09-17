@@ -14,7 +14,7 @@
  * components/ui.tsx(모양) 와 tailwind.config.js(토큰) 에 먼저 추가한다.
  */
 import {
-  Badge, Blank, Btn, Choice, Empty, Err, FIELD, FIELD_CELL, HR, Note, Saved, Segments, Tag, Td, Th, Val,
+  Badge, Blank, Btn, Choice, Clear, Empty, Err, FIELD, FIELD_CELL, HR, Note, Saved, Segments, Tag, Td, Th, Val,
 } from '@/components/ui';
 
 export const metadata = { title: '디자인 기준 — 한백 전기차사업관리시스템' };
@@ -192,6 +192,11 @@ export default function DesignPage() {
             <span className="text-tiny text-slate-400">
               여럿 중에 켜고 끄는 것(필터 · 다중 선택) — 고른 것은 채운 초록 한 모양이다
             </span>
+          </Part>
+
+          <Part label="되돌리기">
+            <Clear />
+            <span className="text-tiny text-slate-400">거는 자리 곁에 — 걸린 조건이 있을 때만 그린다</span>
           </Part>
 
           <Part label="값">

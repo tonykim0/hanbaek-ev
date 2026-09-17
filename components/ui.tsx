@@ -275,6 +275,34 @@ export function Picks({
  * `hint` 는 안내문이 아니라 ★잘못 누르는 것을 막는 말★이다 — 대신 무엇을 해야 하는지
  * (「계약중단으로 세우세요」). 그 말이 없으면 비워 둔다(화면 규칙 2).
  */
+/* ── 조건을 푸는 단추 ──────────────────────────────────────────────────────
+ * 거는 자리 곁에 푸는 자리를 둔다(화면 규칙 7). 테두리가 없다 — 곁다리 동작이라
+ * quiet 칩보다 한 단계 조용하다. ★걸린 것이 있을 때만★ 그린다 — 판정은 부르는 자리가 한다
+ * (부품이 「무엇이 걸렸나」를 알 수 없다).
+ *
+ * ★같은 모양이 이미 두 화면에 손으로 적혀 있고 벌써 갈렸다★ — 현장 보드(ProjectsView)와
+ * 기성관리(ReceivableBoard)가 글자 크기부터 다르다. 그 둘은 다음에 이걸로 갈아 끼운다.
+ *
+ * onClick 이 선택인 것은 /design 이 서버 컴포넌트라 핸들러를 못 넘기기 때문이다
+ * (Choice·Segments 와 같은 이유).
+ */
+export function Clear({
+  onClick, children = '초기화',
+}: {
+  onClick?: () => void;
+  children?: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="shrink-0 rounded-ctl px-2.5 py-2 text-small font-semibold text-slate-500 transition hover:text-slate-800"
+    >
+      {children}
+    </button>
+  );
+}
+
 export function Confirm({
   open, title, detail, hint, confirmLabel, busy = false, busyLabel, error, onConfirm, onCancel,
 }: {
