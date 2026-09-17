@@ -259,12 +259,30 @@ export const pgRepository: ProjectRepository = {
 
       await tx.insert(projects).values(projectRowOf(id, draft, actor, day));
       if (draft.lines.length > 0) await tx.insert(contractLines).values(lineRowsOf(id, draft));
-      // 올라온 서류만 행으로 남긴다. 안 올라온 칸은 조회할 때 mergeDocs 가 채운다.
-      if (draft.documents.length > 0) {
-        await tx.insert(documents).values(draft.documents.map((d) => ({
+      /*
+       * 올라온 서류만 행으로 남긴다. 안 올라온 칸은 조회할 때 mergeDocs 가 채운다.
+       *
+       * ★칸마다 한 줄이다★ — documents 의 기본키가 (project_id, kind) 다. 같은 칸에 여러
+       * 장이 와도 행은 하나고, 파일은 그 행의 files 배열에 쌓인다(migrations/0021).
+       * 그래서 보낸 목록을 칸으로 접은 뒤에 넣는다.
+       *
+       * ★실사고 2026-09-17★: 판독이 한 ZIP 에서 「기타」 3장·「실사보고서」 2장을 뽑았는데
+       * (그럴 수 있다 — intake-auto 가 일부러 여러 장을 만든다) 파일마다 한 줄을 넣어
+       * 기본키가 겹쳤다. 접수가 통째로 500 이 되고 화면에는 「서버에 문제가 생겼습니다」만
+       * 떴다 — 열여섯 장을 올려 둔 사람은 무엇이 문제인지 알 길이 없었다.
+       *
+       * filename 은 첫 장의 것이다(그 칸의 정본은 files 이고 이것은 사본이다). 나머지
+       * 장은 바로 뒤 붙이기 단계가 같은 행에 쌓는다(POST /api/projects/[id]/documents).
+       */
+      const firstOfKind = new Map<string, string>();
+      for (const d of draft.documents) {
+        if (!firstOfKind.has(d.kind)) firstOfKind.set(d.kind, d.filename);
+      }
+      if (firstOfKind.size > 0) {
+        await tx.insert(documents).values([...firstOfKind].map(([kind, filename]) => ({
           projectId: id,
-          kind: d.kind,
-          filename: d.filename,
+          kind,
+          filename,
           status: 'uploaded', // 검수 대기 — 승인은 한백이 한다
           uploadedBy: actor.name,
           uploadedAt: day,
