@@ -42,6 +42,26 @@ describe('processDocsFor — 조건부 서류', () => {
   });
 });
 
+describe('착공계 (SK제출용) — SK일렉링크만 (한백 지시 2026-09-17)', () => {
+  const 착공 = ['preStartDocs', 'startNotice'] as const;
+  const names = (cpo: DocContext['cpo']) =>
+    processDocsFor(착공, { powerType: '모자분리', bizType: '환경부', cpo }).map((d) => d.name);
+
+  it('SK 현장에는 착공 전 서류 바로 밑에 선다 — 순서가 곧 화면이다', () => {
+    expect(names('SK일렉링크')).toEqual([
+      '착공 전 서류 (TBM일지 · 상시위험성평가 등)',
+      '착공계 제출 (SK제출용)',
+    ]);
+  });
+
+  /* 낼 곳이 없는 칸을 세우면 시공 배지의 분모만 늘어 영영 안 차는 N/M 이 된다 */
+  it('다른 운영사·미지정 현장에는 칸이 없다', () => {
+    for (const cpo of ['플러그링크', '현대엔지니어링', '나이스인프라', '에버온', null] as const) {
+      expect(names(cpo)).toEqual(['착공 전 서류 (TBM일지 · 상시위험성평가 등)']);
+    }
+  });
+});
+
 describe('PROCESS_DOCS — 종류 목록', () => {
   it('키가 겹치지 않는다 — 겹치면 한 칸에 두 서류가 앉는다', () => {
     const keys = PROCESS_DOCS.map((d) => d.key);

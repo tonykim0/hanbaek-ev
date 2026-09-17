@@ -249,8 +249,11 @@ export function groupsByStatus(
          */
         title: '착공',
         rows: [{ label: '착공일', field: 'startActualDate', value: p.startActualDate, trigger: '착공' }],
-        /* 착공일 아래에 선다 — 착공 전에 갖추는 안전서류다(한백 지시 2026-08-31) */
-        docs: ['preStartDocs'],
+        /*
+         * 착공일 아래에 선다 — 착공 전에 갖추는 안전서류다(한백 지시 2026-08-31).
+         * 착공계는 그 바로 밑이다(한백 지시 2026-09-17) — SK 현장에만 선다(doc-rules 의 only).
+         */
+        docs: ['preStartDocs', 'startNotice'],
       },
       {
         title: '설치',
