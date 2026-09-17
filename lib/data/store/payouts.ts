@@ -870,6 +870,8 @@ function openStepFor(
     org,
     unpriced: r.lines.filter((line) => !line.pricingRuleId).length,
     payoutDocsMissing: kind === '영업비' ? contractStateFor(r).payoutDocsMissing : [],
+    /* 화면만 막으면 주소를 두드리는 길이 남는다 — 같은 판정을 여기서도 본다 */
+    docsRejected: kind === '영업비' ? contractStateFor(r).rejected : 0,
   });
   if (prerequisites.length > 0) throw new Error(`${name} ${kind} — ${prerequisites[0]}`);
 

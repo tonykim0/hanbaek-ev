@@ -516,6 +516,8 @@ export function payoutPrerequisiteBlockersOf(input: {
   unpriced: number;
   /** 지급을 막는 미제출 필수 서류 — 이관 현장은 비어서 온다(contractStateOf 가 면제) */
   payoutDocsMissing: string[];
+  /** 반려된 계약 서류 수 — 영업비만 본다(시공비는 0 으로 온다) */
+  docsRejected: number;
 }): string[] {
   const blockers: string[] = [];
   if (input.unpriced > 0) blockers.push(`단가 미지정 ${input.unpriced}건 — 지급 금액 확정 불가`);
@@ -525,6 +527,23 @@ export function payoutPrerequisiteBlockersOf(input: {
    * 건수를 앞에 적고 이름은 세 개까지만 — 표의 한 칸에 들어가야 한다.
    * 아직 영업비에만 묻는다: 시공비도 물을지는 정하지 않았다.
    */
+  /*
+   * ★돌려보낸 계약에는 영업비가 나가지 않는다★ (2026-09-17 설계검증).
+   *
+   * 70% 를 여는 사실을 「한백 확인」에서 「협력사 접수」로 옮기면서 열린 구멍이다. 확인은
+   * 반려 0건일 때만 찍히지만(stage.ts 의 ready) 접수는 반려를 보지 않는다(store/contract:
+   * 「반려는 막지 않는다」) — 한백이 방금 돌려보낸 계약도 협력사가 「계약 재검토 요청」을
+   * 누르면 그 자리에서 70% 가 「지급 가능」으로 섰다. 표에는 반려를 적는 칸이 없어서
+   * 체크 → 가확정 → 확정으로 그대로 나갈 수 있었다.
+   *
+   * 미제출 서류로는 못 잡는다: 이관 현장은 그 셈이 통째로 면제고(docsExempt), 필수가 아닌
+   * 칸의 반려는 애초에 그 목록에 안 든다. 그래서 반려 수를 따로 본다.
+   * 접수를 막지는 않는다 — 반려된 칸을 다시 올리면 그 순간 반려가 풀리고, 그때 다시 내는
+   * 것이 보완의 끝이다. 여기서 막는 것은 ★돈★ 하나다.
+   */
+  if (input.kind === '영업비' && input.docsRejected > 0) {
+    blockers.push(`계약 서류 반려 ${input.docsRejected}건 — 보완 후 지급`);
+  }
   const docs = input.payoutDocsMissing;
   if (input.kind === '영업비' && docs.length > 0) {
     const head = docs.slice(0, 3).join(' · ');

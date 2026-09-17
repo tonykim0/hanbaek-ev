@@ -55,6 +55,8 @@ export function payoutsOfDetail(d: ProjectDetail, vis: Visibility): PayoutRowInp
       holdState: d.project.holdState,
       milestones,
       payoutDocsMissing: kind === '영업비' ? d.contract.payoutDocsMissing : [],
+      /* 반려는 필수 여부를 안 가린다(contract.rejected) — 돌려보낸 계약이면 그것으로 족하다 */
+      docsRejected: kind === '영업비' ? d.contract.rejected : 0,
       step1At: stepEntry(kind, '1차')?.at ?? null,
       step2At: stepEntry(kind, '2차')?.at ?? null,
       step1EntryId: stepEntry(kind, '1차')?.id ?? null,
@@ -117,7 +119,7 @@ export type WorkGroup = '지급 가능' | '보완 필요' | '공정 대기' | '�
  * 없는데 기다리는 칸에 있으니 아무도 안 본다.
  * `payoutPrerequisiteBlockersOf` 에 사유를 더하면 여기도 같이 본다.
  */
-const FILLABLE = /지급조건 서류|단가 미지정|송금 대상 미지정/;
+const FILLABLE = /지급조건 서류|단가 미지정|송금 대상 미지정|계약 서류 반려/;
 
 export function workGroupOf(w: { state: WorkState; blockers: string[] }): WorkGroup {
   // 초과는 낼 것이 없을 뿐 끝난 것이 아니다 — 되받거나 잔금에서 뺄 일이 남았다
@@ -153,6 +155,7 @@ export function workOf(p: PayoutRowInput): PayoutWork {
   });
   const prerequisites = payoutPrerequisiteBlockersOf({
     kind: p.kind, org: p.org, unpriced: p.unpriced, payoutDocsMissing: p.payoutDocsMissing,
+    docsRejected: p.docsRejected,
   });
   const stepFields = {
     due: steps.due,

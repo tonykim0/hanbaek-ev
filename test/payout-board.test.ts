@@ -196,13 +196,36 @@ describe('workOf — 계약중단 현장은 지급하지 않는다', () => {
     kind: '영업비', org: '엘앤에스', plan: 4_000_000, adjust: 0, adjustBy: [0, 0, 0], confirmed: 0,
     ledger: [null, null], unpriced: 0, holdState: null,
     milestones: { contractSubmittedAt: '2026-07-01', installCompletedAt: null, completedAt: null },
-    payoutDocsMissing: [],
+    payoutDocsMissing: [], docsRejected: 0,
     step1At: null, step2At: null, step1EntryId: null, step2EntryId: null,
     ...over,
   });
 
   it('조건이 다 찬 줄은 지급 가능이다 — 비교 기준', () => {
     expect(workOf(row()).state).toBe('지급 가능');
+  });
+
+  /*
+   * ★돌려보낸 계약에는 영업비가 안 나간다★ (2026-09-17 설계검증) — 70% 를 여는 사실이
+   * 「한백 확인」에서 「협력사 접수」로 옮겨 오면서, 반려가 살아 있는 계약도 협력사가
+   * 재접수 한 번으로 「지급 가능」으로 세울 수 있었다. 확인은 반려 0건을 요구했었다.
+   */
+  it('★계약 서류가 반려돼 있으면 영업비는 막힌다★', () => {
+    const w = workOf(row({ docsRejected: 2 }));
+    expect(w.state).toBe('조건 대기');
+    expect(w.blockers).toContain('계약 서류 반려 2건 — 보완 후 지급');
+  });
+
+  it('그 사유는 사람이 당길 수 있는 일이다 — 「보완 필요」 칸에 선다', () => {
+    expect(workGroupOf(workOf(row({ docsRejected: 1 })))).toBe('보완 필요');
+  });
+
+  it('시공비는 계약 서류 반려를 안 본다 — 그쪽 1차는 설치완료가 연다', () => {
+    const w = workOf(row({
+      kind: '시공비', docsRejected: 0,
+      milestones: { contractSubmittedAt: null, installCompletedAt: '2026-07-01', completedAt: null },
+    }));
+    expect(w.state).toBe('지급 가능');
   });
 
   it('★계약중단이면 조건이 다 차도 막힌다★', () => {

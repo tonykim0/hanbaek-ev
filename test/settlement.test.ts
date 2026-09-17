@@ -360,7 +360,29 @@ describe('payoutMilestonesOf — 회차를 여는 세 사실은 한 자리에서
 });
 
 describe('payoutPrerequisiteBlockersOf — 지급조건은 「모든 필수 서류」다 (2026-08-31)', () => {
-  const base = { kind: '영업비' as const, org: '엘앤에스', unpriced: 0, payoutDocsMissing: [] as string[] };
+  const base = {
+    kind: '영업비' as const, org: '엘앤에스', unpriced: 0,
+    payoutDocsMissing: [] as string[], docsRejected: 0,
+  };
+
+  /*
+   * ★반려가 살아 있는 계약에는 영업비가 안 나간다★ (2026-09-17 설계검증). 미제출 서류로는
+   * 못 잡는 자리다 — 이관 현장은 그 셈이 면제고, 필수가 아닌 칸의 반려는 거기 안 든다.
+   */
+  it('반려된 계약 서류가 있으면 영업비를 막는다', () => {
+    expect(payoutPrerequisiteBlockersOf({ ...base, docsRejected: 3 }))
+      .toEqual(['계약 서류 반려 3건 — 보완 후 지급']);
+  });
+
+  it('미제출 서류가 0건이어도 막는다 — 이관 현장이 새던 자리다', () => {
+    const b = payoutPrerequisiteBlockersOf({ ...base, payoutDocsMissing: [], docsRejected: 1 });
+    expect(b).toHaveLength(1);
+  });
+
+  it('시공비는 이 사유를 받지 않는다 — 그쪽은 설치완료가 여는 돈이다', () => {
+    expect(payoutPrerequisiteBlockersOf({ ...base, kind: '시공비', docsRejected: 3 })).toEqual([]);
+  });
+
 
   it('★건수를 앞에 적고 이름은 세 개까지★ — 표의 한 칸에 들어가야 한다', () => {
     const b = payoutPrerequisiteBlockersOf({

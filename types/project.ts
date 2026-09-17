@@ -982,6 +982,18 @@ export interface PayoutPlanRow {
   milestones: PayoutMilestones;
   /** 지급을 막는 미제출 필수 서류 (이관 현장은 면제라 빈 배열) */
   payoutDocsMissing: string[];
+  /**
+   * 반려된 계약 서류 수 — ★돌려보낸 계약에는 영업비가 나가지 않는다★ (2026-09-17 설계검증).
+   *
+   * 70% 를 여는 사실이 「한백 확인」에서 「협력사 접수」로 옮겨 오면서 생긴 자리다. 확인은
+   * 반려가 0건일 때만 찍히는데(stage.ts 의 ready), 접수는 반려를 보지 않는다 — 그래서
+   * 한백이 방금 돌려보낸 계약도 협력사가 「계약 재검토 요청」을 한 번 누르면 70% 가 다시
+   * 열렸다. 미제출 서류(payoutDocsMissing)로는 못 잡는다: 이관 현장은 그 셈이 면제고,
+   * 필수가 아닌 칸의 반려는 애초에 거기 안 든다.
+   * 시공비는 0 으로 온다 — 그쪽 1차는 설치완료가 열고, 그 구간에서는 반려가 접수를
+   * 지우지도 않는다(store/docs 의 started).
+   */
+  docsRejected: number;
   /** 회차 지급 기록의 지급일 — 원장에서 유도 */
   step1At: string | null;
   step2At: string | null;
