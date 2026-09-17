@@ -308,6 +308,28 @@ export default function ProjectDetailView({
         <TabStrip tabs={tabs} current={tab} onPick={changeTab} className="border-b border-slate-100 px-3 pt-3" />
 
         <div className="p-5 sm:p-6">
+          {/*
+            ★진행현황은 탭의 것이고, 자리는 탭 바로 밑이다★ (한백 지시 2026-09-17
+            「계약과 시공으로 나눠서 각 탭 마다 설정하고」 · 「위치는 탭 바로 밑에」).
+
+            머리말 아래 한 자리에 다 쌓일 때는 계약 때 오간 말과 시공 중의 사정이 한 줄기로
+            섞였다. 본문 끝에 두었더니 이번에는 서류·날짜 칸을 다 지나야 보였다 — 그 현장이
+            지금 어떤 사정인지가 서류를 보기 ★전에★ 읽혀야 한다.
+
+            정산 두 탭에는 두지 않는다: 지시가 계약·시공 둘이고, 돈 쪽은 원장과 지급 메모가
+            이미 자기 말을 갖는다. 거르는 것도 갈래를 정하는 것도 이 자리 하나다 — 탭이 곧 갈래다.
+          */}
+          {(tab === 'intake' || tab === 'construction') && (
+            <div className="mb-6 min-w-0 border-b border-slate-100 pb-5">
+              <ProgressLog
+                projectId={project.id}
+                notes={detail.notes.filter((n) => n.scope === NOTE_SCOPE_OF_TAB[tab])}
+                author={noteAuthor}
+                scope={NOTE_SCOPE_OF_TAB[tab]}
+              />
+            </div>
+          )}
+
           {tab === 'intake' && (
             <IntakeTab
               knownOrgs={knownOrgs}
@@ -342,24 +364,6 @@ export default function ProjectDetailView({
             />
           )}
 
-          {/*
-            ★진행현황은 탭의 것이다★ (한백 지시 2026-09-17 「계약과 시공으로 나눠서 각 탭
-            마다 설정하고」). 머리말 아래 한 자리에 다 쌓일 때는 계약 때 오간 말과 시공 중의
-            사정이 한 줄기로 섞여서, 한쪽을 보는 사람이 다른 쪽을 걷어내며 읽어야 했다.
-
-            정산 두 탭에는 두지 않는다 — 지시가 계약·시공 둘이고, 돈 쪽은 원장과 지급 메모가
-            이미 자기 말을 갖는다. 거르는 것도 갈래를 정하는 것도 이 자리 하나다: 탭이 곧 갈래다.
-          */}
-          {(tab === 'intake' || tab === 'construction') && (
-            <div className="mt-6 min-w-0 border-t border-slate-100 pt-5">
-              <ProgressLog
-                projectId={project.id}
-                notes={detail.notes.filter((n) => n.scope === NOTE_SCOPE_OF_TAB[tab])}
-                author={noteAuthor}
-                scope={NOTE_SCOPE_OF_TAB[tab]}
-              />
-            </div>
-          )}
         </div>
       </div>
     </div>
