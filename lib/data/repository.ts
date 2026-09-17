@@ -12,6 +12,7 @@
  *     전부 보내놓고 화면에서 가리면 안 된다.
  */
 import type {
+  NoteScope,
   Court, DocStatus, HoldState, IntakeDraft, LineAxes, NewPayoutEntry, NewPricingRule, PayoutKind, PayoutRow, PreInstall, PricingRule,
   ChargerModel,
   PayoutPlanRow, ProcessInfo, ProcessStatus, ProjectDetail, ProjectSummary, Settlement, SettlementRule, SettlementSummary, BatchFinal, TaxInvoice,
@@ -117,7 +118,7 @@ export interface ProjectRepository {
    *
    * 한백과 그 현장의 협력사 둘 다 쓸 수 있다 — 특이사항은 양쪽에서 나온다.
    */
-  addNote(input: { projectId: string; body: string }, actor: Actor): Promise<void>;
+  addNote(input: { projectId: string; body: string; scope: NoteScope }, actor: Actor): Promise<void>;
 
   /**
    * 자기가 남긴 진행현황을 고친다.

@@ -27,7 +27,10 @@ import type {
   ProjectDetail, ProjectDocument, ProjectSummary, ReplType, Settlement, SettlementRule,
   BatchFinal, SettlementStepRule, SettlementSummary, TaxInvoice,
 } from '@/types/project';
-import { BUILDING_TYPES, CONTRACT_PARTIES, normalizeRepl, PROCESS_STATUSES, subsidized, TERM_YEARS } from '@/types/project';
+import {
+  BUILDING_TYPES, CONTRACT_PARTIES, isNoteScope, normalizeRepl, PROCESS_STATUSES, subsidized,
+  TERM_YEARS,
+} from '@/types/project';
 import type { Viewer } from '@/lib/auth/types';
 import type { ProjectFactsPatch } from '@/types/project';
 import { canAccessProject, canWrite, effectiveVisibility, isHanbaek, normalizeOrg } from '@/lib/roles';
@@ -221,6 +224,8 @@ export const pgRepository: ProjectRepository = {
       id: n.id,
       author: n.author,
       body: n.body,
+      /* 옛 줄은 마이그레이션 0077 이 갈라 뒀다 — 못 읽은 값이 오면 시공으로 본다 */
+      scope: isNoteScope(n.scope) ? n.scope : '시공',
       at: stampOf(n.at),
       editedAt: n.editedAt ? stampOf(n.editedAt) : null,
     }));
@@ -323,6 +328,8 @@ export const pgRepository: ProjectRepository = {
         // 사람 이름이 아니라 소속을 남긴다 — 회사마다 계정이 하나라 이름이 늘 같다
         author: actor.role === 'admin' ? '한백' : actor.org ?? '협력사',
         body,
+        /* 어느 탭에서 남겼나 — 라우트가 이미 본 값이지만 저장 직전에 한 번 더 본다 */
+        scope: isNoteScope(input.scope) ? input.scope : '시공',
       });
 
       /*

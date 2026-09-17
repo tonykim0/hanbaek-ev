@@ -34,6 +34,12 @@ import { Fact } from './parts';
 import { IntakeTab } from './IntakeTab';
 import { EditableFact } from './EditableFact';
 import { ProgressLog } from './ProgressLog';
+
+/*
+ * 탭이 곧 진행현황의 갈래다 (한백 지시 2026-09-17) — 두 말을 한 자리에서 짝지어 둔다.
+ * 탭 이름과 갈래 이름이 따로 놀면 「시공 탭에서 남긴 글이 계약에 서는」 일이 생긴다.
+ */
+const NOTE_SCOPE_OF_TAB = { intake: '계약', construction: '시공' } as const;
 import { ReceivableTab, SettlementTab } from './SettlementTab';
 import { daysSince } from '@/lib/date';
 
@@ -291,7 +297,6 @@ export default function ProjectDetailView({
         detail={detail}
         contract={contract}
         canReview={canReview}
-        noteAuthor={noteAuthor}
         knownOrgs={knownOrgs}
         processEdit={processEdit}
         column={column}
@@ -335,6 +340,25 @@ export default function ProjectDetailView({
               canReview={canReview}
               settlementRuleChoices={settlementRuleChoices}
             />
+          )}
+
+          {/*
+            ★진행현황은 탭의 것이다★ (한백 지시 2026-09-17 「계약과 시공으로 나눠서 각 탭
+            마다 설정하고」). 머리말 아래 한 자리에 다 쌓일 때는 계약 때 오간 말과 시공 중의
+            사정이 한 줄기로 섞여서, 한쪽을 보는 사람이 다른 쪽을 걷어내며 읽어야 했다.
+
+            정산 두 탭에는 두지 않는다 — 지시가 계약·시공 둘이고, 돈 쪽은 원장과 지급 메모가
+            이미 자기 말을 갖는다. 거르는 것도 갈래를 정하는 것도 이 자리 하나다: 탭이 곧 갈래다.
+          */}
+          {(tab === 'intake' || tab === 'construction') && (
+            <div className="mt-6 min-w-0 border-t border-slate-100 pt-5">
+              <ProgressLog
+                projectId={project.id}
+                notes={detail.notes.filter((n) => n.scope === NOTE_SCOPE_OF_TAB[tab])}
+                author={noteAuthor}
+                scope={NOTE_SCOPE_OF_TAB[tab]}
+              />
+            </div>
           )}
         </div>
       </div>
@@ -434,13 +458,12 @@ const FACT_GRID =
   + ' sm:grid-cols-[repeat(4,minmax(0,9rem))] lg:grid-cols-[repeat(5,minmax(0,9rem))]';
 
 function SiteHeader({
-  detail, contract, canReview, noteAuthor, knownOrgs, processEdit, column, band, titleRef,
+  detail, contract, canReview, knownOrgs, processEdit, column, band, titleRef,
 }: {
   detail: ProjectDetail;
   contract: ContractState;
   /** 한백인가 — 협력사에게는 한백이 할 일을 걸림돌로 보여주지 않는다 */
   canReview: boolean;
-  noteAuthor: string;
   /** 이미 쓰이고 있는 업체 이름 — 영업사·시공사를 고칠 때 골라 넣는다 */
   knownOrgs: string[];
   processEdit: ProcessEdit;
@@ -676,9 +699,10 @@ function SiteHeader({
 
       </div>
 
-      <div className="mt-5 min-w-0 border-t border-slate-100 pt-4">
-        <ProgressLog projectId={project.id} notes={detail.notes} author={noteAuthor} />
-      </div>
+      {/*
+        ★진행현황은 여기 없다★ (한백 지시 2026-09-17 「최상위에 있는건 제거하자」).
+        계약 탭·시공 탭이 각자 자기 갈래를 갖는다 — 세우는 자리는 탭 본문 끝 한 곳이다.
+      */}
     </div>
   );
 }

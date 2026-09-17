@@ -1288,10 +1288,25 @@ export interface SettlementSummary {
  * 어느 칸에도 안 들어가는 사정이 여기 온다(관리사무소 사정으로 공사 연기, 한전 불입 지연…).
  * 사람 이름 대신 소속만 남긴다 — 회사마다 계정이 하나라 이름이 늘 같다.
  */
+/**
+ * 진행현황이 서는 자리 — ★계약 탭과 시공 탭이 각자 자기 이야기를 갖는다★
+ * (한백 지시 2026-09-17). 머리말 아래 한 자리에 다 쌓일 때는 계약 때 오간 말과 시공 중의
+ * 사정이 한 줄기로 섞여서, 한쪽을 보는 사람이 다른 쪽을 걷어내며 읽어야 했다.
+ */
+export const NOTE_SCOPES = ['계약', '시공'] as const;
+export type NoteScope = (typeof NOTE_SCOPES)[number];
+
+/** 들어온 값이 갈래인가 — 라우트와 저장소가 같은 판정을 본다 */
+export function isNoteScope(v: unknown): v is NoteScope {
+  return typeof v === 'string' && (NOTE_SCOPES as readonly string[]).includes(v);
+}
+
 export interface ProjectNote {
   id: string;
   author: string;
   body: string;
+  /** 어느 탭에 서는 글인가 */
+  scope: NoteScope;
   /** 남긴 시각 (YYYY-MM-DD HH:mm) */
   at: string;
   /** 고친 시각. null 이면 처음 쓴 그대로다. */

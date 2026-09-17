@@ -7,7 +7,7 @@
  * 지연됐다 — 날짜 칸이나 서류 칸으로는 적을 수 없고, 전화로만 오가면 다음 사람이 모른다.
  */
 import { useState } from 'react';
-import type { ProjectNote } from '@/types/project';
+import type { NoteScope, ProjectNote } from '@/types/project';
 import { useAction } from '@/lib/use-action';
 import { Btn, Err, FIELD } from '@/components/ui';
 
@@ -28,12 +28,18 @@ import { Btn, Err, FIELD } from '@/components/ui';
  * 사람 이름은 안 적는다 — 회사마다 계정이 하나라 이름이 늘 같다. 대신 어느 쪽이 썼는지 남긴다.
  */
 export function ProgressLog({
-  projectId, notes, author,
+  projectId, notes, author, scope,
 }: {
   projectId: string;
+  /** ★이 갈래의 글만 넘긴다★ — 거르는 것은 부르는 쪽(탭)이 한다 */
   notes: ProjectNote[];
   /** 지금 남기면 붙을 이름 — 서버가 적는 값과 같다 */
   author: string;
+  /**
+   * 어느 탭의 자리인가 (한백 지시 2026-09-17) — 여기서 남긴 글은 이 갈래로 남는다.
+   * 머리말 아래 한 자리에 다 쌓일 때는 계약 이야기와 시공 사정이 한 줄기로 섞였다.
+   */
+  scope: NoteScope;
 }) {
   const { busy, error, run } = useAction();
   const [body, setBody] = useState('');
@@ -43,7 +49,7 @@ export function ProgressLog({
     if (!body.trim()) return;
     const ok = await run({
       url: `/api/projects/${projectId}/notes`,
-      body: { body },
+      body: { body, scope },
       fail: '남기지 못했습니다.',
     });
     if (ok) setBody('');
@@ -73,7 +79,9 @@ export function ProgressLog({
         value={body}
         onChange={(e) => setBody(e.target.value)}
         rows={2}
-        placeholder="예) 관리사무소 요청으로 착공 2주 연기 — 3월 첫째 주 재협의"
+        placeholder={scope === '계약'
+          ? '예) 입주자대표회의 의결 지연 — 다음 달 첫째 주 재상정'
+          : '예) 관리사무소 요청으로 착공 2주 연기 — 3월 첫째 주 재협의'}
         className={`${FIELD} resize-y leading-relaxed`}
       />
       <div className="mt-1.5 flex flex-wrap items-center gap-2">

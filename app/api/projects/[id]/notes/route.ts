@@ -9,14 +9,23 @@
  * 두 곳에서 판정하면 규칙이 어긋날 자리가 하나 더 생긴다. 지운 글은 감사기록에 남는다.
  */
 import { getRepository } from '@/lib/data';
+import { isNoteScope } from '@/types/project';
 import { BadRequest, sessionWrite } from '@/lib/api/write-route';
 
 type Params = { id: string };
 
-export const POST = sessionWrite<Params, { body?: string }>(
+export const POST = sessionWrite<Params, { body?: string; scope?: string }>(
   async ({ body, params, actor }) => {
     if (!body?.body?.trim()) throw new BadRequest('내용을 입력해주세요.');
-    await getRepository().addNote({ projectId: params.id, body: body.body }, actor);
+    /*
+     * 어느 탭에서 남겼나 — 계약·시공 둘뿐이다(한백 지시 2026-09-17). 모르는 값이면 막는다:
+     * 아무 데서도 안 보이는 글이 되느니 안 써지는 것이 낫다.
+     */
+    if (!isNoteScope(body.scope)) throw new BadRequest('어느 쪽 기록인지 알 수 없습니다.');
+    await getRepository().addNote(
+      { projectId: params.id, body: body.body, scope: body.scope },
+      actor
+    );
   }
 );
 

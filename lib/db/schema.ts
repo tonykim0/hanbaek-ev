@@ -367,6 +367,11 @@ export const projectNotes = pgTable('project_notes', {
   /** 어느 쪽이 썼나 — 「한백」 또는 협력사 이름. 사람 이름은 남기지 않는다(계정이 회사당 하나다) */
   author: text('author').notNull(),
   body: text('body').notNull(),
+  /**
+   * 어느 탭의 이야기인가 — 「계약」 또는 「시공」 (한백 지시 2026-09-17, migrations/0080).
+   * 화면이 갈래마다 따로 그린다. 옛 글은 남긴 시각이 계약 확정 전인가로 갈랐다.
+   */
+  scope: text('scope').notNull().default('시공'),
   at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
   /** 고친 시각. null 이면 처음 쓴 그대로다. */
   editedAt: timestamp('edited_at', { withTimezone: true }),
