@@ -124,8 +124,13 @@ describe('checkPricingRule — 저장 전 검산', () => {
 describe('replLabel — 교체유형을 안 가르는 운영사', () => {
   it('에버온·SK 만 제자리교체·신규위치를 가른다', () => {
     expect(SPLITS_SELF_REPL.has('에버온')).toBe(true);
-    /* SK 는 2026-09-01 정책부터 안 가른다(한백 2026-09-10 「구분없이」) — 7/20 까지는 갈랐다 */
-    expect(SPLITS_SELF_REPL.has('SK일렉링크')).toBe(false);
+    /*
+     * ★SK 는 가른다★ (한백 2026-09-17). 9/1 정책이 「구분없이」라고 2026-09-10 에 뺐다가
+     * 되돌렸다 — 이 집합은 운영사만 보고 시기를 못 봐서, 빼는 순간 9/1 ★이전★ 계약분까지
+     * 같이 눕었다(7/20~8/31 은 150 대 200·210 으로 실제로 갈린다). 값이 같은 9/1 은
+     * 케이스를 두 벌 두는 쪽으로 풀었다(migrations/0079).
+     */
+    expect(SPLITS_SELF_REPL.has('SK일렉링크')).toBe(true);
     expect(SPLITS_SELF_REPL.has('나이스인프라')).toBe(false);
   });
 

@@ -85,10 +85,16 @@ describe('축 — 7/20 케이스와 어긋나지 않게', () => {
     for (const r of rules) expect(r.termYears).toHaveLength(1);
   });
 
-  it('자투는 제자리교체 한 칸이다 — SK 는 더 안 가른다', () => {
+  /*
+   * ★정의 파일은 제자리교체만 세운다 — 축을 안 가른다는 뜻이 아니다.★
+   * 9/1 정책의 자투는 제자리교체와 신규위치가 같은 값이라(220·230) 정의는 한 벌이면 되고,
+   * 화면에서 고를 수 있게 신규위치 짝을 migrations/0079 이 그 값 그대로 복제한다.
+   * SK 가 축을 가르는 것은 7/20~8/31 이 실제로 갈리기 때문이다(150 대 200·210, 한백 2026-09-17).
+   */
+  it('자투 정의는 제자리교체 한 벌 — 신규위치 짝은 0079 가 같은 값으로 복제한다', () => {
     const 자투 = rules.filter((r) => r.bizType === '자체투자');
     for (const r of 자투) expect(r.replType).toBe('자체투자 (제자리교체)');
-    expect(SPLITS_SELF_REPL.has('SK일렉링크')).toBe(false);
+    expect(SPLITS_SELF_REPL.has('SK일렉링크')).toBe(true);
   });
 
   it('한전불입은 보조 신규에만 있다 — 자투·연동은 모자분리 조건', () => {
