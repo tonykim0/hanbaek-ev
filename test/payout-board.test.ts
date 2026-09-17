@@ -127,7 +127,7 @@ describe('workGroupOf — 「조건 대기」를 둘로 가른다', () => {
   });
 
   it('공정 마일스톤은 기다리는 것이다 — 사람이 당길 수 없다', () => {
-    for (const b of ['설치완료 대기', '준공완료 대기', '계약서류 확인 완료 대기']) {
+    for (const b of ['설치완료 대기', '준공완료 대기', '계약서류 접수 대기']) {
       expect(workGroupOf({ state: '조건 대기', blockers: [b] })).toBe('공정 대기');
     }
   });
@@ -195,7 +195,7 @@ describe('workOf — 계약중단 현장은 지급하지 않는다', () => {
     key: 'p|영업비', projectId: 'p', projectName: '시험현장', cpo: '플러그링크',
     kind: '영업비', org: '엘앤에스', plan: 4_000_000, adjust: 0, adjustBy: [0, 0, 0], confirmed: 0,
     ledger: [null, null], unpriced: 0, holdState: null,
-    milestones: { contractCompletedAt: '2026-07-01', installCompletedAt: null, completedAt: null },
+    milestones: { contractSubmittedAt: '2026-07-01', installCompletedAt: null, completedAt: null },
     payoutDocsMissing: [],
     step1At: null, step2At: null, step1EntryId: null, step2EntryId: null,
     ...over,

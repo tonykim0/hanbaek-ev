@@ -6,11 +6,12 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  adjustEntriesOf, checkPayoutEntry, payoutPrerequisiteBlockersOf,
+  adjustEntriesOf, checkPayoutEntry, payoutMilestonesOf, payoutPrerequisiteBlockersOf,
+  payoutReleaseOf,
   checkSettlementSteps, payInstallments, payoutStepsOf, stepAmounts, stepUnits,
   settlementRuleNameOf, settlementStepsKeyOf, turnkeyUnit,
 } from '@/lib/settlement';
-import type { SettlementRule, SettlementStepRule } from '@/types/project';
+import type { PayoutMilestones, SettlementRule, SettlementStepRule } from '@/types/project';
 
 const env4060: SettlementStepRule[] = [
   { trigger: '환경부 승인', basis: { kind: '비율', ratio: 0.4 } },
@@ -294,6 +295,67 @@ describe('adjustEntriesOf — 조정 한 건이 원장에 남기는 줄', () => 
         }
       }
     }
+  });
+});
+
+describe('payoutReleaseOf — 영업비 70% 를 여는 사실 (한백 지시 2026-09-17)', () => {
+  const ms = (over: Partial<PayoutMilestones> = {}): PayoutMilestones => ({
+    contractSubmittedAt: null, installCompletedAt: null, completedAt: null, ...over,
+  });
+
+  /*
+   * ★확인이 아니라 접수다★ — 확인은 한백의 일이라, 협력사는 낼 것을 다 내고도 우리 손이
+   * 갈 때까지 70% 가 안 열렸다.
+   */
+  it('접수가 찍히면 영업비 1차가 열린다', () => {
+    const r = payoutReleaseOf('영업비', 1, ms({ contractSubmittedAt: '2026-09-10' }));
+    expect(r.trigger).toBe('계약서류 접수');
+    expect(r.metAt).toBe('2026-09-10');
+    expect(r.met).toBe(true);
+  });
+
+  it('접수 전에는 닫혀 있다 — 막는 말도 그 이름이다', () => {
+    const r = payoutReleaseOf('영업비', 1, ms());
+    expect(r.met).toBe(false);
+    expect(`${r.trigger} 대기`).toBe('계약서류 접수 대기');
+  });
+
+  it('시공비 1차는 그대로 설치완료다 — 이 지시가 건드리지 않은 쪽이다', () => {
+    expect(payoutReleaseOf('시공비', 1, ms({ contractSubmittedAt: '2026-09-10' })).met).toBe(false);
+    expect(payoutReleaseOf('시공비', 1, ms({ installCompletedAt: '2026-09-11' })).met).toBe(true);
+  });
+
+  it('2차는 둘 다 준공완료다', () => {
+    for (const kind of ['영업비', '시공비'] as const) {
+      expect(payoutReleaseOf(kind, 2, ms({ completedAt: '2026-09-12' })).trigger).toBe('준공완료');
+    }
+  });
+});
+
+describe('payoutMilestonesOf — 회차를 여는 세 사실은 한 자리에서 모은다', () => {
+  const proc = { installConfirmedAt: null, completeDoneAt: null };
+
+  it('접수일이 있으면 그것이다', () => {
+    expect(payoutMilestonesOf(
+      { contractSubmittedAt: '2026-09-10', contractConfirmedAt: '2026-09-12' }, proc
+    ).contractSubmittedAt).toBe('2026-09-10');
+  });
+
+  /*
+   * ★확인일로 받친다★ — 접수 없이 확인만 찍힌 현장이 있다(노션 이관분·한백이 직접 채운 현장).
+   * 안 받치면 배포되는 순간 그 현장들의 70% 가 「접수 대기」로 닫힌다 — 이미 지급 가능하던
+   * 돈이 화면에서 사라지는 것이다.
+   */
+  it('접수가 없고 확인만 있으면 확인일로 받친다', () => {
+    expect(payoutMilestonesOf(
+      { contractSubmittedAt: null, contractConfirmedAt: '2026-09-12' }, proc
+    ).contractSubmittedAt).toBe('2026-09-12');
+  });
+
+  it('둘 다 없으면 null 이다 — 없는 날짜를 지어내지 않는다', () => {
+    expect(payoutMilestonesOf(
+      { contractSubmittedAt: null, contractConfirmedAt: null }, proc
+    ).contractSubmittedAt).toBeNull();
   });
 });
 

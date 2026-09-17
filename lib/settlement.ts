@@ -435,6 +435,33 @@ export function settlementForProject(
 export const PAY_SPLIT = [0.7, 0.3] as const;
 
 /**
+ * 회차를 여는 세 사실을 모은다 — ★적는 자리는 여기 하나다.★
+ *
+ * 조립(assemble payoutMilestonesFor)과 상세(payout-board payoutsOfDetail)가 같은 목록을 각자
+ * 들고 있었다. 2026-09-17 에 영업비 1차를 접수일로 옮기면서 한쪽만 고쳤다면 표와 현장 상세가
+ * 서로 다른 날짜로 같은 회차를 열고 닫았을 것이다 — 계약 판정이 두 벌이어서 깨졌던 자리와
+ * 같은 모양이다(assemble 의 contractStateFor 주석).
+ */
+export function payoutMilestonesOf(
+  project: { contractSubmittedAt: string | null; contractConfirmedAt: string | null },
+  process: { installConfirmedAt: string | null; completeDoneAt: string | null }
+): PayoutMilestones {
+  return {
+    /*
+     * ★확인일로 받쳐 둔다★ — 접수 없이 확인만 찍힌 현장이 있다(노션 이관분, 그리고 한백이
+     * 직접 서류를 채워 확인한 현장). 접수만 보면 그 현장들의 영업비 70% 가 배포되는 순간
+     * 「계약서류 접수 대기」로 닫힌다 — 이미 지급 가능하던 돈이 화면에서 사라지는 것이다.
+     * 확인은 접수보다 뒤의 사실이라, 확인이 찍혔으면 낼 것은 이미 다 낸 것이다.
+     * 반려·보완요청이 접수를 지울 때 확인도 같이 지우므로(store/contract·store/docs) 닫히는
+     * 길도 그대로다.
+     */
+    contractSubmittedAt: project.contractSubmittedAt ?? project.contractConfirmedAt,
+    installCompletedAt: process.installConfirmedAt,
+    completedAt: process.completeDoneAt,
+  };
+}
+
+/**
  * 하도급사 지급 회차를 여는 업무 사실.
  *
  * 금액 진행(payoutStepsOf)과 업무 조건을 섞지 않는다. 금액상 2차 차례여도 개통이 끝나지
@@ -445,11 +472,16 @@ export function payoutReleaseOf(
   kind: PayoutKind,
   no: 1 | 2,
   milestones: PayoutMilestones
-): { trigger: '계약서류 확인 완료' | '설치완료' | '준공완료'; metAt: string | null; met: boolean } {
+): { trigger: '계약서류 접수' | '설치완료' | '준공완료'; metAt: string | null; met: boolean } {
   /*
-   * ★1차의 이름은 「계약서류 확인 완료」다★ (한백 지시 2026-09-02). 값은 처음부터
-   * contractConfirmedAt(한백이 계약 서류를 확인한 날)이었는데 이름만 「계약완료」라,
-   * 보드의 계약완료 칸(공정 단계)과 같은 말로 읽혔다 — 다른 사실이다.
+   * ★영업비 1차는 「계약서류 접수」다★ (한백 지시 2026-09-17 「계약서류 확인 완료시 70%가
+   * 아니라 계약서류 접수 시 70%」). 그전에는 한백이 확인을 마친 날이었다(2026-09-02 에
+   * 이름을 「계약완료」에서 「계약서류 확인 완료」로 고쳤던 그 값이다).
+   *
+   * 확인은 한백의 일이라, 협력사는 낼 것을 다 내고도 우리 손이 갈 때까지 70% 가 안 열렸다.
+   * 접수는 협력사가 자기 힘으로 끝내는 사실이고, 접수하려면 필수 서류가 이미 다 차 있어야
+   * 한다(store/contract 의 docsFilled). 되돌아가는 길도 있다 — 계약보완을 걸거나 서류를
+   * 반려하면 접수 선언이 지워져(착공 전) 이 트리거가 도로 닫힌다.
    */
   /*
    * ★2차는 준공완료다★ (한백 지시 2026-08-31) — 개통완료였다. 개통은 됐어도 준공서류가
@@ -465,9 +497,9 @@ export function payoutReleaseOf(
   }
   if (kind === '영업비') {
     return {
-      trigger: '계약서류 확인 완료',
-      metAt: milestones.contractCompletedAt,
-      met: milestones.contractCompletedAt !== null,
+      trigger: '계약서류 접수',
+      metAt: milestones.contractSubmittedAt,
+      met: milestones.contractSubmittedAt !== null,
     };
   }
   return {

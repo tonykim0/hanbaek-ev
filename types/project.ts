@@ -1217,8 +1217,16 @@ export interface ReviewEvent {
 }
 
 export interface PayoutMilestones {
-  /** 영업비 1차 — 한백이 계약 확인을 완료한 날 */
-  contractCompletedAt: string | null;
+  /**
+   * 영업비 1차 — ★협력사가 계약서류를 접수한 날★ (한백 지시 2026-09-17
+   * 「계약서류 확인 완료시 70%가 아니라 계약서류 접수 시 70%」).
+   *
+   * 한백이 확인을 마친 날(contractConfirmedAt)이었다. 확인은 한백의 일이라, 협력사는 낼 것을
+   * 다 내고도 우리 손이 갈 때까지 돈이 안 열렸다 — 접수는 협력사가 자기 힘으로 끝낼 수 있는
+   * 사실이다. 되돌아가는 길도 막히지 않는다: 계약보완을 걸거나 서류를 반려하면 접수 선언이
+   * 지워지므로(store/contract·store/docs) 이 트리거도 같이 닫힌다.
+   */
+  contractSubmittedAt: string | null;
   /** 시공비 1차 — 설치 완료 체크일 */
   installCompletedAt: string | null;
   /** 영업비·시공비 2차 — ★준공완료일★ (2026-08-31 에 개통완료에서 옮겼다) */

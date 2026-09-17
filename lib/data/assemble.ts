@@ -30,6 +30,7 @@ import type {
 import { bizTypeOfRepl } from '@/types/project';
 import { buildDocContext, DOC_KEYS, evaluateDocs, PROCESS_DOCS } from '@/lib/doc-rules';
 import {
+  payoutMilestonesOf,
   entryTypeOf, payoutSideOf, safetyFeeApplies, safetyFeeCollected, settlementForProject,
 } from '@/lib/settlement';
 import { contractStateOf, deriveStage, docsOutsideConsole, stalledDaysSince } from '@/lib/stage';
@@ -221,11 +222,8 @@ export function missingRequiredDocs(r: ProjectRecord): Array<{ kind: string; lab
 
 /** 지급 화면과 저장소 검증이 같이 보는 회차 트리거 날짜. */
 export function payoutMilestonesFor(r: ProjectRecord): PayoutMilestones {
-  return {
-    contractCompletedAt: r.project.contractConfirmedAt,
-    installCompletedAt: r.process.installConfirmedAt,
-    completedAt: r.process.completeDoneAt,
-  };
+  /* 목록은 lib/settlement 하나다 — 여기서 다시 적으면 상세와 표가 다른 날짜를 본다 */
+  return payoutMilestonesOf(r.project, r.process);
 }
 
 export function toDetail(r: ProjectRecord, rules: RuleMap, settles: SettleMap): ProjectDetail {

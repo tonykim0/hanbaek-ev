@@ -36,7 +36,7 @@ function row(over: Partial<SettlementSummary> = {}): SettlementSummary {
     safetyFee: null, safetyFeeCollectedAt: null,
     safetyFeeReceiptCount: 0, safetyFeeReceiptStatus: 'none',
     salesOrg: null, gcOrg: null,
-    payoutMilestones: { contractCompletedAt: null, installCompletedAt: null, completedAt: null },
+    payoutMilestones: { contractSubmittedAt: null, installCompletedAt: null, completedAt: null },
     salesPayoutDocsMissing: [], salesTotal: 0, consTotal: 0, marginTotal: 0, unpricedLines: 0,
     salesAdjust: 0, salesPaid: 0, salesLastPaidAt: null,
     consAdjust: 0, consPaid: 0, consLastPaidAt: null,

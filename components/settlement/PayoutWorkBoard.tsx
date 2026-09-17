@@ -3,7 +3,7 @@
 /**
  * 협력사 지급관리 — 전 현장의 지급현황을 한 표로 보고, 여기서 체크해 가확정한다.
  *
- *   영업비 1차 = 계약서류 확인 완료 · 2차 = 준공완료
+ *   영업비 1차 = 계약서류 접수 · 2차 = 준공완료
  *   시공비 1차 = 설치완료 · 2차 = 준공완료
  *
  * ★두 단계 확정★ (한백 확인 2026-08-24 — 세금계산서와 맞물리는 실무 순서)
@@ -341,11 +341,13 @@ export default function PayoutWorkBoard({
               */}
               {/*
                 ★회차를 여는 사실을 머리에 박는다★ (2026-08-31, 갈래로 나눈 덕이다).
-                1차의 뜻이 구분마다 다르다 — 영업비는 계약완료, 시공비는 설치완료다.
+                1차의 뜻이 구분마다 다르다 — 영업비는 계약서류 접수, 시공비는 설치완료다.
                 섞여 있을 때는 머리에 적을 수 없어 줄마다 금액 밑에 되풀이했다.
+                영업비 1차가 「확인 완료」에서 「접수」로 옮겨 왔다 (한백 지시 2026-09-17) —
+                판정은 lib/settlement payoutReleaseOf 하나이고 이 머리는 그 말을 따라 적는다.
               */}
               <Th tight colSpan={canConfirm ? 4 : 3} className="border-l border-slate-200 pt-2 text-small font-black text-slate-700">
-                1차 · {kindNow === '영업비' ? '계약서류 확인 완료' : '설치완료'} 시 70%
+                1차 · {kindNow === '영업비' ? '계약서류 접수' : '설치완료'} 시 70%
               </Th>
               <Th tight colSpan={canConfirm ? 4 : 3} className="border-l border-slate-200 pt-2 text-small font-black text-slate-700">
                 2차 · 준공완료 시 잔액

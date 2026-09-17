@@ -2,7 +2,9 @@
  * 돈이 걸린 시험의 픽스처 — 영업비 1차가 열린 현장을 만들고, 끝나면 배치·계산서·현장을 지운다.
  *
  * 열리는 조건(lib/settlement.ts payoutPrerequisiteBlockersOf · payoutReleaseOf): 지급처(salesOrg)가 있고,
- * 라인이 전부 단가 지정됐고, 계약 필수 서류가 다 올라가 있고, 계약 확인(contractConfirmedAt)이 찍혀 있다.
+ * 라인이 전부 단가 지정됐고, 계약 필수 서류가 다 올라가 있고, ★계약서류 접수★(contractSubmittedAt)가
+ * 찍혀 있다 (한백 지시 2026-09-17 에 확인 완료에서 접수로 옮겼다 — 확인만 찍힌 옛 현장은
+ * payoutMilestonesOf 가 확인일로 받친다).
  * 단가 케이스는 개발 DB 의 플러그링크 자체투자 7년 모자분리 제자리교체 공동주택 케이스를 고른다(마이그레이션이 넣는다).
  * 지급처 이름에 실행 표지를 박아 같은 개발 DB 를 쓰는 옆 시험의 배치와 섞이지 않게 한다.
  */
@@ -26,7 +28,10 @@ async function pickRule(): Promise<PricingRule> {
   return r;
 }
 
-/** 영업비 1차가 열린 현장. confirm:false 면 계약 확인 직전(서류·단가는 다 됨)에서 멈춘다 */
+/**
+ * 영업비 1차가 열린 현장. confirm:false 면 계약 확인 직전(서류·단가·접수는 다 됨)에서 멈춘다.
+ * ★접수는 늘 찍는다★ — 실제 흐름이 그렇고(협력사가 접수 → 한백이 확인), 1차를 여는 사실이다.
+ */
 export async function withPayableProject<T>(
   fn: (p: PayableProject) => Promise<T>,
   opts: { confirm?: boolean } = {}
@@ -50,6 +55,7 @@ export async function withPayableProject<T>(
     for (const d of required) {
       await repo.uploadDocument({ projectId: id, kind: d.key, filename: `${d.key}.pdf`, blobUrl: `https://test.local/${RUN}/${id}/${d.key}.pdf` }, admin);
     }
+    await repo.submitContract(id, true, admin);
     if (opts.confirm !== false) await repo.confirmContract(id, true, admin);
     return await fn({ id, org, lineId, ruleId: rule.id });
   } finally {

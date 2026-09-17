@@ -13,7 +13,7 @@ import type {
   ProjectDetail, TaxInvoice,
 } from '@/types/project';
 import {
-  payoutPrerequisiteBlockersOf, payoutReleaseOf, payoutSideOf, payoutStepsOf,
+  payoutMilestonesOf, payoutPrerequisiteBlockersOf, payoutReleaseOf, payoutSideOf, payoutStepsOf,
 } from '@/lib/settlement';
 import { today } from '@/lib/date';
 import { canWrite, isHanbaek, normalizeOrg, type Role, type Visibility } from '@/lib/roles';
@@ -30,11 +30,7 @@ export type PayoutRowInput = PayoutPlanRow;
  * vis 는 「어느 쪽 줄을 만들 것인가」만 정한다.
  */
 export function payoutsOfDetail(d: ProjectDetail, vis: Visibility): PayoutRowInput[] {
-  const milestones: PayoutMilestones = {
-    contractCompletedAt: d.project.contractConfirmedAt,
-    installCompletedAt: d.process.installConfirmedAt,
-    completedAt: d.process.completeDoneAt,
-  };
+  const milestones: PayoutMilestones = payoutMilestonesOf(d.project, d.process);
   const stepEntry = (kind: PayoutKind, cat: '1차' | '2차') =>
     d.payoutEntries.find((e: PayoutEntry) => e.kind === kind && e.category === cat) ?? null;
 
