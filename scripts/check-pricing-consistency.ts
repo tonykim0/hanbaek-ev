@@ -64,22 +64,32 @@ const ALLOW = new Map<string, string>([
 ]);
 
 /**
- * 「(상반기)」·「(하반기)」도 적용 시작 표기로 받는다 — 현대엔지니어링은 날짜가 아니라
- * 반기로 부른다(한백 2026-09-18 「상반기 하반기로 구분해줘」). 반기가 실제 시작 달과
- * 맞을 때만 인정한다 — 하반기 케이스에 「(상반기)」가 적혀 있으면 그것은 진짜 어긋남이다.
+ * 반기 표기를 적용 시작으로 인정하는 운영사 — ★현대엔지니어링 하나뿐이다★
+ * (한백 2026-09-18 「현대엔지니어링은 날짜로 말고 상반기 하반기로 구분해줘」).
+ *
+ * ★전 운영사에 인정하면 검사가 눈을 감는다★ — 나이스·플러그링크의 옛 「(상반기)」도 통과해
+ * 버려서, 고쳐야 할 것이 「일치함」으로 보였다(2026-09-18 실제로 그렇게 나왔다).
  */
-function halfMatches(caseName: string, startDate: string): boolean {
-  const m = /(\d{1,2})\s*월/.exec(startDate);
+const HALF_LABEL_CPOS = new Set<string>(['현대엔지니어링']);
+
+/**
+ * 「(상반기)」·「(하반기)」가 적용 시작 표기 노릇을 하는가.
+ * 반기가 ★실제 시작 달과 맞을 때만★ 인정한다 — 하반기 케이스에 「(상반기)」가 적혀 있으면
+ * 그것은 진짜 어긋남이다.
+ */
+function halfMatches(r: PricingRule): boolean {
+  if (!HALF_LABEL_CPOS.has(r.cpo)) return false;
+  const m = /(\d{1,2})\s*월/.exec(r.startDate);
   if (!m) return false;
   const half = Number(m[1]) <= 6 ? '상반기' : '하반기';
-  return caseName.includes(`(${half})`);
+  return r.caseName.includes(`(${half})`);
 }
 
 /** 이름이 축과 어긋나는 자리들 — 확실한 것만 본다(이름 꼴은 손으로 적은 것이 섞여 있다) */
 function nameGaps(r: PricingRule): string[] {
   const gaps: string[] = [];
   if (!r.caseName.startsWith(r.cpo)) gaps.push(`운영사(${r.cpo})로 시작하지 않는다`);
-  if (!r.caseName.includes(r.startDate) && !halfMatches(r.caseName, r.startDate)) {
+  if (!r.caseName.includes(r.startDate) && !halfMatches(r)) {
     gaps.push(`적용 시작(${r.startDate})이 이름에 없다`);
   }
 
