@@ -49,11 +49,39 @@ function termsInName(name: string): Set<number> {
   return out;
 }
 
+/*
+ * ★한백이 보고 「그대로 두라」 한 것들★ (2026-09-18, 어긋남 18건을 하나씩 본 자리).
+ * 어긋난 것이 아니라 뜻이 있는 표기다 — 검사가 계속 울면 진짜 어긋남이 묻힌다.
+ */
+const ALLOW = new Map<string, string>([
+  ['everon-y5-mother-new-apt', '올해 정책변경이 없어 시기를 안 적는다'],
+  ['everon-y5-kepco-new-apt', '올해 정책변경이 없어 시기를 안 적는다'],
+  ['everon-y7-mother-new-apt', '올해 정책변경이 없어 시기를 안 적는다'],
+  ['everon-y7-kepco-new-apt', '올해 정책변경이 없어 시기를 안 적는다'],
+  ['everon-y10-mother-new-apt', '올해 정책변경이 없어 시기를 안 적는다'],
+  ['everon-y10-kepco-new-apt', '올해 정책변경이 없어 시기를 안 적는다'],
+  ['pl-h1-gconly-y7-mother-new-apt', '딱 그 한 가지라 축을 따로 안 적는다'],
+]);
+
+/**
+ * 「(상반기)」·「(하반기)」도 적용 시작 표기로 받는다 — 현대엔지니어링은 날짜가 아니라
+ * 반기로 부른다(한백 2026-09-18 「상반기 하반기로 구분해줘」). 반기가 실제 시작 달과
+ * 맞을 때만 인정한다 — 하반기 케이스에 「(상반기)」가 적혀 있으면 그것은 진짜 어긋남이다.
+ */
+function halfMatches(caseName: string, startDate: string): boolean {
+  const m = /(\d{1,2})\s*월/.exec(startDate);
+  if (!m) return false;
+  const half = Number(m[1]) <= 6 ? '상반기' : '하반기';
+  return caseName.includes(`(${half})`);
+}
+
 /** 이름이 축과 어긋나는 자리들 — 확실한 것만 본다(이름 꼴은 손으로 적은 것이 섞여 있다) */
 function nameGaps(r: PricingRule): string[] {
   const gaps: string[] = [];
   if (!r.caseName.startsWith(r.cpo)) gaps.push(`운영사(${r.cpo})로 시작하지 않는다`);
-  if (!r.caseName.includes(r.startDate)) gaps.push(`적용 시작(${r.startDate})이 이름에 없다`);
+  if (!r.caseName.includes(r.startDate) && !halfMatches(r.caseName, r.startDate)) {
+    gaps.push(`적용 시작(${r.startDate})이 이름에 없다`);
+  }
 
   const inName = termsInName(r.caseName);
   const missing = r.termYears.filter((t) => !inName.has(t));
@@ -109,13 +137,21 @@ async function main() {
 
   // ③ 이름 ↔ 축
   const nameOff: string[] = [];
+  const allowed: string[] = [];
   for (const r of live) {
     const gaps = nameGaps(r);
-    if (gaps.length > 0) nameOff.push(`   · ${r.id}\n     이름 「${r.caseName}」\n     ${gaps.join(' / ')}`);
+    if (gaps.length === 0) continue;
+    const why = ALLOW.get(r.id);
+    if (why) allowed.push(`   · ${r.id} — ${why}`);
+    else nameOff.push(`   · ${r.id}\n     이름 「${r.caseName}」\n     ${gaps.join(' / ')}`);
   }
   console.log(`\n③ 케이스 이름 ↔ 축 — 어긋남 ${nameOff.length}건`);
   for (const s of nameOff) console.log(s);
   bad += nameOff.length;
+  if (allowed.length > 0) {
+    console.log(`   (한백이 보고 그대로 두기로 한 것 ${allowed.length}건)`);
+    for (const s of allowed) console.log(s);
+  }
 
   // ④ 막힌 라인 · 닿을 수 없는 케이스
   const blocked = axes.filter((l) => {
