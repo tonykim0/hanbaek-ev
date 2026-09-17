@@ -33,6 +33,20 @@ const FORBIDDEN = [
 /** 협력사가 자기 일을 하려면 반드시 있어야 하는 것 — 지우다 같이 지우면 화면이 빈다 */
 const REQUIRED = ['payNote', 'documents', 'lines', 'process', 'contract'] as const;
 
+/*
+ * ★열어 둔 칸에 비밀을 적는 것도 누수다★ (2026-09-17, 내가 낸 사고).
+ *
+ * payNote 는 위 REQUIRED 에 있다 — 협력사가 읽으라고 일부러 싣는 칸이다(assemble 의
+ * 「협력사도 보는 것 — 메모뿐이다」). 그래서 키·값 검사로는 절대 안 걸린다. 그런데
+ * 마이그레이션 0078 이 케이스를 고친 사정을 그 칸에 적으면서 「한백 마진 15만 → 20만」·
+ * 「받는 단가(7년 190만 · 10년 200만)」를 그대로 썼다. 코드는 라인의 margin 을 null 로
+ * 가려 놓았는데(redactForViewer) 내가 옆 칸에 한글로 다시 적은 꼴이다.
+ *
+ * 자유 글이라 금액을 다 막을 수는 없다 — 막을 것은 ★협력사가 볼 수 없는 값의 이름★이다.
+ * 「영업비 85만 → 70만」은 그 협력사의 돈이라 괜찮고, 「한백 마진」·「받는 단가」는 아니다.
+ */
+const COST_WORDS = ['한백 마진', '받는 단가', '턴키 단가', '기성'] as const;
+
 async function main() {
   const repo = getRepository();
   const admin: Viewer = { role: 'admin', org: null };
@@ -100,6 +114,14 @@ async function main() {
           if (v !== null) {
             problems.push(`${p.id} (${role} ${org}): 라인 ${l.id} 의 ${key} 가 안 가려졌습니다 (${String(v)})`);
           }
+        }
+      }
+
+      /* 열어 둔 칸(메모)에 원가 말이 적혀 있지 않은가 — 위 주석 COST_WORDS 참고 */
+      const note = detail.settlement.payNote ?? '';
+      for (const w of COST_WORDS) {
+        if (note.includes(w)) {
+          problems.push(`${p.id} (${role} ${org}): 정산 메모에 원가 말 「${w}」 가 적혀 있습니다`);
         }
       }
 
