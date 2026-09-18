@@ -579,6 +579,13 @@ export function redactForViewer(detail: ProjectDetail, vis: Visibility): Project
     ...rest,
     // 원가·마진·기성을 보는 사람에게만 그 묶음을 준다
     ...(vis.cost ? { admin } : {}),
+    /*
+     * ★기성 진행현황은 한백의 것이다★ (한백 지시 2026-09-18) — 운영사에게서 받는 돈
+     * 이야기라 협력사에게는 그 탭 자체가 없다. 그런데 진행현황은 admin 묶음이 아니라
+     * detail.notes 로 실려 가므로, 빼지 않으면 화면에 안 보이는 채로 페이지 소스에 그대로
+     * 나간다(계약 라인의 부담 주체가 그렇게 새던 것과 같은 자리다). 잣대는 마진과 같다.
+     */
+    notes: vis.cost ? detail.notes : detail.notes.filter((n) => n.scope !== '기성'),
     // 원장도 금액이다 — 자기 쪽(영업/시공)이 아닌 줄은 아예 보내지 않는다
     payoutEntries: detail.payoutEntries.filter(
       (e) => (e.kind === '영업비' ? vis.sales : vis.cons)

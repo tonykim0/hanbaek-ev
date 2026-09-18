@@ -321,6 +321,10 @@ export const pgRepository: ProjectRepository = {
       if (!canAccessProject(actor.role, actor.org, project)) {
         throw new Error('이 현장에 남길 권한이 없습니다.');
       }
+      /* 기성 갈래는 한백의 것이다 — 라우트와 같은 판정을 여기서도 본다 (2026-09-18) */
+      if (input.scope === '기성' && !isHanbaek(actor.role)) {
+        throw new Error('기성 진행현황은 한백만 남길 수 있습니다.');
+      }
 
       await tx.insert(projectNotes).values({
         id: crypto.randomUUID(),

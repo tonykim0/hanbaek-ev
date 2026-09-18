@@ -56,7 +56,19 @@ export function SettlementTab({
 
   return (
     <div className="flex flex-col gap-7">
-      {/* 조건이 맨 위다(한백 확인) — 여기서 고른 케이스가 아래 모든 금액을 정한다 */}
+      {/*
+        ★메모가 탭 맨 위다★ (한백 지시 2026-09-18 「협력사 정산관리는 기존에있던 메모를
+        제목만 바꿔서 이동」) — 다른 탭의 진행현황과 같은 자리·같은 이름이다.
+        옮긴 것은 자리와 제목뿐이다: 쌓는 방식(날짜 한 줄씩, settlements.pay_note)도
+        협력사가 읽는다는 것도 그대로다. 그 현장이 지금 어떤 사정인지가 금액보다 먼저 읽힌다.
+      */}
+      <PayNoteBox
+        projectId={detail.project.id}
+        payNote={settlement.payNote}
+        canReview={canReview}
+      />
+
+      {/* 조건이 그 아래다(한백 확인) — 여기서 고른 케이스가 아래 모든 금액을 정한다 */}
       {canReview && ruleOptions && (
         <PayConditions
           projectId={detail.project.id}
@@ -69,10 +81,9 @@ export function SettlementTab({
       )}
 
       {/*
-        * ★메모를 오른쪽 기둥에서 지급 내역 밑으로 내렸다 (한백 지시 2026-08-28).★
-        * 380px 짜리 오른쪽 기둥에 있으면 표가 그만큼 좁아지고, 메모를 적으려면 눈이
-        * 화면을 가로질러야 했다. 위에서 아래로 읽는 순서(조건 → 라인 → 지급 → 메모)가
-        * 실제로 일하는 순서와도 같다.
+        * 메모는 오른쪽 기둥에 있었다 — 380px 기둥에서는 표가 그만큼 좁아지고 적으려면 눈이
+        * 화면을 가로질러야 했다. 지급 내역 밑으로 내렸다가(2026-08-28) 이제 탭 맨 위다
+        * (2026-09-18) — 다른 탭의 진행현황과 같은 자리여야 사람이 한 곳만 익힌다.
         */}
       <ContractLines lines={lines} cpo={detail.project.cpo} vis={vis} />
 
@@ -86,11 +97,6 @@ export function SettlementTab({
         canReview={canReview}
       />
 
-      <PayNoteBox
-        projectId={detail.project.id}
-        payNote={settlement.payNote}
-        canReview={canReview}
-      />
     </div>
   );
 }
@@ -1502,10 +1508,10 @@ function PayNoteBox({
   };
 
   return (
-    /* 지급 내역 아래에 선다(2026-08-28) — 표들과 같은 급의 상자다 */
+    /* 탭 맨 위에 선다(한백 지시 2026-09-18) — 다른 탭의 진행현황과 같은 자리다 */
     <div className="rounded-box border border-slate-200 bg-white p-3.5">
       <div className="mb-2 flex items-baseline gap-2">
-        <h3 className="text-base font-black text-slate-900">메모</h3>
+        <h3 className="text-base font-black text-slate-900">진행현황 및 메모</h3>
         <span className="text-tiny text-slate-400">{entries.length}건</span>
       </div>
 

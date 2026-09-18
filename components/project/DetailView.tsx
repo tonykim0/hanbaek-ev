@@ -39,7 +39,7 @@ import { ProgressLog } from './ProgressLog';
  * 탭이 곧 진행현황의 갈래다 (한백 지시 2026-09-17) — 두 말을 한 자리에서 짝지어 둔다.
  * 탭 이름과 갈래 이름이 따로 놀면 「시공 탭에서 남긴 글이 계약에 서는」 일이 생긴다.
  */
-const NOTE_SCOPE_OF_TAB = { intake: '계약', construction: '시공' } as const;
+const NOTE_SCOPE_OF_TAB = { intake: '계약', construction: '시공', receivable: '기성' } as const;
 import { ReceivableTab, SettlementTab } from './SettlementTab';
 import { daysSince } from '@/lib/date';
 
@@ -316,16 +316,24 @@ export default function ProjectDetailView({
             섞였다. 본문 끝에 두었더니 이번에는 서류·날짜 칸을 다 지나야 보였다 — 그 현장이
             지금 어떤 사정인지가 서류를 보기 ★전에★ 읽혀야 한다.
 
-            정산 두 탭에는 두지 않는다: 지시가 계약·시공 둘이고, 돈 쪽은 원장과 지급 메모가
-            이미 자기 말을 갖는다. 거르는 것도 갈래를 정하는 것도 이 자리 하나다 — 탭이 곧 갈래다.
+            ★기성 탭도 자기 갈래를 갖는다★ (한백 지시 2026-09-18). 그 갈래는 한백만 보고
+            한백만 쓴다 — 협력사 응답에서 빠지고(redactForViewer) 쓰는 문도 닫혀 있다.
+            협력사 정산관리 탭은 이 자리를 안 쓴다: 거기는 원래 있던 지급 메모가 맡는다
+            (SettlementTab 의 PayNoteBox — 제목을 바꿔 탭 맨 위로 올렸다).
+            거르는 것도 갈래를 정하는 것도 이 자리 하나다 — 탭이 곧 갈래다.
           */}
-          {(tab === 'intake' || tab === 'construction') && (
+          {(tab === 'intake' || tab === 'construction' || tab === 'receivable') && (
             <div className="mb-6 min-w-0 border-b border-slate-100 pb-5">
               <ProgressLog
                 projectId={project.id}
                 notes={detail.notes.filter((n) => n.scope === NOTE_SCOPE_OF_TAB[tab])}
                 author={noteAuthor}
                 scope={NOTE_SCOPE_OF_TAB[tab]}
+                /*
+                 * 계약서 접수와 같은 잣대다 — 쓰는 사람인가(열람 전용 제외).
+                 * 기성 갈래는 그 위에 한백만이라는 문이 하나 더 있다(api notes · addNote).
+                 */
+                canPost={canSubmit && (tab !== 'receivable' || canReview)}
               />
             </div>
           )}

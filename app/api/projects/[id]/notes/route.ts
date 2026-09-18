@@ -10,6 +10,7 @@
  */
 import { getRepository } from '@/lib/data';
 import { isNoteScope } from '@/types/project';
+import { isHanbaek } from '@/lib/roles';
 import { BadRequest, sessionWrite } from '@/lib/api/write-route';
 
 type Params = { id: string };
@@ -22,6 +23,14 @@ export const POST = sessionWrite<Params, { body?: string; scope?: string }>(
      * 아무 데서도 안 보이는 글이 되느니 안 써지는 것이 낫다.
      */
     if (!isNoteScope(body.scope)) throw new BadRequest('어느 쪽 기록인지 알 수 없습니다.');
+    /*
+     * ★기성 갈래는 한백만 쓴다★ (한백 지시 2026-09-18) — 운영사에게서 받을 돈 이야기고,
+     * 협력사에게는 그 탭이 없다. 화면에 자리가 없다는 것만으로는 막은 것이 아니다:
+     * 주소를 직접 두드리면 협력사 이름으로 그 갈래에 글이 남는다.
+     */
+    if (body.scope === '기성' && !isHanbaek(actor.role)) {
+      throw new BadRequest('기성 진행현황은 한백만 남길 수 있습니다.');
+    }
     await getRepository().addNote(
       { projectId: params.id, body: body.body, scope: body.scope },
       actor

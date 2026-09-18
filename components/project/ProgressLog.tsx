@@ -28,7 +28,7 @@ import { Btn, Err, FIELD } from '@/components/ui';
  * 사람 이름은 안 적는다 — 회사마다 계정이 하나라 이름이 늘 같다. 대신 어느 쪽이 썼는지 남긴다.
  */
 export function ProgressLog({
-  projectId, notes, author, scope,
+  projectId, notes, author, scope, canPost,
 }: {
   projectId: string;
   /** ★이 갈래의 글만 넘긴다★ — 거르는 것은 부르는 쪽(탭)이 한다 */
@@ -40,6 +40,12 @@ export function ProgressLog({
    * 머리말 아래 한 자리에 다 쌓일 때는 계약 이야기와 시공 사정이 한 줄기로 섞였다.
    */
   scope: NoteScope;
+  /**
+   * 남길 수 있는 사람인가 — ★열람 전용에게는 입력칸을 주지 않는다★ (2026-09-18).
+   * 그전에는 칸이 늘 서 있었고, 재무팀이 적어 「남기기」를 누르면 서버가 403 으로 거절했다
+   * (화면 규칙: 눌리는 단추는 되는 일이어야 한다). 목록은 그대로 읽는다.
+   */
+  canPost: boolean;
 }) {
   const { busy, error, run } = useAction();
   const [body, setBody] = useState('');
@@ -74,7 +80,10 @@ export function ProgressLog({
       {/*
         * 입력칸을 늘 펴 둔다. 「특이사항 남기기」 버튼을 한 번 눌러야 칸이 나오게 했더니,
         * 적을 자리가 있다는 것 자체가 안 보였다 — 적게 만들려면 칸이 먼저 있어야 한다.
+        * 쓸 수 없는 사람(열람 전용)에게는 아예 안 그린다 — 눌리는 단추는 되는 일이어야 한다.
         */}
+      {canPost && (
+        <>
       <textarea
         value={body}
         onChange={(e) => setBody(e.target.value)}
@@ -104,6 +113,8 @@ export function ProgressLog({
         )}
         <Err>{error}</Err>
       </div>
+        </>
+      )}
 
       {/* 「아직 없습니다」를 적지 않는다 — 위의 0건이 이미 그 말이다 */}
       {/* 목록이 길어도 박스는 안 길어진다 — 안에서 스크롤한다(한백 지적: 박스가 너무 길다) */}
