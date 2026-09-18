@@ -442,9 +442,31 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
     salesPayoutDocsMissing: d.contract.payoutDocsMissing,
     salesTotal: d.lines.reduce((n, l) => n + (l.rule?.salesUnit ?? 0) * l.qty, 0),
     consTotal: d.lines.reduce((n, l) => n + (l.rule?.consUnit ?? 0) * l.qty, 0),
-    /* 마진에도 든다 — 청구액을 적으면 그때부터 한백 몫이다(수금 여부와 무관) */
-    marginTotal: d.lines.reduce((n, l) => n + (l.rule?.margin ?? 0) * l.qty, 0)
-      + (fee.safetyFee ?? 0),
+    /*
+     * ★한백 몫 = 받을 기성 − 내려줄 지급★ (CLAUDE.md 「돈의 흐름」).
+     *
+     * 전에는 단가 케이스에 적힌 마진을 그대로 더했다 — ★계획★이다. 그런데 협의로 케이스와
+     * 다르게 받는 현장이 있다(익산 예다음아르띠에: 케이스 150만/기인데 실제 190만/기, 22대).
+     * 그 차액 40만/기는 협력사 몫이 아니라 ★한백이 더 가져가는 마진★인데, 계획만 세면
+     * 장부에 아예 안 나타났다(그 현장만 880만).
+     *
+     * 이제 받은 차수는 ★실수금액★으로, 아직 안 받은 차수는 계획액으로 센다. 실수금액을
+     * 적는 칸은 그 현장 때문에 생겼다(migrations/0034) — 적기만 하면 마진이 따라온다.
+     * 점검수수료는 청구액을 적으면 그때부터 한백 몫이다(수금 여부와 무관).
+     *
+     * ★지금 숫자는 하나도 안 바뀐다★ — 기성 단계의 합은 받는 단가(턴키)와 같게 강제돼
+     * 있어서(checkSettlementSteps), 수금이 없으면 이 식이 「마진 × 대수」와 정확히 같다.
+     * 프로덕션 173건으로 대조해 전부 일치를 확인했다(2026-09-18).
+     */
+    marginTotal: steps.reduce(
+      (n, x) => n + (x.state === 'collected'
+        ? (x.collectedAmount ?? x.planAmount ?? 0)
+        : (x.planAmount ?? 0)),
+      0
+    )
+      + (fee.safetyFee ?? 0)
+      - d.lines.reduce((n, l) => n + (l.rule?.salesUnit ?? 0) * l.qty, 0)
+      - d.lines.reduce((n, l) => n + (l.rule?.consUnit ?? 0) * l.qty, 0),
     unpricedLines: d.lines.filter((l) => !l.rule).length,
     salesAdjust: sales.adjust,
     salesPaid: sales.paid,
