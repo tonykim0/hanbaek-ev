@@ -296,6 +296,31 @@ export function batchStateOf(b: { paidAt: string; finalized: boolean }): BatchSt
   return past ? '확정 누락' : '가확정';
 }
 
+/**
+ * 그 회차 지급이 지금 어느 자리인가 — ★배치와 같은 말을 쓴다.★
+ *
+ * 현장 상세의 정산 탭이 원장에 줄이 있으면 무조건 「지급완료」라고 적고 있었다(한백 지적
+ * 2026-09-18 「가확정을 하면 이미 지급 완료라고 나와 · 9월 23일 지급 예정인데 9월 18일에
+ * 완료라고 뜬다」). 가확정은 ★배치에 담았다★는 뜻이고 돈은 지급일에 나간다 — 그 사이를
+ * 완료라고 적으면 나가지도 않은 돈을 나갔다고 말하는 것이다.
+ *
+ * 지급관리 표는 이미 이 네 자리를 쓴다(batchStateOf). 같은 사실을 두 화면이 다른 말로
+ * 부르지 않도록 판정을 여기 한 곳에 두고 둘이 같이 본다.
+ *
+ * 지급일이 없으면(원장에 그 회차 줄이 없다) null 이다 — 「다른 명목으로 지급」·「초과 충당」
+ * 같은 딴 이야기라 부르는 쪽이 따로 적는다.
+ */
+export function payoutStepStateOf(
+  step: { at: string | null; org: string | null; kind: PayoutKind },
+  finals: BatchFinal[]
+): BatchState | null {
+  if (!step.at) return null;
+  /* 지급처가 없으면 확정할 배치 자체가 없다 — batchesOf 가 finalized 를 false 로 두는 것과 같다 */
+  const finalized = step.org !== null
+    && finals.some((f) => batchKey(f.payDate, f.org, f.kind) === batchKey(step.at!, step.org, step.kind));
+  return batchStateOf({ paidAt: step.at, finalized });
+}
+
 /** 원장 줄을 배치로 접는다 — 지급일 내림차순, 같은 날은 지급처·구분순 */
 export function batchesOf(
   history: PayoutRow[],

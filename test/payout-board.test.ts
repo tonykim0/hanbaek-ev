@@ -6,7 +6,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  batchKey, batchStateOf, canAttachInvoice, isPayoutSubject, payDateChoices, workGroupOf, workOf,
+  batchKey, batchStateOf, canAttachInvoice, isPayoutSubject, payDateChoices, payoutStepStateOf,
+  workGroupOf, workOf,
   type PayoutRowInput,
 } from '@/lib/payout-board';
 
@@ -244,5 +245,48 @@ describe('workOf — 계약중단 현장은 지급하지 않는다', () => {
     const w = workOf(row({ holdState: '계약중단', confirmed: 2_800_000 }));
     expect(w.confirmed).toBe(2_800_000);
     expect(w.state).toBe('조건 대기');
+  });
+});
+
+/*
+ * ★가확정은 지급이 아니다★ (한백 지적 2026-09-18 「가확정을 하면 이미 지급 완료라고 나와 ·
+ * 9월 23일 지급 예정인데 오늘 18일에 완료로 뜬다」). 현장 상세 정산 탭이 원장에 줄만 있으면
+ * 「지급완료」라고 적고 있었다 — 지급관리 표가 쓰는 네 자리를 같이 쓰게 하고 그 판정을 못 박는다.
+ */
+describe('payoutStepStateOf — 그 회차가 지금 어느 자리인가', () => {
+  const 내일 = '2999-12-31';
+  const 어제 = '2000-01-01';
+  const step = { org: '엘앤에스', kind: '영업비' as const };
+  const final = { org: '엘앤에스', kind: '영업비' as const, payDate: 내일, finalizedAt: '2026-09-18' };
+
+  it('지급일이 아직 안 왔고 확정 전이면 가확정이다 — 완료가 아니다', () => {
+    expect(payoutStepStateOf({ ...step, at: 내일 }, [])).toBe('가확정');
+  });
+
+  it('확정했어도 지급일 전이면 「확정」이다', () => {
+    expect(payoutStepStateOf({ ...step, at: 내일 }, [final])).toBe('확정');
+  });
+
+  it('확정하고 지급일이 지나야 지급완료다', () => {
+    expect(payoutStepStateOf({ ...step, at: 어제 }, [{ ...final, payDate: 어제 }])).toBe('지급완료');
+  });
+
+  it('확정 없이 지급일이 지나면 확정 누락이다 — 한백이 놓친 것이다', () => {
+    expect(payoutStepStateOf({ ...step, at: 어제 }, [])).toBe('확정 누락');
+  });
+
+  it('지급처가 없으면 확정할 배치가 없다 — 지난 날짜는 확정 누락이다', () => {
+    expect(payoutStepStateOf({ at: 어제, org: null, kind: '영업비' }, [final])).toBe('확정 누락');
+  });
+
+  /* 원장에 그 회차 줄이 없으면 딴 이야기다(다른 명목으로 지급·초과 충당) — 부르는 쪽이 적는다 */
+  it('지급일이 없으면 자리를 말하지 않는다', () => {
+    expect(payoutStepStateOf({ ...step, at: null }, [final])).toBeNull();
+  });
+
+  it('다른 배치의 확정은 이 회차를 확정으로 만들지 않는다 — 지급처·구분·날짜 셋이 다 맞아야 한다', () => {
+    expect(payoutStepStateOf({ ...step, at: 내일 }, [{ ...final, kind: '시공비' }])).toBe('가확정');
+    expect(payoutStepStateOf({ ...step, at: 내일 }, [{ ...final, org: '딴회사' }])).toBe('가확정');
+    expect(payoutStepStateOf({ ...step, at: 내일 }, [{ ...final, payDate: '2999-12-30' }])).toBe('가확정');
   });
 });

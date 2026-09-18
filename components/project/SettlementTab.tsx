@@ -13,7 +13,7 @@
 import { Fragment, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import type {
-  CpoName, DocFile, DocStatus, PayoutCategory, PayoutEntry, PayoutKind, ProjectDetail, SettlementRule,
+  BatchFinal, CpoName, DocFile, DocStatus, PayoutCategory, PayoutEntry, PayoutKind, ProjectDetail, SettlementRule,
   SettlementRuleChoice, SettlementStep,
 } from '@/types/project';
 import { PAYOUT_CATEGORIES, replLabel } from '@/types/project';
@@ -33,6 +33,7 @@ import {
   Td, Th,
 } from '@/components/ui';
 import { DatePicker } from '@/components/DatePicker';
+import { payoutStepStateOf } from '@/lib/payout-board';
 /* 반려 사유는 어디에 적히든 한 모양이다 (한백 지시 2026-09-04) */
 import { RejectReason } from '@/components/project/parts';
 
@@ -45,12 +46,14 @@ const STEP_STYLE: Record<SettlementStep['state'], string> = {
 };
 
 export function SettlementTab({
-  detail, vis, canReview, ruleOptions,
+  detail, vis, canReview, ruleOptions, batchFinals,
 }: {
   detail: ProjectDetail;
   vis: Visibility;
   canReview: boolean;
   ruleOptions: RuleOptions | null;
+  /** 배치 최종확정 목록 — 회차가 가확정인가 지급완료인가를 가른다 */
+  batchFinals: BatchFinal[];
 }) {
   const { settlement, lines } = detail;
 
@@ -103,6 +106,7 @@ export function SettlementTab({
         gcOrg={detail.project.gcOrg}
         vis={vis}
         canReview={canReview}
+        batchFinals={batchFinals}
       />
 
     </div>
@@ -856,7 +860,7 @@ function PayConditions({
  */
 
 function PaymentSection({
-  projectId, lines, entries, salesOrg, gcOrg, vis, canReview,
+  projectId, lines, entries, salesOrg, gcOrg, vis, canReview, batchFinals,
 }: {
   projectId: string;
   lines: ProjectDetail['lines'];
@@ -865,6 +869,7 @@ function PaymentSection({
   gcOrg: string | null;
   vis: Visibility;
   canReview: boolean;
+  batchFinals: BatchFinal[];
 }) {
   const totalQty = lines.reduce((s, l) => s + l.qty, 0);
   const unpriced = lines.filter((l) => !l.rule).length;
@@ -999,6 +1004,8 @@ function PaymentSection({
                     const done = no === 1 ? r.steps.step1Done : r.steps.step2Done;
                     const planned = r.steps.open?.no === no ? r.steps.open.amount : r.steps.parts[no - 1];
                     const at = r.stepAt(`${no}차`);
+                    /* 배치 자리 — 지급관리·거래명세서와 같은 판정 하나를 본다 */
+                    const stepState = payoutStepStateOf({ at, org: r.org, kind: r.kind }, batchFinals);
                     const paidHere = r.stepPaid(`${no}차`);
                     // 나간 돈이 있으면 그것이 이 칸의 값이다 — 계획은 다를 때만 밑에 남긴다
                     const amount = paidHere ?? planned;
@@ -1073,11 +1080,28 @@ function PaymentSection({
                               {r.over > 0 ? '초과 충당' : planned === 0 ? '차감으로 없음' : '다른 명목으로 지급'}
                             </span>
                           ) : done ? (
+                            /*
+                              ★가확정은 지급이 아니다★ (한백 지적 2026-09-18 「가확정을 하면
+                              이미 지급 완료라고 나와 · 9월 23일 지급 예정인데 오늘 18일에
+                              완료로 뜬다」). 원장에 줄이 있으면 무조건 「지급완료」라고
+                              적고 있었다 — 가확정은 배치에 담았다는 뜻이고 돈은 지급일에
+                              나간다. 지급관리 표가 쓰는 네 자리를 그대로 쓴다(batchStateOf):
+                              가확정 · 확정(둘 다 지급일 전) · 지급완료 · 확정 누락.
+                            */
                             <span className="inline-flex flex-col items-start gap-0.5">
-                              <span className="rounded-tag bg-brand-50 px-1.5 py-0.5 text-tiny font-bold text-brand-800">
-                                지급완료
+                              <span className={`rounded-tag px-1.5 py-0.5 text-tiny font-bold ${
+                                stepState === '지급완료' ? 'bg-brand-50 text-brand-800'
+                                  : stepState === '확정' ? 'bg-slate-100 text-slate-700'
+                                    : stepState === '확정 누락' ? 'bg-red-50 text-red-700'
+                                      : 'bg-amber-100 text-amber-900'
+                              }`}>
+                                {stepState ?? '지급완료'}
                               </span>
-                              <span className="text-tiny font-semibold tabular-nums text-slate-500">{at ?? ''}</span>
+                              <span className="text-tiny font-semibold tabular-nums text-slate-500">
+                                {at ?? ''}
+                                {/* 아직 안 나간 돈이면 그 날짜가 「예정」이라는 것을 적는다 */}
+                                {(stepState === '가확정' || stepState === '확정') && ' 예정'}
+                              </span>
                             </span>
                           ) : (
                             <span className="rounded-tag bg-amber-100 px-1.5 py-0.5 text-tiny font-bold text-amber-900">

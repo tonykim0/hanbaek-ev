@@ -92,6 +92,14 @@ export default async function ProjectPage({
     : null;
 
   /*
+   * 배치 최종확정 목록 — 정산 탭의 회차가 「가확정인가 지급완료인가」를 이것으로 가른다
+   * (한백 지적 2026-09-18: 가확정만 했는데 지급완료로 보였다). 지급관리·거래명세서가 이미
+   * 같은 값으로 배치 자리를 정한다(lib/payout-board batchStateOf) — 한 사실에 한 판정이다.
+   * 협력사도 자기 배치의 확정 여부를 본다(저장소가 자기 것만 준다).
+   */
+  const batchFinals = await getRepository().listBatchFinals(actorOf(session));
+
+  /*
    * 공정 입력 권한 — 한백은 전부, 그 현장의 시공사는 한백 전용 두 칸을 뺀 전부.
    * 실제 판정은 저장소(assertProcessWrite)가 다시 한다 — 여기 값은 화면이 칸을
    * 잠그는 데만 쓴다. 영업만(sales)은 공정을 적지 않는다.
@@ -118,6 +126,7 @@ export default async function ProjectPage({
       knownOrgs={orgs}
       ruleOptions={ruleOptions}
       settlementRuleChoices={settlementRuleChoices}
+      batchFinals={batchFinals}
       initialTab={initialTab}
       processEdit={processEdit}
       /*

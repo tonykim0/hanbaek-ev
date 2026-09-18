@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { ContractState, ProjectDetail, SettlementRuleChoice } from '@/types/project';
+import type { BatchFinal, ContractState, ProjectDetail, SettlementRuleChoice } from '@/types/project';
 import { BIZ_TYPES, CPO_NAMES, POWER_TYPES, subsidized, TERM_YEARS } from '@/types/project';
 import { safetyFeeApplies } from '@/lib/settlement';
 import { useAction } from '@/lib/use-action';
@@ -55,6 +55,7 @@ export default function ProjectDetailView({
   knownOrgs,
   ruleOptions,
   settlementRuleChoices,
+  batchFinals,
   initialTab,
   processEdit,
   canSubmit,
@@ -79,6 +80,8 @@ export default function ProjectDetailView({
   ruleOptions: RuleOptions | null;
   /** 정산 규칙 후보 — 이름에 기성 모양이 들어 있어 한백이 아니면 null (단가 후보와 같은 이유) */
   settlementRuleChoices: SettlementRuleChoice[] | null;
+  /** 배치 최종확정 목록 — 회차가 「가확정인가 지급완료인가」를 가른다(lib/payout-board) */
+  batchFinals: BatchFinal[];
   /**
    * URL(?tab=)로 열 탭 — 기성·지급 화면이 「정산 탭에서 지정해야 합니다」라고 말하므로,
    * 거기서 오는 링크는 그 탭을 바로 연다. 없으면 단계가 정한다.
@@ -362,6 +365,7 @@ export default function ProjectDetailView({
               vis={vis}
               canReview={canReview}
               ruleOptions={ruleOptions}
+              batchFinals={batchFinals}
             />
           )}
           {tab === 'receivable' && canReview && (
