@@ -59,14 +59,22 @@ export function SettlementTab({
       {/*
         ★메모가 탭 맨 위다★ (한백 지시 2026-09-18 「협력사 정산관리는 기존에있던 메모를
         제목만 바꿔서 이동」) — 다른 탭의 진행현황과 같은 자리·같은 이름이다.
-        옮긴 것은 자리와 제목뿐이다: 쌓는 방식(날짜 한 줄씩, settlements.pay_note)도
-        협력사가 읽는다는 것도 그대로다. 그 현장이 지금 어떤 사정인지가 금액보다 먼저 읽힌다.
+        쌓는 방식(날짜 한 줄씩, settlements.pay_note)은 그대로다. 그 현장이 지금 어떤
+        사정인지가 금액보다 먼저 읽힌다.
+
+        ★한백만 읽는다★ (한백 지시 2026-09-18 「메모를 얘기하는거야 — 나머지 내용은
+        보게해줘」). 회수·상계·단가 정정처럼 우리 사정이 적히는 자리다. 탭의 나머지
+        (적용조건·지급관리)는 협력사도 그대로 본다 — 자기 몫을 확인하는 자리다.
+        잣대는 vis.cost(원가·마진을 보는 눈) 하나이고, 데이터도 같은 잣대로 지워서 보낸다
+        (redactForViewer) — 화면에서 가리는 것만으로는 페이지 소스에 그대로 실려 나간다.
       */}
-      <PayNoteBox
-        projectId={detail.project.id}
-        payNote={settlement.payNote}
-        canReview={canReview}
-      />
+      {vis.cost && (
+        <PayNoteBox
+          projectId={detail.project.id}
+          payNote={settlement.payNote}
+          canReview={canReview}
+        />
+      )}
 
       {/* 조건이 그 아래다(한백 확인) — 여기서 고른 케이스가 아래 모든 금액을 정한다 */}
       {canReview && ruleOptions && (

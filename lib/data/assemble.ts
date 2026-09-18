@@ -586,6 +586,13 @@ export function redactForViewer(detail: ProjectDetail, vis: Visibility): Project
      * 나간다(계약 라인의 부담 주체가 그렇게 새던 것과 같은 자리다). 잣대는 마진과 같다.
      */
     notes: vis.cost ? detail.notes : detail.notes.filter((n) => n.scope !== '기성'),
+    /*
+     * ★협력사 정산관리의 진행현황도 한백의 것이다★ (한백 지시 2026-09-18 「협력사 정산관리
+     * 메모 — 우리만 보게해줘」). 회수·상계·단가 정정처럼 우리 사정이 적히는 자리다.
+     * 화면에서 가리는 것으로는 부족하다 — 서버가 렌더한 데이터가 브라우저에 통째로 실리므로
+     * 여기서 지운다(바로 위 기성 진행현황과 같은 이유·같은 잣대).
+     */
+    settlement: vis.cost ? detail.settlement : { ...detail.settlement, payNote: null },
     // 원장도 금액이다 — 자기 쪽(영업/시공)이 아닌 줄은 아예 보내지 않는다
     payoutEntries: detail.payoutEntries.filter(
       (e) => (e.kind === '영업비' ? vis.sales : vis.cons)
