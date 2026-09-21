@@ -104,7 +104,17 @@ export interface RenderedPage {
  */
 export async function pdfPages(
   data: ArrayBuffer,
-  opts: { maxPx: number; maxPages: number }
+  /**
+   * maxScale — PDF 는 크기가 점(pt)이라 scale 1 이 72dpi 다. 기본 2 는 144dpi 로,
+   * 화면에서 네 점을 끌 만큼이다.
+   *
+   * ★결과물을 구울 때는 더 키운다★ (2026-09-21) — PDF 로 감싼 사진은 페이지 상자가
+   * 72dpi 기준일 뿐 속의 그림은 4000px 이다. 2 로 막으면 그 그림을 1190px 로 줄여 놓고
+   * 그것에서 펴게 된다 — 300dpi 로 내보내겠다고 해 놓고 근거가 144dpi 인 꼴이다.
+   * 벡터 PDF 를 크게 그리는 것은 손해가 아니다(글자가 더 또렷해진다). 빈 화소를 지어내는
+   * 경우는 원래 저해상도인 스캔 PDF 뿐이고, 그때는 outputSize 가 뒤에서 다시 눌러 준다.
+   */
+  opts: { maxPx: number; maxPages: number; maxScale?: number }
 ): Promise<{ pages: RenderedPage[]; total: number }> {
   const pdfjs = await lib();
   const doc = await pdfjs.getDocument({ data }).promise;
@@ -114,9 +124,9 @@ export async function pdfPages(
     for (let n = 1; n <= Math.min(total, opts.maxPages); n += 1) {
       const page = await doc.getPage(n);
       const base = page.getViewport({ scale: 1 });
-      /* 원본보다 크게 그리지 않는다 — 없는 화소를 지어낼 뿐이고 처리만 느려진다 */
+      /* 한 변 상한(maxPx)과 배율 상한(maxScale) 중 작은 쪽 — 캔버스가 감당할 만큼만 그린다 */
       const viewport = page.getViewport({
-        scale: Math.min(2, opts.maxPx / Math.max(base.width, base.height)),
+        scale: Math.min(opts.maxScale ?? 2, opts.maxPx / Math.max(base.width, base.height)),
       });
       const cv = document.createElement('canvas');
       cv.width = Math.round(viewport.width);

@@ -238,6 +238,19 @@ export function warpToRect(src: Bitmap, quad: Pt[], w: number, h: number): Bitma
  * 임계값 하나로 자르지 않는 이유가 이것이다: 한 장 안에서 밝기가 달라 어느 값을 잡아도
  * 한쪽은 새까매지고 한쪽은 하얘진다.
  */
+/*
+ * 흑백 레벨의 두 끝 — 이 아래는 새까맣게, 이 위는 새하얗게 만든다.
+ *
+ * ★120~205 였다★ (한백 지적 2026-09-21 「스캔하면 화질이 많이 떨어지는」). 85단계만
+ * 남기고 나머지를 양끝으로 밀어버려서, 연필 글씨·흐린 도장·회색 표 선이 이 자리에서
+ * 통째로 사라졌다 — 스캔이 아니라 지우개였다. 창을 160단계로 넓힌다.
+ *
+ * 흰 끝을 255 로 두지는 않는다: 바탕은 바로 위 나눗셈이 이미 흰색 가까이 올려놨고,
+ * 끝을 조금 낮춰야 종이의 누런빛과 잡티가 하얗게 걷힌다 — 스캔본처럼 보이는 까닭이다.
+ */
+const MONO_BLACK = 64;
+const MONO_WHITE = 224;
+
 export function flatten(src: Bitmap, opts: { mono: boolean }): Bitmap {
   const { width: W, height: H, data } = src;
   const out = new Uint8ClampedArray(data.length);
@@ -262,7 +275,7 @@ export function flatten(src: Bitmap, opts: { mono: boolean }): Bitmap {
      */
     for (let i = 0; i < out.length; i += 4) {
       const g = (out[i] * 299 + out[i + 1] * 587 + out[i + 2] * 114) / 1000;
-      const v = clamp(((g - 120) * 255) / (205 - 120), 0, 255);
+      const v = clamp(((g - MONO_BLACK) * 255) / (MONO_WHITE - MONO_BLACK), 0, 255);
       out[i] = v; out[i + 1] = v; out[i + 2] = v;
     }
   } else {
@@ -324,8 +337,18 @@ function downUp(src: Bitmap, w: number, h: number): Bitmap {
 /**
  * 펼 크기 — A4 비율(1:√2)에 맞추되 네 점이 그린 실제 크기를 넘지 않는다.
  * 원본보다 크게 펴 봐야 없는 화소를 지어낼 뿐이고, PDF 만 무거워진다.
+ *
+ * ★150dpi 였다★ (한백 지적 2026-09-21). A4 150dpi 는 1754×1240 인데, 아이폰 사진이
+ * A4 를 꽉 채워 담고 있는 것은 345dpi 다 — 스캐너 기본값(300dpi)의 절반도 안 되게 깎아
+ * 내보내고 있었다. 300 으로 올린다.
+ *
+ * ★목표가 아니라 상한이다.★ 아래 scale 이 네 점의 실제 크기로 눌러 주므로, 멀리서 찍어
+ * 종이가 작게 잡힌 사진은 300dpi 로 억지로 늘리지 않고 담긴 만큼만 나온다. 그래서 이 값을
+ * 올려도 나쁜 사진의 파일만 무거워지는 일이 없다 — 좋은 사진이 끝까지 살아날 뿐이다.
+ * 다만 ★원본에서 펴야★ 뜻이 있다: 줄여 둔 작업본에서 펴면 여기가 300 이어도 그 작업본의
+ * 화소를 늘리는 것뿐이다(components/PhotoScanner 의 make).
  */
-export function outputSize(quad: Pt[], dpi = 150): { w: number; h: number } {
+export function outputSize(quad: Pt[], dpi = 300): { w: number; h: number } {
   const q = orderQuad(quad);
   const len = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
   const wide = Math.max(len(q[0], q[1]), len(q[3], q[2]));

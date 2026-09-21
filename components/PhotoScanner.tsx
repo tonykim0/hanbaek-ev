@@ -28,19 +28,49 @@ import { Btn, Choice, Err, PANEL } from '@/components/ui';
 interface Shot {
   id: string;
   name: string;
-  /** 화면에 그릴 원본. 캔버스에 한 번 그려 두고 계속 쓴다 */
+  /** 화면에 그릴 작업본 — 줄여서 들고 있는다. 네 점을 끄는 동안 쓰는 것이 이것이다 */
   bmp: Bitmap;
   quad: Pt[];
+  /**
+   * ★PDF 를 만들 때만 원본으로 되돌아간다★ (한백 지적 2026-09-21 「스캔하면 화질이 많이
+   * 떨어지는」).
+   *
+   * 그전에는 줄여 둔 작업본(bmp)에서 곧바로 펴서 PDF 로 구웠다 — 아이폰 4032px 사진이
+   * 읽히는 순간 2000px 이 되고, 그 뒤로 원본은 어디에도 없었다. 출력 해상도를 아무리
+   * 올려도 그 2000px 을 늘리는 것뿐이라 화질이 돌아오지 않는다.
+   *
+   * 그래서 원본을 다시 여는 길을 들고 있는다. 미리 굽지 않는다 — 20장을 한꺼번에 원본으로
+   * 들면 4천만 화소 × 20 이라 브라우저가 죽는다. 만들 때 한 장씩 열고 그 자리에서 버린다.
+   * 실패하면(브라우저가 큰 캔버스를 거절) 작업본으로 되돌아간다 — 화질보다 만들어지는 것이
+   * 먼저다.
+   */
+  full: () => Promise<Bitmap>;
 }
 
 /**
- * 원본을 이만큼으로 줄여 들고 있는다.
+ * ★화면에서 끌 때만★ 이만큼으로 줄여 들고 있는다.
  *
  * 요즘 휴대폰 사진은 4000×3000 이 예사인데, 그대로 두면 네 점을 끌 때마다 4천만 화소를
- * 다시 그린다 — 손가락을 따라오지 못한다. 스캔본으로 낼 해상도(150dpi A4 ≈ 1240×1754)
- * 보다 넉넉하면 화질에서 잃는 것이 없다.
+ * 다시 그린다 — 손가락을 따라오지 못한다.
+ *
+ * ★결과물은 이 값을 안 본다★ (2026-09-21) — 만들 때 원본을 다시 열어 거기서 편다(Shot.full).
+ * 그전에는 이 작업본이 곧 결과물의 출처여서, 여기서 깎인 화소가 영영 돌아오지 않았다.
  */
 const WORK_MAX = 2000;
+
+/**
+ * 원본을 다시 열 때의 상한 — 한 변과 총 화소, 둘 다 본다.
+ *
+ * 300dpi A4 가 3508×2480(8.7백만 화소)이라 그보다 넉넉해야 한다. 종이가 사진의 일부만
+ * 차지하므로 원본은 그보다 커야 결과가 300dpi 에 닿는다.
+ *
+ * ★총 화소를 따로 막는 이유★ — iOS 사파리는 캔버스 넓이를 1,670만 화소쯤에서 자르는데,
+ * 넘으면 오류를 던지지 않고 ★빈 흰 그림★을 준다. 48메가픽셀로 찍는 요즘 아이폰(8064×6048)
+ * 은 한 변만 재면 그 선을 넘어선다 — 그러면 협력사는 백지 스캔본을 받고 왜인지 알 수 없다.
+ * 1,200만으로 잡아 그 선에서 멀찍이 떨어뜨린다(옛 작업본 300만 화소의 네 곱이다).
+ */
+const FULL_MAX = 5000;
+const FULL_AREA = 12_000_000;
 
 /**
  * Bitmap → ImageData.
@@ -75,12 +105,26 @@ async function readPdf(file: File): Promise<{ shots: Shot[]; dropped: number }> 
       name: total > 1 ? `${file.name} (${i + 1}쪽)` : file.name,
       bmp,
       quad: orderQuad(estimateQuad(bmp)),
+      /*
+       * 그 쪽 하나만 높은 해상도로 다시 그린다 — 20쪽을 통째로 다시 굽지 않는다.
+       * pdfPages 는 「원본보다 크게 그리지 않는다」를 이미 지킨다(scale 을 2 로 막는다).
+       */
+      full: async () => {
+        const r = await pdfPages(await file.arrayBuffer(), {
+          maxPx: FULL_MAX,
+          maxPages: i + 1,
+          /* 300dpi = 72dpi × 4.17 — A4 한 장이 3508×2480(8.7백만 화소)이라 넉넉히 들어간다 */
+          maxScale: 300 / 72,
+        });
+        return r.pages[i] ?? bmp;
+      },
     })),
     dropped: Math.max(0, total - pages.length),
   };
 }
 
-async function readShot(file: File): Promise<Shot> {
+/** 그림 파일 하나를 캔버스에 그려 Bitmap 으로 — maxPx 는 상한이고 원본보다 키우지 않는다 */
+async function drawFile(file: File, maxPx: number, area = Infinity): Promise<Bitmap> {
   const url = URL.createObjectURL(file);
   try {
     const img = await new Promise<HTMLImageElement>((resolve, reject) => {
@@ -89,7 +133,12 @@ async function readShot(file: File): Promise<Shot> {
       el.onerror = () => reject(new Error(`${file.name} 을(를) 읽지 못했습니다.`));
       el.src = url;
     });
-    const scale = Math.min(1, WORK_MAX / Math.max(img.naturalWidth, img.naturalHeight));
+    const scale = Math.min(
+      1,
+      maxPx / Math.max(img.naturalWidth, img.naturalHeight),
+      /* 총 화소 한도 — 넘으면 브라우저가 말없이 빈 그림을 준다(위 FULL_AREA) */
+      Math.sqrt(area / Math.max(1, img.naturalWidth * img.naturalHeight))
+    );
     const w = Math.max(1, Math.round(img.naturalWidth * scale));
     const h = Math.max(1, Math.round(img.naturalHeight * scale));
     const cv = document.createElement('canvas');
@@ -98,16 +147,22 @@ async function readShot(file: File): Promise<Shot> {
     const ctx = cv.getContext('2d');
     if (!ctx) throw new Error('이 브라우저에서는 그림을 다룰 수 없습니다.');
     ctx.drawImage(img, 0, 0, w, h);
-    const bmp = ctx.getImageData(0, 0, w, h) as unknown as Bitmap;
-    return {
-      id: `${file.name}-${file.size}-${Math.round(w * h)}`,
-      name: file.name,
-      bmp,
-      quad: orderQuad(estimateQuad(bmp)),
-    };
+    return ctx.getImageData(0, 0, w, h) as unknown as Bitmap;
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+async function readShot(file: File): Promise<Shot> {
+  const bmp = await drawFile(file, WORK_MAX);
+  return {
+    id: `${file.name}-${file.size}-${Math.round(bmp.width * bmp.height)}`,
+    name: file.name,
+    bmp,
+    quad: orderQuad(estimateQuad(bmp)),
+    /* 만들 때 다시 연다 — 파일은 브라우저가 들고 있고 우리는 손잡이만 쥔다 */
+    full: () => drawFile(file, FULL_MAX, FULL_AREA),
+  };
 }
 
 /** Bitmap 을 캔버스에 그려 JPEG 로 짜낸다 — PDF 에 넣을 꼴 */
@@ -182,10 +237,22 @@ export default function PhotoScanner() {
     setBusy('스캔본 만드는 중…');
     try {
       const pdf = await PDFDocument.create();
+      let n = 0;
       for (const s of shots) {
-        const size = outputSize(s.quad);
-        const flat = flatten(warpToRect(s.bmp, s.quad, size.w, size.h), { mono });
-        const jpg = await toJpeg(flat, 0.86);
+        n += 1;
+        setBusy(shots.length > 1 ? `스캔본 만드는 중… (${n}/${shots.length})` : '스캔본 만드는 중…');
+        /*
+         * ★원본에서 편다★ (한백 지적 2026-09-21) — 화면이 들고 있는 작업본은 2000px 로
+         * 줄여 둔 것이라, 거기서 펴면 출력 해상도를 올려도 없는 화소를 늘릴 뿐이다.
+         * 네 점은 작업본의 좌표라 원본 크기에 맞춰 같은 배로 키운다(가로세로 배율이 같다).
+         * 원본을 못 열면 작업본으로 만든다 — 화질보다 만들어지는 것이 먼저다.
+         */
+        const src = await s.full().catch(() => s.bmp);
+        const k = src.width / s.bmp.width;
+        const quad = k === 1 ? s.quad : s.quad.map((p) => ({ x: p.x * k, y: p.y * k }));
+        const size = outputSize(quad);
+        const flat = flatten(warpToRect(src, quad, size.w, size.h), { mono });
+        const jpg = await toJpeg(flat, 0.92);
         const img = await pdf.embedJpg(jpg);
         /* 종이 크기를 A4(포인트)로 못 박는다 — 장마다 크기가 다르면 인쇄가 어긋난다 */
         const [pw, ph] = size.w > size.h ? [841.89, 595.28] : [595.28, 841.89];

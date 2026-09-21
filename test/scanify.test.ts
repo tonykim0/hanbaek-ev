@@ -155,6 +155,28 @@ describe('그림자 걷기 (flatten)', () => {
     expect(at(out, 54, 54)).toBeLessThan(60);
     expect(at(out, 5, 5)).toBeGreaterThan(200);
   });
+
+  /*
+   * ★연한 획이 지워지면 안 된다★ (한백 지적 2026-09-21 「스캔하면 화질이 많이 떨어지는」).
+   *
+   * 레벨 창이 120~205 였다 — 위쪽 50단계를 통째로 흰색에 밀어 넣는 폭이라, 흰 종이(235)
+   * 위의 연필·흐린 도장(195)이 ★바탕과 똑같은 255★ 가 되어 사라졌다. 스캔이 아니라
+   * 지우개였다. 창을 넓혀 그 획이 바탕과 구별되게 남긴다.
+   */
+  it('연한 획(연필·흐린 도장)이 바탕과 구별된다', () => {
+    const src = paperOn(300, 300, { x: 150, y: 150, w: 6, h: 6 }, 235, 195);
+    const out = flatten(src, { mono: true });
+    const 획 = at(out, 152, 152);
+    const 바탕 = at(out, 5, 5);
+    expect(바탕).toBe(255);        // 종이는 그대로 희다
+    expect(획).toBeLessThan(바탕); // 옛 창에서는 둘이 똑같이 255 였다
+  });
+
+  /* 바탕은 그래도 희어야 한다 — 창을 넓혀도 스캔본처럼 보이는 것이 먼저다 */
+  it('종이 바탕은 하얗게 걷힌다', () => {
+    const src = paperOn(120, 120, { x: 50, y: 50, w: 8, h: 8 }, 228, 20);
+    expect(at(flatten(src, { mono: true }), 5, 5)).toBeGreaterThan(240);
+  });
 });
 
 describe('펼 크기 (outputSize)', () => {
@@ -173,6 +195,24 @@ describe('펼 크기 (outputSize)', () => {
   it('원본보다 크게 펴지 않는다', () => {
     const s = outputSize([{ x: 0, y: 0 }, { x: 300, y: 0 }, { x: 300, y: 420 }, { x: 0, y: 420 }]);
     expect(Math.max(s.w, s.h)).toBeLessThanOrEqual(420);
+  });
+
+  /*
+   * ★기본이 300dpi 다★ (한백 지적 2026-09-21 「스캔하면 화질이 많이 떨어지는」).
+   * 150dpi(A4 1754×1240)로 내보내고 있었다 — 아이폰 사진이 A4 를 꽉 채워 담은 것이
+   * 345dpi 라, 스캐너 기본값의 절반도 안 되게 깎아 내던 셈이다.
+   */
+  it('넉넉한 사진은 300dpi A4 로 편다', () => {
+    /* 아이폰 4032×3024 가 A4 를 꽉 채운 꼴 — 긴 변 4032 */
+    const s = outputSize([{ x: 0, y: 0 }, { x: 2851, y: 0 }, { x: 2851, y: 4032 }, { x: 0, y: 4032 }]);
+    expect(Math.max(s.w, s.h)).toBe(Math.round((300 * 297) / 25.4)); // 3508
+    expect(Math.min(s.w, s.h)).toBe(Math.round((300 * 210) / 25.4)); // 2480
+  });
+
+  /* 상한이지 목표가 아니다 — 멀리서 찍어 작게 잡힌 종이를 억지로 늘리지 않는다 */
+  it('작게 잡힌 종이는 300dpi 로 늘리지 않는다', () => {
+    const s = outputSize([{ x: 0, y: 0 }, { x: 700, y: 0 }, { x: 700, y: 990 }, { x: 0, y: 990 }]);
+    expect(Math.max(s.w, s.h)).toBeLessThanOrEqual(990);
   });
 });
 
