@@ -251,14 +251,15 @@ export function warpToRect(src: Bitmap, quad: Pt[], w: number, h: number): Bitma
 const MONO_BLACK = 64;
 const MONO_WHITE = 224;
 
+/* 색 살리기의 두 끝 — 중간 톤이 뜻을 갖는 일이 많아 흑백보다 부드럽게 민다 */
+const COLOR_BLACK = 40;
+const COLOR_WHITE = 240;
+
 export function flatten(src: Bitmap, opts: { mono: boolean }): Bitmap {
   const { width: W, height: H, data } = src;
   const out = new Uint8ClampedArray(data.length);
 
-  /* 배경 — 긴 변의 1/12 만큼 뭉갠다. 글자보다 훨씬 크고 그림자보다는 작다 */
-  const bw = Math.max(2, Math.round(W / 12));
-  const bh = Math.max(2, Math.round(H / 12));
-  const bg = downUp(src, bw, bh);
+  const bg = background(src);
 
   for (let i = 0; i < data.length; i += 4) {
     for (let c = 0; c < 3; c += 1) {
@@ -280,37 +281,165 @@ export function flatten(src: Bitmap, opts: { mono: boolean }): Bitmap {
     }
   } else {
     /*
-     * 색 살리기 — 도장·서명이 빨간 서류가 있다(한백 2026-08-31). 나눗셈으로 이미 바탕이
-     * 희어졌으니 여기서는 색만 조금 살린다. 많이 올리면 종이 누런빛까지 같이 살아난다.
+     * 색 살리기 — 도장·서명이 빨간 서류가 있다(한백 2026-08-31).
+     *
+     * ★레벨이 아예 없었다★ (한백 지적 2026-09-21) — 채도만 1.35 올리고 밝기는 그대로 뒀다.
+     * 흑백 쪽은 레벨이 흐린 것을 도로 끌어내리는데 이쪽은 그것이 없어서, 나눗셈으로 떠오른
+     * 도장이 뜬 채로 남았다. 같은 레벨을 ★밝기에만★ 걸고 색은 비율로 따라오게 한다 —
+     * 채널마다 따로 걸면 빨강이 주황으로 돈다.
+     *
+     * 흰 끝을 흑백보다 높게 잡는다(240): 색 서류는 연한 형광펜·도장 그림자 같은 중간 톤이
+     * 뜻을 가지는 일이 많아, 흑백만큼 세게 밀면 그것들이 같이 날아간다.
      */
     for (let i = 0; i < out.length; i += 4) {
       const g = (out[i] * 299 + out[i + 1] * 587 + out[i + 2] * 114) / 1000;
-      for (let c = 0; c < 3; c += 1) out[i + c] = clamp(g + (out[i + c] - g) * 1.35, 0, 255);
+      const v = clamp(((g - COLOR_BLACK) * 255) / (COLOR_WHITE - COLOR_BLACK), 0, 255);
+      /* 밝기를 옮긴 만큼 세 채널을 같이 옮긴다 — 색조는 그대로 두고 진하기만 바뀐다 */
+      const k = g > 1 ? v / g : 1;
+      for (let c = 0; c < 3; c += 1) {
+        const lifted = out[i + c] * k;
+        out[i + c] = clamp(v + (lifted - v) * 1.35, 0, 255);
+      }
     }
   }
   return { width: W, height: H, data: out };
 }
 
-/** 작게 줄였다 다시 늘린다 — 큰 흐림의 값싼 대용이다(가우시안을 돌릴 이유가 없다) */
-function downUp(src: Bitmap, w: number, h: number): Bitmap {
+/**
+ * 조명만 남긴 배경 — ★종이가 어떤 밝기였나★를 자리마다 재서 돌려준다.
+ *
+ * ★평균으로 뭉개면 큰 자국이 배경이 된다★ (한백 지적 2026-09-21 「색 살리기 해서 스캔하면
+ * 도장부분이 너무 희미하게 나오네」). 예전에는 12픽셀짜리 칸으로 평균을 냈다 — 주석은
+ * 「긴 변의 1/12」이라 적혀 있었지만 실제로 뭉갠 폭은 12픽셀이었다. 도장은 300dpi 에서
+ * 지름 350픽셀이라 그 칸을 통째로 덮는다: 배경값이 도장색이 되고, 위에서 도장을 도장으로
+ * 나누니 1(=흰색)이 된다. 실측에서 지름 10·30·50mm 가 전부 바탕과 똑같은 255 로 ★사라졌다.★
+ * 글자는 획이 가늘어 칸에 종이가 같이 들어오므로 이 일이 안 났고, 그래서 여태 안 보였다.
+ *
+ * 세 걸음으로 조명만 남긴다:
+ *   ① 성기게 나눠 칸마다 ★평균보다 밝은 화소만★ 다시 평균 낸다 — 글자가 걷힌다.
+ *      최대값 하나를 집지 않는 이유는 반사광 한 점에 칸이 통째로 끌려가기 때문이다.
+ *   ② 이웃 칸까지 보아 가장 밝은 값을 쓴 뒤, 같은 반경으로 다시 가장 어두운 값을 쓴다
+ *      (늘렸다 줄이기). 반경보다 작은 구멍 — 칸을 통째로 덮은 도장 — 은 옆 칸의 종이로
+ *      메워지고, 완만한 조명 기울기는 제자리로 돌아온다. 늘리기만 하면 어두운 구석의
+ *      배경이 실제보다 밝게 잡혀 그 구석이 회색으로 남는다.
+ *      이 반경이 곧 「이만한 자국까지 자국으로 본다」는 선언이다(폭의 1/6 ≈ A4 로 35mm).
+ *   ③ 다시 뭉갠다 — ②가 만든 계단을 없앤다. 조명은 원래 부드럽게 변한다.
+ */
+function background(src: Bitmap): Bitmap {
   const { width: W, height: H, data } = src;
-  const small = new Float32Array(w * h * 3);
+  /*
+   * 성긴 격자 — 칸 하나가 글자보다 훨씬 크고 조명 변화보다는 작다.
+   * 칸 수의 아래위를 막아 ★그림 크기와 상관없이 같은 비율로★ 돌게 한다 — 칸이 너무 적으면
+   * 아래 ②의 반경이 그림의 큰 몫을 덮어 기운 조명까지 자국으로 보고 들어올린다.
+   */
+  const cells = (n: number) => Math.max(12, Math.min(48, Math.round(n / 64)));
+  const w = cells(W);
+  const h = cells(H);
+
+  /* ① 칸마다 평균보다 밝은 쪽만 — 글자를 걷는다 */
+  const lum = new Float32Array(w * h);
   const count = new Float32Array(w * h);
+  const cellOf = (x: number, y: number) =>
+    Math.min(h - 1, Math.floor((y * h) / H)) * w + Math.min(w - 1, Math.floor((x * w) / W));
   for (let y = 0; y < H; y += 1) {
-    const ty = Math.min(h - 1, Math.floor((y * h) / H));
     for (let x = 0; x < W; x += 1) {
-      const tx = Math.min(w - 1, Math.floor((x * w) / W));
-      const s = (ty * w + tx) * 3;
       const i = (y * W + x) * 4;
-      small[s] += data[i]; small[s + 1] += data[i + 1]; small[s + 2] += data[i + 2];
-      count[ty * w + tx] += 1;
+      const c = cellOf(x, y);
+      lum[c] += (data[i] * 299 + data[i + 1] * 587 + data[i + 2] * 114) / 1000;
+      count[c] += 1;
+    }
+  }
+  for (let i = 0; i < w * h; i += 1) lum[i] /= Math.max(1, count[i]);
+
+  const cell = new Float32Array(w * h * 3);
+  count.fill(0);
+  for (let y = 0; y < H; y += 1) {
+    for (let x = 0; x < W; x += 1) {
+      const i = (y * W + x) * 4;
+      const c = cellOf(x, y);
+      if ((data[i] * 299 + data[i + 1] * 587 + data[i + 2] * 114) / 1000 < lum[c]) continue;
+      cell[c * 3] += data[i]; cell[c * 3 + 1] += data[i + 1]; cell[c * 3 + 2] += data[i + 2];
+      count[c] += 1;
     }
   }
   for (let i = 0; i < w * h; i += 1) {
     const n = Math.max(1, count[i]);
-    small[i * 3] /= n; small[i * 3 + 1] /= n; small[i * 3 + 2] /= n;
+    cell[i * 3] /= n; cell[i * 3 + 1] /= n; cell[i * 3 + 2] /= n;
   }
 
+  /* ② 이웃까지 보아 가장 밝은 값 — 칸을 통째로 덮은 자국을 옆 종이가 메운다 */
+  const R = Math.max(2, Math.round(w / 6));
+  const lifted = new Float32Array(w * h * 3);
+  for (let cy = 0; cy < h; cy += 1) {
+    for (let cx = 0; cx < w; cx += 1) {
+      let best = -1;
+      let at = (cy * w + cx) * 3;
+      for (let dy = -R; dy <= R; dy += 1) {
+        const ny = cy + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -R; dx <= R; dx += 1) {
+          const nx = cx + dx;
+          if (nx < 0 || nx >= w) continue;
+          const k = (ny * w + nx) * 3;
+          const g = cell[k] * 0.299 + cell[k + 1] * 0.587 + cell[k + 2] * 0.114;
+          if (g > best) { best = g; at = k; }
+        }
+      }
+      const o = (cy * w + cx) * 3;
+      lifted[o] = cell[at]; lifted[o + 1] = cell[at + 1]; lifted[o + 2] = cell[at + 2];
+    }
+  }
+
+  /*
+   * ③ 같은 반경으로 다시 가장 어두운 값을 취한다 — ②가 밀어 올린 만큼 도로 내린다.
+   *
+   * ②만 하면 ★기운 조명까지 밝은 쪽으로 끌려간다★ — 어두운 구석의 배경이 실제보다 밝게
+   * 잡혀 그 구석이 회색으로 남는다. 늘렸다 줄이면(수학에서 닫기 연산) 반경보다 작은 구멍
+   * — 곧 도장·글자 — 은 메워진 채로, 완만한 조명 기울기는 제자리로 돌아온다.
+   */
+  const closed = new Float32Array(w * h * 3);
+  for (let cy = 0; cy < h; cy += 1) {
+    for (let cx = 0; cx < w; cx += 1) {
+      let worst = Infinity;
+      let at = (cy * w + cx) * 3;
+      for (let dy = -R; dy <= R; dy += 1) {
+        const ny = cy + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -R; dx <= R; dx += 1) {
+          const nx = cx + dx;
+          if (nx < 0 || nx >= w) continue;
+          const k = (ny * w + nx) * 3;
+          const g = lifted[k] * 0.299 + lifted[k + 1] * 0.587 + lifted[k + 2] * 0.114;
+          if (g < worst) { worst = g; at = k; }
+        }
+      }
+      const o = (cy * w + cx) * 3;
+      closed[o] = lifted[at]; closed[o + 1] = lifted[at + 1]; closed[o + 2] = lifted[at + 2];
+    }
+  }
+
+  /* ④ 계단을 없앤다 — 조명은 원래 부드럽게 변한다 */
+  const smooth = new Float32Array(w * h * 3);
+  for (let cy = 0; cy < h; cy += 1) {
+    for (let cx = 0; cx < w; cx += 1) {
+      let n = 0;
+      let r = 0; let g = 0; let b = 0;
+      for (let dy = -R; dy <= R; dy += 1) {
+        const ny = cy + dy;
+        if (ny < 0 || ny >= h) continue;
+        for (let dx = -R; dx <= R; dx += 1) {
+          const nx = cx + dx;
+          if (nx < 0 || nx >= w) continue;
+          const k = (ny * w + nx) * 3;
+          r += closed[k]; g += closed[k + 1]; b += closed[k + 2]; n += 1;
+        }
+      }
+      const o = (cy * w + cx) * 3;
+      smooth[o] = r / n; smooth[o + 1] = g / n; smooth[o + 2] = b / n;
+    }
+  }
+
+  /* 원래 크기로 되늘린다 — 칸 사이는 이어 그린다 */
   const out = new Uint8ClampedArray(W * H * 4);
   for (let y = 0; y < H; y += 1) {
     const fy = clamp((y * h) / H - 0.5, 0, h - 1);
@@ -324,8 +453,8 @@ function downUp(src: Bitmap, w: number, h: number): Bitmap {
       const wx = fx - x0;
       const o = (y * W + x) * 4;
       for (let c = 0; c < 3; c += 1) {
-        const a = small[(y0 * w + x0) * 3 + c] * (1 - wx) + small[(y0 * w + x1) * 3 + c] * wx;
-        const b = small[(y1 * w + x0) * 3 + c] * (1 - wx) + small[(y1 * w + x1) * 3 + c] * wx;
+        const a = smooth[(y0 * w + x0) * 3 + c] * (1 - wx) + smooth[(y0 * w + x1) * 3 + c] * wx;
+        const b = smooth[(y1 * w + x0) * 3 + c] * (1 - wx) + smooth[(y1 * w + x1) * 3 + c] * wx;
         out[o + c] = a * (1 - wy) + b * wy;
       }
       out[o + 3] = 255;

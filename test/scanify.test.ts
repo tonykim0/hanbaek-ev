@@ -172,6 +172,42 @@ describe('그림자 걷기 (flatten)', () => {
     expect(획).toBeLessThan(바탕); // 옛 창에서는 둘이 똑같이 255 였다
   });
 
+  /*
+   * ★큰 자국(도장)이 지워지면 안 된다★ (한백 지적 2026-09-21 「색 살리기 해서 스캔하면
+   * 도장부분이 너무 희미하게 나오네」).
+   *
+   * 배경을 12픽셀짜리 칸의 평균으로 재고 있었다 — 도장은 300dpi 에서 지름 350픽셀이라 그
+   * 칸을 통째로 덮는다. 배경값이 도장색이 되고, 도장을 도장으로 나누니 흰색이 됐다.
+   * 실측에서 지름 10·30·50mm 도장이 전부 바탕과 똑같은 255 로 사라졌다 — 희미한 것이
+   * 아니라 없어진 것이다. 글자는 획이 가늘어 이 일이 안 났고 그래서 여태 안 보였다.
+   */
+  it('큰 도장이 지워지지 않는다 — 두 갈래 모두', () => {
+    /* 종이 폭의 1/4 짜리 빨간 도장 — A4 에 50mm 도장을 찍은 꼴이다 */
+    const W = 400;
+    const H = 560;
+    const data = new Uint8ClampedArray(W * H * 4);
+    for (let y = 0; y < H; y += 1) {
+      for (let x = 0; x < W; x += 1) {
+        const on = Math.hypot(x - W / 2, y - H / 2) <= 50;
+        const i = (y * W + x) * 4;
+        data[i] = on ? 205 : 235;
+        data[i + 1] = on ? 55 : 232;
+        data[i + 2] = on ? 50 : 228;
+        data[i + 3] = 255;
+      }
+    }
+    const src = { width: W, height: H, data };
+
+    const color = flatten(src, { mono: false });
+    const i = ((H / 2) * W + W / 2) * 4;
+    expect(color.data[i]).toBeGreaterThan(150);       // 빨강이 살아 있다
+    expect(color.data[i + 1]).toBeLessThan(120);      // 초록·파랑은 눌려 있다 — 붉게 보인다
+    expect(at(color, 20, 20)).toBe(255);              // 바탕은 그대로 희다
+
+    /* 흑백에서도 짙게 남는다 */
+    expect(at(flatten(src, { mono: true }), W / 2, H / 2)).toBeLessThan(140);
+  });
+
   /* 바탕은 그래도 희어야 한다 — 창을 넓혀도 스캔본처럼 보이는 것이 먼저다 */
   it('종이 바탕은 하얗게 걷힌다', () => {
     const src = paperOn(120, 120, { x: 50, y: 50, w: 8, h: 8 }, 228, 20);
