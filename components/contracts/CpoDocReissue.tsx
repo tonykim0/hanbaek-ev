@@ -88,8 +88,8 @@ interface DocSpec {
   required: readonly ImportedFieldKey[];
 }
 
-/** 현대엔지니어링 재발행이 원본 대신 템플릿 값으로 덮는 칸 — buildDoc 의 hec 갈래와 짝이다 */
-const HEC_FIXED_FIELDS = ['salesCompany', 'salesName', 'salesTel'];
+/** 재발행이 원본 대신 고정값으로 덮는 칸 — toCommonFormData 의 SALES_DEFAULT 와 짝이다 */
+const FIXED_FIELDS = ['salesCompany', 'salesName', 'salesTel'];
 
 const DOCS: readonly DocSpec[] = [
   {
@@ -207,13 +207,11 @@ function DocReissueCard({
   /*
    * 이 서류에서 ★실제로 읽어 쓰는★ 칸 — 못 읽었다고 알릴 값은 이것뿐이다.
    *
-   * 현대엔지니어링의 모집대행사 셋은 템플릿 고정값으로 덮으므로(위 buildDoc) 원본에서
-   * 못 읽어도 결과가 달라지지 않는다. 그대로 세면 「모집대행사를 못 읽었습니다」가 뜨고
-   * 사람이 옛 PDF 를 다시 뒤진다 — 별지7호의 조사자 셋을 required 에서 뺀 것과 같은 이유다.
+   * 모집대행사 셋은 고정값으로 덮으므로(toCommonFormData) 원본에서 못 읽어도 결과가
+   * 달라지지 않는다. 그대로 세면 「모집대행사를 못 읽었습니다」가 뜨고 사람이 옛 PDF 를
+   * 다시 뒤진다 — 별지7호의 조사자 셋을 required 에서 뺀 것과 같은 이유다.
    */
-  const checked = cpo === 'hec'
-    ? doc.required.filter((key) => !HEC_FIXED_FIELDS.includes(key as string))
-    : doc.required;
+  const checked = doc.required.filter((key) => !FIXED_FIELDS.includes(key as string));
 
   const missing = result
     ? checked.filter((key) => {
@@ -470,15 +468,22 @@ function toCommonFormData(
     contractYear: f.contractYear ?? DEFAULT_YEAR,
     contractMonth: f.contractMonth ?? '',
     contractDay: f.contractDay ?? '',
-    salesCompany: f.salesCompany ?? '',
-    salesName: f.salesName ?? '',
-    salesTel: f.salesTel ?? '',
     /*
-     * ★결과서(별지7호)의 조사자 칸은 원본 스캔에서 읽은 값을 쓰지 않는다★ (한백 지시 2026-08-26).
-     * 조사는 한백 쪽에서 하므로 조사업체·조사자명·연락처는 운영사별 고정 모집대행사 값이고,
-     * 원본 서류에서 따오는 것은 그 표의 ★조사일★ 하나뿐이다(계약일 = 조사일).
-     * 별지5호의 모집대행사 칸은 그 현장의 사실이라 읽은 값을 그대로 쓴다.
+     * ★모집대행사·조사자는 늘 고정값이다 — 옛 서류에서 읽지 않는다★
+     * (한백 지시 2026-09-22 「서류재발행 기능에서 모집대행사는 항상 고정으로 해줘, 기존값들로」).
+     *
+     * 값의 정본은 lib/contract-form 의 SALES_DEFAULT 한 곳이고, 계약서 자동생성(/hec·/sk·
+     * /nice·/pluglink)의 기본값도 같은 자리를 본다 — 두 화면이 같은 서류를 만드는데 한쪽만
+     * 옛 대행사를 찍으면 갈린다. 대행사가 바뀌면 그 파일 한 줄만 고치면 둘 다 따라간다.
+     *
+     * ★두 번 뒤집힌 자리다★ — 2026-08-26 에는 「별지5호의 모집대행사는 그 현장의 사실이라
+     * 읽은 값을 쓴다」였고(조사자만 고정), 2026-09-16 에 현대엔지니어링만 고정으로,
+     * 이제 넷 다 고정이다. 옛 서류에서 따온 이름은 지금 누가 맡는지와 어긋난다.
+     * 원본에서 따오는 것은 그 표의 ★조사일★ 하나뿐이다(계약일 = 조사일).
      */
+    salesCompany: SALES_DEFAULT[cpo].company,
+    salesName: SALES_DEFAULT[cpo].name,
+    salesTel: SALES_DEFAULT[cpo].tel,
     surveyorCompany: SALES_DEFAULT[cpo].company,
     surveyorName: SALES_DEFAULT[cpo].name,
     surveyorTel: SALES_DEFAULT[cpo].tel,
@@ -524,22 +529,6 @@ async function fillLatestTemplate(
   if (cpo === 'hec') {
     const form: HecFormData = {
       ...common,
-      /*
-       * ★모집대행사는 템플릿의 값을 쓴다 — 옛 서류에서 읽지 않는다★
-       * (한백 지시 2026-09-16 「현대엔지니어링 템플릿에 있는 모집대행사 정보를 서류
-       * 재발행에도 적용해줘 (현대엔지니어링만)」).
-       *
-       * 계약서 자동생성(/hec)의 기본값과 같은 자리를 본다(SALES_DEFAULT.hec) — 두 화면이
-       * 같은 서류를 만드는데 한쪽만 옛 대행사를 찍으면 갈린다.
-       *
-       * ★2026-08-26 의 반대다★ — 그때는 「별지5호의 모집대행사는 그 현장의 사실이라 읽은
-       * 값을 쓴다」였다. 대행사가 (주) 우원으로 바뀐 뒤로는 옛 서류에서 따온 이름이
-       * 지금 누가 맡는지와 어긋난다. ★현대엔지니어링만★이다 — 나머지 셋은 읽은 값
-       * 그대로다(한백 지시).
-       */
-      salesCompany: SALES_DEFAULT.hec.company,
-      salesName: SALES_DEFAULT.hec.name,
-      salesTel: SALES_DEFAULT.hec.tel,
       custRepresentative: f.custRepresentative ?? '',
       siteManager: f.siteManager ?? '',
       parkingSlotsSlow: '',
