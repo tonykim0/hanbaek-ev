@@ -58,6 +58,22 @@ interface Line {
 /** 자체투자 현장에서 갈리는 교체유형 두 가지 */
 const SELF_REPLS = ['자체투자 (제자리교체)', '자체투자 (신규위치)'] as const satisfies readonly ReplType[];
 
+/**
+ * 대수 칸의 줄 — 이 사업구분·운영사에서 고를 수 있는 교체유형.
+ *
+ * ★자동채움과 화면이 같은 답을 봐야 한다★ — 갈라져 있던 탓에 판독이 읽은 대수가 갈 곳을
+ * 잃었다(한백 지적 2026-09-22 「계약서에 다 나와있는데 왜 그냥 내보낸거야」).
+ * 자동채움은 「자체투자면 모른다」로 뭉뚱그리고 칸 이름도 「환경부 신규」로 박아 두었는데,
+ *   · 플러그링크·나이스·현대엔지니어링은 자체투자를 안 가른다 — 칸이 하나뿐인데 비웠다
+ *   · 기설치 연동은 칸이 하나인데 「환경부 신규」라는 없는 칸에 적어 그대로 사라졌다
+ * 둘 다 조용히 0 대가 됐다.
+ */
+function replRowsOf(bizType: BizType | null, cpo: CpoName): ReplType[] {
+  if (bizType === '자체투자') return SPLITS_SELF_REPL.has(cpo) ? [...SELF_REPLS] : [SELF_REPLS[0]];
+  if (bizType === '기설치 연동') return ['기설치 연동'];
+  return ['환경부 신규'];
+}
+
 /** 임시 자리에 올라간 파일 한 장 — 칸 하나에 여러 장이 붙는다 */
 export interface StagedFile {
   filename: string;
@@ -231,20 +247,30 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
         filled.add('termYears');
       }
       /*
-       * 대수를 칸에 넣는 것은 축이 하나뿐일 때만 한다.
+       * 대수를 칸에 넣는 것은 ★칸이 하나뿐일 때★다.
        *
-       * 판독은 총 대수 하나만 준다(ExtractedMetadata.계약대수). 수전방식이 섞였거나
-       * 자체투자(교체유형 둘)면 어느 칸에 몇 기인지 알 수 없다. 한 칸에 몰아넣으면
-       * 화면이 계약서와 다른 말을 하고, 그대로 접수되면 단가가 통째로 틀어진다.
+       * 판독은 총 대수 하나만 준다(ExtractedMetadata.계약대수). 칸이 여럿이면 어느 칸에
+       * 몇 기인지 알 수 없다 — 한 칸에 몰아넣으면 화면이 계약서와 다른 말을 하고, 그대로
+       * 접수되면 단가가 통째로 틀어진다.
+       *
+       * ★칸 목록은 화면과 같은 함수에게 묻는다★(replRowsOf) — 손으로 「환경부 신규」라
+       * 박아 두었던 탓에 기설치 연동의 대수가 없는 칸으로 들어가 사라졌다.
+       * ★못 채웠으면 말한다★ — 조용히 비워 두면 사람이 그대로 접수한다(HB-2026-184).
        */
-      const oneRepl = f.bizType !== '자체투자';
+      const rows = replRowsOf(f.bizType ?? null, (f.cpo ?? cpo) as CpoName);
       const onePower = f.powerType !== '한전불입+모자분리';
-      if (f.qty && oneRepl && onePower) {
-        const col = f.powerType === '모자분리' || f.powerType === '한전불입' ? f.powerType : null;
-        setQty({ [`환경부 신규|${col ?? ''}`]: f.qty });
+      const col = f.powerType === '모자분리' || f.powerType === '한전불입' ? f.powerType : null;
+      if (f.qty && rows.length === 1 && onePower) {
+        setQty({ [`${rows[0]}|${col ?? ''}`]: f.qty });
         filled.add('qty');
       } else {
         setQty({});
+        if (f.qty) {
+          data.warnings.push(
+            `계약서에서 ${f.qty}기를 읽었지만 칸이 여럿이라 못 넣었습니다`
+            + ` — ${rows.length > 1 ? '교체유형' : '수전방식'}별로 몇 기인지 직접 적어주세요.`
+          );
+        }
       }
 
       /* 같은 칸에 둘이 와도 둘 다 담는다 — 접었다가 옛 서류가 남는 자리였다 */
@@ -343,10 +369,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
    * 안 가르는 운영사에 두 행을 펴 두었더니 한 현장의 11기가 「10대 + 1대」 두 라인으로
    * 갈렸다 — 강원 강릉 일송아파트가 그것이다(한백 확인).
    */
-  const replRows: ReplType[] =
-    bizType === '자체투자'
-      ? (SPLITS_SELF_REPL.has(cpo) ? [...SELF_REPLS] : [SELF_REPLS[0]])
-      : bizType === '기설치 연동' ? ['기설치 연동'] : ['환경부 신규'];
+  const replRows: ReplType[] = replRowsOf(bizType, cpo);
   /** 대수 칸의 열 — 수전방식이 정한다 */
   const powerCols: Array<Exclude<PowerType, '한전불입+모자분리'> | null> = mixed
     ? ['한전불입', '모자분리']
@@ -788,6 +811,25 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
       {check.errors.length > 0 && (
         <ul className="flex flex-col gap-1 rounded-xl border-l-[3px] border-slate-300 bg-slate-50 px-4 py-3 text-xs font-semibold leading-relaxed text-slate-600">
           {check.errors.map((e) => <li key={e}>{e}</li>)}
+        </ul>
+      )}
+
+      {/*
+        * ★막지는 않지만 보이게 한다★ (한백 지적 2026-09-22 「계약서에 다 나와있는데 왜
+        * 계약서류 접수단계에서 이걸 그냥 내보낸거야」).
+        *
+        * checkDraft 는 「대수를 아직 안 적었습니다」를 warnings 로 내고 있었는데 ★그 목록을
+        * 아무 데서도 안 그렸다★ — 만들어 놓고 안 보여 준 것이다. 그래서 대수 0 인 현장이
+        * 아무 말도 없이 나갔다(HB-2026-184).
+        *
+        * 막지 않는 것은 그대로다 — 「기본 현장정보만 입력해서 일단 계약접수 할 수 있게」
+        * (한백 지시 2026-09-14). 대수·서류는 며칠에 걸쳐 모이고, 그동안 현장이 콘솔에
+        * 없으면 진행 상황을 적을 자리도 없다. 그래서 색이 다르다: 막는 것은 회색(위),
+        * 알리는 것은 노랑이다.
+        */}
+      {check.warnings.length > 0 && (
+        <ul className="flex flex-col gap-1 rounded-xl border-l-[3px] border-amber-500 bg-amber-50/70 px-4 py-3 text-xs font-semibold leading-relaxed text-amber-900">
+          {check.warnings.map((w) => <li key={w}>{w}</li>)}
         </ul>
       )}
     </div>
