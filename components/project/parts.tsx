@@ -8,6 +8,7 @@
  */
 import type { ProjectDocument } from '@/types/project';
 import type { DocReq } from '@/lib/doc-rules';
+import { Val, type EmptyKind } from '@/components/ui';
 
 /**
  * 머리말의 사실 한 칸 — 라벨 위, 값 아래 (2026-08-27).
@@ -17,12 +18,28 @@ import type { DocReq } from '@/lib/doc-rules';
  * 적혀 있더라」를 매번 다시 찾아야 했다. 세로로 쌓으면 값이 한 열에 서서 눈이 자리를
  * 기억한다 — 머리말의 모든 사실이 같은 격자(FACT_GRID)를 쓴다.
  */
-export function Fact({ label, value }: { label: string; value: string | null }) {
-  if (!value) return null;
+export function Fact({
+  label, value, empty,
+}: {
+  label: string;
+  value: string | null;
+  /**
+   * 비었을 때 무슨 없음인가 — ★주면 칸이 자리를 지킨다★(화면 규칙 6).
+   *
+   * 안 주면 예전처럼 칸이 통째로 사라진다. 대개는 그게 맞다(아직 올 때가 아닌 값이
+   * 머리말을 길게 만들 뿐이다). 다만 ★넣어야 하는데 안 넣은 값★은 사라지면 안 된다 —
+   * 빠뜨린 것과 원래 없는 것이 같은 모양이 된다(한백 지적 2026-09-22 「계약대수 0대
+   * (라인 0)로 들어왔는데 이건 대체 뭐야?」).
+   */
+  empty?: EmptyKind;
+}) {
+  if (!value && !empty) return null;
   return (
     <div className="min-w-0">
       <dt className="text-tiny font-bold tracking-[0.04em] text-slate-400">{label}</dt>
-      <dd className="mt-0.5 break-keep font-bold text-slate-800">{value}</dd>
+      <dd className="mt-0.5 break-keep font-bold text-slate-800">
+        {value ? value : <Val value={null} when={empty} />}
+      </dd>
     </div>
   );
 }

@@ -680,8 +680,25 @@ function SiteHeader({
           </>
         ) : (
           <>
-            <Fact label="계약대수" value={`${qty}대 (라인 ${lines.length})`} />
-            <Fact label="계약연수" value={terms.length ? `${terms.join('·')}년` : null} />
+            {/*
+              * ★0 대는 「미지정」이다★ (한백 지적 2026-09-22 「계약대수 0대 (라인 0)로
+              * 들어왔는데 이건 대체 뭐야?」). 접수는 대수를 안 적어도 통과하므로
+              * (lib/intake-validate — 계약접수 칸은 처음 모으는 자리다) 라인이 0 개인
+              * 현장이 실제로 들어온다. 그때 「0대 (라인 0)」이라 적으면 ★세었고 0★으로
+              * 읽힌다 — 안 적은 것과 0 은 다른 말이다(화면 규칙 10). 넣는 자리는 계약 탭이다.
+              *
+              * 여럿일 때 「묶음」이라 부른다 — 계약 탭의 그 이름과 같아야 한 곳만 익힌다.
+              */}
+            <Fact
+              label="계약대수"
+              value={lines.length === 0 ? null : `${qty}대 (묶음 ${lines.length})`}
+              empty="miss"
+            />
+            <Fact
+              label="계약연수"
+              value={terms.length ? `${terms.join('·')}년` : null}
+              empty="miss"
+            />
           </>
         )}
         <EditableFact
