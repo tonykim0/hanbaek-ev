@@ -38,7 +38,20 @@ const anthropic = new Anthropic({
 const MODEL = 'claude-opus-5';
 /** Claude PDF 입력 한도(요청 32MB·600페이지)와 판독 시간을 함께 고려한 상한 */
 const MAX_PAGES = 60;
-const MAX_PDF_BYTES = 20 * 1024 * 1024;
+/**
+ * 한 번에 실어 보낼 수 있는 PDF 크기 — ★거절하는 선이 아니라 잘라 담는 선이다.★
+ *
+ * 20MB 였고, 넘으면 통째로 거절했다(한백 지적 2026-09-23 「PDF 20메가 이상하게해줘」 —
+ * 20.2MB 짜리 컨설팅결과서가 0.2MB 때문에 막혔다).
+ *
+ * 왜 32MB 가 아닌가: 요청 한도가 32MB 인데 PDF 는 base64 로 실려 ★4/3 배★가 된다.
+ * 23MB × 1.333 ≈ 30.7MB 라 프롬프트까지 넣고도 남는다. 이보다 키우면 API 가 거절한다.
+ *
+ * 넘으면 이제 거절하지 않는다 — 앞에서부터 들어가는 만큼만 잘라 보내고, 몇 쪽을 봤는지
+ * 화면이 적는다(ImportPanel 이 이미 「전체 N페이지 중 앞 M페이지만」을 적는다).
+ * 계약서류는 앞쪽에 계약서·별지5호·별지7호가 모두 들어 있다 — 쪽수 상한과 같은 근거다.
+ */
+const SEND_BUDGET_BYTES = 23 * 1024 * 1024;
 
 const CALL_TIMEOUT_MS = 240_000;
 const MAX_ATTEMPTS = 2;
@@ -204,19 +217,18 @@ export async function extractFormFromPdf(
 ): Promise<FormImportResult> {
   const { fileName, cpoHint } = options;
 
-  if (options.pdf.length > MAX_PDF_BYTES) {
-    throw new FormImportError(
-      `PDF가 너무 큽니다 (${formatMb(options.pdf.length)}MB). ` +
-        `${MAX_PDF_BYTES / 1024 / 1024}MB 이하로 줄이거나 계약서·별지5호·별지7호 페이지만 잘라서 올려주세요.`,
-      'PDF_TOO_LARGE'
-    );
-  }
-
   const limited = await limitPages(options.pdf);
-  const { analyzedPages, totalPages } = limited;
+  const { totalPages } = limited;
   // 뒤집힌 스캔은 Opus 도 판독을 그르치므로(실측: 180° 페이지를 앞 서류의 연속으로
   // 판정) 판독 전에 페이지 방향을 물리적으로 바로잡습니다.
-  const pdf = await uprightPdf(limited.pdf, 'claude-import');
+  const upright = await uprightPdf(limited.pdf, 'claude-import');
+  /*
+   * ★크기는 방향 보정 뒤에 잰다★ — 보정은 PDF 를 다시 쓰므로 크기가 달라진다. 보내기
+   * 직전의 것을 재야 「보낼 수 있는가」를 맞게 판단한다.
+   */
+  const fitted = await fitToBudget(upright, limited.analyzedPages);
+  const pdf = fitted.pdf;
+  const analyzedPages = fitted.pages;
 
   const prompt = buildFormImportPrompt({
     fileName,
@@ -341,6 +353,43 @@ function parseJson(message: Anthropic.Message): unknown {
 // ─────────────────────────────────────────────
 // 페이지 제한
 // ─────────────────────────────────────────────
+
+/**
+ * 보낼 수 있는 크기에 맞춰 뒤쪽 페이지를 덜어낸다 — ★거절하지 않는다.★
+ *
+ * 한 쪽씩 깎으면 큰 파일에서 수십 번 다시 쓰게 되므로, 바이트/쪽으로 어림잡아 한 번에
+ * 줄이고 몇 번만 다듬는다. 스캔 PDF 는 쪽마다 크기가 고르지 않아 어림이 빗나갈 수 있어서
+ * 그때만 한 번 더 돈다.
+ *
+ * 한 쪽으로도 안 들어가면 그때는 어쩔 수 없다 — 그 한 쪽이 23MB 를 넘는 스캔이다.
+ */
+async function fitToBudget(
+  pdf: Buffer,
+  pages: number
+): Promise<{ pdf: Buffer; pages: number }> {
+  if (pdf.length <= SEND_BUDGET_BYTES) return { pdf, pages };
+
+  const src = await PDFDocument.load(pdf, { ignoreEncryption: true });
+  let keep = pages;
+  let out = pdf;
+  for (let round = 0; round < 6 && out.length > SEND_BUDGET_BYTES && keep > 1; round += 1) {
+    const est = Math.floor(keep * (SEND_BUDGET_BYTES / out.length));
+    keep = Math.max(1, Math.min(keep - 1, est));
+    const doc = await PDFDocument.create();
+    const copied = await doc.copyPages(src, Array.from({ length: keep }, (_, i) => i));
+    for (const page of copied) doc.addPage(page);
+    out = Buffer.from(await doc.save());
+  }
+
+  if (out.length > SEND_BUDGET_BYTES) {
+    throw new FormImportError(
+      `PDF 한 쪽이 너무 큽니다 (${formatMb(out.length)}MB). 스캔 해상도를 낮춰 다시 저장해주세요.`,
+      'PDF_TOO_LARGE'
+    );
+  }
+  console.log(`[claude-import] 크기 때문에 앞 ${keep}쪽만 보냅니다 (${formatMb(pdf.length)}MB → ${formatMb(out.length)}MB)`);
+  return { pdf: out, pages: keep };
+}
 
 async function limitPages(
   pdf: Buffer

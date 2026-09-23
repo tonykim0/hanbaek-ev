@@ -268,8 +268,15 @@ function DocReissueCard({
         {filename && result && (
           <div className="space-y-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
             <p className="text-sm font-bold text-emerald-800">다운로드 완료 — {filename}</p>
+            {/*
+              ★몇 쪽을 안 봤는지도 적는다★ (2026-09-23) — 큰 PDF 는 들어가는 만큼만 앞에서
+              잘라 보낸다(claude-import fitToBudget). 「30페이지를 판독했습니다」만 적으면
+              뒤쪽에 있던 값이 왜 안 채워졌는지 화면 어디에도 없다.
+            */}
             <p className="text-xs text-emerald-700">
               {result.analyzedPages}페이지를 판독했습니다.
+              {result.totalPages > result.analyzedPages
+                && ` (전체 ${result.totalPages}페이지 중 앞 ${result.analyzedPages}페이지만 — 뒤쪽 값은 직접 확인해주세요)`}
             </p>
             {result.issues.length > 0 && (
               <Notice title="서류에서 감지한 확인사항" tone="amber">

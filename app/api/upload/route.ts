@@ -58,8 +58,15 @@ export async function POST(request: Request) {
       pathname,
       validUntil,
       allowedContentTypes: PDF_CONTENT_TYPES,
-      // 스캔 PDF — Claude 입력 한도에 맞춘 상한
-      maximumSizeInBytes: 30 * 1024 * 1024,
+      /*
+       * 스캔 PDF 상한 — ★판독 한도가 아니라 올리기 한도다★ (2026-09-23).
+       *
+       * 30MB 였다. 판독이 한 번에 실어 보낼 수 있는 양(23MB)에 맞춰 둔 값인데, 판독이
+       * 이제 넘치는 만큼 앞에서부터 잘라 보내므로(claude-import fitToBudget) 여기서 막을
+       * 이유가 없어졌다 — 막으면 「앞 몇 쪽이라도 읽어 채우기」가 통째로 사라진다.
+       * 접수 ZIP 과 같은 선으로 60MB 를 둔다.
+       */
+      maximumSizeInBytes: 60 * 1024 * 1024,
     });
 
     /* 경로도 같이 돌려준다 — 클라이언트가 지으면 토큰이 묶인 경로와 어긋난다 */
