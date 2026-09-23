@@ -97,7 +97,12 @@ export function SettlementTab({
         * 화면을 가로질러야 했다. 지급 내역 밑으로 내렸다가(2026-08-28) 이제 탭 맨 위다
         * (2026-09-18) — 다른 탭의 진행현황과 같은 자리여야 사람이 한 곳만 익힌다.
         */}
-      <ContractLines lines={lines} cpo={detail.project.cpo} vis={vis} />
+      <ContractLines
+        lines={lines}
+        cpo={detail.project.cpo}
+        vis={vis}
+        passThrough={isPassThroughSite(detail.project)}
+      />
 
       <PaymentSection
         projectId={detail.project.id}
@@ -626,7 +631,13 @@ function RuleFact({
  * 감사 기록의 일이고, 이 표는 무엇이 적용 중인지만 말한다.
  */
 function ContractLines(
-  { lines, cpo, vis }: { lines: ProjectDetail['lines']; cpo: CpoName; vis: Visibility }
+  { lines, cpo, vis, passThrough }: {
+    lines: ProjectDetail['lines'];
+    cpo: CpoName;
+    vis: Visibility;
+    /** 받은 만큼 내려주는 현장 — 대당 값이 케이스가 아니라 실제로 내려주는 값이다 */
+    passThrough: boolean;
+  }
 ) {
   return (
     <section>
@@ -666,10 +677,21 @@ function ContractLines(
                     <span className="text-slate-400">미지정 — 위 「지급조건」에서 고릅니다</span>
                   )}
                 </Td>
-                <Money show={vis.sales} value={l.rule?.salesUnit ?? null} />
-                <Money show={vis.cons} value={l.rule?.consUnit ?? null} />
+                {/*
+                  ★적용조건은 이 현장에 실제로 적용되는 값이다★ (한백 지적 2026-09-23).
+                  패스스루 현장은 마진까지 내려가므로 시공비/대에 그것이 들어가고, 배포단가가
+                  곧 턴키가 된다. 케이스에 적힌 값은 단가표가 말한다 — 여기 적을 것은
+                  「그래서 이 현장은 대당 얼마가 내려가나」다.
+                */}
+                <Money show={vis.sales} value={payoutUnitOf(l.rule, '영업비', passThrough)} />
+                <Money show={vis.cons} value={payoutUnitOf(l.rule, '시공비', passThrough)} />
                 {vis.sales && vis.cons && (
-                  <Money show value={l.rule ? distributionUnit(l.rule) : null} />
+                  <Money
+                    show
+                    value={l.rule
+                      ? (passThrough ? turnkeyUnit(l.rule) : distributionUnit(l.rule))
+                      : null}
+                  />
                 )}
               </tr>
             ))}
@@ -929,7 +951,12 @@ function PaymentSection({
           const steps = payoutStepsOf(side.plan, sideSum);
           return {
             ...side,
-            unit: unitOf((r) => (side.kind === '영업비' ? r.salesUnit : r.consUnit)),
+            /*
+             * ★대당도 실제로 내려주는 값이다★ (한백 지적 2026-09-23 「표에는 20만원 제외하고
+             * 전달하는걸로 나와있지 않아?」). 패스스루 현장은 총액에 마진이 들어가 있는데
+             * 대당만 케이스 값(마진 뺀 것)을 적고 있었다 — 한 표가 두 말을 했다.
+             */
+            unit: unitOf((r) => payoutUnitOf(r, side.kind, passThrough)),
             adjust, steps, paid,
             /** 회차에 붙은 조정 — [미귀속, 1차분, 2차분]. 회차 칸이 「왜 계획이 움직였나」를 적는다 */
             adjustBy: sideSum.adjustBy,
