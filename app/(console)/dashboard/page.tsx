@@ -139,7 +139,13 @@ export default async function DashboardPage({
         return { value, projects: list.length, qty, passQty, pass };
       })
       .filter((row) => row.qty > 0)
-      .sort((a, b) => b.qty - a.qty);
+      /*
+       * ★패스스루 업체는 맨 아래다★ (한백 지시 2026-09-23 「영업사 시공사에서 패스스루는
+       * 맨 아래로 내려줘」). 대수로 줄을 세우면 고덕아이파크 79대 때문에 화두가 첫 줄에
+       * 서는데, 이 목록을 보는 눈은 「우리가 어디서 얼마나 수주했나」라서 성질이 다른 줄이
+       * 맨 위에 서면 읽는 순서가 어긋난다. 빼지는 않는다 — 아래에 그대로 둔다.
+       */
+      .sort((a, b) => Number(a.pass) - Number(b.pass) || b.qty - a.qty);
   };
 
   const period = year === thisYear ? `${Number(thisMonth.slice(5, 7))}월 기준` : '연간';
@@ -375,22 +381,29 @@ function Breakdown({
   if (rows.length === 0) return null;
 
   const total = rows.reduce((sum, row) => sum + row.qty, 0);
-  const head = rows.slice(0, BREAKDOWN_MAX);
-  const tail = rows.slice(BREAKDOWN_MAX);
+  /*
+   * ★패스스루 줄은 「그 밖」에 접히지 않는다★ — 맨 아래로 내리면 상위 다섯에서 밀려
+   * 이름이 사라진다. 아래에 두라는 것이지 감추라는 것이 아니다.
+   */
+  const ours = rows.filter((row) => !row.pass);
+  const passes = rows.filter((row) => row.pass);
+  const head = ours.slice(0, BREAKDOWN_MAX);
+  const tail = ours.slice(BREAKDOWN_MAX);
   const shown: Array<{
     value: string; projects: number; qty: number; passQty: number; pass?: boolean; rest?: boolean;
-  }> = tail.length
-    ? [
-        ...head,
-        {
+  }> = [
+    ...head,
+    ...(tail.length
+      ? [{
           value: `그 밖 ${tail.length}곳`,
           projects: tail.reduce((sum, row) => sum + row.projects, 0),
           qty: tail.reduce((sum, row) => sum + row.qty, 0),
           passQty: tail.reduce((sum, row) => sum + row.passQty, 0),
           rest: true,
-        },
-      ]
-    : head;
+        }]
+      : []),
+    ...passes,
+  ];
 
   return (
     <section className={`${PANEL} p-5`}>
