@@ -19,7 +19,8 @@ import { stampOf, today } from '@/lib/date';
 import { isHanbaek } from '@/lib/roles';
 import { asProcessStatus, stepsOf } from '@/lib/process';
 import {
-  checkPayoutEntry, checkSafetyFee, entryTypeOf, payoutPrerequisiteBlockersOf, payoutReleaseOf,
+  checkPayoutEntry, checkSafetyFee, entryTypeOf, isPassThroughSite, payoutUnitOf,
+  payoutPrerequisiteBlockersOf, payoutReleaseOf,
   payoutSideOf, payoutStepsOf, safetyFeeApplies,
 } from '@/lib/settlement';
 import {
@@ -875,10 +876,11 @@ function openStepFor(
   });
   if (prerequisites.length > 0) throw new Error(`${name} ${kind} — ${prerequisites[0]}`);
 
+  /* 화면과 같은 함수로 센다 — 갈리면 표에 적힌 금액과 원장에 박히는 금액이 달라진다 */
+  const pass = isPassThroughSite(r.project);
   const plan = r.lines.reduce((n, l) => {
-    const rule = l.pricingRuleId ? rules.get(l.pricingRuleId) : null;
-    const unit = kind === '영업비' ? rule?.salesUnit : rule?.consUnit;
-    return n + (unit ?? 0) * l.qty;
+    const rule = l.pricingRuleId ? rules.get(l.pricingRuleId) ?? null : null;
+    return n + (payoutUnitOf(rule, kind, pass) ?? 0) * l.qty;
   }, 0);
   const { open } = payoutStepsOf(plan, payoutSideOf(r.payoutEntries ?? [], kind));
   if (!open) throw new Error(`${name} ${kind} — 확정할 회차가 없습니다 (잔액 0 이거나 이미 확정됐습니다).`);

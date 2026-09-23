@@ -15,6 +15,7 @@ import type {
   SettlementRule, SettlementStep, SettlementStepRule, StepBasis, StepState, Trigger,
 } from '@/types/project';
 import { PAYOUT_CATEGORIES, PAYOUT_KINDS } from '@/types/project';
+import { normalizeOrg } from '@/lib/roles';
 
 /** 턴키 = 영업비 + 시공비 + 한백마진. 매트릭스 28행 전부 검산됨. */
 /**
@@ -424,6 +425,64 @@ export function settlementForProject(
   });
 
   return steps;
+}
+
+/**
+ * ── 패스스루 협업사 — ★받은 것을 그대로 내려준다★ (한백 지시 2026-09-22) ──────────
+ *
+ * 「화두에너지솔루션은 우리 하도급사라기 보다는 협업사라서 우리가 받은 금액을 그대로
+ * 내려줘. 화두에너지솔루션만 그렇게 결정.」
+ *
+ * 보통은 우리가 운영사에게 턴키로 받아 영업비·시공비를 내려주고 마진을 남긴다. 이 회사는
+ * 현장을 물어오고 공사까지 다 하므로, 우리는 운영사 계약의 그릇만 빌려준다 — 그래서 그
+ * 현장에서 한백 몫이 0 이고, 받은 기성이 그대로 내려간다.
+ *
+ * ★한백이 손으로 하던 일이다★ — 의정부 호원동롯데(HB-2026-169) 원장에 2026-09-15 자로
+ * 「시공비 재정산 +600,000 — 턴키비용 1기당 240만원 정산 > 1기당 20만원 추가」가 적혀 있다.
+ * 마진 20만×3대를 시공비에 얹어 총액을 턴키에 맞춘 것이다. 그 손일을 계산이 대신한다.
+ *
+ * ★양쪽을 다 맡은 현장에서만 선다.★ 영업만 맡고 시공은 딴 회사가 하는 현장이라면 우리가
+ * 중개만 한 것이 아니므로 패스스루가 성립하지 않는다 — 그때는 마진을 그 딴 회사에게
+ * 내려주는 꼴이 된다. 그래서 두 자리가 같은 회사일 때만 본다.
+ *
+ * ★마진은 시공비 줄에 얹는다★ — 한백이 손으로 적을 때 그렇게 적었다(위 원장). 어느 줄에
+ * 얹든 그 회사에게 가는 총액은 같지만, 적는 자리가 사람이 하던 것과 같아야 원장을 읽을 때
+ * 같은 이야기로 읽힌다.
+ *
+ * 시점(회차를 기성 차수에 맞추는 것)은 여기서 손대지 않는다 — 「시점은 나중에 따로 정하자」
+ * (한백 2026-09-23). 지금 바뀌는 것은 금액뿐이다.
+ */
+export const PASS_THROUGH_ORGS: ReadonlySet<string> = new Set(['화두에너지솔루션']);
+
+/** 그 회사가 패스스루 협업사인가 — 이름의 사소한 차이는 normalizeOrg 가 흡수한다 */
+export function isPassThroughOrg(org: string | null | undefined): boolean {
+  const n = normalizeOrg(org);
+  return n !== null && PASS_THROUGH_ORGS.has(n);
+}
+
+/** 이 현장이 패스스루인가 — 한 패스스루 회사가 영업·시공을 다 맡았을 때만 */
+export function isPassThroughSite(p: { salesOrg: string | null; gcOrg: string | null }): boolean {
+  const sales = normalizeOrg(p.salesOrg);
+  return sales !== null && sales === normalizeOrg(p.gcOrg) && isPassThroughOrg(sales);
+}
+
+/**
+ * 그 구분으로 내려줄 대당 금액 — ★화면과 서버가 같은 함수를 봐야 한다.★
+ *
+ * 계획을 두 곳에서 각자 세고 있었다(payout-board 의 payoutsOfDetail · store/payouts 의
+ * openStepFor). 한쪽만 고치면 표에 적힌 금액과 확정이 원장에 박는 금액이 달라진다 —
+ * 사람은 표를 보고 누르는데 나가는 돈은 다른 값이 된다.
+ */
+export function payoutUnitOf(
+  rule: { salesUnit: number | null; consUnit: number | null; margin: number | null } | null,
+  kind: PayoutKind,
+  passThrough: boolean
+): number | null {
+  if (!rule) return null;
+  if (kind === '영업비') return rule.salesUnit;
+  if (rule.consUnit === null) return null;
+  /* 마진까지 얹어야 합이 턴키가 된다 — 받은 것을 그대로 내려주는 뜻이 이것이다 */
+  return passThrough ? rule.consUnit + (rule.margin ?? 0) : rule.consUnit;
 }
 
 /**

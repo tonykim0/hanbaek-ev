@@ -6,7 +6,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  adjustEntriesOf, checkPayoutEntry, payoutMilestonesOf, payoutPrerequisiteBlockersOf,
+  adjustEntriesOf, checkPayoutEntry, isPassThroughSite, payoutMilestonesOf,
+  payoutPrerequisiteBlockersOf, payoutUnitOf,
   payoutReleaseOf,
   checkSettlementSteps, payInstallments, payoutStepsOf, stepAmounts, stepUnits,
   settlementRuleNameOf, settlementStepsKeyOf, turnkeyUnit,
@@ -411,5 +412,59 @@ describe('payoutPrerequisiteBlockersOf — 지급조건은 「모든 필수 서�
       '단가 미지정 2건 — 지급 금액 확정 불가',
       '송금 대상 미지정',
     ]);
+  });
+});
+
+/*
+ * ★받은 것을 그대로 내려준다★ (한백 지시 2026-09-22 「화두에너지솔루션은 우리 하도급사라기
+ * 보다는 협업사라서 우리가 받은 금액을 그대로 내려줘. 화두에너지솔루션만 그렇게 결정」).
+ *
+ * 한백이 손으로 하던 일이다 — 의정부 호원동롯데 원장에 「시공비 재정산 +600,000 — 턴키비용
+ * 1기당 240만원 정산 > 1기당 20만원 추가」가 적혀 있다. 그 손일을 계산이 대신한다.
+ */
+describe('패스스루 협업사 — 받은 것을 그대로 내려준다', () => {
+  const rule = { salesUnit: 1_200_000, consUnit: 1_000_000, margin: 200_000 };
+
+  it('그 회사가 영업·시공을 다 맡은 현장만 패스스루다', () => {
+    expect(isPassThroughSite({ salesOrg: '화두에너지솔루션', gcOrg: '화두에너지솔루션' })).toBe(true);
+    /* 한쪽만 맡으면 우리가 중개만 한 것이 아니다 — 마진을 딴 회사에게 주는 꼴이 된다 */
+    expect(isPassThroughSite({ salesOrg: '화두에너지솔루션', gcOrg: '대상전력' })).toBe(false);
+    expect(isPassThroughSite({ salesOrg: '대상전력', gcOrg: '화두에너지솔루션' })).toBe(false);
+    expect(isPassThroughSite({ salesOrg: '대상전력', gcOrg: '대상전력' })).toBe(false);
+    /* 둘 다 비어 있는 현장을 패스스루로 보면 안 된다 */
+    expect(isPassThroughSite({ salesOrg: null, gcOrg: null })).toBe(false);
+  });
+
+  it('마진은 시공비 줄에 얹힌다 — 합이 턴키가 된다', () => {
+    expect(payoutUnitOf(rule, '영업비', true)).toBe(1_200_000);
+    expect(payoutUnitOf(rule, '시공비', true)).toBe(1_200_000); // 100만 + 마진 20만
+    const turnkey = turnkeyUnit(rule);
+    expect(payoutUnitOf(rule, '영업비', true)! + payoutUnitOf(rule, '시공비', true)!).toBe(turnkey);
+  });
+
+  it('패스스루가 아니면 예전 그대로다 — 다른 협력사는 하나도 안 바뀐다', () => {
+    expect(payoutUnitOf(rule, '영업비', false)).toBe(1_200_000);
+    expect(payoutUnitOf(rule, '시공비', false)).toBe(1_000_000);
+  });
+
+  /* 단가가 안 붙은 라인은 계획을 셀 수 없다 — 0 으로 지어내지 않는다 */
+  it('단가가 없으면 null 이다', () => {
+    expect(payoutUnitOf(null, '시공비', true)).toBeNull();
+    expect(payoutUnitOf({ salesUnit: 1, consUnit: null, margin: 2 }, '시공비', true)).toBeNull();
+  });
+
+  /* 실제 두 현장으로 검산한다 (2026-09-23 프로덕션 실측) */
+  it('의정부 호원동롯데 — 3대, 기성 720만과 지급 계획이 같아진다', () => {
+    const qty = 3;
+    const 기성 = 2_400_000 * qty;
+    const 지급 = (payoutUnitOf(rule, '영업비', true)! + payoutUnitOf(rule, '시공비', true)!) * qty;
+    expect(지급).toBe(기성);
+  });
+
+  it('대구 진천역현대2차 — 4대, 기성 920만과 같아진다', () => {
+    const hec = { salesUnit: 1_000_000, consUnit: 1_100_000, margin: 200_000 };
+    const qty = 4;
+    expect((payoutUnitOf(hec, '영업비', true)! + payoutUnitOf(hec, '시공비', true)!) * qty)
+      .toBe(2_300_000 * qty);
   });
 });

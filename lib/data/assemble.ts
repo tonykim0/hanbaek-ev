@@ -24,13 +24,14 @@ import type {
   ReplType,
   Settlement,
   SettlementRule,
+  PayoutKind,
   SettlementStep,
   SettlementSummary,
 } from '@/types/project';
 import { bizTypeOfRepl } from '@/types/project';
 import { buildDocContext, DOC_KEYS, evaluateDocs, PROCESS_DOCS } from '@/lib/doc-rules';
 import {
-  payoutMilestonesOf,
+  isPassThroughSite, payoutMilestonesOf, payoutUnitOf,
   entryTypeOf, payoutSideOf, safetyFeeApplies, safetyFeeCollected, settlementForProject,
 } from '@/lib/settlement';
 import { contractStateOf, deriveStage, docsOutsideConsole, stalledDaysSince } from '@/lib/stage';
@@ -382,6 +383,14 @@ function nextStepOf(
  */
 export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: SettleMap): SettlementSummary {
   const d = toDetail(r, rules, settles);
+  /*
+   * ★패스스루 협업사 현장인가★ (한백 지시 2026-09-22) — 받은 것을 그대로 내려주는 현장이다.
+   * 시공비 계획에 마진이 얹히므로(payoutUnitOf) 아래 마진 식이 저절로 0 이 된다 — 사실이
+   * 그렇다: 그 현장에서 한백이 남기는 것이 없다.
+   */
+  const pass = isPassThroughSite(r.project);
+  const planOf = (kind: PayoutKind) =>
+    d.lines.reduce((n, l) => n + (payoutUnitOf(l.rule, kind, pass) ?? 0) * l.qty, 0);
   // 이 요약은 한백 전용이다 — toDetail 이 admin 을 늘 채우므로 여기서는 있다고 본다
   const admin = d.admin!;
   const steps = admin.steps;
@@ -440,8 +449,8 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
     gcOrg: d.project.gcOrg,
     payoutMilestones: payoutMilestonesFor(r),
     salesPayoutDocsMissing: d.contract.payoutDocsMissing,
-    salesTotal: d.lines.reduce((n, l) => n + (l.rule?.salesUnit ?? 0) * l.qty, 0),
-    consTotal: d.lines.reduce((n, l) => n + (l.rule?.consUnit ?? 0) * l.qty, 0),
+    salesTotal: planOf('영업비'),
+    consTotal: planOf('시공비'),
     /*
      * ★한백 몫 = 받을 기성 − 내려줄 지급★ (CLAUDE.md 「돈의 흐름」).
      *
@@ -465,8 +474,8 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
       0
     )
       + (fee.safetyFee ?? 0)
-      - d.lines.reduce((n, l) => n + (l.rule?.salesUnit ?? 0) * l.qty, 0)
-      - d.lines.reduce((n, l) => n + (l.rule?.consUnit ?? 0) * l.qty, 0),
+      - planOf('영업비')
+      - planOf('시공비'),
     unpricedLines: d.lines.filter((l) => !l.rule).length,
     salesAdjust: sales.adjust,
     salesPaid: sales.paid,

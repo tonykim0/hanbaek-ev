@@ -13,7 +13,8 @@ import type {
   ProjectDetail, TaxInvoice,
 } from '@/types/project';
 import {
-  payoutMilestonesOf, payoutPrerequisiteBlockersOf, payoutReleaseOf, payoutSideOf, payoutStepsOf,
+  isPassThroughSite, payoutMilestonesOf, payoutPrerequisiteBlockersOf, payoutReleaseOf,
+  payoutSideOf, payoutStepsOf, payoutUnitOf,
 } from '@/lib/settlement';
 import { today } from '@/lib/date';
 import { canWrite, isHanbaek, normalizeOrg, type Role, type Visibility } from '@/lib/roles';
@@ -36,8 +37,9 @@ export function payoutsOfDetail(d: ProjectDetail, vis: Visibility): PayoutRowInp
 
   const build = (kind: PayoutKind): PayoutRowInput => {
     const side = payoutSideOf(d.payoutEntries, kind);
-    const unit = (l: ProjectDetail['lines'][number]) =>
-      kind === '영업비' ? l.rule?.salesUnit ?? null : l.rule?.consUnit ?? null;
+    /* 패스스루 현장은 시공비 줄에 마진이 얹혀 총액이 턴키가 된다 (lib/settlement) */
+    const pass = isPassThroughSite(d.project);
+    const unit = (l: ProjectDetail['lines'][number]) => payoutUnitOf(l.rule, kind, pass);
     return {
       key: `${d.project.id}|${kind}`,
       projectId: d.project.id,
