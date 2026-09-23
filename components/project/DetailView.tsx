@@ -17,7 +17,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { BatchFinal, ContractState, ProjectDetail, SettlementRuleChoice } from '@/types/project';
 import { BIZ_TYPES, CPO_NAMES, POWER_TYPES, subsidized, TERM_YEARS } from '@/types/project';
-import { safetyFeeApplies } from '@/lib/settlement';
+import { isPassThroughSite, safetyFeeApplies } from '@/lib/settlement';
 import { useAction } from '@/lib/use-action';
 import { DatePicker } from '@/components/DatePicker';
 import { Badge, Btn, Confirm, Empty, Err, FIELD, Tag, type Tone, Val } from '@/components/ui';
@@ -523,6 +523,17 @@ function SiteHeader({
   }
   if (contract.rejected > 0) {
     blockers.push({ label: `반려 ${contract.rejected}건`, tone: 'stop' });
+  }
+  /*
+   * ★받은 것을 그대로 내려주는 현장이라는 사실★ (한백 지시 2026-09-23 「화두 현장들에는
+   * 패스스루라고 표시를 해줘」).
+   *
+   * 세우는 것이 아니라 ★가장 먼저 알아야 하는 성질★이라 여기 선다. 이것을 모르면 지급
+   * 화면의 「회차 미정」도, 정산 현황에서 이 현장이 마진에 없는 것도 고장으로 읽힌다.
+   * 조용한 꼬리표다 — 잘못이 아니라 그렇게 하기로 한 것이다(화면 규칙 12).
+   */
+  if (isPassThroughSite(project)) {
+    blockers.push({ label: '패스스루 — 받은 만큼 내려줌', tone: 'mute' });
   }
   /*
    * 「필수 서류 미충족」은 서류 옆으로 옮겼다(한백 지시 2026-08-25) — 머리말에서는

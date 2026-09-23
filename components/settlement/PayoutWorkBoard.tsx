@@ -424,7 +424,15 @@ export default function PayoutWorkBoard({
                 {/* 줄을 찾는 열쇠는 현장명이다 — 한 줄에서 가장 먼저 읽혀야 한다 */}
                 <Td left className={`min-w-[13rem] ${canConfirm ? '' : lead}`}>
                   <SiteLink id={p.projectId} name={p.projectName} tab="settlement" />
-                  <p className="text-tiny text-slate-400">{p.cpo}</p>
+                  <p className="flex flex-wrap items-center gap-1.5 text-tiny text-slate-400">
+                    {p.cpo}
+                    {/*
+                      ★받은 만큼 내려주는 현장이라는 표시★ (한백 지시 2026-09-23).
+                      이 줄만 회차가 비어 있는 이유가 여기 적혀 있어야 한다 — 없으면
+                      「왜 이 줄만 이러지」가 되고, 그 물음의 답이 화면 밖에 있게 된다.
+                    */}
+                    {p.passThrough && <Tag>패스스루</Tag>}
+                  </p>
                 </Td>
                 {orgOptions.length > 1 && (
                   <Td className="text-slate-600">{p.org ?? <Empty kind="miss" />}</Td>
