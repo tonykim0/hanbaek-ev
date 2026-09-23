@@ -8,7 +8,7 @@ import { ATTRS, EMPTY, optionsOf, type AttrKey } from '@/lib/project-filter';
 import { businessYearsOf, inBusinessYear } from '@/lib/business-year';
 import YearTabs from '@/components/YearTabs';
 import { Blank, PANEL, Tag } from '@/components/ui';
-import { isPassThroughOrg } from '@/lib/settlement';
+import { isPassThroughOrg, isPassThroughSite } from '@/lib/settlement';
 import type { ProjectSummary } from '@/types/project';
 import type { ReactNode } from 'react';
 
@@ -69,19 +69,34 @@ export default async function DashboardPage({
   // 1~12월은 자리를 고정한다. 아직 오지 않은 달은 0이 아니라 future로 따로 표시한다.
   let accProjects = 0;
   let accQty = 0;
+  let accPassQty = 0;
   const byMonth = Array.from({ length: 12 }, (_, index) => {
     const month = `${year}-${String(index + 1).padStart(2, '0')}`;
     const list = projects.filter((p) => p.createdAt.startsWith(month));
     const qty = list.reduce((sum, p) => sum + qtyOf(p), 0);
+    /*
+     * ★패스스루 몫을 따로 센다★ (한백 지적 2026-09-23 「그래프에는 아직 패스스루가
+     * 포함되어있어서 헷갈려」).
+     *
+     * 막대 하나에 섞여 있으면 「9월에 100대 수주」로 읽히는데, 그중 79대는 받은 것이 그대로
+     * 내려가는 현장이다 — 깔리는 대수는 맞지만 우리 일로 남는 몫이 아니다. 빼지 않고
+     * 쌓아 올린다: 총량도 사실이고 그 안의 몫도 사실이라, 둘 다 보여야 안 헷갈린다.
+     */
+    const passQty = list
+      .filter((p) => isPassThroughSite(p))
+      .reduce((sum, p) => sum + qtyOf(p), 0);
     accProjects += list.length;
     accQty += qty;
+    accPassQty += passQty;
     return {
       month,
       label: `${index + 1}월`,
       projects: list.length,
       qty,
+      passQty,
       accProjects,
       accQty,
+      accPassQty,
       future: month > thisMonth,
       now: month === thisMonth,
     };
@@ -92,9 +107,9 @@ export default async function DashboardPage({
     return optionsOf(projects, key)
       .map((value) => {
         const list = projects.filter((p) => attr.valuesOf(p).includes(value));
-        const qty =
+        const qtyIn = (only: ProjectSummary[]) =>
           key === 'term'
-            ? list.reduce(
+            ? only.reduce(
                 (sum, p) =>
                   sum +
                   p.lines
@@ -102,7 +117,16 @@ export default async function DashboardPage({
                     .reduce((lineSum, line) => lineSum + line.qty, 0),
                 0
               )
-            : list.reduce((sum, p) => sum + qtyOf(p), 0);
+            : only.reduce((sum, p) => sum + qtyOf(p), 0);
+        const qty = qtyIn(list);
+        /*
+         * ★어느 묶음에서든 패스스루 몫을 따로 센다★ (한백 지적 2026-09-23 「운영사·수전방식·
+         * 사업유형·계약연수 여기도 다 패스스루가 포함되어있잖아」).
+         *
+         * 업체 이름이 없는 묶음이라 꼬리표를 달 자리가 없다 — 대신 막대를 갈라 그 몫을
+         * 회색으로 보여준다. 빼지 않는 이유는 월별 그래프와 같다: 깔리는 대수는 사실이다.
+         */
+        const passQty = qtyIn(list.filter((p) => isPassThroughSite(p)));
         /*
          * ★받은 것을 그대로 내려주는 업체는 그렇게 적는다★ (한백 지시 2026-09-23 「수주현황
          * 에서 패스스루는 구분해줘야될듯, 화두에너지솔루션은 전부 다 패스스루니까」).
@@ -112,7 +136,7 @@ export default async function DashboardPage({
          * 사라지고, 안 적으면 다른 업체와 같은 무게로 읽힌다 — 그래서 적는다.
          */
         const pass = (key === 'sales' || key === 'gc') && isPassThroughOrg(value);
-        return { value, projects: list.length, qty, pass };
+        return { value, projects: list.length, qty, passQty, pass };
       })
       .filter((row) => row.qty > 0)
       .sort((a, b) => b.qty - a.qty);
@@ -128,7 +152,7 @@ export default async function DashboardPage({
         <Panel
           eyebrow="수주"
           title={`${year}년 월별 수주`}
-          side={<span>그 달에 접수된 대수 · 건수 · 현장당 평균</span>}
+          side={<span>그 달에 접수된 대수 · 건수 · 현장당 평균 · 회색은 패스스루</span>}
         >
           <MonthBars rows={byMonth} kind="month" />
         </Panel>
@@ -136,7 +160,7 @@ export default async function DashboardPage({
         <Panel
           eyebrow="수주"
           title={`${year}년 누적 수주`}
-          side={<span>1월부터 더한 대수 · 건수 · 현장당 평균</span>}
+          side={<span>1월부터 더한 대수 · 건수 · 현장당 평균 · 회색은 패스스루</span>}
         >
           <MonthBars rows={byMonth} kind="acc" />
         </Panel>
@@ -145,7 +169,7 @@ export default async function DashboardPage({
       <section>
         <div className="mb-4 flex items-baseline justify-between gap-3">
           <h2 className="text-h2 font-black text-slate-900">수주 구성</h2>
-          <span className="text-tiny font-semibold text-slate-400">대수 기준</span>
+          <span className="text-tiny font-semibold text-slate-400">대수 기준 · 회색은 패스스루</span>
         </div>
         <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
           {isAdmin && <Breakdown title="영업사" rows={dist('sales')} attr="sales" />}
@@ -222,8 +246,10 @@ function MonthBars({
     label: string;
     projects: number;
     qty: number;
+    passQty: number;
     accProjects: number;
     accQty: number;
+    accPassQty: number;
     future: boolean;
     now: boolean;
   }>;
@@ -231,6 +257,8 @@ function MonthBars({
 }) {
   const height = 196;
   const valueOf = (row: (typeof rows)[number]) => (kind === 'month' ? row.qty : row.accQty);
+  /* 그중 받은 것을 그대로 내려주는 몫 — 막대 위쪽에 회색으로 쌓인다 */
+  const passOf = (row: (typeof rows)[number]) => (kind === 'month' ? row.passQty : row.accPassQty);
   const projectCountOf = (row: (typeof rows)[number]) =>
     kind === 'month' ? row.projects : row.accProjects;
   const max = Math.max(...rows.map(valueOf), 1);
@@ -258,27 +286,47 @@ function MonthBars({
           <div className="absolute inset-y-0 left-10 right-0 flex items-end gap-1">
             {rows.map((row) => {
               const value = valueOf(row);
+              const pass = passOf(row);
               const projectCount = projectCountOf(row);
               return (
                 <div key={row.month} className="flex h-full min-w-0 flex-1 flex-col justify-end">
                   {value > 0 && !row.future && (
                     <span className={`mb-1.5 text-center text-tiny font-black tabular-nums ${row.now ? 'text-brand-800' : 'text-slate-600'}`}>
                       {value}
+                      {/* 그중 몇 대가 패스스루인지 — 총량 바로 밑이라야 한 눈에 갈린다 */}
+                      {pass > 0 && (
+                        <span className="block text-micro font-bold text-slate-400">({pass})</span>
+                      )}
                     </span>
                   )}
+                  {/*
+                    ★두 토막으로 쌓는다★ — 아래가 우리 몫, 위 회색이 패스스루다.
+                    빼 버리면 실제로 깔리는 대수가 화면에서 사라지고, 합쳐 두면 「9월에
+                    100대」가 전부 우리 일처럼 읽힌다. 쌓으면 둘 다 사실대로 보인다.
+                  */}
                   <div
-                    className={`rounded-t-[6px] transition ${
-                      row.future
-                        ? 'bg-slate-100'
-                        : row.now
-                          ? fillNow
-                          : value > 0
-                            ? fill
-                            : 'bg-slate-200'
-                    }`}
+                    className="flex flex-col justify-end"
                     style={{ height: `${Math.max(row.future ? 0 : 3, (value / max) * (height - 30))}px` }}
-                    title={`${row.month} · ${projectCount}건 ${value}대`}
-                  />
+                    title={`${row.month} · ${projectCount}건 ${value}대${pass > 0 ? ` (패스스루 ${pass}대)` : ''}`}
+                  >
+                    {pass > 0 && !row.future && (
+                      <div
+                        className="rounded-t-[6px] bg-slate-300"
+                        style={{ height: `${(pass / Math.max(value, 1)) * 100}%` }}
+                      />
+                    )}
+                    <div
+                      className={`flex-1 transition ${pass > 0 && !row.future ? '' : 'rounded-t-[6px]'} ${
+                        row.future
+                          ? 'bg-slate-100'
+                          : row.now
+                            ? fillNow
+                            : value > 0
+                              ? fill
+                              : 'bg-slate-200'
+                      }`}
+                    />
+                  </div>
                 </div>
               );
             })}
@@ -321,7 +369,7 @@ function Breakdown({
   attr,
 }: {
   title: string;
-  rows: Array<{ value: string; projects: number; qty: number; pass?: boolean }>;
+  rows: Array<{ value: string; projects: number; qty: number; passQty: number; pass?: boolean }>;
   attr: AttrKey;
 }) {
   if (rows.length === 0) return null;
@@ -330,7 +378,7 @@ function Breakdown({
   const head = rows.slice(0, BREAKDOWN_MAX);
   const tail = rows.slice(BREAKDOWN_MAX);
   const shown: Array<{
-    value: string; projects: number; qty: number; pass?: boolean; rest?: boolean;
+    value: string; projects: number; qty: number; passQty: number; pass?: boolean; rest?: boolean;
   }> = tail.length
     ? [
         ...head,
@@ -338,6 +386,7 @@ function Breakdown({
           value: `그 밖 ${tail.length}곳`,
           projects: tail.reduce((sum, row) => sum + row.projects, 0),
           qty: tail.reduce((sum, row) => sum + row.qty, 0),
+          passQty: tail.reduce((sum, row) => sum + row.passQty, 0),
           rest: true,
         },
       ]
@@ -364,13 +413,18 @@ function Breakdown({
                 <span className="text-small font-black tabular-nums text-slate-900">{percent}%</span>
                 <span className="w-[64px] text-right text-tiny tabular-nums text-slate-400">
                   {row.qty}대 · {row.projects}건
+                  {/* 그중 패스스루 몫 — 막대의 회색 토막과 같은 수다 */}
+                  {row.passQty > 0 && (
+                    <span className="block text-micro text-slate-400">패스스루 {row.passQty}</span>
+                  )}
                 </span>
               </div>
-              <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+              {/* 막대도 가른다 — 앞이 우리 몫, 뒤 회색이 패스스루다(월별 그래프와 같은 규칙) */}
+              <div className="flex h-1.5 overflow-hidden rounded-full bg-slate-100">
                 <div
-                  className="h-full rounded-full"
+                  className="h-full"
                   style={{
-                    width: `${Math.max(percent, 2)}%`,
+                    width: `${Math.max(percent, 2) * (1 - row.passQty / Math.max(row.qty, 1))}%`,
                     background: row.rest
                       ? REST_COLOR
                       : row.value === EMPTY
@@ -378,6 +432,12 @@ function Breakdown({
                         : BAR_COLORS[index % BAR_COLORS.length],
                   }}
                 />
+                {row.passQty > 0 && (
+                  <div
+                    className="h-full bg-slate-300"
+                    style={{ width: `${Math.max(percent, 2) * (row.passQty / Math.max(row.qty, 1))}%` }}
+                  />
+                )}
               </div>
             </>
           );
