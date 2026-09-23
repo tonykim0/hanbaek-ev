@@ -959,17 +959,27 @@ function PaymentSection({
           : won(unit);
         return (
         <div className="overflow-x-auto rounded-box border border-slate-200">
-          <table className="text-center w-full min-w-[680px] text-base">
+          <table className={`text-center w-full text-base ${passThrough ? 'min-w-[360px]' : 'min-w-[680px]'}`}>
             <thead className="bg-slate-50 text-tiny font-bold tracking-[0.08em] text-slate-500">
               <tr>
                 <Th tight className="py-2">구분</Th>
                 <Th tight money className="py-2">대당</Th>
                 <Th tight num className="py-2">대수</Th>
                 <Th tight money className="py-2">총 지급액</Th>
-                <Th tight money className="border-l border-slate-200 py-2">1차 · 70%</Th>
-                <Th tight className="py-2">지급시기</Th>
-                <Th tight money className="border-l border-slate-200 py-2">2차 · 잔액</Th>
-                <Th tight className="py-2">지급시기</Th>
+                {/*
+                  ★받은 것을 그대로 내려주는 현장에는 회차 자체가 없다★ (한백 지시
+                  2026-09-23 「화두는 총 지급액만 보여주자」·「1차 · 70% / 지급시기 / 2차 ·
+                  잔액 / 지급시기 이것도 없애줘」). 칸만 비우고 머리글을 남기면 화면이
+                  여전히 「70%를 언젠가 준다」고 말한다 — 없는 약속은 이름도 세우지 않는다.
+                */}
+                {!passThrough && (
+                  <>
+                    <Th tight money className="border-l border-slate-200 py-2">1차 · 70%</Th>
+                    <Th tight className="py-2">지급시기</Th>
+                    <Th tight money className="border-l border-slate-200 py-2">2차 · 잔액</Th>
+                    <Th tight className="py-2">지급시기</Th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 tabular-nums">
@@ -1003,18 +1013,9 @@ function PaymentSection({
                     )}
                   </Td>
                   {/*
-                    ★받은 것을 그대로 내려주는 현장은 회차를 접는다★ (한백 지시 2026-09-23).
-                    「1차 70% / 2차 잔액 대로는 지급 안 할거야」 — 시점이 정해지기 전까지
-                    그 숫자를 적어 두면 화면이 나가지도 않을 금액을 약속한다. 총 지급액은
-                    바로 왼쪽 칸이 이미 말한다.
+                    회차 칸은 머리글과 함께 통째로 없다 — 위 thead 의 설명과 같은 이유다.
                   */}
-                  {passThrough ? (
-                    <Td colSpan={4} className="border-l border-slate-100">
-                      <span className="text-tiny font-bold text-slate-400">
-                        회차 미정 — 받은 만큼 내려줍니다
-                      </span>
-                    </Td>
-                  ) : ([1, 2] as const).map((no) => {
+                  {passThrough ? null : ([1, 2] as const).map((no) => {
                     const done = no === 1 ? r.steps.step1Done : r.steps.step2Done;
                     const planned = r.steps.open?.no === no ? r.steps.open.amount : r.steps.parts[no - 1];
                     const at = r.stepAt(`${no}차`);

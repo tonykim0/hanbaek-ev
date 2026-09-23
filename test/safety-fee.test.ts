@@ -134,6 +134,7 @@ describe('할 일 — 트리거가 없는 돈이라 여기서 재촉한다', () 
     stage: 'construction', status: '준공완료',
     ruleName: '착공 800,000원 → 준공마감 잔액',
     steps: [], planTotal: 0, collectedTotal: 0, cpoCloseDate: null,
+    passThrough: false,
     safetyFee: null, safetyFeeCollectedAt: null,
     safetyFeeReceiptCount: 0, safetyFeeReceiptStatus: 'none',
     salesOrg: null, gcOrg: null,

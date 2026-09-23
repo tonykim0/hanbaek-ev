@@ -120,11 +120,23 @@ export default async function FinancePage({
     0
   );
   /*
+   * ★패스스루 현장은 한백 몫에서 뺀다★ (한백 지시 2026-09-23 「패스스루건은 따로 우리
+   * 마진이 없기 때문에 한백 마진에서 제외하자」 · 화두에너지솔루션).
+   *
+   * 셈만으로도 0 이 되지만(기성 − 영업비 − 시공비, 그 현장은 계획이 턴키다) 그것은 우연히
+   * 맞는 것이다 — 협의로 계획과 다르게 받으면 그 차액이 한백 마진으로 새어 들어간다.
+   * 그 돈도 그 회사 것이므로 현장째 뺀다. 뺀 사실은 꼬리표로 적는다: 숫자를 믿고 판단하는
+   * 자리에서 무엇이 빠졌는지 모르는 합계가 가장 위험하다(바로 아래 단가 미지정과 같은 이유).
+   */
+  const ours = settlements.filter((s) => !s.passThrough);
+  const passThroughSites = settlements.length - ours.length;
+
+  /*
    * 마진 안에서 전기안전점검수수료가 얼마인지 따로 센다 — marginTotal 에 이미 들어 있지만
    * (assemble settlementSummaryOf) 단가에서 유도한 마진과 사람이 적은 청구액을 한 숫자로만
    * 두면 어느 쪽이 틀렸는지 못 짚는다(한백 2026-09-06).
    */
-  const safetyFeeIn = settlements.reduce((sum, s) => sum + (s.safetyFee ?? 0), 0);
+  const safetyFeeIn = ours.reduce((sum, s) => sum + (s.safetyFee ?? 0), 0);
   /* 청구액을 적어야 하는데 안 적은 현장 — 마진이 그만큼 실제보다 적다(단가 미지정과 같은 꼴) */
   const safetyFeeMissing = settlements.filter(
     (s) => safetyFeeApplies(s.cpo) && s.safetyFee === null && safetyFeeDue(s.status)
@@ -132,7 +144,7 @@ export default async function FinancePage({
   const planOut = overview.plans.reduce((sum, row) => sum + row.plan + row.adjust, 0);
   const paidAll = overview.plans.reduce((sum, row) => sum + row.confirmed, 0);
   const restOut = overview.plans.reduce((sum, row) => sum + restOf(row), 0);
-  const margin = settlements.reduce((sum, s) => sum + s.marginTotal, 0);
+  const margin = ours.reduce((sum, s) => sum + s.marginTotal, 0);
   /* 마진이 실제보다 적게 나오는 현장 수 — 단가가 안 붙은 라인은 셀 금액이 없다 */
   const unpricedSites = settlements.filter((s) => s.unpricedLines > 0).length;
 
@@ -194,11 +206,16 @@ export default async function FinancePage({
           <Panel
             eyebrow="한백 몫"
             title="한백 마진"
-            side={(unpricedSites > 0 || safetyFeeMissing > 0) ? (
+            side={(unpricedSites > 0 || safetyFeeMissing > 0 || passThroughSites > 0) ? (
               <span className="flex flex-wrap items-center gap-1.5">
                 {unpricedSites > 0 && <Tag tone="warn">단가 미지정 {unpricedSites}건</Tag>}
                 {/* 단가 미지정과 같은 이유로 남긴다 — 이 합계가 실제보다 적다는 사실이다 */}
                 {safetyFeeMissing > 0 && <Tag tone="warn">점검수수료 미기재 {safetyFeeMissing}건</Tag>}
+                {/*
+                  빠진 것은 잘못이 아니라 사실이다 — 받은 것을 그대로 내려주는 현장이라
+                  우리 몫이 없다. 주황이 아닌 조용한 꼬리표로 둔다(화면 규칙 12).
+                */}
+                {passThroughSites > 0 && <Tag>패스스루 {passThroughSites}건 제외</Tag>}
               </span>
             ) : undefined}
           >

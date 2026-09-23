@@ -449,6 +449,7 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
     gcOrg: d.project.gcOrg,
     payoutMilestones: payoutMilestonesFor(r),
     salesPayoutDocsMissing: d.contract.payoutDocsMissing,
+    passThrough: pass,
     salesTotal: planOf('영업비'),
     consTotal: planOf('시공비'),
     /*
