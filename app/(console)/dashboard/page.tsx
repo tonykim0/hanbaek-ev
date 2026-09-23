@@ -158,7 +158,7 @@ export default async function DashboardPage({
         <Panel
           eyebrow="수주"
           title={`${year}년 월별 수주`}
-          side={<span>그 달에 접수된 대수 · 건수 · 현장당 평균 · 회색은 패스스루, 괄호는 뺀 수</span>}
+          side={<span>그 달에 접수된 대수 · 건수 · 현장당 평균 · 회색은 패스스루</span>}
         >
           <MonthBars rows={byMonth} kind="month" />
         </Panel>
@@ -166,7 +166,7 @@ export default async function DashboardPage({
         <Panel
           eyebrow="수주"
           title={`${year}년 누적 수주`}
-          side={<span>1월부터 더한 대수 · 건수 · 현장당 평균 · 회색은 패스스루, 괄호는 뺀 수</span>}
+          side={<span>1월부터 더한 대수 · 건수 · 현장당 평균 · 회색은 패스스루</span>}
         >
           <MonthBars rows={byMonth} kind="acc" />
         </Panel>
@@ -299,17 +299,6 @@ function MonthBars({
                   {value > 0 && !row.future && (
                     <span className={`mb-1.5 text-center text-tiny font-black tabular-nums ${row.now ? 'text-brand-800' : 'text-slate-600'}`}>
                       {value}
-                      {/*
-                        ★패스스루를 뺀 수도 같이 적는다★ (한백 지시 2026-09-23 「bar graph 에
-                        패스스루 전 수치도 적어줘」). 회색 토막의 크기만으로는 「그래서 우리
-                        몫이 몇 대인가」를 눈으로 빼야 한다 — 그 뺄셈을 화면이 대신한다.
-                        위가 총 대수, 괄호가 뺀 값이다(머리의 범례가 그렇게 적는다).
-                      */}
-                      {pass > 0 && (
-                        <span className="block text-micro font-bold text-slate-400">
-                          ({value - pass})
-                        </span>
-                      )}
                     </span>
                   )}
                   {/*
@@ -317,29 +306,56 @@ function MonthBars({
                     빼 버리면 실제로 깔리는 대수가 화면에서 사라지고, 합쳐 두면 「9월에
                     100대」가 전부 우리 일처럼 읽힌다. 쌓으면 둘 다 사실대로 보인다.
                   */}
-                  <div
-                    className="flex flex-col justify-end"
-                    style={{ height: `${Math.max(row.future ? 0 : 3, (value / max) * (height - 30))}px` }}
-                    title={`${row.month} · ${projectCount}건 ${value}대${pass > 0 ? ` (패스스루 ${pass}대 · 빼면 ${value - pass}대)` : ''}`}
-                  >
-                    {pass > 0 && !row.future && (
+                  {(() => {
+                    /*
+                      ★막대 안에 각자의 수를 적는다★ (한백 지시 2026-09-23 「회색이 패스스루
+                      79라고 명시를 해줘 · 우리몫꺼랑 패스스루몫이랑 각각 bar 안에 명시」).
+                      위의 큰 수는 총 대수이고, 그것이 어떻게 갈렸는지는 토막마다 적는다 —
+                      색과 크기로 짐작하지 않게 한다.
+
+                      토막이 얕으면 글자를 넣지 않는다 — 넣으면 막대 밖으로 삐져나와 옆 달의
+                      수와 섞인다. 그때는 마우스를 올리면 셋 다 적힌다(title).
+                    */
+                    const barH = Math.max(row.future ? 0 : 3, (value / max) * (height - 30));
+                    const passH = pass > 0 && !row.future ? (pass / Math.max(value, 1)) * barH : 0;
+                    const oursH = barH - passH;
+                    const fits = (h: number) => h >= 15;
+                    return (
                       <div
-                        className="rounded-t-[6px] bg-slate-300"
-                        style={{ height: `${(pass / Math.max(value, 1)) * 100}%` }}
-                      />
-                    )}
-                    <div
-                      className={`flex-1 transition ${pass > 0 && !row.future ? '' : 'rounded-t-[6px]'} ${
-                        row.future
-                          ? 'bg-slate-100'
-                          : row.now
-                            ? fillNow
-                            : value > 0
-                              ? fill
-                              : 'bg-slate-200'
-                      }`}
-                    />
-                  </div>
+                        className="flex flex-col justify-end"
+                        style={{ height: `${barH}px` }}
+                        title={`${row.month} · ${projectCount}건 ${value}대${pass > 0 ? ` (우리 ${value - pass}대 · 패스스루 ${pass}대)` : ''}`}
+                      >
+                        {passH > 0 && (
+                          <div
+                            className="flex items-center justify-center rounded-t-[6px] bg-slate-300"
+                            style={{ height: `${passH}px` }}
+                          >
+                            {fits(passH) && (
+                              <span className="text-micro font-black tabular-nums text-slate-700">{pass}</span>
+                            )}
+                          </div>
+                        )}
+                        <div
+                          className={`flex flex-1 items-center justify-center transition ${passH > 0 ? '' : 'rounded-t-[6px]'} ${
+                            row.future
+                              ? 'bg-slate-100'
+                              : row.now
+                                ? fillNow
+                                : value > 0
+                                  ? fill
+                                  : 'bg-slate-200'
+                          }`}
+                        >
+                          {passH > 0 && fits(oursH) && (
+                            <span className="text-micro font-black tabular-nums text-white">
+                              {value - pass}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })}
