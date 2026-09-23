@@ -7,7 +7,8 @@ import { isHanbaek } from '@/lib/roles';
 import { ATTRS, EMPTY, optionsOf, type AttrKey } from '@/lib/project-filter';
 import { businessYearsOf, inBusinessYear } from '@/lib/business-year';
 import YearTabs from '@/components/YearTabs';
-import { Blank, PANEL } from '@/components/ui';
+import { Blank, PANEL, Tag } from '@/components/ui';
+import { isPassThroughOrg } from '@/lib/settlement';
 import type { ProjectSummary } from '@/types/project';
 import type { ReactNode } from 'react';
 
@@ -102,7 +103,16 @@ export default async function DashboardPage({
                 0
               )
             : list.reduce((sum, p) => sum + qtyOf(p), 0);
-        return { value, projects: list.length, qty };
+        /*
+         * ★받은 것을 그대로 내려주는 업체는 그렇게 적는다★ (한백 지시 2026-09-23 「수주현황
+         * 에서 패스스루는 구분해줘야될듯, 화두에너지솔루션은 전부 다 패스스루니까」).
+         *
+         * 대수에서 빼지 않는다 — 우리가 수주한 현장이 맞고, 실제로 그만큼 깔린다. 다만
+         * 그 줄의 돈은 통째로 내려가므로 「같은 100대」가 아니다. 빼면 그 사실이 화면에서
+         * 사라지고, 안 적으면 다른 업체와 같은 무게로 읽힌다 — 그래서 적는다.
+         */
+        const pass = (key === 'sales' || key === 'gc') && isPassThroughOrg(value);
+        return { value, projects: list.length, qty, pass };
       })
       .filter((row) => row.qty > 0)
       .sort((a, b) => b.qty - a.qty);
@@ -311,7 +321,7 @@ function Breakdown({
   attr,
 }: {
   title: string;
-  rows: Array<{ value: string; projects: number; qty: number }>;
+  rows: Array<{ value: string; projects: number; qty: number; pass?: boolean }>;
   attr: AttrKey;
 }) {
   if (rows.length === 0) return null;
@@ -319,7 +329,9 @@ function Breakdown({
   const total = rows.reduce((sum, row) => sum + row.qty, 0);
   const head = rows.slice(0, BREAKDOWN_MAX);
   const tail = rows.slice(BREAKDOWN_MAX);
-  const shown: Array<{ value: string; projects: number; qty: number; rest?: boolean }> = tail.length
+  const shown: Array<{
+    value: string; projects: number; qty: number; pass?: boolean; rest?: boolean;
+  }> = tail.length
     ? [
         ...head,
         {
@@ -344,7 +356,11 @@ function Breakdown({
           const content = (
             <>
               <div className="mb-1.5 flex items-baseline gap-2">
-                <span className="min-w-0 flex-1 truncate text-small font-bold text-slate-700">{row.value}</span>
+                <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                  <span className="min-w-0 truncate text-small font-bold text-slate-700">{row.value}</span>
+                  {/* 그 업체의 수주는 돈이 통째로 내려간다 — 같은 대수라도 무게가 다르다 */}
+                  {row.pass && <Tag>패스스루</Tag>}
+                </span>
                 <span className="text-small font-black tabular-nums text-slate-900">{percent}%</span>
                 <span className="w-[64px] text-right text-tiny tabular-nums text-slate-400">
                   {row.qty}대 · {row.projects}건
