@@ -158,7 +158,7 @@ export default async function DashboardPage({
         <Panel
           eyebrow="수주"
           title={`${year}년 월별 수주`}
-          side={<span>그 달에 접수된 대수 · 건수 · 현장당 평균 · 회색은 패스스루</span>}
+          side={<span>그 달에 접수된 대수 · 건수 · 현장당 평균 · 회색은 패스스루, 괄호는 뺀 수</span>}
         >
           <MonthBars rows={byMonth} kind="month" />
         </Panel>
@@ -166,7 +166,7 @@ export default async function DashboardPage({
         <Panel
           eyebrow="수주"
           title={`${year}년 누적 수주`}
-          side={<span>1월부터 더한 대수 · 건수 · 현장당 평균 · 회색은 패스스루</span>}
+          side={<span>1월부터 더한 대수 · 건수 · 현장당 평균 · 회색은 패스스루, 괄호는 뺀 수</span>}
         >
           <MonthBars rows={byMonth} kind="acc" />
         </Panel>
@@ -299,9 +299,16 @@ function MonthBars({
                   {value > 0 && !row.future && (
                     <span className={`mb-1.5 text-center text-tiny font-black tabular-nums ${row.now ? 'text-brand-800' : 'text-slate-600'}`}>
                       {value}
-                      {/* 그중 몇 대가 패스스루인지 — 총량 바로 밑이라야 한 눈에 갈린다 */}
+                      {/*
+                        ★패스스루를 뺀 수도 같이 적는다★ (한백 지시 2026-09-23 「bar graph 에
+                        패스스루 전 수치도 적어줘」). 회색 토막의 크기만으로는 「그래서 우리
+                        몫이 몇 대인가」를 눈으로 빼야 한다 — 그 뺄셈을 화면이 대신한다.
+                        위가 총 대수, 괄호가 뺀 값이다(머리의 범례가 그렇게 적는다).
+                      */}
                       {pass > 0 && (
-                        <span className="block text-micro font-bold text-slate-400">({pass})</span>
+                        <span className="block text-micro font-bold text-slate-400">
+                          ({value - pass})
+                        </span>
                       )}
                     </span>
                   )}
@@ -313,7 +320,7 @@ function MonthBars({
                   <div
                     className="flex flex-col justify-end"
                     style={{ height: `${Math.max(row.future ? 0 : 3, (value / max) * (height - 30))}px` }}
-                    title={`${row.month} · ${projectCount}건 ${value}대${pass > 0 ? ` (패스스루 ${pass}대)` : ''}`}
+                    title={`${row.month} · ${projectCount}건 ${value}대${pass > 0 ? ` (패스스루 ${pass}대 · 빼면 ${value - pass}대)` : ''}`}
                   >
                     {pass > 0 && !row.future && (
                       <div
