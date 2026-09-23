@@ -34,6 +34,7 @@ import {
 } from '@/components/ui';
 import { DatePicker } from '@/components/DatePicker';
 import { payoutStepStateOf } from '@/lib/payout-board';
+import { isPassThroughSite, payoutUnitOf } from '@/lib/settlement';
 /* 반려 사유는 어디에 적히든 한 모양이다 (한백 지시 2026-09-04) */
 import { RejectReason } from '@/components/project/parts';
 
@@ -874,15 +875,16 @@ function PaymentSection({
   const totalQty = lines.reduce((s, l) => s + l.qty, 0);
   const unpriced = lines.filter((l) => !l.rule).length;
 
+  /*
+   * ★계획을 세는 함수는 하나다★ — 이 화면과 지급관리 표와 서버가 각자 세고 있었다.
+   * 패스스루 현장은 시공비에 마진이 얹혀 총액이 턴키가 된다(lib/settlement payoutUnitOf).
+   */
+  const passThrough = isPassThroughSite({ salesOrg, gcOrg });
+  const planOf = (kind: PayoutKind) =>
+    lines.reduce((s, l) => s + (payoutUnitOf(l.rule, kind, passThrough) ?? 0) * l.qty, 0);
   const sides = ([
-    {
-      kind: '영업비' as PayoutKind, org: salesOrg, show: vis.sales,
-      plan: lines.reduce((s, l) => s + (l.rule?.salesUnit ?? 0) * l.qty, 0),
-    },
-    {
-      kind: '시공비' as PayoutKind, org: gcOrg, show: vis.cons,
-      plan: lines.reduce((s, l) => s + (l.rule?.consUnit ?? 0) * l.qty, 0),
-    },
+    { kind: '영업비' as PayoutKind, org: salesOrg, show: vis.sales, plan: planOf('영업비') },
+    { kind: '시공비' as PayoutKind, org: gcOrg, show: vis.cons, plan: planOf('시공비') },
   ]).filter((side) => side.show);
 
   return (
@@ -1000,7 +1002,19 @@ function PaymentSection({
                       </span>
                     )}
                   </Td>
-                  {([1, 2] as const).map((no) => {
+                  {/*
+                    ★받은 것을 그대로 내려주는 현장은 회차를 접는다★ (한백 지시 2026-09-23).
+                    「1차 70% / 2차 잔액 대로는 지급 안 할거야」 — 시점이 정해지기 전까지
+                    그 숫자를 적어 두면 화면이 나가지도 않을 금액을 약속한다. 총 지급액은
+                    바로 왼쪽 칸이 이미 말한다.
+                  */}
+                  {passThrough ? (
+                    <Td colSpan={4} className="border-l border-slate-100">
+                      <span className="text-tiny font-bold text-slate-400">
+                        회차 미정 — 받은 만큼 내려줍니다
+                      </span>
+                    </Td>
+                  ) : ([1, 2] as const).map((no) => {
                     const done = no === 1 ? r.steps.step1Done : r.steps.step2Done;
                     const planned = r.steps.open?.no === no ? r.steps.open.amount : r.steps.parts[no - 1];
                     const at = r.stepAt(`${no}차`);

@@ -195,7 +195,7 @@ describe('workOf — 계약중단 현장은 지급하지 않는다', () => {
   const row = (over: Partial<PayoutRowInput> = {}): PayoutRowInput => ({
     key: 'p|영업비', projectId: 'p', projectName: '시험현장', cpo: '플러그링크',
     kind: '영업비', org: '엘앤에스', plan: 4_000_000, adjust: 0, adjustBy: [0, 0, 0], confirmed: 0,
-    ledger: [null, null], unpriced: 0, holdState: null,
+    ledger: [null, null], unpriced: 0, holdState: null, passThrough: false,
     milestones: { contractSubmittedAt: '2026-07-01', installCompletedAt: null, completedAt: null },
     payoutDocsMissing: [], docsRejected: 0,
     step1At: null, step2At: null, step1EntryId: null, step2EntryId: null,
@@ -211,6 +211,23 @@ describe('workOf — 계약중단 현장은 지급하지 않는다', () => {
    * 「한백 확인」에서 「협력사 접수」로 옮겨 오면서, 반려가 살아 있는 계약도 협력사가
    * 재접수 한 번으로 「지급 가능」으로 세울 수 있었다. 확인은 반려 0건을 요구했었다.
    */
+  /*
+   * ★받은 것을 그대로 내려주는 현장은 회차를 안 연다★ (한백 지시 2026-09-23
+   * 「1차 70% / 2차 잔액 대로는 지급 안 할거야」). 열어 두면 체크 한 번에 70% 가 나간다.
+   */
+  it('★패스스루 현장은 회차가 열리지 않는다 — 총액만 본다★', () => {
+    const w = workOf(row({ passThrough: true }));
+    expect(w.open).toBeNull();
+    expect(w.state).toBe('조건 대기');
+    expect(w.blockers).toContain('지급 방식 미정 — 회차 없이 총액만');
+    /* 총 지급액은 그대로 보인다 — 「총액만 보여주자」가 이 뜻이다 */
+    expect(w.due).toBe(4_000_000);
+  });
+
+  it('그 사유는 사람이 당길 수 있는 일이 아니다 — 「공정 대기」 칸에 선다', () => {
+    expect(workGroupOf(workOf(row({ passThrough: true })))).toBe('공정 대기');
+  });
+
   it('★계약 서류가 반려돼 있으면 영업비는 막힌다★', () => {
     const w = workOf(row({ docsRejected: 2 }));
     expect(w.state).toBe('조건 대기');

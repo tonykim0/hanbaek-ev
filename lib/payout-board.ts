@@ -55,6 +55,7 @@ export function payoutsOfDetail(d: ProjectDetail, vis: Visibility): PayoutRowInp
       // 자기 쪽 단가가 안 붙은 라인 — 요약의 unpricedLines 와 같은 말을 자기 쪽만 센다
       unpriced: d.lines.filter((l) => unit(l) === null).length,
       holdState: d.project.holdState,
+      passThrough: pass,
       milestones,
       payoutDocsMissing: kind === '영업비' ? d.contract.payoutDocsMissing : [],
       /* 반려는 필수 여부를 안 가린다(contract.rejected) — 돌려보낸 계약이면 그것으로 족하다 */
@@ -183,6 +184,21 @@ export function workOf(p: PayoutRowInput): PayoutWork {
     return {
       ...p, ...stepFields, state: '조건 대기', open: null,
       blockers: [`${p.holdState} — 지급 불가`],
+    };
+  }
+
+  /*
+   * ★받은 것을 그대로 내려주는 현장은 회차가 없다★ (한백 지시 2026-09-23 「1차 70% /
+   * 2차 잔액 대로는 지급 안 할거야」). 시점은 나중에 정한다 — 그때까지 회차를 열어 두면
+   * 체크 한 번에 70% 가 나간다. 열지 않는 것이 이 줄의 사실이다.
+   *
+   * 「조건 대기」로 둔다: 사람이 지금 채울 것이 있어서가 아니라 방식이 아직 안 정해진
+   * 것이므로 갈림에서도 「공정 대기」 쪽에 선다(FILLABLE 아님).
+   */
+  if (p.passThrough) {
+    return {
+      ...p, ...stepFields, state: '조건 대기', open: null,
+      blockers: ['지급 방식 미정 — 회차 없이 총액만'],
     };
   }
 

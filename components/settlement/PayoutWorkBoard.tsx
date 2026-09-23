@@ -510,6 +510,22 @@ function StepCells({
     );
   }
 
+  /*
+   * ★받은 것을 그대로 내려주는 현장은 회차를 접는다★ (한백 지시 2026-09-23 「화두는 총
+   * 지급액만 보여주자 · 1차 70% / 2차 잔액 대로는 지급 안 할거야」).
+   * 시점이 정해지기 전까지 70%·잔액을 적어 두면 나가지도 않을 금액을 화면이 약속하는 것이다.
+   * 총 지급액 열은 그대로 있고, 왜 비었는지는 상태 열의 사유가 말한다(workOf).
+   */
+  if (p.passThrough) {
+    return (
+      <Td colSpan={canConfirm ? 4 : 3} className="border-l border-slate-100">
+        <span className="text-tiny font-bold text-slate-400">
+          {no === 1 ? '회차 미정 — 총액만' : '—'}
+        </span>
+      </Td>
+    );
+  }
+
   const done = no === 1 ? p.step1Done : p.step2Done;
   const at = no === 1 ? p.step1At : p.step2At;
   const entryId = no === 1 ? p.step1EntryId : p.step2EntryId;

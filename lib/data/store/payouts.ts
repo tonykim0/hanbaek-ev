@@ -878,6 +878,14 @@ function openStepFor(
 
   /* 화면과 같은 함수로 센다 — 갈리면 표에 적힌 금액과 원장에 박히는 금액이 달라진다 */
   const pass = isPassThroughSite(r.project);
+  /*
+   * ★받은 것을 그대로 내려주는 현장은 회차로 나가지 않는다★ (한백 지시 2026-09-23).
+   * 화면은 회차를 접었지만(payout-board workOf) 그것만으로는 주소를 두드리는 길이 남는다 —
+   * 지급은 되돌리기 어려운 일이라 서버가 같은 말을 해야 한다. 시점이 정해지면 푼다.
+   */
+  if (pass) {
+    throw new Error(`${name} — 받은 만큼 내려주는 현장입니다. 회차 지급 방식이 정해지면 풀립니다.`);
+  }
   const plan = r.lines.reduce((n, l) => {
     const rule = l.pricingRuleId ? rules.get(l.pricingRuleId) ?? null : null;
     return n + (payoutUnitOf(rule, kind, pass) ?? 0) * l.qty;
