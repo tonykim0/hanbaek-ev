@@ -179,7 +179,12 @@ export default async function DashboardPage({
         </div>
         <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
           {isAdmin && <Breakdown title="영업사" rows={dist('sales')} attr="sales" />}
-          {isAdmin && <Breakdown title="시공사" rows={dist('gc')} attr="gc" />}
+          {/*
+            ★시공사 묶음은 걷었다★ (한백 지시 2026-09-23 「수주 구성에서 시공사는 필요없어.
+            어차피 영업사가 다 영업수주하는거라」). 이 화면이 답하는 물음은 「수주가 어디서
+            왔나」이고, 그 답은 영업사다 — 시공사는 그 뒤에 붙는 일이라 같은 물음의 답이
+            아니다. 시공사별로 보는 자리는 계약관리 표의 거르는 축이다.
+          */}
           <Breakdown title="운영사" rows={dist('cpo')} attr="cpo" />
           <Breakdown title="수전방식" rows={dist('power')} attr="power" />
           <Breakdown title="사업유형" rows={dist('biz')} attr="biz" />
