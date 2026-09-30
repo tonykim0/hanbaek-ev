@@ -27,6 +27,10 @@ export const CPO_NAMES = [
   '플러그링크', '나이스인프라', '현대엔지니어링', 'SK일렉링크', '에버온',
 ] as const satisfies readonly CpoName[];
 
+/** 설치위치 — 결과서의 「실내,지하 / 실외,노상」. 둘 다인 현장이 있다 (한백 지시 2026-09-30) */
+export type InstallLoc = '실내' | '실외' | '실내·실외';
+export const INSTALL_LOCS = ['실내', '실외', '실내·실외'] as const satisfies readonly InstallLoc[];
+
 export type BuildingType = '공동주택' | '상업시설';
 export const BUILDING_TYPES = ['공동주택', '상업시설'] as const satisfies readonly BuildingType[];
 /** 노션에 없는 신규 필드. 회의록 종류를 결정한다. */
@@ -210,6 +214,8 @@ export interface Project {
   name: string;
   addr: string | null;
   bldgType: BuildingType | null;
+  /** 설치위치 — null 이면 미지정 */
+  installLoc: InstallLoc | null;
   contractParty: ContractParty | null;
   parkTotal: number | null;
   mgr: string | null;
@@ -641,6 +647,7 @@ export type ProjectFactsPatch = {
   /** 계약접수일 — 수주 현황의 월·사업연도가 이 날짜로 묶인다(lib/business-year) */
   createdAt?: string;
   bldgType?: BuildingType | null;
+  installLoc?: InstallLoc | null;
   contractParty?: ContractParty | null;
   parkTotal?: number | null;
   mgr?: string | null;

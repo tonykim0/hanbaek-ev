@@ -28,7 +28,7 @@ import type {
   BatchFinal, SettlementStepRule, SettlementSummary, TaxInvoice,
 } from '@/types/project';
 import {
-  BUILDING_TYPES, CONTRACT_PARTIES, isNoteScope, normalizeRepl, PROCESS_STATUSES, subsidized,
+  BUILDING_TYPES, CONTRACT_PARTIES, INSTALL_LOCS, isNoteScope, normalizeRepl, PROCESS_STATUSES, subsidized,
   TERM_YEARS,
 } from '@/types/project';
 import type { Viewer } from '@/lib/auth/types';
@@ -126,6 +126,13 @@ function cleanFacts(patch: ProjectFactsPatch): Record<string, unknown> {
       throw new Error(`건축물유형은 ${BUILDING_TYPES.join('·')} 중 하나입니다.`);
     }
     out.bldgType = v;
+  }
+  if ('installLoc' in patch) {
+    const v = text(patch.installLoc) as ProjectFactsPatch['installLoc'];
+    if (v && !(INSTALL_LOCS as readonly string[]).includes(v)) {
+      throw new Error(`설치위치는 ${INSTALL_LOCS.join(' · ')} 중 하나입니다.`);
+    }
+    out.installLoc = v;
   }
   if ('contractParty' in patch) {
     const v = text(patch.contractParty) as ProjectFactsPatch['contractParty'];

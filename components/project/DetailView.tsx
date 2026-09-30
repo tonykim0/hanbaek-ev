@@ -16,7 +16,9 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { BatchFinal, ContractState, ProjectDetail, SettlementRuleChoice } from '@/types/project';
-import { BIZ_TYPES, CPO_NAMES, POWER_TYPES, subsidized, TERM_YEARS } from '@/types/project';
+import {
+  BIZ_TYPES, CPO_NAMES, INSTALL_LOCS, POWER_TYPES, subsidized, TERM_YEARS,
+} from '@/types/project';
 import { isPassThroughSite, safetyFeeApplies } from '@/lib/settlement';
 import { useAction } from '@/lib/use-action';
 import { DatePicker } from '@/components/DatePicker';
@@ -721,6 +723,19 @@ function SiteHeader({
           field="powerType"
           empty="미지정"
           suggestions={[...POWER_TYPES]}
+        />
+        {/*
+          * 설치위치 (한백 지시 2026-09-30) — 결과서의 실내,지하 / 실외,노상. 단가 축이
+          * 아니라 설명하는 값이라 잠기지 않는다(facts 문).
+          */}
+        <EditableFact
+          label="설치위치"
+          value={project.installLoc}
+          canEdit={canReview}
+          url={`/api/projects/${project.id}/facts`}
+          field="installLoc"
+          empty="미지정"
+          suggestions={[...INSTALL_LOCS]}
         />
         <EditableFact
           label="계약접수일"

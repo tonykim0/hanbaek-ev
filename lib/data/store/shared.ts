@@ -24,7 +24,7 @@ import { dayOf } from '@/lib/date';
 import { PROCESS_DOCS } from '@/lib/doc-rules';
 import { asProcessStatus } from '@/lib/process';
 import type {
-  BizType, BuildingType, ContractLine, CpoName, DocStatus, HoldState, PayoutEntry, PowerType,
+  BizType, BuildingType, InstallLoc, ContractLine, CpoName, DocStatus, HoldState, PayoutEntry, PowerType,
   Court, DocFile, ContractParty, PayoutCategory, PayoutKind,
   PreInstall, PricingRule, ProcessInfo, ProcessStatus, Project, ProjectDocument, PromoExtendOption,
   PromoStep, ReplType, Settlement, SettlementRule, SettlementStepRule,
@@ -154,6 +154,7 @@ export function toProject(r: ProjectRow): Project {
     name: r.name,
     addr: r.addr,
     bldgType: r.bldgType as BuildingType | null,
+    installLoc: r.installLoc as InstallLoc | null,
     contractParty: r.contractParty as ContractParty | null,
     parkTotal: r.parkTotal,
     mgr: r.mgr,

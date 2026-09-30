@@ -163,6 +163,8 @@ export const projects = pgTable('projects', {
   name: text('name').notNull(),
   addr: text('addr'),
   bldgType: text('bldg_type'),
+  /** 설치위치 — 실내 · 실외 · 실내·실외. null 이면 미지정 */
+  installLoc: text('install_loc'),
   contractParty: text('contract_party'),            // 노션에 없던 신규 필드
   parkTotal: integer('park_total'),
   mgr: text('mgr'),

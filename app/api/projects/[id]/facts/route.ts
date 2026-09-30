@@ -12,7 +12,7 @@ import { adminWrite, BadRequest } from '@/lib/api/write-route';
 import type { ProjectFactsPatch } from '@/types/project';
 
 const FIELDS = [
-  'addr', 'bldgType', 'contractParty', 'parkTotal', 'mgr', 'tel', 'mail', 'note', 'createdAt',
+  'addr', 'bldgType', 'installLoc', 'contractParty', 'parkTotal', 'mgr', 'tel', 'mail', 'note', 'createdAt',
 ] as const;
 
 export const PATCH = adminWrite<{ id: string }, ProjectFactsPatch>(
