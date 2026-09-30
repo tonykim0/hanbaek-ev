@@ -43,7 +43,9 @@ import {
 import {
   groupsByStatus, type CheckField, type CountField, type DateField, type GroupExtra,
 } from './construction/milestones';
-import { CloseDateRow, CountsRow, DateRow, DocRow, ModelRow } from './construction/rows';
+import {
+  CloseDateRow, CountsRow, DateRow, DocRow, ModelRow, RecvSiteRow,
+} from './construction/rows';
 import { AdvanceRow, CheckRow, CompletionReview, NeedRow } from './construction/steps';
 
 export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit: ProcessEdit }) {
@@ -230,6 +232,21 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
             canEdit={edit === 'all'}
             busy={busyKey === 'cpoCloseDate'}
             onSave={saveCloseDate}
+          />
+        );
+      case 'recvSite':
+        /* 충전기 수령지 — 협력사·한백 둘 다 적는다. 글자는 칸을 떠날 때 저장한다 */
+        return (
+          <RecvSiteRow
+            key={x}
+            value={{ recvAddr: p.recvAddr, recvName: p.recvName, recvPhone: p.recvPhone }}
+            canEdit={canEditField('notifyDate')}
+            busyKey={busyKey}
+            onSave={(field, raw, before) => {
+              const v = raw.trim();
+              if (v === (before ?? '')) return;
+              save(field, v === '' ? null : v, field);
+            }}
           />
         );
       default: {

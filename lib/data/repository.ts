@@ -749,6 +749,7 @@ export type ProcessPatch = Partial<
     | 'installedSpots' | 'installedUnits'
     | 'commDoneDate' | 'openDate' | 'memo'
     | 'notifyDate' | 'chargerQty' | 'modemQty' | 'chargerOrderQty' | 'modemOrderQty' | 'chargerModelId'
+    | 'recvAddr' | 'recvName' | 'recvPhone'
     | 'notifyDoneAt' | 'notifySkippedAt' | 'notifyRequiredAt' | 'chargerDoneAt' | 'installConfirmedAt'
     | 'openDoneAt' | 'completionSubmitAt'
   >

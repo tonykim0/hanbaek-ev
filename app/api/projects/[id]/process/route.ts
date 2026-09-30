@@ -71,6 +71,15 @@ export const POST = sessionWrite<{ id: string }, Record<string, unknown>>(
       }
       patch[f] = v;
     }
+    /* 충전기 수령지 — 글자 칸. 앞뒤 공백을 걷고, 빈 칸은 지우는 것이다 */
+    for (const f of ['recvAddr', 'recvName', 'recvPhone'] as const) {
+      if (!(f in body)) continue;
+      const v = body[f];
+      if (v !== null && typeof v !== 'string') throw new BadRequest('수령지는 글자여야 합니다.');
+      const t = (v ?? '').trim();
+      if (t.length > 200) throw new BadRequest('수령지가 너무 깁니다.');
+      patch[f] = t === '' ? null : t;
+    }
     /* 충전기 모델 — 목록(charger_models)의 id. 빈 값은 미지정으로 되돌리는 것이다 */
     if ('chargerModelId' in body) {
       const v = body.chargerModelId;

@@ -318,6 +318,10 @@ export const processes = pgTable('processes', {
    * 이름을 적지 않고 참조하는 이유: 오타로 같은 모델이 여러 이름을 갖는 것을 막는다.
    */
   chargerModelId: text('charger_model_id').references(() => chargerModels.id),
+  /** 충전기 수령지 — 발주 때 어디로 보낼지. 협력사가 행위신고 칸에서 적는다 */
+  recvAddr: text('recv_addr'),
+  recvName: text('recv_name'),
+  recvPhone: text('recv_phone'),
   /** 묶음별 완료 체크(체크한 날) — 단계 이동을 잠근다. types/project.ts ProcessInfo 주석 참조 */
   notifyDoneAt: text('notify_done_at'),
   /** 행위신고 불필요로 판정한 날 — 완료와 다른 칸이다 (migrations/0024) */

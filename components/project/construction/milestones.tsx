@@ -47,7 +47,8 @@ export type CountField =
  * 양쪽 다 문자열이라 타입 검사도 통과했다(한백 지적 2026-08-26). 이름은 라벨일 뿐이고,
  * 무엇을 그릴지는 이 목록이 정한다 — 목록에 없는 값을 적으면 컴파일이 깨진다.
  */
-export type GroupExtra = 'chargerModel' | 'orderQty' | 'recvQty' | 'installedQty' | 'cpoCloseDate';
+export type GroupExtra =
+  | 'chargerModel' | 'orderQty' | 'recvQty' | 'installedQty' | 'cpoCloseDate' | 'recvSite';
 
 export interface MilestoneRow {
   label: string;
@@ -163,6 +164,13 @@ export function groupsByStatus(
         // 신고일은 파일을 올리면 그 날로 들어간다(비어 있을 때만) — 다르면 여기서 고친다
         rows: [{ label: '행위신고일', field: 'notifyDate', value: p.notifyDate }],
         docs: ['notify'],
+        /*
+         * ★충전기 수령지는 여기서 적는다★ (한백 지시 2026-09-30) — 환경부 승인이 나면 한백이
+         * 바로 발주를 넣고, 그때 어디로 보낼지가 필요하다. 승인 직후 현장이 서 있는 칸이
+         * 행위신고라 협력사가 여기서 적는다. 신고 대상 여부와 상관없이 늘 편다 — 대상이
+         * 아니어도 충전기는 받는다. 수령 칸을 안 지나는 사업구분(기설치 연동)에는 안 그린다.
+         */
+        extras: stepsOf(ctx).includes('충전기 수령') ? ['recvSite'] : [],
         /*
          * 둘은 서로를 막는다 — 한 현장이 「했다」와 「필요 없다」를 같이 말할 수는 없다.
          * 막는 이유를 그 자리에 적는다(화면 규칙 3): 완료가 켜져 있으면 불필요가

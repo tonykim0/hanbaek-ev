@@ -837,6 +837,13 @@ export interface ProcessInfo {
    * 이름은 싣지 않는다 — 화면이 이미 목록을 받아 고르므로 거기서 찾는다(같은 값을 두 곳에 두지 않는다).
    */
   chargerModelId: string | null;
+  /**
+   * 충전기 수령지 — 주소·담당자·연락처 (한백 지시 2026-09-30).
+   * 환경부 승인 직후 한백이 발주를 넣을 때 필요하다. 협력사가 행위신고 칸에서 적는다.
+   */
+  recvAddr: string | null;
+  recvName: string | null;
+  recvPhone: string | null;
   chargerDoneAt: string | null;      // 충전기 수령 완료 → 「충전기 수령」 조건
   installConfirmedAt: string | null; // 설치 완료 → 「설치완료」 조건
   openDoneAt: string | null;         // 개통 완료 → 「준공서류 접수/검토」 조건

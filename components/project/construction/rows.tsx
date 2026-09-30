@@ -14,7 +14,9 @@ import {
 import { DocReview } from '@/components/project/DocReview';
 import { DatePicker } from '@/components/DatePicker';
 
-import { Badge, Btn, Empty, Err, FIELD_CELL } from '@/components/ui';
+import {
+  Badge, Btn, Empty, Err, FIELD_CELL, FIELD_CELL_BASE,
+} from '@/components/ui';
 
 import { DATE_CELL, ROW, ROW_STACK, RowLabel } from './shell';
 
@@ -181,6 +183,62 @@ export function CountsRow({
       {compare && (
         <span className={`ml-auto text-tiny font-semibold ${compare.mismatch ? 'text-amber-700' : 'text-slate-400'}`}>
           {compare.label}
+        </span>
+      )}
+    </div>
+  );
+}
+
+type RecvField = 'recvAddr' | 'recvName' | 'recvPhone';
+
+const RECV_ITEMS: Array<{ field: RecvField; label: string; placeholder: string; width: string; inputMode?: 'tel' }> = [
+  { field: 'recvAddr', label: '주소', placeholder: '받을 주소', width: 'w-full' },
+  { field: 'recvName', label: '담당자', placeholder: '이름', width: 'w-28' },
+  { field: 'recvPhone', label: '연락처', placeholder: '010-0000-0000', width: 'w-36', inputMode: 'tel' },
+];
+
+/**
+ * 충전기 수령지 — 주소·담당자·연락처 (한백 지시 2026-09-30).
+ *
+ * 한 줄에 셋을 붙이면 주소가 좁아진다 — 주소는 한 줄을 통째로 쓰고, 담당자·연락처는
+ * 그 아래에 나란히 선다. 수량 칸처럼 칸을 떠날 때 저장한다.
+ */
+export function RecvSiteRow({
+  value, canEdit, busyKey, onSave,
+}: {
+  value: Record<RecvField, string | null>;
+  canEdit: boolean;
+  busyKey: string | null;
+  onSave: (field: RecvField, raw: string, before: string | null) => void;
+}) {
+  const [addr, ...rest] = RECV_ITEMS;
+  const cell = (c: (typeof RECV_ITEMS)[number]) => (
+    <input
+      key={c.field}
+      type="text"
+      aria-label={`충전기 수령 ${c.label}`}
+      placeholder={c.placeholder}
+      inputMode={c.inputMode}
+      defaultValue={value[c.field] ?? ''}
+      disabled={busyKey === c.field}
+      onBlur={(e) => onSave(c.field, e.target.value, value[c.field])}
+      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+      className={`${FIELD_CELL_BASE} ${c.width} text-base`}
+    />
+  );
+  return (
+    <div className={ROW}>
+      <RowLabel>충전기 수령지</RowLabel>
+      {canEdit ? (
+        <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {cell(addr)}
+          <span className="flex flex-wrap gap-1.5">{rest.map(cell)}</span>
+        </span>
+      ) : (
+        <span className={`font-semibold ${value.recvAddr || value.recvName || value.recvPhone ? 'text-slate-800' : 'text-slate-300'}`}>
+          {value.recvAddr || value.recvName || value.recvPhone
+            ? [value.recvAddr, value.recvName, value.recvPhone].map((v) => v ?? '—').join(' · ')
+            : '비어 있음'}
         </span>
       )}
     </div>
