@@ -240,6 +240,13 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
           <RecvSiteRow
             key={x}
             value={{ recvAddr: p.recvAddr, recvName: p.recvName, recvPhone: p.recvPhone }}
+            org={detail.project.gcOrg}
+            onPick={(x) => void run({
+              url: `/api/projects/${detail.project.id}/process`,
+              body: { recvAddr: x.addr, recvName: x.name, recvPhone: x.phone },
+              fail: '수령지를 넣지 못했습니다.',
+              key: 'recvSite',
+            })}
             canEdit={canEditField('notifyDate')}
             busyKey={busyKey}
             onSave={(field, raw, before) => {

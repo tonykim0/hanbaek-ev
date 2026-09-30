@@ -319,6 +319,16 @@ export interface SettlementStepRule {
  * 금액이 없어 협력사도 본다. 쓰지 않게 된 모델은 지우지 않고 내린다(active=false) —
  * 옛 현장이 참조하고 있어서 지우면 그 현장의 모델 이름이 사라진다.
  */
+/** 협력사별 자주 쓰는 충전기 수령지 — 현장의 수령지 칸에 골라 넣는다 (2026-09-30) */
+export interface RecvPreset {
+  id: string;
+  /** 시공사 이름 — normalizeOrg 를 거친 값 */
+  org: string;
+  addr: string;
+  name: string | null;
+  phone: string | null;
+}
+
 export interface ChargerModel {
   id: string;
   name: string;

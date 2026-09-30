@@ -51,6 +51,7 @@ import { processStore } from './store/process';
 import { docStore } from './store/docs';
 import { payoutStore } from './store/payouts';
 import { pricingStore } from './store/pricing';
+import { recvPresetStore } from './store/recv-presets';
 import { noticeStore } from './store/notices';
 import {
   accessWhere, assertAdmin, assertHanbaek, mergeDocs, PROCESS_DOC_KEYS, recordsOf,
@@ -175,6 +176,8 @@ export const pgRepository: ProjectRepository = {
   ...processStore,
   // 공지는 store/notices.ts 에 있다
   ...noticeStore,
+  // 협력사별 자주 쓰는 수령지는 store/recv-presets.ts 에 있다
+  ...recvPresetStore,
 
   async listProjects(viewer: Viewer): Promise<ProjectSummary[]> {
     if (!isHanbaek(viewer.role) && !viewer.org) return [];

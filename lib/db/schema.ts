@@ -275,6 +275,19 @@ export const documents = pgTable('documents', {
  * 여러 이름을 갖는 것을 막기 위해서다. 쓰지 않게 된 모델은 지우지 않고 내린다
  * (active=false) — 옛 현장이 그 모델을 참조하고 있다.
  */
+/**
+ * 협력사별 자주 쓰는 충전기 수령지 (한백 지시 2026-09-30) — 현장 공정의 수령지 칸에서
+ * 골라 넣는다. org 는 normalizeOrg 를 거친 시공사 이름이다.
+ */
+export const recvPresets = pgTable('recv_presets', {
+  id: text('id').primaryKey(),
+  org: text('org').notNull(),
+  addr: text('addr').notNull(),
+  name: text('name'),
+  phone: text('phone'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const chargerModels = pgTable('charger_models', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),

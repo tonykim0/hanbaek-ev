@@ -14,7 +14,7 @@
 import type {
   NoteScope,
   Court, DocStatus, HoldState, IntakeDraft, LineAxes, NewPayoutEntry, NewPricingRule, PayoutKind, PayoutRow, PreInstall, PricingRule,
-  ChargerModel,
+  ChargerModel, RecvPreset,
   PayoutPlanRow, ProcessInfo, ProcessStatus, ProjectDetail, ProjectSummary, Settlement, SettlementRule, SettlementSummary, BatchFinal, TaxInvoice,
   Notice, NoticeFile, ReviewEvent, ProjectFactsPatch, LineFactsPatch, ProjectAxesPatch, NewContractLine,
 } from '@/types/project';
@@ -439,6 +439,15 @@ export interface ProjectRepository {
 
   /** 모델 등록 [한백 전용] — 이름이 겹치면 거절한다(오타로 같은 모델이 둘이 되는 것을 막는다) */
   addChargerModel(input: { name: string; maker?: string | null; note?: string | null }, actor: Actor): Promise<string>;
+
+  /** 그 협력사의 자주 쓰는 수령지 [한백 · 그 협력사] — 먼저 저장한 것이 위 */
+  listRecvPresets(org: string, actor: Actor): Promise<RecvPreset[]>;
+
+  /** 자주 쓰는 수령지 저장 [한백 관리자 · 그 협력사] — 같은 주소·담당자·연락처면 새로 만들지 않는다 */
+  addRecvPreset(input: Omit<RecvPreset, 'id'>, actor: Actor): Promise<string>;
+
+  /** 자주 쓰는 수령지 빼기 [한백 관리자 · 그 협력사] — 현장에 이미 적힌 값은 그대로 남는다 */
+  removeRecvPreset(id: string, actor: Actor): Promise<void>;
 
   /** 공지 목록 — 최신이 위. 로그인한 누구나 본다(열람 전용 포함) */
   listNotices(): Promise<Notice[]>;

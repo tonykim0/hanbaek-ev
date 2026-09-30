@@ -4,7 +4,7 @@ import {
   useEffect, useState,
 } from 'react';
 import type {
-  ChargerModel, ProjectDetail,
+  ChargerModel, ProjectDetail, RecvPreset,
 } from '@/types/project';
 
 import type { CountField, DateField, MilestoneRow } from './milestones';
@@ -202,41 +202,129 @@ const RECV_ITEMS: Array<{ field: RecvField; label: string; placeholder: string; 
  *
  * 한 줄에 셋을 붙이면 주소가 좁아진다 — 주소는 한 줄을 통째로 쓰고, 담당자·연락처는
  * 그 아래에 나란히 선다. 수량 칸처럼 칸을 떠날 때 저장한다.
+ *
+ * ★협력사별 자주 쓰는 수령지★ — 같은 시공사가 여러 현장을 한 곳으로 받는다. 목록에서
+ * 고르면 세 칸이 한 번에 들어가고, 지금 적힌 것을 목록에 더하거나 뺄 수 있다.
+ * 목록은 그 현장의 시공사 것이다 — 시공사가 안 정해진 현장에는 목록 줄을 안 그린다.
  */
 export function RecvSiteRow({
-  value, canEdit, busyKey, onSave,
+  value, org, canEdit, busyKey, onSave, onPick,
 }: {
   value: Record<RecvField, string | null>;
+  /** 그 현장의 시공사 — 목록의 주인 */
+  org: string | null;
   canEdit: boolean;
   busyKey: string | null;
   onSave: (field: RecvField, raw: string, before: string | null) => void;
+  /** 목록에서 고른 셋을 한 번에 넣는다 */
+  onPick: (p: Pick<RecvPreset, 'addr' | 'name' | 'phone'>) => void;
 }) {
-  const [addr, ...rest] = RECV_ITEMS;
+  const [presets, setPresets] = useState<RecvPreset[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function load() {
+    if (!org) return;
+    const r = await fetch(`/api/recv-presets?org=${encodeURIComponent(org)}`).catch(() => null);
+    const d = r?.ok ? ((await r.json()) as { presets: RecvPreset[] }) : null;
+    if (d) setPresets(d.presets);
+  }
+  useEffect(() => {
+    if (canEdit) void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [org, canEdit]);
+
+  const any = Boolean(value.recvAddr || value.recvName || value.recvPhone);
+  /* 지금 적힌 셋과 같은 목록 줄 — 있으면 「빼기」, 없으면 「저장」을 세운다 */
+  const current = presets?.find((x) =>
+    x.addr === value.recvAddr && x.name === value.recvName && x.phone === value.recvPhone) ?? null;
+
+  async function mutate(url: string, init: RequestInit, fail: string) {
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await fetch(url, init);
+      if (!r.ok) {
+        const d = (await r.json().catch(() => null)) as { error?: string } | null;
+        setError(d?.error ?? fail);
+        return;
+      }
+      await load();
+    } catch {
+      setError(fail);
+    } finally {
+      setSaving(false);
+    }
+  }
+  const addPreset = () => void mutate('/api/recv-presets', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ org, addr: value.recvAddr, name: value.recvName, phone: value.recvPhone }),
+  }, '목록에 저장하지 못했습니다.');
+  const removePreset = (id: string) => void mutate(`/api/recv-presets/${id}`, { method: 'DELETE' }, '목록에서 빼지 못했습니다.');
+
   const cell = (c: (typeof RECV_ITEMS)[number]) => (
     <input
-      key={c.field}
+      /* 목록에서 고르면 값이 바뀐다 — 값으로 key 를 걸어 칸을 새로 그린다(defaultValue 는 다시 안 읽힌다) */
+      key={`${c.field}:${value[c.field] ?? ''}`}
       type="text"
       aria-label={`충전기 수령 ${c.label}`}
       placeholder={c.placeholder}
       inputMode={c.inputMode}
       defaultValue={value[c.field] ?? ''}
-      disabled={busyKey === c.field}
+      disabled={busyKey === c.field || busyKey === 'recvSite'}
       onBlur={(e) => onSave(c.field, e.target.value, value[c.field])}
       onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
       className={`${FIELD_CELL_BASE} ${c.width} text-base`}
     />
   );
+  const [addr, ...rest] = RECV_ITEMS;
   return (
     <div className={ROW}>
       <RowLabel>충전기 수령지</RowLabel>
       {canEdit ? (
         <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+          {org && (
+            <span className="flex flex-wrap items-center gap-1.5">
+              <select
+                aria-label="자주 쓰는 수령지"
+                value=""
+                disabled={!presets?.length || busyKey === 'recvSite'}
+                onChange={(e) => {
+                  const hit = presets?.find((x) => x.id === e.target.value);
+                  if (hit) onPick({ addr: hit.addr, name: hit.name, phone: hit.phone });
+                }}
+                className={`${FIELD_CELL_BASE} min-w-0 flex-1 text-base`}
+              >
+                <option value="">
+                  {presets === null ? '자주 쓰는 수령지 불러오는 중…'
+                    : presets.length === 0 ? `${org} 자주 쓰는 수령지 없음`
+                      : `${org} 자주 쓰는 수령지에서 고르기 (${presets.length})`}
+                </option>
+                {presets?.map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {[x.addr, x.name, x.phone].filter(Boolean).join(' · ')}
+                  </option>
+                ))}
+              </select>
+              {current ? (
+                <Btn size="sm" kind="quiet" disabled={saving} onClick={() => removePreset(current.id)}>
+                  목록에서 빼기
+                </Btn>
+              ) : (
+                <Btn size="sm" kind="side" busy={saving} busyLabel="저장 중…" disabled={!value.recvAddr} onClick={addPreset}>
+                  {value.recvAddr ? '자주 쓰는 수령지로 저장' : '주소를 적으면 저장할 수 있습니다'}
+                </Btn>
+              )}
+            </span>
+          )}
           {cell(addr)}
           <span className="flex flex-wrap gap-1.5">{rest.map(cell)}</span>
+          {error && <Err>{error}</Err>}
         </span>
       ) : (
-        <span className={`font-semibold ${value.recvAddr || value.recvName || value.recvPhone ? 'text-slate-800' : 'text-slate-300'}`}>
-          {value.recvAddr || value.recvName || value.recvPhone
+        <span className={`font-semibold ${any ? 'text-slate-800' : 'text-slate-300'}`}>
+          {any
             ? [value.recvAddr, value.recvName, value.recvPhone].map((v) => v ?? '—').join(' · ')
             : '비어 있음'}
         </span>
