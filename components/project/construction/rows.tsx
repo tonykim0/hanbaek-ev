@@ -192,16 +192,16 @@ export function CountsRow({
 type RecvField = 'recvAddr' | 'recvName' | 'recvPhone';
 
 const RECV_ITEMS: Array<{ field: RecvField; label: string; placeholder: string; width: string; inputMode?: 'tel' }> = [
-  { field: 'recvAddr', label: '주소', placeholder: '받을 주소', width: 'w-full' },
-  { field: 'recvName', label: '담당자', placeholder: '이름', width: 'w-28' },
-  { field: 'recvPhone', label: '연락처', placeholder: '010-0000-0000', width: 'w-36', inputMode: 'tel' },
+  { field: 'recvAddr', label: '주소', placeholder: '받을 주소', width: 'min-w-0 flex-1' },
+  { field: 'recvName', label: '담당자', placeholder: '이름', width: 'w-40' },
+  { field: 'recvPhone', label: '연락처', placeholder: '010-0000-0000', width: 'w-44', inputMode: 'tel' },
 ];
 
 /**
  * 충전기 수령지 — 주소·담당자·연락처 (한백 지시 2026-09-30).
  *
- * 한 줄에 셋을 붙이면 주소가 좁아진다 — 주소는 한 줄을 통째로 쓰고, 담당자·연락처는
- * 그 아래에 나란히 선다. 수량 칸처럼 칸을 떠날 때 저장한다.
+ * 행위신고 밑 따로 선 구역이다 — 주소·담당자·연락처가 한 줄씩 선다. 수량 칸처럼 칸을
+ * 떠날 때 저장한다.
  *
  * ★협력사별 자주 쓰는 수령지★ — 같은 시공사가 여러 현장을 한 곳으로 받는다. 목록에서
  * 고르면 세 칸이 한 번에 들어가고, 지금 적힌 것을 목록에 더하거나 뺄 수 있다.
@@ -234,7 +234,6 @@ export function RecvSiteRow({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [org, canEdit]);
 
-  const any = Boolean(value.recvAddr || value.recvName || value.recvPhone);
   /* 지금 적힌 셋과 같은 목록 줄 — 있으면 「빼기」, 없으면 「저장」을 세운다 */
   const current = presets?.find((x) =>
     x.addr === value.recvAddr && x.name === value.recvName && x.phone === value.recvPhone) ?? null;
@@ -278,58 +277,61 @@ export function RecvSiteRow({
       className={`${FIELD_CELL_BASE} ${c.width} text-base`}
     />
   );
-  const [addr, ...rest] = RECV_ITEMS;
+  /*
+   * 구역 하나가 통째로 수령지라(행위신고 밑, 2026-09-30) 줄마다 이름을 단다 — 자주 쓰는
+   * 수령지 · 주소 · 담당자 · 연락처. 상자의 다른 줄(날짜)과 같은 꼴이어야 같은 종류로 읽힌다.
+   */
   return (
-    <div className={ROW}>
-      <RowLabel>충전기 수령지</RowLabel>
-      {canEdit ? (
-        <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-          {org && (
-            <span className="flex flex-wrap items-center gap-1.5">
-              <select
-                aria-label="자주 쓰는 수령지"
-                value=""
-                disabled={!presets?.length || busyKey === 'recvSite'}
-                onChange={(e) => {
-                  const hit = presets?.find((x) => x.id === e.target.value);
-                  if (hit) onPick({ addr: hit.addr, name: hit.name, phone: hit.phone });
-                }}
-                className={`${FIELD_CELL_BASE} min-w-0 flex-1 text-base`}
-              >
-                <option value="">
-                  {presets === null ? '자주 쓰는 수령지 불러오는 중…'
-                    : presets.length === 0 ? `${org} 자주 쓰는 수령지 없음`
-                      : `${org} 자주 쓰는 수령지에서 고르기 (${presets.length})`}
+    <>
+      {canEdit && org && (
+        <div className={ROW}>
+          <RowLabel>자주 쓰는 수령지</RowLabel>
+          <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+            <select
+              aria-label="자주 쓰는 수령지"
+              value=""
+              disabled={!presets?.length || busyKey === 'recvSite'}
+              onChange={(e) => {
+                const hit = presets?.find((x) => x.id === e.target.value);
+                if (hit) onPick({ addr: hit.addr, name: hit.name, phone: hit.phone });
+              }}
+              className={`${FIELD_CELL_BASE} min-w-0 flex-1 text-base`}
+            >
+              <option value="">
+                {presets === null ? '불러오는 중…'
+                  : presets.length === 0 ? `${org} 저장된 수령지 없음`
+                    : `${org} 수령지에서 고르기 (${presets.length})`}
+              </option>
+              {presets?.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {[x.addr, x.name, x.phone].filter(Boolean).join(' · ')}
                 </option>
-                {presets?.map((x) => (
-                  <option key={x.id} value={x.id}>
-                    {[x.addr, x.name, x.phone].filter(Boolean).join(' · ')}
-                  </option>
-                ))}
-              </select>
-              {current ? (
-                <Btn size="sm" kind="quiet" disabled={saving} onClick={() => removePreset(current.id)}>
-                  목록에서 빼기
-                </Btn>
-              ) : (
-                <Btn size="sm" kind="side" busy={saving} busyLabel="저장 중…" disabled={!value.recvAddr} onClick={addPreset}>
-                  {value.recvAddr ? '자주 쓰는 수령지로 저장' : '주소를 적으면 저장할 수 있습니다'}
-                </Btn>
-              )}
+              ))}
+            </select>
+            {current ? (
+              <Btn size="sm" kind="quiet" disabled={saving} onClick={() => removePreset(current.id)}>
+                목록에서 빼기
+              </Btn>
+            ) : (
+              <Btn size="sm" kind="side" busy={saving} busyLabel="저장 중…" disabled={!value.recvAddr} onClick={addPreset}>
+                {value.recvAddr ? '지금 수령지를 목록에 저장' : '주소를 적으면 저장할 수 있습니다'}
+              </Btn>
+            )}
+            {error && <Err className="basis-full">{error}</Err>}
+          </span>
+        </div>
+      )}
+      {RECV_ITEMS.map((c) => (
+        <div key={c.field} className={ROW}>
+          <RowLabel>{c.label}</RowLabel>
+          {canEdit ? cell(c) : (
+            <span className={`font-semibold ${value[c.field] ? 'text-slate-800' : 'text-slate-300'}`}>
+              {value[c.field] ?? '비어 있음'}
             </span>
           )}
-          {cell(addr)}
-          <span className="flex flex-wrap gap-1.5">{rest.map(cell)}</span>
-          {error && <Err>{error}</Err>}
-        </span>
-      ) : (
-        <span className={`font-semibold ${any ? 'text-slate-800' : 'text-slate-300'}`}>
-          {any
-            ? [value.recvAddr, value.recvName, value.recvPhone].map((v) => v ?? '—').join(' · ')
-            : '비어 있음'}
-        </span>
-      )}
-    </div>
+        </div>
+      ))}
+    </>
   );
 }
 
