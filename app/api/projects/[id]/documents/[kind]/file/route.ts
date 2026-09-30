@@ -22,6 +22,12 @@ import { getRepository } from '@/lib/data';
 import { canAccessProject, canWrite } from '@/lib/roles';
 import { isKnownDocKind } from '@/lib/data/assemble';
 import { attachDocument } from '@/lib/attach-doc';
+
+/*
+ * 붙이기 전에 PDF 방향을 본다(lib/attach-doc) — 페이지마다 판정을 불러 수십 초가 걸릴 수
+ * 있어 기본 한도로는 긴 스캔이 잘린다. 접수 ZIP(intake-zip)과 같은 한도를 준다.
+ */
+export const maxDuration = 300;
 import { dropBlob, pathnameOfBlobUrl } from '@/lib/intake-stage';
 import { MAX_DOC_BYTES } from '@/types/project';
 

@@ -7,6 +7,7 @@
  *
  * 서버 전용.
  */
+import { put } from '@vercel/blob';
 import { actorOf } from '@/lib/auth/session';
 import type { SessionPayload } from '@/lib/auth/types';
 import { getRepository } from '@/lib/data';
@@ -19,6 +20,43 @@ import {
   pathnameOfBlobUrl,
   stagedPathnameOf,
 } from '@/lib/intake-stage';
+import { uprightPdf } from '@/lib/pdf-orient';
+
+/**
+ * ★돌아간 스캔을 붙이기 전에 세운다★ (한백 지시 2026-09-30 「90° 돌아가 있는 서류를
+ * 업로드할 때 다 수정해줘」).
+ *
+ * ZIP 접수는 판독 전에 이미 세운다(intake-auto → lib/pdf-orient). 그런데 칸마다 올리는
+ * 길(계약서류 칸·다시 올리기·공정 서류)과 접수 화면에서 사람이 직접 고른 파일은 그
+ * 단계를 안 지나서, 옆으로 누운 채 저장되고 검수·운영사 제출 때 사람이 돌려 봐야 했다.
+ *
+ * 이미 세운 임시본은 다시 보지 않는다 — ZIP 에서 나온 것과 PDF 나누기(sorted-)에서 나온
+ * 것이다. 같은 판정을 두 번 하면 접수만 느려진다. 사람이 고른 것(picked-)만 본다.
+ *
+ * 감지가 실패하면 원본 그대로 붙인다 — 판정은 붙이기를 막지 않는다(lib/pdf-orient 와 같은 원칙).
+ */
+function needsUpright(pathname: string, staged: string | null): boolean {
+  if (!pathname.toLowerCase().endsWith('.pdf')) return false;
+  return !staged || staged.includes('/picked-');
+}
+
+/** 세운 PDF — 고칠 페이지가 없으면 null. 받아 오지 못하면 던진다(임시본이 사라진 경우를 가른다) */
+async function uprightOf(url: string): Promise<Buffer | null> {
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) throw new Error(`파일을 받지 못했습니다 (${res.status})`);
+  const src = Buffer.from(await res.arrayBuffer());
+  const fixed = await uprightPdf(src, 'attach-doc');
+  return fixed === src ? null : fixed;
+}
+
+async function putUpright(own: string, pdf: Buffer): Promise<string> {
+  const blob = await put(`${own}${Date.now()}-upright.pdf`, pdf, {
+    access: 'public',
+    contentType: 'application/pdf',
+    token: process.env.BLOB_READ_WRITE_TOKEN,
+  });
+  return blob.url;
+}
 
 export type AttachResult =
   | { ok: true; already?: boolean }
@@ -85,12 +123,18 @@ export async function attachDocument(input: {
   let blobUrl: string;
   /** 저장이 실패하면 되돌릴 사본 */
   let copied: string | null = null;
+  /** 세운 사본으로 갈아 끼운 원본 — 저장에 성공하면 지운다 */
+  let replaced: string | null = null;
+  const upright = needsUpright(pathname, staged);
 
   if (staged) {
     // 확장자는 파일이름이 아니라 실제 올라간 경로에서 딴다
     const ext = (staged.split('.').pop() ?? 'pdf').toLowerCase();
     try {
-      blobUrl = await moveStagedTo(staged, `${own}${Date.now()}.${ext}`);
+      const fixed = upright ? await uprightOf(input.blobUrl) : null;
+      blobUrl = fixed
+        ? await putUpright(own, fixed)
+        : await moveStagedTo(staged, `${own}${Date.now()}.${ext}`);
       copied = blobUrl;
     } catch (err) {
       /*
@@ -122,6 +166,19 @@ export async function attachDocument(input: {
     } catch {
       return { ok: false, status: 422, error: '올린 파일을 찾을 수 없습니다. 다시 올려주세요.' };
     }
+    if (upright) {
+      try {
+        const fixed = await uprightOf(blobUrl);
+        if (fixed) {
+          replaced = blobUrl;
+          blobUrl = await putUpright(own, fixed);
+          copied = blobUrl;
+        }
+      } catch (err) {
+        // 세우지 못했을 뿐이다 — 올린 그대로 붙인다
+        console.warn('[attach-doc] 방향 보정 실패 — 원본으로 붙입니다:', err);
+      }
+    }
   }
 
   try {
@@ -140,6 +197,8 @@ export async function attachDocument(input: {
    * 지우기가 실패해도 접수는 성공이다 — 파일 하나가 남는 것이 접수를 막는 것보다 낫다.
    */
   if (staged) await dropBlob(input.blobUrl);
+  // 세운 사본을 붙였으면 누운 원본은 아무도 안 가리킨다
+  if (replaced) await dropBlob(replaced);
   /*
    * ★이전 파일을 지우지 않는다★ (한백 지시 2026-08-25). 예전에는 새로 올린 것이 앞의 것을
    * 갈아치우고 앞 파일을 저장소에서 지웠다 — 한 칸에 파일 하나였기 때문이다. 지금은 쌓이므로
