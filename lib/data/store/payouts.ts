@@ -51,7 +51,12 @@ export const payoutStore: Pick<
   async listSettlements(viewer: Viewer): Promise<SettlementSummary[]> {
     // 한백이 아니면 금액을 읽어오지도 않는다
     if (!isHanbaek(viewer.role)) return [];
-    const rows = await getDb().select().from(projects);
+    /*
+     * ★계약중단은 뺀다★ (한백 지시 2026-09-30 「운영사 기성관리 및 정산현황에서 빼야해」).
+     * 받을 기성이 없는 현장이라, 남겨 두면 받을 돈·마진 합계에 계획액이 그대로 섞인다.
+     * 이 목록을 보는 곳이 그 두 화면뿐이라 여기서 한 번 거른다. 옛 값 DROP 도 같은 뜻이다.
+     */
+    const rows = (await getDb().select().from(projects)).filter((r) => !r.holdState);
     const [records, [rules, settles]] = await Promise.all([
       recordsOf(rows),
       allSlots([() => ruleMap(), () => settleMap()] as const),

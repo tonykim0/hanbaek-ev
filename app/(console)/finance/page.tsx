@@ -44,10 +44,23 @@ export default async function FinancePage({
 
   const viewer = viewerOf(session);
   const repo = getRepository();
-  const [overview, settlements] = await allSlots([
+  const [allOverview, settlements] = await allSlots([
     () => repo.listPayoutOverview(viewer),
     () => repo.listSettlements(viewer),
   ] as const);
+  /*
+   * ★계약중단 현장은 지급 쪽에서도 뺀다★ (한백 지시 2026-09-30) — 기성 목록(listSettlements)은
+   * 저장소가 이미 걸렀다. 한백에게는 그 목록이 곧 「센다」는 현장의 명단이라 그것으로 맞춘다 —
+   * 받는 쪽만 빠지고 주는 쪽이 남으면 마진이 그만큼 틀린다.
+   * 협력사는 기성 목록이 비어 있으므로(위 머리말) 거르지 않는다 — 다 사라진다.
+   */
+  const counted = new Set(settlements.map((s) => s.id));
+  const overview = isHanbaek(session.role)
+    ? {
+      plans: allOverview.plans.filter((row) => counted.has(row.projectId)),
+      history: allOverview.history.filter((row) => counted.has(row.projectId)),
+    }
+    : allOverview;
 
   const isAdmin = isHanbaek(session.role);
   const thisMonth = seoulMonth();
