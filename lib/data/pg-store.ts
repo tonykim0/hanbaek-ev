@@ -779,6 +779,9 @@ function projectRowOf(id: string, draft: IntakeDraft, actor: Actor, day: string)
     name: withRegionPrefix(draft.name, draft.addr),
     addr: draft.addr,
     bldgType: draft.bldgType,
+    // 모르는 값은 버린다 — 머리말은 세 값 중 하나만 그린다
+    installLoc: draft.installLoc && (INSTALL_LOCS as readonly string[]).includes(draft.installLoc)
+      ? draft.installLoc : null,
     contractParty: draft.contractParty,
     parkTotal: draft.parkTotal,
     mgr: draft.mgr,

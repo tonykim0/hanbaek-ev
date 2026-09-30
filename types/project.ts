@@ -1687,6 +1687,11 @@ export interface IntakeDraft {
   name: string;
   addr: string | null;
   bldgType: BuildingType | null;
+  /**
+   * 설치위치 — 판독이 결과서에서 읽은 값을 그대로 싣는다(화면에 칸이 없다, 담당자와 같다).
+   * 없어도 된다 — 화면 없이 부르는 접수·옛 초안이 이 칸을 모른다.
+   */
+  installLoc?: InstallLoc | null;
   contractParty: ContractParty | null;
   parkTotal: number | null;
   mgr: string | null;

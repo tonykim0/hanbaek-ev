@@ -20,7 +20,9 @@
 import { put } from '@vercel/blob';
 import type { FileCategory } from '@/types/intake';
 import type { AutoDoc, AutoFields, AutoIntakeResult } from '@/types/intake-auto';
-import type { BizType, BuildingType, ContractParty, CpoName, PowerType } from '@/types/project';
+import type {
+  BizType, BuildingType, ContractParty, CpoName, InstallLoc, PowerType,
+} from '@/types/project';
 import { extractAndHashFromZipBuffer, isZipBuffer } from './files';
 import { classifyAndExtract } from './claude';
 import { uprightPdfFiles } from './pdf-orient';
@@ -55,6 +57,21 @@ export type IntakeProgress = (step: { phase: string; message: string; done?: num
 
 /* 이미지로 낸 서류 — EXIF 만 본다(페이지 규격이라는 것이 없다) */
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/heic', 'image/heif']);
+
+/**
+ * 판독이 적은 설치위치를 세 값 중 하나로 — 결과서의 「실내, 지하」·「실외, 노상」 체크다.
+ * 프롬프트가 세 값을 부탁하지만 「실내, 실외」·「실내/실외」처럼 적어 올 때가 있다.
+ * 둘 다 안 보이면 null 이다 — 짐작해 채우면 틀린 값이 머리말에 굳는다.
+ */
+export function toInstallLoc(raw: string | null): InstallLoc | null {
+  if (!raw) return null;
+  const indoor = /실내|지하/.test(raw);
+  const outdoor = /실외|노상|옥외/.test(raw);
+  if (indoor && outdoor) return '실내·실외';
+  if (indoor) return '실내';
+  if (outdoor) return '실외';
+  return null;
+}
 
 export async function autoIntakeFromZip(
   zip: Buffer,
@@ -265,6 +282,7 @@ export async function autoIntakeFromZip(
     preInstall: categories.length > 0 ? preInstallFromCategories(categories) : null,
     termYears: toTerm(metadata?.계약기간 ?? null),
     qty: metadata?.계약대수 ?? null,
+    installLoc: toInstallLoc(metadata?.설치위치 ?? null),
   };
 
   if (!fields.contractParty) {

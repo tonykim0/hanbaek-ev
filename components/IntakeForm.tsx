@@ -23,7 +23,7 @@
 import { useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type {
-  BizType, BuildingType, ContractParty, CpoName, IntakeDraft, PowerType, PreInstall, ReplType,
+  BizType, BuildingType, ContractParty, CpoName, InstallLoc, IntakeDraft, PowerType, PreInstall, ReplType,
 } from '@/types/project';
 import { MAX_DOC_BYTES, replLabel, SPLITS_SELF_REPL } from '@/types/project';
 import { canShrink, shrink } from '@/lib/shrink';
@@ -127,6 +127,8 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
    * 현장 상세에서 고친다.
    */
   const [mgr, setMgr] = useState('');
+  /* 설치위치도 칸이 없다 — 결과서의 실내/실외 체크를 판독이 읽어 그대로 싣는다(현장 상세에서 고친다) */
+  const [installLoc, setInstallLoc] = useState<InstallLoc | null>(null);
   const [tel, setTel] = useState('');
   const [mail, setMail] = useState('');
   const [note, setNote] = useState('');
@@ -225,6 +227,8 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
       fill('powerType', f.powerType, setPowerType);
       fill('parkTotal', f.parkTotal, (v) => setParkTotal(String(v)));
       fill('mgr', f.mgr, setMgr);
+      // 다른 ZIP 을 다시 올리면 앞 값이 남지 않게 판독값으로 덮는다(못 읽었으면 비운다)
+      setInstallLoc(f.installLoc ?? null);
       fill('tel', f.tel, setTel);
       fill('mail', f.mail, setMail);
       // 비고는 채우지 않는다 — 사람이 쓰는 칸이다(영업비 차감·프로모션 조건)
@@ -412,7 +416,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
 
   const draft: IntakeDraft = useMemo(
     () => ({
-      cpo, name, addr: addr || null, bldgType, contractParty,
+      cpo, name, addr: addr || null, bldgType, installLoc, contractParty,
       // 협력사가 보내도 서버가 무시한다 — 실제로 쓰이는 것은 한백이 접수할 때뿐이다
       salesOrg: isAdmin ? salesOrg.trim() || null : null,
       gcOrg: isAdmin ? gcOrg.trim() || null : null,
@@ -425,7 +429,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
       documents: Object.entries(staged).flatMap(([kind, list]) =>
         list.map((d) => ({ kind, filename: d.filename }))),
     }),
-    [cpo, name, addr, bldgType, contractParty, parkTotal, mgr, tel, mail, preInstall, preNote,
+    [cpo, name, addr, bldgType, installLoc, contractParty, parkTotal, mgr, tel, mail, preInstall, preNote,
       powerType, projectRepl, bizType, note, lines, staged, isAdmin, salesOrg, gcOrg]
   );
 

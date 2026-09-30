@@ -7,7 +7,9 @@
  * React 가 둘이 되고, 화면이 useContext 에서 죽는다 — 실제로 겪었다.
  * 타입은 양쪽이 읽어도 되는 자리에 둔다.
  */
-import type { BizType, BuildingType, ContractParty, CpoName, PowerType } from './project';
+import type {
+  BizType, BuildingType, ContractParty, CpoName, InstallLoc, PowerType,
+} from './project';
 
 /** 자동으로 채운 현장 정보. 비어 있는 것은 사람이 채운다. */
 export interface AutoFields {
@@ -35,6 +37,8 @@ export interface AutoFields {
   /** 총 계약연수·대수. 축이 갈린 현장은 대수를 사람이 쪼갠다. */
   termYears: number | null;
   qty: number | null;
+  /** 설치위치 — 결과서의 실내/실외 체크 (한백 지시 2026-09-30). 못 읽으면 null */
+  installLoc: InstallLoc | null;
 }
 
 export interface AutoDoc {
