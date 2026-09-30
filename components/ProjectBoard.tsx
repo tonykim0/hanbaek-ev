@@ -299,7 +299,13 @@ function Card({
     >
       <p className="break-keep text-lead font-bold leading-snug text-slate-900">{p.name}</p>
       <p className="mt-1 text-tiny leading-snug text-slate-500">
-        {p.cpo} · {qty}대{terms.length ? ` · ${terms.join('·')}년` : ''}
+        {p.cpo}
+        {/*
+          사업구분 — 카드마다 적는다 (한백 지시 2026-09-30). 환경부 사업과 자체투자는 서류·기성·
+          조사가 다 갈리는데, 카드에서는 열어 보기 전까지 어느 쪽인지 알 수 없었다.
+        */}
+        {' · '}<span className="font-bold text-slate-700">{p.bizType ?? '사업구분 미지정'}</span>
+        {' · '}{qty}대{terms.length ? ` · ${terms.join('·')}년` : ''}
       </p>
       {org && <p className="text-tiny leading-snug text-slate-400">{org}</p>}
 
