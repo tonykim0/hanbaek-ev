@@ -20,6 +20,7 @@ import { getSessionUser } from '@/lib/auth/session';
 import { canWrite } from '@/lib/roles';
 import { autoIntakeFromZip } from '@/lib/intake-auto';
 import { stagedPathnameOf, stagePrefix, sweepStaleStaging } from '@/lib/intake-stage';
+import { MAX_INTAKE_ZIP_BYTES } from '@/types/project';
 
 /** 분류·판독까지 도는 경로라 길다. 포털의 판독 라우트와 같은 예산. */
 export const maxDuration = 300;
@@ -29,8 +30,8 @@ const ZIP_CONTENT_TYPES = [
   'application/x-zip-compressed',
   'application/octet-stream',
 ];
-/** 스캔본 묶음이라 크다. 안쪽 PDF 총량은 lib/intake-auto 가 따로 막는다. */
-const MAX_BYTES = 60 * 1024 * 1024;
+/** 스캔본 묶음이라 크다. 안쪽 PDF 는 판독이 나눠 읽는다(lib/claude-chunked) — 상한은 화면과 같은 값 */
+const MAX_BYTES = MAX_INTAKE_ZIP_BYTES;
 const BLOB_HOST_RE = /(^|\.)blob\.vercel-storage\.com$/;
 
 export async function POST(request: Request) {

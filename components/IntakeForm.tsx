@@ -25,7 +25,7 @@ import { useRouter } from 'next/navigation';
 import type {
   BizType, BuildingType, ContractParty, CpoName, InstallLoc, IntakeDraft, PowerType, PreInstall, ReplType,
 } from '@/types/project';
-import { MAX_DOC_BYTES, replLabel, SPLITS_SELF_REPL } from '@/types/project';
+import { MAX_DOC_BYTES, MAX_INTAKE_ZIP_BYTES, replLabel, SPLITS_SELF_REPL } from '@/types/project';
 import { canShrink, shrink } from '@/lib/shrink';
 import { uploadIntakeFile, uploadIntakeZip } from '@/lib/intake-upload';
 import { buildDocContext, evaluateDocs } from '@/lib/doc-rules';
@@ -176,6 +176,12 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
   /** 이미 만든 현장 번호 — 서류 붙이기가 끊겨 다시 누를 때 현장을 또 만들지 않는다 */
   const [madeId, setMadeId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /*
+   * ★ZIP 의 실패는 ZIP 놓는 자리 밑에 뜬다★ (화면 규칙 9 · 2026-10-01) — 전에는 맨 아래
+   * 접수 단추 옆의 error 한 칸에 떠서, 화면 위에서 ZIP 을 놓은 사람은 「스캔 중」 뒤에
+   * 아무 일도 없는 줄 알았다(PDF 42MB 거절이 그렇게 묻혔다).
+   */
+  const [zipError, setZipError] = useState<string | null>(null);
 
   /*
    * 올려 두고 나가려 하면 한 번 묻는다 (한백 지시 2026-08-26).
@@ -208,7 +214,16 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
 
   async function applyZip(zip: File) {
     setError(null);
+    setZipError(null);
     setNotes([]);
+    /* 올리기 전에 잰다 — 몇 분 올리고 나서 튕기면 그 시간이 버려진다 */
+    if (zip.size > MAX_INTAKE_ZIP_BYTES) {
+      setZipError(
+        `ZIP 이 ${Math.round(zip.size / 1024 / 1024)}MB 입니다(최대 ${Math.round(MAX_INTAKE_ZIP_BYTES / 1024 / 1024)}MB). `
+        + '스캔 해상도를 낮춰(200dpi·흑백 권장) 파일을 줄이거나 ZIP 을 나눠 올려 주세요.'
+      );
+      return;
+    }
     try {
       const data = await uploadIntakeZip(zip, setBusy);
 
@@ -297,7 +312,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
       setReview(data.review);
       setNotes(data.warnings);
     } catch (err) {
-      setError((err as Error).message);
+      setZipError((err as Error).message);
     } finally {
       setBusy(null);
     }
@@ -521,12 +536,12 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
   const takeZip = (list: File[]) => {
     if (list.length === 0) return;
     if (list.length > 1) {
-      setError('ZIP 하나만 놓아주세요 — 여러 묶음은 한 번에 풀지 않습니다.');
+      setZipError('ZIP 하나만 놓아주세요 — 여러 묶음은 한 번에 풀지 않습니다.');
       return;
     }
     const f = list[0];
     if (!/\.zip$/i.test(f.name)) {
-      setError(`${f.name} 은(는) ZIP 이 아닙니다 — 서류 한 장은 아래 서류 칸에 놓아주세요.`);
+      setZipError(`${f.name} 은(는) ZIP 이 아닙니다 — 서류 한 장은 아래 서류 칸에 놓아주세요.`);
       return;
     }
     void applyZip(f);
@@ -632,6 +647,12 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
           </p>
         )}
       </label>
+
+      {zipError && (
+        <p role="alert" className="rounded-xl border-l-[3px] border-red-500 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
+          {zipError}
+        </p>
+      )}
 
       {notes.length > 0 && (
         <ul className="flex flex-col gap-1 rounded-xl border-l-[3px] border-amber-500 bg-amber-50/70 px-4 py-3 text-xs leading-relaxed text-amber-900">

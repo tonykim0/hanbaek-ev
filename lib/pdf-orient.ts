@@ -48,6 +48,8 @@ const FILE_CONCURRENCY = 2;
  * 넘는 페이지는 원본 방향으로 남는다 — 잘못 돌리는 것보다 그대로 두는 편이 안전하다.
  */
 const MAX_DETECT_PAGES = 60;
+/** 네 후보를 합친 원본 크기 상한 — base64(1.33배)로 32MB 요청 한도 아래에 선다 */
+const ORIENT_REQUEST_BUDGET = 20 * 1024 * 1024;
 
 const ROTATION_CANDIDATES = [
   { id: 'A', rotation: 0 },
@@ -138,6 +140,17 @@ async function detectRotationFixes(doc: PDFDocument, tag: string): Promise<Rotat
       batch.map(async (pageIndex) => {
         try {
           const candidates = await buildRotationCandidates(doc, pageIndex);
+          /*
+           * ★한 쪽이 너무 크면 묻지 않는다★ (2026-10-01) — 같은 쪽을 네 장으로 실어 보내므로
+           * 사진 한 장이 27MB 인 쪽은 요청이 100MB 를 넘는다. 거절만 당하는 게 아니라 그 연결
+           * 오류(HTTP/2 ENHANCE_YOUR_CALM)가 같은 클라이언트의 판독 호출까지 끊었다.
+           * 그 쪽은 원본 방향으로 둔다 — 잘못 돌리는 것보다 그대로 두는 편이 안전하다(머리말).
+           */
+          const bytes = candidates.reduce((n, c) => n + c.pdf.length, 0);
+          if (bytes > ORIENT_REQUEST_BUDGET) {
+            console.warn(`[${tag}] ${pageIndex + 1}p 가 ${Math.round(bytes / 1024 / 1024)}MB 라 방향을 묻지 않습니다 — 원본 방향 유지`);
+            return null;
+          }
           const upright = await selectUprightRotation(candidates);
           /*
            * 후보는 원래 회전을 덮어쓴 절대값이다 — 똑바르게 보인 후보의 값이 곧 목표값이다.

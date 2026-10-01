@@ -1527,6 +1527,13 @@ export const MAX_DOC_BYTES = 100 * 1024 * 1024;
 export const SHRINK_OVER_BYTES = MAX_DOC_BYTES;
 
 /**
+ * 접수 ZIP 의 상한 (한백 지시 2026-10-01 「50메가 이상 파일 받게 해」) — 라우트의 토큰과
+ * 화면이 같은 값을 본다. 안쪽 PDF 는 판독이 나눠 읽는다(lib/claude-chunked). 이보다 크면
+ * 올리기 전에 화면이 줄여 달라고 말한다 — 올리는 데만 몇 분 걸리고 나서 튕기면 안 된다.
+ */
+export const MAX_INTAKE_ZIP_BYTES = 200 * 1024 * 1024;
+
+/**
  * multipart 로 서버에 바로 올리는 파일의 상한 — Blob 을 안 거치는 자리다.
  *
  * 서버리스 본문 한도(4.5MB) 아래로 잡는다. 라우트 셋이 같은 이유로 같은 수를 쓰고 있었다

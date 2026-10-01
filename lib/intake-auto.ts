@@ -24,7 +24,7 @@ import type {
   BizType, BuildingType, ContractParty, CpoName, InstallLoc, PowerType,
 } from '@/types/project';
 import { extractAndHashFromZipBuffer, isZipBuffer } from './files';
-import { classifyAndExtract } from './claude';
+import { classifyInChunks, READ_MAX_TOTAL_BYTES, tooLargeMessage } from './claude-chunked';
 import { uprightPdfFiles } from './pdf-orient';
 import { checkImagePhoto, checkPdfPhoto } from './photo-check';
 import { buildUploadItems } from './notion';
@@ -124,26 +124,20 @@ export async function autoIntakeFromZip(
   const pdfs = files.filter((f) => f.mimeType === 'application/pdf');
 
   /*
-   * PDF 를 전부 한 번의 Claude 호출에 담는다(멀티 문서 vision). 요청 한도가 32MB 인데
-   * base64 로 실으면 1.33배가 되므로 원본 기준으로 여기서 막는다.
-   *
-   * 일부만 분류하지 않는다 — 분류 안 된 서류는 종류를 모르니 전부 「기타」 한 칸으로 몰리고,
-   * 그 칸은 하나뿐이라 서로 덮어쓴다. 조용히 잃는 것보다 나눠 올려달라고 하는 편이 낫다.
+   * ★20MB 를 넘으면 나눠 읽는다★ (2026-10-01, lib/claude-chunked) — 판독 요청 하나는
+   * 32MB(base64 1.33배)가 한도라 전에는 여기서 접수를 통째로 거절했다. 이제는 나눠 읽고
+   * 합친다. 아주 큰 묶음(READ_MAX_TOTAL_BYTES)만 줄여 달라고 돌려보낸다 — 이 거절은
+   * 아래 try 밖이라 「자동 분류 실패」 경고로 삼켜지지 않고 화면에 그대로 뜬다.
    */
   const pdfBytes = pdfs.reduce((n, f) => n + f.buffer.length, 0);
-  const PDF_BUDGET = 20 * 1024 * 1024;
-  if (pdfBytes > PDF_BUDGET) {
-    throw new Error(
-      `PDF 총량이 ${Math.round(pdfBytes / 1024 / 1024)}MB 로 판독 한도(${PDF_BUDGET / 1024 / 1024}MB)를 넘습니다. `
-      + 'ZIP 을 나눠 올리거나 스캔 해상도를 낮춰주세요.'
-    );
-  }
-  let metadata = null as Awaited<ReturnType<typeof classifyAndExtract>> | null;
+  if (pdfBytes > READ_MAX_TOTAL_BYTES) throw new Error(tooLargeMessage(pdfBytes));
+  let metadata = null as Awaited<ReturnType<typeof classifyInChunks>> | null;
   if (pdfs.length > 0) {
-    // 여기가 제일 오래 걸린다(20~30초)
+    // 여기가 제일 오래 걸린다(20~30초, 나눠 읽으면 묶음마다)
     onProgress({ phase: 'read', message: '계약서 읽는 중' });
     try {
-      metadata = await classifyAndExtract(pdfs);
+      metadata = await classifyInChunks(pdfs, (done, total) =>
+        onProgress({ phase: 'read', message: `계약서 읽는 중 — ${done}/${total}묶음` }));
     } catch (err) {
       // 분류가 실패해도 파일은 올려준다 — 사람이 칸을 고르면 된다
       console.warn('[intake-auto] 분류 실패:', err);
