@@ -35,14 +35,14 @@ export interface SurveyEditorProps {
   fileName: (siteName: string) => string;
 }
 
-const today = () => {
+export const today = () => {
   const d = new Date();
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
 };
 
 let seq = 0;
-const nextId = () => `s${Date.now().toString(36)}${(seq += 1)}`;
+export const nextId = () => `s${Date.now().toString(36)}${(seq += 1)}`;
 
 export default function SurveyEditor({ cpo, slots, variant, build, fileName }: SurveyEditorProps) {
   const [siteName, setSiteName] = useState('');
@@ -148,7 +148,7 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
   );
 }
 
-function num(v: string): number | null {
+export function num(v: string): number | null {
   const n = Number(v.replace(/\D/g, ''));
   return v.trim() === '' || Number.isNaN(n) ? null : n;
 }
@@ -321,7 +321,7 @@ function SpotCard({
 }
 
 /** 사진 칸 하나 — 누르면 고르고, 끌어다 놓아도 된다. 넣은 사진은 그 자리에서 보인다 */
-function PhotoBox({ slot, file, onFiles, onClear }: {
+export function PhotoBox({ slot, file, onFiles, onClear }: {
   slot: PhotoSlot;
   file: File | null;
   onFiles: (files: File[]) => void;

@@ -42,6 +42,7 @@ const cpos = [
  * 카드는 두지 않는다(화면 규칙 3: 못 하는 것은 보이지 않거나 눌리지 않게).
  */
 const surveys = [
+  { name: '플러그링크', code: 'PL', href: '/survey/pluglink', hint: '실사개요 · 사진대지 · 공사내역서' },
   { name: '현대엔지니어링', code: 'HEC', href: '/survey/hec', hint: '사진대지 · 사전체크리스트' },
   { name: '나이스인프라', code: 'NICE', href: '/survey/nice', hint: '사진 대장' },
   { name: 'SK일렉링크', code: 'SK', href: '/survey/sk', hint: '사진 대장' },
