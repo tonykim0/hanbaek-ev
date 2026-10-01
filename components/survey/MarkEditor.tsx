@@ -16,7 +16,9 @@
  *     지우던 것은 걷었다 — 손에 따라 안 먹었다(한백 「안 되는데 그냥 없애줘, 지우기 기능을 추가」). 고른 틀 옆의
  *     「빼기」 단추도 걷었다(잘 안 보였다).
  *   · 되돌리기 — 찍기·지우기·옮기기·크기·회전을 하나씩 거꾸로(마지막 것만 빼던 것을 바꿨다 — 지운 것도 살아난다).
- *   · 선 — 누를 때마다 꺾이고, 두 번 누르거나 「선 끝」. 기호·번호를 누르면 그 가운데에 붙는다(분전반에서
+ *   · 선 — ★끌어서 긋는다★(누르고 끌다 놓으면 한 줄 — 한백 「선 끝을 오른쪽 단추로 해도 안 돼, 이 기능도 지워줘」로
+ *     누를 때마다 꺾이며 끝을 따로 맺던 방식을 걷었다). 고른 선은 끝점을 끌어 늘이고 옮긴다. 꺾인 배선은 선 둘로 —
+ *     끝점은 기호·번호에 붙으니 이어진다. 기호·번호 위에서 시작·끝내면 그 가운데에 붙는다(분전반에서
  *     분전반으로 잇는 배선이 정확히 닿게). 가로·세로에 가까우면 곧게 붙는다.
  *   · 크기를 바꾼 기호·번호·글자는 다음에 찍는 같은 것도 그 크기로 나온다 — 충전기 넷을 하나씩 줄이지 않게.
  *   · 확대·축소 — 평면도는 칸이 촘촘해 100% 로는 주차면을 못 짚는다.
@@ -33,7 +35,7 @@ type Tool = 'num' | 'sym' | 'line' | 'box' | 'text' | 'label' | 'erase';
 const TOOLS: Array<{ key: Tool; label: string; hint: string }> = [
   { key: 'num', label: '번호', hint: '빈 곳을 누르면 다음 번호' },
   { key: 'sym', label: '기호', hint: '기호를 고르고 빈 곳을 누릅니다' },
-  { key: 'line', label: '선', hint: '누를 때마다 꺾입니다 · 두 번 누르거나 「선 끝」 · 기호를 누르면 가운데에 붙습니다' },
+  { key: 'line', label: '선', hint: '끌어서 긋습니다 · 기호 위에서 시작·끝내면 가운데에 붙습니다 · 고른 선은 끝점을 끌어 늘입니다' },
   { key: 'box', label: '네모', hint: '빈 곳에서 끌어서 그립니다' },
   { key: 'text', label: '글자', hint: '글자를 고르고 빈 곳을 누릅니다' },
   { key: 'label', label: '거점 라벨', hint: '거점을 고르고 빈 곳을 누릅니다' },
@@ -106,6 +108,8 @@ function SymSwatch({ k }: { k: SymKind }) {
 
 type Op =
   | { kind: 'move'; i: number; orig: Annot; from: Pt }
+  /** 선의 끝점(꼭짓점 v)을 끈다 */
+  | { kind: 'vertex'; i: number; orig: Annot; v: number }
   | { kind: 'resize'; i: number; orig: Annot; sx: number; sy: number }
   | { kind: 'rotate'; i: number; orig: Annot; a0: number };
 
@@ -148,7 +152,6 @@ export default function MarkEditor({
   const op = useRef<Op | null>(null);
   const lastZ = useRef<Record<string, number>>({});
   const lastTap = useRef<{ i: number; t: number } | null>(null);
-  const lastLineTap = useRef(0);
 
   useEffect(() => {
     const u = URL.createObjectURL(file);
@@ -188,17 +191,18 @@ export default function MarkEditor({
     if (prev) setList(prev);
   };
 
-  /* 그리던 선은 다른 일을 하면 끝낸 것으로 본다 — 두 점이 안 되면 버린다 */
-  const commitDraft = useCallback((d: Annot | null = draft) => {
-    if (d && d.t === 'line') {
-      const pts = d.pts.slice(0, -1); // 마지막 점은 손가락을 따라오던 자리다
-      if (pts.length >= 2) {
-        snap();
-        setList((l) => { setSel(l.length); return [...l, { ...d, pts }]; });
-      }
-    }
-    setDraft(null);
-  }, [draft, snap]);
+  /* 그리던 것(끌던 선·네모)은 다른 일을 하면 버린다 — 선은 손을 떼는 순간 끝나므로 남는 것이 없다 */
+  const commitDraft = useCallback(() => setDraft(null), []);
+
+  /** 그 자리의 기호·번호 가운데 — 선 끝을 붙인다. 없으면 null */
+  const centerAt = (p: Pt): Pt | null => {
+    const marks = list.map((a, i) => ({ a, i })).filter((x) => x.a.t === 'sym' || x.a.t === 'num');
+    const k = hitAnnot(marks.map((x) => x.a), p.x * W, p.y * H, W, H);
+    const a = k >= 0 ? marks[k].a : null;
+    return a && (a.t === 'sym' || a.t === 'num') ? { x: a.x, y: a.y } : null;
+  };
+  /** 선 끝을 놓을 자리 — 기호 가운데, 아니면 맞은편 끝에서 가로·세로로 곧게 */
+  const endAt = (p: Pt, other: Pt): Pt => centerAt(p) ?? snapPt(other, p, W / H);
 
   const remove = useCallback((i: number) => {
     snap();
@@ -260,7 +264,9 @@ export default function MarkEditor({
     // 손잡이 — 고른 표시의 크기·회전
     if (handle && sel !== null) {
       const orig = list[sel];
-      if (handle === 'rot') {
+      if (handle.startsWith('v:')) {
+        begin({ kind: 'vertex', i: sel, orig, v: Number(handle.slice(2)) });
+      } else if (handle === 'rot') {
         const b = boxOf(orig, W, H);
         begin({ kind: 'rotate', i: sel, orig, a0: Math.atan2(p.y * H - b.cy, p.x * W - b.cx) });
       } else {
@@ -277,22 +283,12 @@ export default function MarkEditor({
     }
 
     if (tool === 'line') {
-      // 기호·번호를 누르면 그 가운데에 붙는다 — 분전반에서 분전반으로 정확히 잇게
+      // 선 위를 누르면 그 선을 고른다 — 기호 위를 누르면 거기서 긋기 시작한다(가운데에 붙어서)
       const target = hit >= 0 ? list[hit] : null;
-      const center = target && (target.t === 'sym' || target.t === 'num') ? { x: target.x, y: target.y } : null;
-      if (!draft || draft.t !== 'line') {
-        if (target && target.t === 'line') { setSel(hit); begin({ kind: 'move', i: hit, orig: target, from: p }); return; }
-        setSel(null);
-        const q = center ?? p;
-        setDraft({ t: 'line', pts: [q, q], k: lineKind });
-      } else if (now - lastLineTap.current < 350) {
-        commitDraft();
-      } else {
-        const fixed = draft.pts.slice(0, -1);
-        const q = center ?? snapPt(fixed[fixed.length - 1], p, W / H);
-        setDraft({ ...draft, pts: [...fixed, q, q] });
-      }
-      lastLineTap.current = now;
+      if (target && target.t === 'line') { setSel(hit); begin({ kind: 'move', i: hit, orig: target, from: p }); return; }
+      setSel(null);
+      const q = centerAt(p) ?? p;
+      setDraft({ t: 'line', pts: [q, q], k: lineKind });
       return;
     }
 
@@ -328,7 +324,12 @@ export default function MarkEditor({
     if (o) {
       let next: Annot;
       if (o.kind === 'move') next = moveAnnot(o.orig, p.x - o.from.x, p.y - o.from.y);
-      else if (o.kind === 'resize') next = resizeAnnot(o.orig, o.sx, o.sy, p.x * W, p.y * H, W, H);
+      else if (o.kind === 'vertex') {
+        if (o.orig.t !== 'line') return;
+        const pts = o.orig.pts;
+        const other = pts[o.v === 0 ? 1 : o.v - 1] ?? pts[0];
+        next = { ...o.orig, pts: pts.map((q, k) => (k === o.v ? endAt(p, other) : q)) };
+      } else if (o.kind === 'resize') next = resizeAnnot(o.orig, o.sx, o.sy, p.x * W, p.y * H, W, H);
       else {
         const b = boxOf(o.orig, W, H);
         const a1 = Math.atan2(p.y * H - b.cy, p.x * W - b.cx);
@@ -337,9 +338,8 @@ export default function MarkEditor({
       setList((l) => l.map((a, k) => (k === o.i ? next : a)));
       return;
     }
-    if (draft?.t === 'line') {
-      const fixed = draft.pts.slice(0, -1);
-      setDraft({ ...draft, pts: [...fixed, snapPt(fixed[fixed.length - 1], p, W / H)] });
+    if (draft?.t === 'line' && e.buttons) {
+      setDraft({ ...draft, pts: [draft.pts[0], endAt(p, draft.pts[0])] });
     } else if ((draft?.t === 'oval' || draft?.t === 'box') && e.buttons) {
       setDraft({ ...draft, b: p });
     }
@@ -358,6 +358,12 @@ export default function MarkEditor({
       const a = list[o.i];
       if (a && a.z !== undefined) lastZ.current[kindKey(a)] = a.z;
     }
+    if (draft?.t === 'line') {
+      // 손을 떼면 한 줄 — 거의 안 끈 것은 실수로 본다
+      const [a, b] = draft.pts;
+      if (Math.hypot((a.x - b.x) * W, (a.y - b.y) * H) > 6) add(draft);
+      setDraft(null);
+    }
     if (draft && (draft.t === 'oval' || draft.t === 'box')) {
       // 거의 안 끈 것은 실수로 본다
       if (Math.abs(draft.a.x - draft.b.x) > 0.01 || Math.abs(draft.a.y - draft.b.y) > 0.01) add(draft);
@@ -371,14 +377,16 @@ export default function MarkEditor({
   const current = tool ? TOOLS.find((t) => t.key === tool)! : null;
   const picked = sel !== null ? shown[sel] ?? null : null;
 
-  /* 고른 표시의 틀 — 돌린 상자의 네 모서리 · 위 꼭지(화면 픽셀) */
+  /* 고른 표시의 틀 — 돌린 상자의 네 모서리 · 위 꼭지(화면 픽셀). 선은 끝점 손잡이만(늘이기·옮기기) */
   const handles = useMemo(() => {
     if (!picked || W <= 1) return null;
+    if (picked.t === 'line') return { kind: 'line' as const, line: picked.pts.map((q) => ({ x: q.x * W, y: q.y * H })) };
     const b = boxOf(picked, W, H);
     const t = (b.r * Math.PI) / 180;
     const pt = (lx: number, ly: number) => ({ x: b.cx + lx * Math.cos(t) - ly * Math.sin(t), y: b.cy + lx * Math.sin(t) + ly * Math.cos(t) });
     const hw = b.w / 2 + 4; const hh = b.h / 2 + 4;
     return {
+      kind: 'box' as const,
       corners: { nw: pt(-hw, -hh), ne: pt(hw, -hh), se: pt(hw, hh), sw: pt(-hw, hh) },
       top: pt(0, -hh),
       rot: pt(0, -hh - 22),
@@ -397,9 +405,7 @@ export default function MarkEditor({
           <Btn
             size="sm"
             onClick={() => {
-              // 그리던 선도 담아 낸다 — 마지막 점은 손가락을 따라오던 자리라 뺀다
-              const tail = draft?.t === 'line' && draft.pts.length > 2 ? [{ ...draft, pts: draft.pts.slice(0, -1) }] : [];
-              onDone([...list, ...tail]);
+              onDone(list);
             }}
           >
             완료
@@ -432,7 +438,6 @@ export default function MarkEditor({
           {tool === 'line' && LINES.map((l) => (
             <Choice key={l.key} on={lineKind === l.key} onClick={() => { commitDraft(); setLineKind(l.key); setSel(null); }}>{l.label}</Choice>
           ))}
-          {tool === 'line' && draft?.t === 'line' && <Btn size="sm" kind="side" onClick={() => commitDraft()}>선 끝</Btn>}
           {tool === 'text' && (
             <>
               <input
@@ -451,7 +456,7 @@ export default function MarkEditor({
             <span className="text-small text-slate-500">{current ? current.hint : '표시를 누르면 골라집니다 · 위에서 도구를 고르면 그것을 찍습니다'}</span>
           )}
           {picked && (
-            <span className="ml-auto text-small text-slate-500">끌면 옮김 · 모서리는 크기 · 위 꼭지는 회전 · Delete 키나 「지우기」로 지움</span>
+            <span className="ml-auto text-small text-slate-500">{picked.t === 'line' ? '끌면 옮김 · 끝점을 끌면 늘이기' : '끌면 옮김 · 모서리는 크기 · 위 꼭지는 회전'} · Delete 키나 「지우기」로 지움</span>
           )}
         </div>
       </div>
@@ -477,7 +482,15 @@ export default function MarkEditor({
               className="block max-h-[70vh] max-w-full"
             />
             <AnnotCanvas list={shown} style={style} />
-            {handles && (
+            {handles?.kind === 'line' && (
+              <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" aria-hidden>
+                <polyline points={handles.line.map((q) => `${q.x},${q.y}`).join(' ')} fill="none" stroke="#0ea5e9" strokeWidth={1.5} strokeDasharray="5 3" />
+                {handles.line.map((q, k) => (
+                  <circle key={k} data-h={`v:${k}`} cx={q.x} cy={q.y} r={7} fill="#fff" stroke="#0ea5e9" strokeWidth={2} className="pointer-events-auto cursor-move" />
+                ))}
+              </svg>
+            )}
+            {handles?.kind === 'box' && (
               <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" aria-hidden>
                 <polygon
                   points={[handles.corners.nw, handles.corners.ne, handles.corners.se, handles.corners.sw].map((q) => `${q.x},${q.y}`).join(' ')}

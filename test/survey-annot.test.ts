@@ -129,3 +129,20 @@ describe('거점 라벨은 거점 값에 묶인다', () => {
     expect(plSpotLabel(s, 1).head).toEqual(['1거점 신규 2대', '2175G142 송정선 49R3']);
   });
 });
+
+describe('전체 도면 → 거점 도면', () => {
+  it('틀 안의 표시만 틀 기준 자리로 옮기고, 기호·라벨은 자른 만큼 커진다', async () => {
+    const { cropMarks } = await import('@/lib/survey/plan-crop');
+    const marks = [
+      { t: 'sym' as const, k: 'charger' as const, x: 0.3, y: 0.3, z: 0.7 },
+      { t: 'sym' as const, k: 'charger' as const, x: 0.8, y: 0.8, z: 0.7 }, // 틀 밖
+      { t: 'line' as const, k: 'wire' as const, pts: [{ x: 0.25, y: 0.3 }, { x: 0.9, y: 0.3 }] }, // 한 끝이 안
+    ];
+    const out = cropMarks(marks, { x: 0.2, y: 0.2, w: 0.4, h: 0.4 }, 1600, 1200);
+    expect(out.length).toBe(2);
+    const s = out[0];
+    if (s.t !== 'sym') throw new Error('기호가 아니다');
+    expect(s.x).toBeCloseTo(0.25, 6); expect(s.y).toBeCloseTo(0.25, 6);
+    expect(s.z).toBeCloseTo(0.7 * (1600 / 640), 6); // 원래 긴 변 1600 / 자른 긴 변 640
+  });
+});
