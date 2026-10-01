@@ -51,8 +51,26 @@ export type Annot = { z?: number; r?: number } & (
   | { t: 'oval'; a: Pt; b: Pt }
   | { t: 'box'; a: Pt; b: Pt }
   | { t: 'text'; x: number; y: number; text: string }
-  | { t: 'label'; x: number; y: number; head: string[]; body: string[] }
+  /*
+   * 거점 라벨 — spot(거점 번호)이 있으면 ★거점 값에 묶인다★: 그릴 때·서식에 넣을 때 그 거점의 지금 값으로
+   * 글을 다시 만든다(resolveLabels). 거점의 배관·배선 길이를 고치면 도면의 흰 상자가 따라 바뀐다
+   * (한백 「글자는 숫자 입력하는 거에 따라 해당 도면에 자동 표시」). head·body 는 마지막으로 만든 글이다.
+   */
+  | { t: 'label'; x: number; y: number; head: string[]; body: string[]; spot?: number }
 );
+
+/** 거점 라벨의 글 — 거점 값에서 만든다(spec plSpotLabel) */
+export interface SpotLabel { name: string; head: string[]; body: string[] }
+
+/** 거점에 묶인 라벨을 지금 값으로 — 그 거점이 없으면 마지막 글을 그대로 둔다 */
+export function resolveLabels(list: Annot[], labels: SpotLabel[] | undefined): Annot[] {
+  if (!labels?.length || !list.some((a) => a.t === 'label' && a.spot)) return list;
+  return list.map((a) => {
+    if (a.t !== 'label' || !a.spot) return a;
+    const l = labels.find((x) => x.name === `${a.spot}거점`);
+    return l ? { ...a, head: l.head, body: l.body } : a;
+  });
+}
 
 /** 번호 모양 — 위 머리말 */
 export type NumStyle = 'red' | 'yellow';

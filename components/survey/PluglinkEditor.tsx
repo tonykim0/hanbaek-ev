@@ -9,17 +9,19 @@
  * 수량)는 셈한다.
  * 금액은 서식의 수식이 계산한다.
  */
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Section, contractInputClass } from '@/components/contracts/FormControls';
 import { Alerts, Btn, Choice, Picks } from '@/components/ui';
 import { downloadBlob } from '@/lib/download';
 import { useSurveyDraft } from '@/lib/survey/use-draft';
+import { newPhotos, usePlateReader } from '@/lib/survey/use-plate';
+import { resolveLabels, type Annot } from '@/lib/survey/annot';
 import { DraftList, SurveyActions } from './DraftControls';
 import { prepareImage } from '@/lib/survey/prepare-image';
 import type { PreparedImage } from '@/lib/survey/docx-kit';
 import { fillPluglinkSurvey, plSurveyFileName } from '@/lib/survey/fill-pluglink';
 import {
-  PL_ETC_PRESETS, PL_PHOTO_SLOTS, newPlSpot, plModemOf, plQtyOf, plSpotLabel, slotFiles,
+  PL_ETC_PRESETS, PL_PHOTO_SLOTS, newPlSpot, plModemAuto, plQtyOf, plSpotLabels, slotFiles,
   type PhotoSlot, type PlEtc, type PlForm, type PlSpot,
 } from '@/lib/survey/spec';
 import { PhotoBox, PhotoSlots, nextId, num, today } from './SurveyEditor';
@@ -97,6 +99,43 @@ export default function PluglinkEditor() {
     + f.spots.reduce((n, s) => n + Object.values(s.photos).filter(Boolean).length, 0);
   // 임시 저장 — 클라우드(lib/survey/use-draft). 저장 뒤 바꾼 것을 두고 나가려 하면 묻는다
   const draft = useSurveyDraft('pluglink', f, setF, f.siteName, busy !== null);
+  /** 거점 라벨 — 넣은 거점은 그 값으로, 그 뒤로 10거점까지는 번호만(spec plSpotLabels) */
+  const labels = useMemo(() => plSpotLabels(f.spots), [f.spots]);
+
+  /*
+   * 사진을 넣었을 때 저절로 되는 일 둘:
+   *   ① 분전반 외부·내부 사진 → 분전반 이름(내부면 메인차단기도), 전주번호 사진 → 전주번호 — 사진의 글자를
+   *      읽어 빈 칸만 채운다(lib/survey/use-plate)
+   *   ② 도면 확대도 → 그 거점의 라벨(배선·배관 길이가 든 흰 상자)을 얹어 둔다. 거점 값에 묶여 있어 길이를
+   *      고치면 따라 바뀐다(annot resolveLabels). 옮기거나 빼는 것은 표시하기에서.
+   */
+  const plate = usePlateReader();
+  const fRef = useRef(f);
+  fRef.current = f;
+  const onSpotPhotos = (s: PlSpot, p: { photos: Record<string, File | null>; marks: Record<string, Annot[]> }) => {
+    let marks = p.marks;
+    const n = f.spots.indexOf(s) + 1;
+    if (p.photos.zoom && p.photos.zoom !== s.photos.zoom && !marks.zoom?.length) {
+      const L = labels[n - 1];
+      marks = { ...marks, zoom: [{ t: 'label', spot: n, x: 0.22, y: 0.14, head: L.head, body: L.body, z: 0.8 }] };
+    }
+    for (const [key, file] of newPhotos(s.photos, p.photos, ['panelOut', 'panelIn', 'pole'])) {
+      const field = key === 'pole' ? 'poleNo' : 'panelName';
+      plate.read(`${s.id}:${field}`, file, (r) => {
+        const now = fRef.current.spots.find((x) => x.id === s.id);
+        if (!now) return false;
+        const fill: Partial<PlSpot> = {};
+        if (r.pole && !now.poleNo?.trim()) fill.poleNo = r.pole;
+        if (key !== 'pole' && r.panel && !now.panelName.trim()) fill.panelName = r.panel;
+        // 메인차단기는 외함 안을 찍은 사진에서만 — 바깥 사진의 숫자는 다른 차단기일 수 있다
+        if (key === 'panelIn' && r.breaker && !now.mainBreaker.trim()) fill.mainBreaker = r.breaker;
+        if (Object.keys(fill).length === 0) return false;
+        setF((x) => ({ ...x, spots: x.spots.map((y) => (y.id === s.id ? { ...y, ...fill } : y)) }));
+        return true;
+      });
+    }
+    setSpot(s.id, { photos: p.photos, marks });
+  };
 
   /* 확인할 것 — 가이드가 「필히 기입」이라 적은 것들. 막지는 않는다 */
   const review = useMemo(() => {
@@ -129,14 +168,14 @@ export default function PluglinkEditor() {
         for (const sl of PL_PHOTO_SLOTS) {
           for (const { key, file } of slotFiles(s.photos, sl)) {
             // 굽지 않는다 — 표시는 엑셀 도형으로 얹어 엑셀에서 다시 고친다(lib/survey/xlsx-marks)
-            spots[s.id][key] = await prepareImage(file, s.marks[key] ?? [], 'red', false);
+            spots[s.id][key] = await prepareImage(file, resolveLabels(s.marks[key] ?? [], labels), 'red', false);
             tick();
           }
         }
       }
       const overview = f.overview ? await prepareImage(f.overview) : undefined;
       if (overview) tick();
-      const plan = f.plan ? await prepareImage(f.plan, f.planMarks, 'red', false) : undefined;
+      const plan = f.plan ? await prepareImage(f.plan, resolveLabels(f.planMarks, labels), 'red', false) : undefined;
       if (plan) tick();
       setBusy('서식 채우는 중…');
       const res = await fetch('/survey/pluglink-v22.xlsx');
@@ -183,7 +222,7 @@ export default function PluglinkEditor() {
               onMarks={(m) => set({ planMarks: m })}
               expected={f.spots.reduce((n, s) => n + plQtyOf(s), 0)}
               // 도면은 촘촘하다 — 작게로 열고, 선은 배선 경로부터(제출본 도면의 빨간 선은 화살표가 없다)
-              tools={{ legend: true, labels: f.spots.map((s, i) => plSpotLabel(s, i + 1)), line: 'wire', size: 0.7 }}
+              tools={{ legend: true, labels, line: 'wire', size: 0.7 }}
             />
           </div>
         </div>
@@ -203,9 +242,22 @@ export default function PluglinkEditor() {
                   <Choice on={s.inlet === '한전인입'} onClick={() => setSpot(s.id, { inlet: '한전인입' })}>한전인입</Choice>
                 </div>
               </div>
+              {s.inlet === '한전인입' && (
+                <Text
+                  label={`전주번호${plate.note(`${s.id}:poleNo`)}`}
+                  value={s.poleNo ?? ''}
+                  onChange={(v) => { plate.clear(`${s.id}:poleNo`); setSpot(s.id, { poleNo: v }); }}
+                  placeholder="2175G142 송정선 49R3"
+                />
+              )}
               {s.inlet === '분전반' && (
                 <>
-                  <Text label="분전반 이름" value={s.panelName} onChange={(v) => setSpot(s.id, { panelName: v })} placeholder="PM-305" />
+                  <Text
+                    label={`분전반 이름${plate.note(`${s.id}:panelName`)}`}
+                    value={s.panelName}
+                    onChange={(v) => { plate.clear(`${s.id}:panelName`); setSpot(s.id, { panelName: v }); }}
+                    placeholder="PM-305"
+                  />
                   <Text label="메인차단기" value={s.mainBreaker} onChange={(v) => setSpot(s.id, { mainBreaker: v })} placeholder="4P 225A" />
                   <Text label="사용 차단기" value={s.inletBreaker} onChange={(v) => setSpot(s.id, { inletBreaker: v })} placeholder="4P 75A" />
                   <span className="hidden lg:block" />
@@ -218,10 +270,8 @@ export default function PluglinkEditor() {
               <Num label="스탠드" unit="개" value={s.stand} onChange={(v) => setSpot(s.id, { stand: v })} placeholder={String(plQtyOf(s))} />
               <Num label="캐노피" unit="개" value={s.canopy} onChange={(v) => setSpot(s.id, { canopy: v })} placeholder={String(plQtyOf(s))} />
               <Num label="볼라드" unit="개" value={s.bollard} onChange={(v) => setSpot(s.id, { bollard: v })} placeholder={String(plQtyOf(s))} />
-              <div>
-                <span className="mb-1 block text-sm font-medium text-gray-700">통신</span>
-                <span className="block py-2 text-sm font-bold text-gray-700">{plModemOf(s)}개</span>
-              </div>
+              {/* 통신 — 비우면 충전기 6기당 1개로 셈한다(그 값이 흐린 글자로 보인다). 현장에 따라 고친다 */}
+              <Num label="통신" unit="개" value={s.modem ?? null} onChange={(v) => setSpot(s.id, { modem: v })} placeholder={String(plModemAuto(s))} />
               <Text label="특이사항" wide value={s.note} onChange={(v) => setSpot(s.id, { note: v })} />
             </Grid>
             <div>
@@ -230,11 +280,11 @@ export default function PluglinkEditor() {
                 slots={PL_PHOTO_SLOTS}
                 photos={s.photos}
                 marks={s.marks}
-                onChange={(p) => setSpot(s.id, p)}
+                onChange={(p) => onSpotPhotos(s, p)}
                 expected={plQtyOf(s)}
                 style="red"
                 // 라벨은 거점 모두 — 도면 확대도에는 이웃 거점이 같이 찍힌다. 처음 고른 것은 이 거점
-                tools={{ legend: true, labels: f.spots.map((x, k) => plSpotLabel(x, k + 1)), labelPick: `${i + 1}거점` }}
+                tools={{ legend: true, labels, labelPick: `${i + 1}거점` }}
               />
             </div>
             {f.spots.length > 1 && (

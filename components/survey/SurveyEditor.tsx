@@ -9,16 +9,17 @@
  *
  * 화면은 운영사와 상관없이 하나다 — 거점·값·사진 칸. 칸 목록과 생성기만 운영사가 정한다.
  */
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Section, contractInputClass } from '@/components/contracts/FormControls';
 import { Alerts, Btn, Choice } from '@/components/ui';
 import { useFileDragging } from '@/components/DocFiles';
 import { downloadBlob } from '@/lib/download';
 import { useSurveyDraft } from '@/lib/survey/use-draft';
+import { newPhotos, usePlateReader, type PlateRead } from '@/lib/survey/use-plate';
 import { DraftList, SurveyActions } from './DraftControls';
 import { prepareCollage, prepareImage } from '@/lib/survey/prepare-image';
 import type { PreparedImage } from '@/lib/survey/docx-kit';
-import type { LineKind, NumStyle } from '@/lib/survey/annot';
+import { resolveLabels, type LineKind, type NumStyle } from '@/lib/survey/annot';
 import MarkEditor, { AnnotCanvas, type SpotLabel } from './MarkEditor';
 import {
   HEC_CHECKS, fastOf, markStyleOf, newSpot, slotFiles, slowOf, subKey,
@@ -65,6 +66,43 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
 
   const patch = (id: string, p: Partial<SurveySpot>) =>
     setSpots((list) => list.map((s) => (s.id === id ? { ...s, ...p } : s)));
+
+  /*
+   * 사진에서 전력인입점 글자 읽기(lib/survey/use-plate) — 어느 사진이 어느 칸을 채우나:
+   *   현대엔지니어링  책임분계점 원경 → 원경 칸 · 근경 → 근경 칸 (전주번호, 없으면 판넬명 + 차단기)
+   *   SK·나이스       전력인입점 사진 1·2 → 전력인입점 칸 (전주번호, 없으면 「판넬명 판넬」)
+   * 빈 칸만 채운다.
+   */
+  const plate = usePlateReader();
+  /* 읽기가 돌아올 때의 「지금」 — 상태 고치기 함수 안에서 빈 칸을 재면 늦게 돌아 판정이 어긋난다 */
+  const spotsRef = useRef(spots);
+  spotsRef.current = spots;
+  const PLATE: Record<string, 'farSpec' | 'nearSpec' | 'panelNote'> = variant === 'hec'
+    ? { far: 'farSpec', near: 'nearSpec' }
+    : { inlet1: 'panelNote', inlet2: 'panelNote' };
+  const plateText = (r: PlateRead): string | null => {
+    if (r.pole) return r.pole;
+    if (!r.panel) return null;
+    return variant === 'hec' ? [r.panel, r.breaker].filter(Boolean).join(' ') : `${r.panel} 판넬`;
+  };
+  const patchSpot = (id: string, p: Partial<SurveySpot>) => {
+    const before = spots.find((x) => x.id === id);
+    if (before && p.photos) {
+      for (const [key, file] of newPhotos(before.photos, p.photos, Object.keys(PLATE))) {
+        const field = PLATE[key];
+        plate.read(`${id}:${field}`, file, (r) => {
+          const v = plateText(r);
+          const now = spotsRef.current.find((x) => x.id === id);
+          if (!v || !now || now[field].trim()) return false;
+          setSpots((list) => list.map((x) => (x.id === id && !x[field].trim() ? { ...x, [field]: v } : x)));
+          return true;
+        });
+      }
+    }
+    // 사람이 칸을 고치면 「사진에서 읽음」은 걷는다
+    for (const f of ['farSpec', 'nearSpec', 'panelNote'] as const) if (f in p) plate.clear(`${id}:${f}`);
+    patch(id, p);
+  };
 
   /* 확인할 것 — 막지 않는다. 빈 칸으로 내도 서식은 그 칸을 빈 채로 둔다 */
   const review = useMemo(() => {
@@ -148,7 +186,8 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
           slots={slots}
           variant={variant}
           style={style}
-          onChange={(p) => patch(s.id, p)}
+          onChange={(p) => patchSpot(s.id, p)}
+          plateNote={(field) => plate.note(`${s.id}:${field}`)}
           onRemove={spots.length > 1 ? () => setSpots((l) => l.filter((x) => x.id !== s.id)) : undefined}
         />
       ))}
@@ -173,7 +212,7 @@ export function num(v: string): number | null {
 }
 
 function SpotCard({
-  n, spot, slots, variant, style, onChange, onRemove,
+  n, spot, slots, variant, style, onChange, plateNote, onRemove,
 }: {
   n: number;
   spot: SurveySpot;
@@ -181,6 +220,8 @@ function SpotCard({
   variant: 'hec' | 'ledger';
   style: NumStyle;
   onChange: (p: Partial<SurveySpot>) => void;
+  /** 사진에서 읽는 중·읽음 — 칸 이름 옆에 붙는다 */
+  plateNote: (field: 'farSpec' | 'nearSpec' | 'panelNote') => string;
   onRemove?: () => void;
 }) {
   const [openChecks, setOpenChecks] = useState(false);
@@ -209,7 +250,7 @@ function SpotCard({
               <input value={spot.address} onChange={(e) => onChange({ address: e.target.value })} placeholder="서울 노원구 동일로250길 18 / 103동 지상주차장" className={contractInputClass} />
             </label>
             <label className="block sm:col-span-2">
-              <span className="mb-1 block text-sm font-medium text-gray-700">전력인입점 — 판넬·차단기</span>
+              <span className="mb-1 block text-sm font-medium text-gray-700">전력인입점 — 판넬·차단기<span className="font-bold text-brand-700">{plateNote('panelNote')}</span></span>
               <input value={spot.panelNote} onChange={(e) => onChange({ panelNote: e.target.value })} placeholder="지하1층 PK1-B1A 판넬 (메인 225A / 75A 차단기 신규설치)" className={contractInputClass} />
             </label>
             <label className="block">
@@ -250,11 +291,11 @@ function SpotCard({
             </div>
           </div>
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700">원경 — 전주번호 또는 차단기 스펙</span>
+            <span className="mb-1 block text-sm font-medium text-gray-700">원경 — 전주번호 또는 차단기 스펙<span className="font-bold text-brand-700">{plateNote('farSpec')}</span></span>
             <input value={spot.farSpec} onChange={(e) => onChange({ farSpec: e.target.value })} placeholder="104동 공용분전반 350A" className={contractInputClass} />
           </label>
           <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700">근경 — 전주번호 또는 차단기 스펙</span>
+            <span className="mb-1 block text-sm font-medium text-gray-700">근경 — 전주번호 또는 차단기 스펙<span className="font-bold text-brand-700">{plateNote('nearSpec')}</span></span>
             <input value={spot.nearSpec} onChange={(e) => onChange({ nearSpec: e.target.value })} placeholder="전주번호 또는 차단기 스펙" className={contractInputClass} />
           </label>
         </div>
@@ -480,7 +521,7 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expecte
               onLoad={(e) => setAspect(e.currentTarget.naturalWidth / (e.currentTarget.naturalHeight || 1))}
               className="h-full w-full object-contain"
             />
-            {marks && marks.length > 0 && <AnnotCanvas list={marks} style={style} />}
+            {marks && marks.length > 0 && <AnnotCanvas list={resolveLabels(marks, tools?.labels)} style={style} />}
           </span>
         ) : (
           <span className="px-3 text-center text-sm font-bold text-slate-400">

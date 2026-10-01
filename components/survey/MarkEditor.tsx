@@ -12,7 +12,8 @@
  *     크기, 꼭지를 끌면 회전(15° 근처에서 붙는다). Delete 로 빼고, 화살표 키로 한 칸씩 민다.
  *   · 도구를 고르면 빈 곳을 누를 때 그것이 찍힌다 — 표시 위를 누르면 찍지 않고 고른다(같은 자리에
  *     하나 더 찍히지 않게). 고른 도구를 다시 누르면 풀린다.
- *   · 선 — 누를 때마다 꺾이고, 두 번 누르거나 「선 끝」. 기호·번호를 누르면 그 가운데에 붙는다(분전반에서
+ *   · 오른쪽 단추 — 표시 위에서 누르면 뺀다 · 선을 긋는 중이면 선 끝(한백 지시).
+ *   · 선 — 누를 때마다 꺾이고, 두 번 누르거나 오른쪽 단추·「선 끝」. 기호·번호를 누르면 그 가운데에 붙는다(분전반에서
  *     분전반으로 잇는 배선이 정확히 닿게). 가로·세로에 가까우면 곧게 붙는다.
  *   · 크기를 바꾼 기호·번호·글자는 다음에 찍는 같은 것도 그 크기로 나온다 — 충전기 넷을 하나씩 줄이지 않게.
  *   · 확대·축소 — 평면도는 칸이 촘촘해 100% 로는 주차면을 못 짚는다.
@@ -20,16 +21,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Btn, Choice, FIELD_BASE, Picks } from '@/components/ui';
 import {
-  SYM_LABEL, boxOf, drawAnnots, drawSym, hitAnnot, moveAnnot, numCount, resizeAnnot, rotateAnnot, snapPt,
-  type Annot, type LineKind, type NumStyle, type Pt, type SymKind,
+  SYM_LABEL, boxOf, drawAnnots, drawSym, hitAnnot, moveAnnot, numCount, resizeAnnot, resolveLabels, rotateAnnot, snapPt,
+  type Annot, type LineKind, type NumStyle, type Pt, type SpotLabel, type SymKind,
 } from '@/lib/survey/annot';
 
-type Tool = 'num' | 'sym' | 'line' | 'oval' | 'box' | 'text' | 'label';
+/* 동그라미는 걷었다(한백 「동그라미는 필요 없어」) — 예전에 그린 동그라미는 그대로 그려지고 고를 수 있다 */
+type Tool = 'num' | 'sym' | 'line' | 'box' | 'text' | 'label';
 const TOOLS: Array<{ key: Tool; label: string; hint: string }> = [
   { key: 'num', label: '번호', hint: '빈 곳을 누르면 다음 번호' },
   { key: 'sym', label: '기호', hint: '기호를 고르고 빈 곳을 누릅니다' },
-  { key: 'line', label: '선', hint: '누를 때마다 꺾입니다 · 두 번 누르거나 「선 끝」 · 기호를 누르면 가운데에 붙습니다' },
-  { key: 'oval', label: '동그라미', hint: '빈 곳에서 끌어서 그립니다' },
+  { key: 'line', label: '선', hint: '누를 때마다 꺾입니다 · 오른쪽 단추나 두 번 누르면 끝 · 기호를 누르면 가운데에 붙습니다' },
   { key: 'box', label: '네모', hint: '빈 곳에서 끌어서 그립니다' },
   { key: 'text', label: '글자', hint: '글자를 고르고 빈 곳을 누릅니다' },
   { key: 'label', label: '거점 라벨', hint: '거점을 고르고 빈 곳을 누릅니다' },
@@ -52,7 +53,7 @@ const TEXT_PRESETS = [
   '터파기', '보도블럭 해체·복구', '노출배관', '기설 트레이', 'CCTV', '한전 협의',
 ];
 
-export interface SpotLabel { name: string; head: string[]; body: string[] }
+export type { SpotLabel };
 
 /** 다음에 찍을 크기를 기억하는 갈래 — 기호는 종류마다 */
 const kindKey = (a: Annot) => (a.t === 'sym' ? `sym:${a.k}` : a.t);
@@ -220,6 +221,8 @@ export default function MarkEditor({
   const add = (a: Annot) => setList((l) => { setSel(l.length); return [...l, a]; });
 
   function onDown(e: React.PointerEvent) {
+    // 오른쪽 단추는 onContext 가 맡는다 — 여기서 받으면 점이 하나 더 찍히거나 표시가 끌려 간다
+    if (e.button !== 0) return;
     const p = at(e);
     if (!p) return;
     frame.current?.setPointerCapture?.(e.pointerId);
@@ -273,12 +276,24 @@ export default function MarkEditor({
     setSel(null);
     if (tool === 'num') add({ t: 'num', x: p.x, y: p.y, z: zOf('num') });
     else if (tool === 'sym') add({ t: 'sym', k: sym, x: p.x, y: p.y, z: zOf(`sym:${sym}`) });
-    else if (tool === 'oval' || tool === 'box') setDraft({ t: tool, a: p, b: p });
+    else if (tool === 'box') setDraft({ t: tool, a: p, b: p });
     else if (tool === 'text' && text.trim()) add({ t: 'text', x: p.x, y: p.y, text: text.trim(), z: zOf('text') });
     else if (tool === 'label') {
       const l = labels.find((x) => x.name === label);
-      if (l) add({ t: 'label', x: p.x, y: p.y, head: l.head, body: l.body, z: zOf('label') });
+      // 거점 번호를 같이 적어 둔다 — 그 거점 값이 바뀌면 라벨 글이 따라 바뀐다(resolveLabels)
+      const spot = Number(/^(\d+)거점$/.exec(l?.name ?? '')?.[1]) || undefined;
+      if (l) add({ t: 'label', x: p.x, y: p.y, head: l.head, body: l.body, spot, z: zOf('label') });
     }
+  }
+
+  /** 오른쪽 단추 — 선을 긋는 중이면 선 끝, 표시 위면 빼기 */
+  function onContext(e: React.MouseEvent) {
+    e.preventDefault();
+    if (draft?.t === 'line') { commitDraft(); return; }
+    const p = at(e);
+    if (!p) return;
+    const hit = hitAnnot(list, p.x * W, p.y * H, W, H);
+    if (hit >= 0) remove(hit);
   }
 
   function onMove(e: React.PointerEvent) {
@@ -320,11 +335,11 @@ export default function MarkEditor({
     }
   }
 
-  const shown = draft ? [...list, draft] : list;
+  const shown = resolveLabels(draft ? [...list, draft] : list, labels);
   const nums = numCount(list);
   const tools = TOOLS.filter((t) => (t.key !== 'sym' || legend) && (t.key !== 'label' || labels.length > 0));
   const current = tool ? TOOLS.find((t) => t.key === tool)! : null;
-  const picked = sel !== null ? list[sel] ?? null : null;
+  const picked = sel !== null ? shown[sel] ?? null : null;
 
   /* 고른 표시의 틀 — 돌린 상자의 네 모서리 · 위 꼭지(화면 픽셀) */
   const handles = useMemo(() => {
@@ -403,11 +418,11 @@ export default function MarkEditor({
             <Choice key={l.name} on={label === l.name} onClick={() => { setLabel(l.name); setSel(null); }}>{l.name}</Choice>
           ))}
           {!picked && (
-            <span className="text-small text-slate-500">{current ? current.hint : '표시를 누르면 골라집니다 · 위에서 도구를 고르면 그것을 찍습니다'}</span>
+            <span className="text-small text-slate-500">{current ? current.hint : '표시를 누르면 골라집니다 · 오른쪽 단추로 누르면 뺍니다 · 위에서 도구를 고르면 그것을 찍습니다'}</span>
           )}
           {picked && (
             <span className="ml-auto flex items-center gap-1.5">
-              <span className="text-small text-slate-500">끌면 옮김 · 모서리는 크기 · 위 꼭지는 회전</span>
+              <span className="text-small text-slate-500">끌면 옮김 · 모서리는 크기 · 위 꼭지는 회전 · 오른쪽 단추는 빼기</span>
               <Btn size="sm" kind="undo" onClick={() => remove(sel!)}>빼기</Btn>
             </span>
           )}
@@ -423,6 +438,7 @@ export default function MarkEditor({
             onPointerMove={onMove}
             onPointerUp={onUp}
             onPointerCancel={onUp}
+            onContextMenu={onContext}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img

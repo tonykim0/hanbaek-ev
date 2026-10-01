@@ -105,3 +105,27 @@ describe('엑셀 도형', () => {
     expect(xml).toContain('<a:t>2</a:t>'); // 번호는 그린 순서 그대로 — 빠진 1 이 2 를 1 로 당기지 않는다
   });
 });
+
+describe('거점 라벨은 거점 값에 묶인다', () => {
+  it('배관이 있으면 아래 칸 끝에 「배관 42C 30m」', () => {
+    const s = { ...newPlSpot('a'), qty: 3, panelName: 'PM-1', cableSize: 16, cableLen: 35, pipeSize: 42, pipeLen: 30 };
+    expect(plSpotLabel(s, 1).body).toEqual(['CV 16sq-4C  35m', 'GV 16sq  35m', '배관 42C  30m']);
+  });
+
+  it('찍어 둔 라벨은 거점 값을 고치면 따라 바뀐다 · 값 없는 거점도 번호로 고른다(10거점까지)', async () => {
+    const { resolveLabels } = await import('@/lib/survey/annot');
+    const { plSpotLabels } = await import('@/lib/survey/spec');
+    const s = { ...newPlSpot('a'), qty: 3, cableSize: 16, cableLen: 35 };
+    const placed = [{ t: 'label' as const, x: 0.2, y: 0.2, spot: 1, head: plSpotLabel(s, 1).head, body: plSpotLabel(s, 1).body }];
+    const after = resolveLabels(placed, plSpotLabels([{ ...s, cableLen: 48 }]));
+    expect(after[0].t === 'label' && after[0].body[0]).toBe('CV 16sq-4C  48m');
+    const names = plSpotLabels([s]).map((l) => l.name);
+    expect(names.length).toBe(10);
+    expect(names[4]).toBe('5거점');
+  });
+
+  it('한전인입은 전주번호를 적으면 그것이 둘째 줄', () => {
+    const s = { ...newPlSpot('b'), qty: 2, inlet: '한전인입' as const, poleNo: '2175G142 송정선 49R3' };
+    expect(plSpotLabel(s, 1).head).toEqual(['1거점 신규 2대', '2175G142 송정선 49R3']);
+  });
+});

@@ -24,6 +24,7 @@ const UNGATED_BY_DESIGN: Record<string, string> = {
   'app/api/upload/route.ts': '서류 도구의 임시 올리기 토큰 — DB 에 안 쓴다. 열람 전용도 쓴다(한백 지시 2026-08-31)',
   'app/api/import-form/route.ts': '재발행 판독 — DB 에 안 쓴다. 열람 전용도 쓴다(2026-08-31). 파일 임자는 stagedPathnameOf 가 본다',
   'app/api/admin/partner-details/read/route.ts': 'POST 로 받는 조회 — 권한은 getPartnerDetails 가 actor 로 본다',
+  'app/api/survey/read-plate/route.ts': '실사 사진 글자 판독 — DB 에 안 쓴다. 실사보고서 작성처럼 열람 전용도 쓴다(2026-10-01). 로그인은 본다',
 };
 
 const routes = findFiles('app/api', 'route.ts');

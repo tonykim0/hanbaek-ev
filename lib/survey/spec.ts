@@ -200,6 +200,8 @@ export interface PlSpot {
   replQty: number | null;
   /** 인입 — 한전에서 새로 끌어오는가(계통연계 견적 포함), 기존 분전반에서 따는가 */
   inlet: '한전인입' | '분전반';
+  /** 한전인입일 때 — 인입 전주번호(「9638W781 초당간218L2」). 도면 라벨의 둘째 줄이 된다 */
+  poleNo?: string;
   /** 분전반일 때만 — 이름 · 메인차단기 · 사용(인입점) 차단기, 「4P 100A」 꼴 */
   panelName: string;
   mainBreaker: string;
@@ -209,6 +211,8 @@ export interface PlSpot {
   pipeLen: number | null;
   cableSize: number | null;
   cableLen: number | null;
+  /** 통신(모뎀) 대수 — 비우면(null) 충전기 6기당 1개로 셈한다(가이드 8). 현장에 따라 고친다 */
+  modem?: number | null;
   /** 스탠드·캐노피·볼라드 — 비우면(null) 대수만큼 */
   stand: number | null;
   canopy: number | null;
@@ -292,7 +296,7 @@ export const PL_ETC_PRESETS: Array<{ spec: string; price: number | null }> = [
 
 export function newPlSpot(id: string): PlSpot {
   return {
-    id, location: '', qty: null, replQty: null, inlet: '분전반', panelName: '', mainBreaker: '', inletBreaker: '',
+    id, location: '', qty: null, replQty: null, inlet: '분전반', poleNo: '', panelName: '', mainBreaker: '', inletBreaker: '', modem: null,
     pipeSize: null, pipeLen: null, cableSize: null, cableLen: null,
     stand: null, canopy: null, bollard: null, note: '', photos: {}, marks: {},
   };
@@ -300,8 +304,9 @@ export function newPlSpot(id: string): PlSpot {
 
 /** 그 거점 충전기 수 — 신규 + 교체 */
 export const plQtyOf = (s: PlSpot) => (s.qty ?? 0) + (s.replQty ?? 0);
-/** 통신 — 충전기 최대 6기당 1개(가이드 8) */
-export const plModemOf = (s: PlSpot) => (plQtyOf(s) > 0 ? Math.ceil(plQtyOf(s) / 6) : 0);
+/** 통신 — 충전기 최대 6기당 1개(가이드 8). 칸에 적었으면 그 값 */
+export const plModemAuto = (s: PlSpot) => (plQtyOf(s) > 0 ? Math.ceil(plQtyOf(s) / 6) : 0);
+export const plModemOf = (s: PlSpot) => s.modem ?? plModemAuto(s);
 /** 스탠드·캐노피·볼라드 — 비웠으면 대수만큼 */
 export const plFixture = (s: PlSpot, v: number | null) => v ?? plQtyOf(s);
 
@@ -328,8 +333,20 @@ export function gvOf(cv: number): number {
  */
 export function plSpotLabel(s: PlSpot, n: number): { name: string; head: string[]; body: string[] } {
   const parts = [s.qty ? `신규 ${s.qty}대` : '', s.replQty ? `교체 ${s.replQty}대` : ''].filter(Boolean);
-  const head = [`${n}거점${parts.length ? ` ${parts.join(' · ')}` : ''}`, s.inlet === '한전인입' ? '한전인입' : s.panelName.trim()];
+  const head = [`${n}거점${parts.length ? ` ${parts.join(' · ')}` : ''}`, s.inlet === '한전인입' ? (s.poleNo?.trim() || '한전인입') : s.panelName.trim()];
   const len = s.cableLen ? `  ${s.cableLen}m` : '';
   const body = s.cableSize ? [`CV ${s.cableSize}sq-4C${len}`, `GV ${gvOf(s.cableSize)}sq${len}`] : [];
+  // 배관 — 제출본 라벨의 꼴(「배관 85m」 · 굵기가 있으면 「배관 54C 75m」)
+  if (s.pipeSize || s.pipeLen) body.push(`배관${s.pipeSize ? ` ${s.pipeSize}C` : ''}${s.pipeLen ? `  ${s.pipeLen}m` : ''}`);
   return { name: `${n}거점`, head: head.filter(Boolean), body };
+}
+
+/**
+ * 라벨 고를 거리 — 넣은 거점은 그 값으로, 그 뒤로는 번호만(최소 10거점까지). 도면에는 아직 값을 안 넣은
+ * 거점도 찍는다(한백 「거점 라벨이 왜 1거점밖에 — 2,3,4,5 등등」). 값을 넣으면 찍어 둔 라벨이 따라 채워진다.
+ */
+export function plSpotLabels(spots: PlSpot[]): Array<{ name: string; head: string[]; body: string[] }> {
+  const out = spots.map((s, i) => plSpotLabel(s, i + 1));
+  for (let n = spots.length + 1; n <= Math.max(10, spots.length); n++) out.push({ name: `${n}거점`, head: [`${n}거점`], body: [] });
+  return out;
 }
