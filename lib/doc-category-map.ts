@@ -83,6 +83,34 @@ export function preInstallFromCategories(categories: FileCategory[]): PreInstall
  * 여기 규칙을 늘릴 때는 ★그 이름이 다른 서류일 수 없는가★를 먼저 본다. 애매하면 넣지
  * 않는다 — 판독이 틀리는 것보다 이름 규칙이 틀리는 것이 고치기 어렵다(늘 그렇게 된다).
  */
+/**
+ * ★이름에 「회의록」이 있으면 회의록 칸이다★ (2026-10-01 · 전남 고흥 녹동현대병원).
+ *
+ * 관리단이 없는 건물(의료법인·회사 한 곳이 다 가진 건물)은 회의록 대신 ★내부 결재 문서★
+ * (품의서·기안서·이사회 의사록)를 낸다. 판독은 문서에 찍힌 제목 「품의서」를 그대로 읽어
+ * 「기타」로 보냈고, 회의록 칸이 빈 채로 접수돼 협력사가 같은 파일을 손으로 또 넣었다 —
+ * 그 파일 이름은 「7.회의록-의료법인장호의료재단녹동현대병원.pdf」였다. 낸 사람이 회의록
+ * 자리에 내려고 붙인 이름이 판독보다 확실하다.
+ *
+ * 두 종류 중 무엇인지는 이름 → 판독 → 건물 순으로 정한다: 이름에 관리단·입주자가 있으면 그것,
+ * 판독이 이미 회의록 둘 중 하나로 봤으면 그것, 아니면 공동주택이면 입대의·그 밖이면 관리단.
+ * 회의록이 아닌 것으로 판정할 근거가 없으면 null 이다(그때는 판독을 따른다).
+ */
+const MINUTES: FileCategory[] = ['입주자대표회의 회의록', '관리단 회의록'];
+
+export function minutesFromFileName(
+  fileName: string,
+  judged: FileCategory | null | undefined,
+  bldgType: string | null | undefined
+): FileCategory | null {
+  const n = fileName.normalize('NFC').replace(/\s+/g, '');
+  if (!/회의록|의사록/.test(n)) return null;
+  if (/관리단/.test(n)) return '관리단 회의록';
+  if (/입주자대표|입대의|입대위/.test(n)) return '입주자대표회의 회의록';
+  if (judged && MINUTES.includes(judged)) return judged;
+  return bldgType === '공동주택' ? '입주자대표회의 회의록' : '관리단 회의록';
+}
+
 export function categoryFromFileName(fileName: string): FileCategory | null {
   const n = fileName.normalize('NFC').replace(/\s+/g, '');
   if (/(전기차|EV)등록대수|등록대수(확인|공문)|전기차수량공문/i.test(n)) return '기타';

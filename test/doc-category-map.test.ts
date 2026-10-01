@@ -5,7 +5,7 @@
  * 박고(categoryFromFileName), 그 규칙만 여기서 지킨다 — 판독이 흔들려도 이 자리는 안 흔들린다.
  */
 import { describe, expect, it } from 'vitest';
-import { categoryFromFileName, excelCategory, kindOfCategory } from '@/lib/doc-category-map';
+import { categoryFromFileName, excelCategory, kindOfCategory, minutesFromFileName } from '@/lib/doc-category-map';
 import { buildStandardName } from '@/lib/files';
 
 describe('전기차 등록대수 확인 공문 — 기설치 설치이력 칸에 앉던 서류 (한백 2026-08-28)', () => {
@@ -124,5 +124,25 @@ describe('설치승낙서 — 설치승인서와 갈린다', () => {
   it('칸은 따로다 — 승낙서와 승인서가 같은 칸에 앉지 않는다', () => {
     expect(kindOfCategory('설치승낙서')).toBe('installConsent');
     expect(kindOfCategory('설치승인서')).toBe('approval');
+  });
+});
+
+describe('이름에 「회의록」이 있으면 회의록 칸이다 (녹동현대병원 2026-10-01)', () => {
+  it('판독이 품의서를 기타로 봤어도 이름이 회의록이면 회의록 — 건물이 공동주택이 아니면 관리단', () => {
+    expect(minutesFromFileName('7.회의록-의료법인장호의료재단녹동현대병원.pdf', '기타', '상업시설')).toBe('관리단 회의록');
+  });
+  it('이름에 관리단·입주자가 있으면 그것이 먼저다', () => {
+    expect(minutesFromFileName('관리단 회의록.pdf', '입주자대표회의 회의록', '공동주택')).toBe('관리단 회의록');
+    expect(minutesFromFileName('입대의 회의록.pdf', '기타', '상업시설')).toBe('입주자대표회의 회의록');
+  });
+  it('판독이 이미 회의록 둘 중 하나로 봤으면 그것을 따른다', () => {
+    expect(minutesFromFileName('회의록.pdf', '입주자대표회의 회의록', null)).toBe('입주자대표회의 회의록');
+  });
+  it('공동주택이면 입대의 회의록', () => {
+    expect(minutesFromFileName('회의록 스캔.pdf', null, '공동주택')).toBe('입주자대표회의 회의록');
+  });
+  it('이름에 회의록이 없으면 끼어들지 않는다', () => {
+    expect(minutesFromFileName('품의서.pdf', '기타', '상업시설')).toBeNull();
+    expect(kindOfCategory('관리단 회의록')).toBe('minutes');
   });
 });

@@ -251,7 +251,14 @@ export async function autoIntakeFromZip(
   const review = null;
 
   // ── 현장 정보 ─────────────────────────────────────────────
-  const categories = (metadata?.files ?? []).map((f) => f.category);
+  /*
+   * 판독의 분류에 ★이름 규칙이 고친 분류★도 더한다 — 「회의록」 이름이 판독의 기타를 관리단
+   * 회의록으로 바로잡으면(doc-category-map minutesFromFileName) 계약주체도 그것으로 서야 한다.
+   */
+  const categories = [
+    ...(metadata?.files ?? []).map((f) => f.category),
+    ...items.map((i) => i.category),
+  ];
   const cpo = metadata?.CPO?.find((c) => (CPOS as string[]).includes(c)) as CpoName | undefined;
 
   const addr = metadata?.주소?.trim() ?? null;

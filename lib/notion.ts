@@ -14,7 +14,7 @@ import { CPO_NAMES } from '@/types/project';
 import type { CpoName, PowerType } from '@/types/project';
 import type { NormalizedFile } from './files';
 import { buildStandardName, isPdfFile } from './files';
-import { categoryFromFileName, excelCategory, kindOfCategory } from './doc-category-map';
+import { categoryFromFileName, excelCategory, kindOfCategory, minutesFromFileName } from './doc-category-map';
 import { buildDocContext, evaluateDocs, type DocContext } from './doc-rules';
 import { splitPdf, mergePdfs } from './pdf-split';
 import { createHash } from 'crypto';
@@ -224,7 +224,7 @@ export async function buildUploadItems(
     // 통과 파일(xlsx/pptx 등): AI 분류·분할 없이 원본 그대로, 확장자 유지해 첨부
     if (!isPdfFile(file)) {
       const ext = (normalName.split('.').pop() ?? 'bin').toLowerCase();
-      const category = passthroughCategory(normalName);
+      const category = passthroughCategory(normalName, metadata?.건축물유형);
       items.push({
         originalName: file.name,
         category,
@@ -249,7 +249,11 @@ export async function buildUploadItems(
        * 일반 케이스: 1파일 = 1서류 (또는 metadata 없음).
        * 이름이 분명한 서류는 판독을 덮는다 — 비결정적인 판정보다 앞선다.
        */
-      const category = categoryFromFileName(normalName) ?? matchedInfos[0]?.category ?? '기타';
+      const judged = matchedInfos[0]?.category;
+      const category = categoryFromFileName(normalName)
+        // 이름이 「회의록」이면 판독이 기타·품의서로 봤어도 회의록 칸이다(doc-category-map)
+        ?? minutesFromFileName(normalName, judged, metadata?.건축물유형)
+        ?? judged ?? '기타';
       items.push({
         originalName: file.name,
         category,
@@ -355,10 +359,10 @@ async function mergeKaptWithBuildingLedger(
  * .xlsx 는 확장자만으로 가릴 수 없다 — 필수 서류가 둘이다(실사보고서 · 기설치 충전기 설치이력).
  * 예전에는 전부 실사보고서로 넣어서 둘을 같이 올리면 설치이력이 사라졌다. 파일명으로 가른다.
  */
-function passthroughCategory(name: string): FileCategory {
+function passthroughCategory(name: string, bldgType?: string | null): FileCategory {
   const lower = name.toLowerCase();
   // 이름이 분명한 서류가 먼저다 — 확장자 규칙에 걸려 남의 칸으로 가지 않게
-  const byName = categoryFromFileName(name);
+  const byName = categoryFromFileName(name) ?? minutesFromFileName(name, null, bldgType);
   if (byName) return byName;
   if (/\.xlsx?$/.test(lower)) return excelCategory(name);
   if (/\.pptx?$/.test(lower)) return '설치승인서'; // 현대 설치승인서
