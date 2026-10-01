@@ -2,7 +2,6 @@
 
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import SiteHeader from '@/components/SiteHeader';
 
 export interface SubmitStatus {
   kind: 'success' | 'error';
@@ -14,56 +13,44 @@ export interface NoticeSection {
   items: ReactNode[];
 }
 
+/**
+ * 계약서 작성·실사보고서 작성 화면의 머리 — 되돌아가는 길 · 제목 · 본문.
+ *
+ * ★콘솔 안의 화면이다★ (한백 지시 2026-10-01 — 포털 hanbaek-form 을 닫고 이 기능들을 콘솔로 들였다).
+ * 예전에는 포털의 머리말(SiteHeader)·바탕색·꼬리말까지 그렸다. 이제 껍데기(사이드바·상단바)는 콘솔
+ * 레이아웃이 그리므로 여기는 다른 콘솔 화면(서류 재발행 등)과 같은 머리만 둔다.
+ */
 export function ContractPageShell({
   title,
   children,
-  footerText = '한백 EV Infra Solutions · Internal Tool',
   /*
    * 기본은 곁말 없음이다 (한백 지시 2026-08-29 · 화면 규칙 2).
    * 「필수 정보를 입력하면 …계약서가 자동으로 생성됩니다」가 기본값이었는데, 그것은
    * 아래 폼이 이미 하는 말이다 — 매일 쓰는 사람에게는 매번 지나치는 한 줄이었다.
    */
   subtitle = null,
-  /**
-   * 가운데 기둥으로 세울지, 왼쪽에 붙일지.
-   *
-   * 계약서 작성은 그대로 가운데다(협력사가 쓰는 화면이라 건드리지 않는다).
-   * 재발행 화면만 왼쪽으로 붙인다 — 한백 지시 2026-08-26.
-   */
-  align = 'center',
-  back = { href: '/#contracts', label: '← 운영사 다시 선택' },
+  back = { href: '/contracts', label: '← 운영사 다시 선택' },
 }: {
-  /** 머리의 되돌아가는 길 — 실사보고서 작성은 그 구역으로 돌아간다 */
+  /** 머리의 되돌아가는 길 — 실사보고서 작성은 그 목록으로 돌아간다 */
   back?: { href: string; label: string };
   title: string;
   children: ReactNode;
-  footerText?: string;
   /** null 이면 설명 줄을 두지 않는다 */
   subtitle?: string | null;
-  align?: 'center' | 'left';
 }) {
-  const left = align === 'left';
   return (
-    <div className="min-h-screen bg-[#f7f8f4]">
-      <SiteHeader active="contracts" />
-      <main className={`max-w-5xl px-5 py-8 sm:px-6 sm:py-10 ${left ? '' : 'mx-auto'}`}>
-        <header className="mb-7">
-          <Link
-            href={back.href}
-            className="mb-3 inline-flex items-center gap-1 text-xs font-semibold text-slate-500 transition hover:text-brand-700"
-          >
-            {back.label}
-          </Link>
-          <h1 className="text-2xl font-black tracking-[-0.03em] text-slate-900">{title}</h1>
-          {subtitle && <p className="mt-1 text-sm text-slate-400">{subtitle}</p>}
-        </header>
-
-        {children}
-
-        <footer className={`mt-8 text-xs text-slate-400 ${left ? 'text-left' : 'text-center'}`}>
-          <p>{footerText}</p>
-        </footer>
-      </main>
+    <div className="max-w-5xl">
+      <header className="mb-6">
+        <Link
+          href={back.href}
+          className="mb-3 inline-flex items-center gap-1 text-base text-slate-500 transition hover:text-brand-700"
+        >
+          {back.label}
+        </Link>
+        <h1 className="text-h1 font-black text-slate-900">{title}</h1>
+        {subtitle && <p className="mt-1 text-base text-slate-500">{subtitle}</p>}
+      </header>
+      {children}
     </div>
   );
 }

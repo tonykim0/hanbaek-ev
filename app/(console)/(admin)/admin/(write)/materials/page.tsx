@@ -19,7 +19,7 @@ export default async function MaterialsAdminPage() {
     <div className="mx-auto max-w-3xl">
         <header className="mb-6">
           <Link
-            href="/materials"
+            href="/library"
             className="inline-flex items-center gap-1 text-base text-slate-500 hover:text-brand-700 transition mb-3"
           >
             <span aria-hidden>←</span> 자료실로

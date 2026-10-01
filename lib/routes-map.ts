@@ -18,7 +18,8 @@ export const CONSOLE_PATHS = [
   '/dashboard',
   '/projects',
   '/construction',
-  '/contracts',
+  '/contracts',   // 계약서 작성 — 운영사 양식이 그 아래(/contracts/hec 등). 2026-10-01 포털에서 들였다
+  '/survey',      // 실사보고서(사진대지) 작성 — 같은 날 포털에서 들였다
   '/reissue',
   '/split',
   '/scan',        // 사진 → 스캔본 (2026-09-09 추가 — 감사 L21: 빠져 있어 로그인 없이 열렸다)

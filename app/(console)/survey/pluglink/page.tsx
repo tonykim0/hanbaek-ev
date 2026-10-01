@@ -9,7 +9,7 @@ import { ContractPageShell } from '@/components/contracts/PageChrome';
 
 export default function PluglinkSurveyPage() {
   return (
-    <ContractPageShell title="플러그링크 실사보고서" back={{ href: '/#survey', label: '← 실사보고서 작성' }}>
+    <ContractPageShell title="플러그링크 실사보고서" back={{ href: '/survey', label: '← 운영사 다시 선택' }}>
       <PluglinkEditor />
     </ContractPageShell>
   );

@@ -116,8 +116,6 @@ export default function App() {
       <ContractPageShell
         title="플러그링크 서류 재발행"
         subtitle={null}
-        align="left"
-        footerText="한백 EV Infra Solutions · Internal Tool · v2"
       >
         <CpoDocReissue cpo="pluglink" />
       </ContractPageShell>
@@ -127,7 +125,6 @@ export default function App() {
   return (
     <ContractPageShell
       title="플러그링크 계약서 자동생성"
-      footerText="한백 EV Infra Solutions · Internal Tool · v2"
     >
         <form
           onSubmit={handleSubmit(onSubmit)}

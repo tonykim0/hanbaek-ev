@@ -22,20 +22,20 @@ import {
 } from '@/components/contracts/PageChrome';
 import { DEFAULT_YEAR, SALES_DEFAULT, formatAdvancedSuccessMessage } from '@/lib/contract-form';
 import { downloadBlob } from '@/lib/download';
-import { NiceFormData } from '@/lib/schema-nice';
+import { SkFormData } from '@/lib/schema-sk';
 import { useInternalModeState } from '@/lib/use-internal-mode';
 import { useDocScope } from '@/lib/use-doc-scope';
 
-const defaultValues: Partial<NiceFormData> = {
+const defaultValues: Partial<SkFormData> = {
   businessType: 'subsidy',
   contractYear: DEFAULT_YEAR,
   contractMonth: '',
   contractDay: '',
   contractTerm: '10',
   // 모집대행사 기본값은 lib/contract-form 한 곳에 있다 — 재발행의 조사자 칸도 이 값을 쓴다
-  salesCompany: SALES_DEFAULT.nice.company,
-  salesName: SALES_DEFAULT.nice.name,
-  salesTel: SALES_DEFAULT.nice.tel,
+  salesCompany: SALES_DEFAULT.sk.company,
+  salesName: SALES_DEFAULT.sk.name,
+  salesTel: SALES_DEFAULT.sk.tel,
   surveyorCompany: '한백',
   surveyorName: '',
   surveyorTel: '',
@@ -59,22 +59,21 @@ const defaultValues: Partial<NiceFormData> = {
   dupOutletQty: '',
   dupKiosk: false,
   custRepresentative: '',
-  installDetailLocation: '',
 };
 
 const inputCls = contractInputClass;
 
-export default function NicePage() {
+export default function SkPage() {
   const {
     register,
     handleSubmit,
     watch,
     setValue,
     formState: { errors, isSubmitting },
-  } = useForm<NiceFormData>({ defaultValues });
+  } = useForm<SkFormData>({ defaultValues });
 
   const [status, setStatus] = useState<SubmitStatus | null>(null);
-  // NICE 템플릿에는 사진대지·체크리스트가 없어 토글을 감춥니다.
+  // SK 템플릿에는 사진대지·체크리스트가 없어 토글을 감춥니다.
   const { finalize } = useDocScope();
   // 협력사 스캔본 판독은 담당자 전용 — ?import=1 일 때만 노출합니다.
   const internalMode = useInternalModeState();
@@ -85,16 +84,16 @@ export default function NicePage() {
   const dupDist = watch('dupDist');
   const dupOutlet = watch('dupOutlet');
 
-  const onSubmit = async (data: NiceFormData) => {
+  const onSubmit = async (data: SkFormData) => {
     setStatus(null);
     try {
-      const { fillNiceTemplate } = await import('@/lib/fillDocx-nice');
-      const result = await fillNiceTemplate(data);
+      const { fillSkTemplate } = await import('@/lib/fillDocx-sk');
+      const result = await fillSkTemplate(data);
       const output = await finalize(result.blob, {
         contractYear: data.contractYear,
         custName: data.custName,
         documentLabel:
-          data.businessType === 'invest' ? '계약서류_NICE자체투자' : '계약서류_NICE',
+          data.businessType === 'invest' ? '계약서류_SK자체투자' : '계약서류_SK',
       });
       downloadBlob(output.blob, output.filename);
       setStatus({
@@ -114,7 +113,7 @@ export default function NicePage() {
 
   if (internalMode === null) {
     return (
-      <ContractPageShell title="나이스인프라">
+      <ContractPageShell title="SK일렉링크">
         <div className="rounded-2xl border border-slate-200 bg-white px-5 py-8 text-center text-sm font-semibold text-slate-500">
           화면을 불러오는 중입니다...
         </div>
@@ -124,14 +123,14 @@ export default function NicePage() {
 
   if (internalMode) {
     return (
-      <ContractPageShell title="나이스인프라 서류 재발행" subtitle={null} align="left">
-        <CpoDocReissue cpo="nice" />
+      <ContractPageShell title="SK일렉링크 서류 재발행" subtitle={null}>
+        <CpoDocReissue cpo="sk" />
       </ContractPageShell>
     );
   }
 
   return (
-    <ContractPageShell title="나이스인프라 계약서 자동생성">
+    <ContractPageShell title="SK일렉링크 계약서 자동생성">
         <form
           onSubmit={handleSubmit(onSubmit)}
           className="space-y-4 pb-2"
@@ -159,29 +158,6 @@ export default function NicePage() {
             register={register}
             errors={errors}
             installQtyPlaceholder="3"
-            contractTermLabels={{ seven: '7년 (84개월)', ten: '10년 (120개월)' }}
-            contractTermHint={
-              <p className="text-sm text-brand-700 bg-brand-50 border border-brand-200 rounded px-3 py-2">
-                📣 특별 프로모션: <b>7년 계약</b> 선택 시 6개월 동안 149원 제공 /{' '}
-                <b>10년 계약</b> 선택 시 6개월 동안 149원 + 6개월 동안 220원 제공
-                <span className="block text-xs text-brand-600 mt-0.5">
-                  선택한 계약기간에 따라 합의서 프로모션 문구가 자동 반영됩니다.
-                </span>
-              </p>
-            }
-            afterInstallAddr={
-              <Field
-                label="상세위치"
-                required
-                error={errors.installDetailLocation?.message as string | undefined}
-              >
-              <input
-                {...register('installDetailLocation', { required: '필수' })}
-                className={inputCls}
-                placeholder="예: 지하 1층 06,12 기둥 옆"
-              />
-            </Field>
-            }
           />
 
           <ConsultingSection

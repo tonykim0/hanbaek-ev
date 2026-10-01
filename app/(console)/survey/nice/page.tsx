@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * SK일렉링크 실사보고서 — 사전 현장 컨설팅 사진 대장.
+ * 나이스인프라 실사보고서 — 사전 현장 컨설팅 사진 대장.
  * 서식은 SK 양식 한 벌이다(public/survey/ledger.docx · lib/survey/fill-ledger). ★나이스도 이 양식을
  * 쓴다★ — 표준 양식이 없어서(한백 지시 2026-10-01).
  */
@@ -10,11 +10,11 @@ import { ContractPageShell } from '@/components/contracts/PageChrome';
 import { fillLedgerSurvey, ledgerSurveyFileName } from '@/lib/survey/fill-ledger';
 import { LEDGER_PHOTO_SLOTS } from '@/lib/survey/spec';
 
-export default function SkSurveyPage() {
+export default function NiceSurveyPage() {
   return (
-    <ContractPageShell title="SK일렉링크 실사보고서 (사진 대장)" back={{ href: '/#survey', label: '← 실사보고서 작성' }}>
+    <ContractPageShell title="나이스인프라 실사보고서 (사진 대장)" back={{ href: '/survey', label: '← 운영사 다시 선택' }}>
       <SurveyEditor
-        cpo="sk"
+        cpo="nice"
         slots={LEDGER_PHOTO_SLOTS}
         variant="ledger"
         fileName={ledgerSurveyFileName}

@@ -31,8 +31,8 @@ export async function POST(request: NextRequest) {
    * (doc/REFACTOR_PLAN_2.md 재리뷰 3 의 T0 · 첫 리뷰의 B).
    *
    * ★포털에서 로그인 없이 쓰던 기능이 하나 닫힌다★ — 계약서 작성 화면의 「스캔본으로
-   * 폼 되돌리기」다. 콘솔로 들어와 쓰면 그대로 된다(콘솔 주소에서 포털 양식이 열린다).
-   * 포털 접수를 닫은 것과 같은 방향이다.
+   * 폼 되돌리기」다. 콘솔로 들어와 쓰면 그대로 된다. 포털 접수를 닫은 것과 같은 방향이다 —
+   * 2026-10-01 에는 포털 자체를 닫고 계약서 작성 화면을 콘솔 안(/contracts/*)으로 들였다.
    */
   const session = await getSessionUser();
   if (!session) {

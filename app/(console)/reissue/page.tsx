@@ -16,9 +16,8 @@ export const metadata: Metadata = {
  * 서류를 내는 쪽의 일이라, 매번 한백에게 부탁할 이유가 없습니다.
  * 사이드바 접수 묶음의 「서류 접수」 밑이 그 자리입니다.
  *
- * ★새로 열린 권한은 없습니다.★ 도구가 붙는 계약서 작성 페이지(/hec?import=1 등)는
- * 원래 협력사·영업자와 공용이고 로그인도 없습니다 — 이것은 화면 분리이지 접근 차단이
- * 아니었습니다(lib/internal-mode). 바뀐 것은 입구를 준 것뿐입니다.
+ * 도구가 붙는 자리는 계약서 작성 페이지다(/contracts/hec?import=1 등 — lib/internal-mode).
+ * 포털을 닫으며(2026-10-01) 그 페이지도 콘솔 안으로 들어와 로그인이 필요하다.
  * 열람 전용은 못 들어갑니다 — 서류를 만들어 내보내는 「내는 자리」입니다(middleware).
  *
  * 화면은 왼쪽으로 붙입니다 (한백 지시 2026-08-26) — 설명 문구도 두지 않습니다
@@ -26,10 +25,10 @@ export const metadata: Metadata = {
  */
 
 const CPOS: Array<{ path: string; name: string }> = [
-  { path: '/hec', name: '현대엔지니어링' },
-  { path: '/nice', name: '나이스인프라' },
-  { path: '/sk', name: 'SK일렉링크' },
-  { path: '/pluglink', name: '플러그링크' },
+  { path: '/contracts/hec', name: '현대엔지니어링' },
+  { path: '/contracts/nice', name: '나이스인프라' },
+  { path: '/contracts/sk', name: 'SK일렉링크' },
+  { path: '/contracts/pluglink', name: '플러그링크' },
 ];
 
 export default function ReissuePage() {

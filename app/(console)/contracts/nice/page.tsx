@@ -14,7 +14,6 @@ import {
   RadioField,
   Section,
 } from '@/components/contracts/FormControls';
-import type { Path, UseFormRegister } from 'react-hook-form';
 import CpoDocReissue from '@/components/contracts/CpoDocReissue';
 import {
   ContractPageShell,
@@ -23,20 +22,20 @@ import {
 } from '@/components/contracts/PageChrome';
 import { DEFAULT_YEAR, SALES_DEFAULT, formatAdvancedSuccessMessage } from '@/lib/contract-form';
 import { downloadBlob } from '@/lib/download';
-import { HecFormData } from '@/lib/schema-hec';
+import { NiceFormData } from '@/lib/schema-nice';
 import { useInternalModeState } from '@/lib/use-internal-mode';
 import { useDocScope } from '@/lib/use-doc-scope';
 
-const defaultValues: Partial<HecFormData> = {
+const defaultValues: Partial<NiceFormData> = {
   businessType: 'subsidy',
   contractYear: DEFAULT_YEAR,
   contractMonth: '',
   contractDay: '',
-  contractTerm: '7',
+  contractTerm: '10',
   // 모집대행사 기본값은 lib/contract-form 한 곳에 있다 — 재발행의 조사자 칸도 이 값을 쓴다
-  salesCompany: SALES_DEFAULT.hec.company,
-  salesName: SALES_DEFAULT.hec.name,
-  salesTel: SALES_DEFAULT.hec.tel,
+  salesCompany: SALES_DEFAULT.nice.company,
+  salesName: SALES_DEFAULT.nice.name,
+  salesTel: SALES_DEFAULT.nice.tel,
   surveyorCompany: '한백',
   surveyorName: '',
   surveyorTel: '',
@@ -60,63 +59,23 @@ const defaultValues: Partial<HecFormData> = {
   dupOutletQty: '',
   dupKiosk: false,
   custRepresentative: '',
-  siteManager: '관리소장',
-  parkingSlotsSlow: '',
-  evCount: '',
-  siteTotalSlow: '',
-  siteTotalFast: '',
+  installDetailLocation: '',
 };
 
 const inputCls = contractInputClass;
 
-/** 완속/급속 설치대수 한 쌍 입력 (별지1·별지2 사진대지/체크리스트용) */
-function QtyPair({
-  label,
-  slowName,
-  fastName,
-  register,
-}: {
-  label: string;
-  slowName: Path<HecFormData>;
-  fastName: Path<HecFormData>;
-  register: UseFormRegister<HecFormData>;
-}) {
-  return (
-    <div className="flex items-center gap-2 flex-wrap">
-      <span className="w-32 text-sm font-medium text-gray-700">{label}</span>
-      <span className="text-xs text-gray-500">완속</span>
-      <input
-        {...register(slowName)}
-        type="number"
-        min="0"
-        placeholder="0"
-        className="border border-gray-300 rounded px-2 py-1 w-20 text-sm"
-      />
-      <span className="text-xs text-gray-500 ml-1">급속</span>
-      <input
-        {...register(fastName)}
-        type="number"
-        min="0"
-        placeholder="0"
-        className="border border-gray-300 rounded px-2 py-1 w-20 text-sm"
-      />
-      <span className="text-xs text-gray-500">기</span>
-    </div>
-  );
-}
-
-export default function HecPage() {
+export default function NicePage() {
   const {
     register,
     handleSubmit,
     watch,
     setValue,
     formState: { errors, isSubmitting },
-  } = useForm<HecFormData>({ defaultValues });
+  } = useForm<NiceFormData>({ defaultValues });
 
   const [status, setStatus] = useState<SubmitStatus | null>(null);
-  // HEC 템플릿만 별지7호 뒤에 사진대지([별지1])·사전 체크리스트([별지2])가 붙습니다.
-  const { finalize } = useDocScope({ showAttachmentToggle: true });
+  // NICE 템플릿에는 사진대지·체크리스트가 없어 토글을 감춥니다.
+  const { finalize } = useDocScope();
   // 협력사 스캔본 판독은 담당자 전용 — ?import=1 일 때만 노출합니다.
   const internalMode = useInternalModeState();
 
@@ -126,16 +85,16 @@ export default function HecPage() {
   const dupDist = watch('dupDist');
   const dupOutlet = watch('dupOutlet');
 
-  const onSubmit = async (data: HecFormData) => {
+  const onSubmit = async (data: NiceFormData) => {
     setStatus(null);
     try {
-      const { fillHecTemplate } = await import('@/lib/fillDocx-hec');
-      const result = await fillHecTemplate(data);
+      const { fillNiceTemplate } = await import('@/lib/fillDocx-nice');
+      const result = await fillNiceTemplate(data);
       const output = await finalize(result.blob, {
         contractYear: data.contractYear,
         custName: data.custName,
         documentLabel:
-          data.businessType === 'invest' ? '계약서류_HEC자체투자' : '계약서류_HEC',
+          data.businessType === 'invest' ? '계약서류_NICE자체투자' : '계약서류_NICE',
       });
       downloadBlob(output.blob, output.filename);
       setStatus({
@@ -155,7 +114,7 @@ export default function HecPage() {
 
   if (internalMode === null) {
     return (
-      <ContractPageShell title="현대엔지니어링">
+      <ContractPageShell title="나이스인프라">
         <div className="rounded-2xl border border-slate-200 bg-white px-5 py-8 text-center text-sm font-semibold text-slate-500">
           화면을 불러오는 중입니다...
         </div>
@@ -165,14 +124,14 @@ export default function HecPage() {
 
   if (internalMode) {
     return (
-      <ContractPageShell title="현대엔지니어링 서류 재발행" subtitle={null} align="left">
-        <CpoDocReissue cpo="hec" />
+      <ContractPageShell title="나이스인프라 서류 재발행" subtitle={null}>
+        <CpoDocReissue cpo="nice" />
       </ContractPageShell>
     );
   }
 
   return (
-    <ContractPageShell title="현대엔지니어링 계약서 자동생성">
+    <ContractPageShell title="나이스인프라 계약서 자동생성">
         <form
           onSubmit={handleSubmit(onSubmit)}
           className="space-y-4 pb-2"
@@ -184,20 +143,7 @@ export default function HecPage() {
             </RadioField>
           </Section>
 
-          <CustomerInfoSection
-            register={register}
-            errors={errors}
-            watch={watch}
-            afterContact={
-              <Field label="현장 담당자">
-                <input
-                  {...register('siteManager')}
-                  className={inputCls}
-                  placeholder="관리소장"
-                />
-              </Field>
-            }
-          >
+          <CustomerInfoSection register={register} errors={errors} watch={watch}>
             <Field label="사업자등록증상 대표자" required error={errors.custRepresentative?.message}>
               <input
                 {...register('custRepresentative', { required: '대표자명은 필수입니다' })}
@@ -212,18 +158,29 @@ export default function HecPage() {
             watch={watch}
             register={register}
             errors={errors}
-            installQtyPlaceholder="7"
-            gridClassName="grid grid-cols-2 md:grid-cols-3 gap-4"
-            extraGridFields={
-              <Field label="전기차 등록대수" required error={errors.evCount?.message}>
-                <input
-                  {...register('evCount', { required: '필수' })}
-                  className={inputCls}
-                  type="number"
-                  min="1"
-                  placeholder="6"
-                />
-              </Field>
+            installQtyPlaceholder="3"
+            contractTermLabels={{ seven: '7년 (84개월)', ten: '10년 (120개월)' }}
+            contractTermHint={
+              <p className="text-sm text-brand-700 bg-brand-50 border border-brand-200 rounded px-3 py-2">
+                📣 특별 프로모션: <b>7년 계약</b> 선택 시 6개월 동안 149원 제공 /{' '}
+                <b>10년 계약</b> 선택 시 6개월 동안 149원 + 6개월 동안 220원 제공
+                <span className="block text-xs text-brand-600 mt-0.5">
+                  선택한 계약기간에 따라 합의서 프로모션 문구가 자동 반영됩니다.
+                </span>
+              </p>
+            }
+            afterInstallAddr={
+              <Field
+                label="상세위치"
+                required
+                error={errors.installDetailLocation?.message as string | undefined}
+              >
+              <input
+                {...register('installDetailLocation', { required: '필수' })}
+                className={inputCls}
+                placeholder="예: 지하 1층 06,12 기둥 옆"
+              />
+            </Field>
             }
           />
 
@@ -236,16 +193,6 @@ export default function HecPage() {
             dupDist={dupDist}
             dupOutlet={dupOutlet}
           />
-
-          <Section title="4. 사전 체크리스트 설치대수 (별지2)">
-            <p className="text-xs text-gray-500 -mt-1">
-              충전시설 총 설치대수를 입력하면 사전 체크리스트([별지2]) 헤더에 자동 반영됩니다.
-              조사일·현장명은 위 입력값이 자동 사용됩니다. (사진대지[별지1]는 Word에서 직접 작성)
-            </p>
-            <div className="space-y-3">
-              <QtyPair label="충전시설 총 설치대수" slowName="siteTotalSlow" fastName="siteTotalFast" register={register} />
-            </div>
-          </Section>
 
           <FormActions
             status={status}

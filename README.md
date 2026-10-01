@@ -36,10 +36,10 @@ npm run dev    # http://localhost:3000
 
 ## 배포
 
-`main` 이 바뀌면 Vercel 이 프로덕션에 자동 배포한다. main 은 브랜치를 머지해서만 바꾸고, 브랜치를 푸시하면 프리뷰가 먼저 뜬다(`CLAUDE.md` 협업 방식). 주소가 둘이고 배포는 하나다:
+`main` 이 바뀌면 Vercel 이 프로덕션에 자동 배포한다. main 은 브랜치를 머지해서만 바꾸고, 브랜치를 푸시하면 프리뷰가 먼저 뜬다(`CLAUDE.md` 협업 방식). 주소는 하나다:
 
-- 포털 https://hanbaek-form.vercel.app — 협력사의 입구. 콘솔 경로는 404 다.
-- 콘솔 https://hanbaek-ev.vercel.app — 한백의 자리. `/` 는 `/projects` 로 보낸다.
+- 콘솔 https://hanbaek-ev.vercel.app — `/` 는 `/projects` 로 보낸다. 계약서 작성(`/contracts/*`)·실사보고서 작성(`/survey/*`)도 여기다.
+- 포털 https://hanbaek-form.vercel.app 은 2026-10-01 닫았다 — 모든 요청을 콘솔의 같은 경로로 넘긴다(`next.config.mjs`).
 함수 지역은 `icn1`(서울) — DB 와 같은 도시여야 한다 (`vercel.json`, 이유는 `CLAUDE.md` 코드 규칙).
 
 ## 스택

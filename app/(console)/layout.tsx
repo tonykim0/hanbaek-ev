@@ -5,7 +5,7 @@ import ConsoleShell from '@/components/ConsoleShell';
 /**
  * 콘솔 구역.
  *
- * 포털(hanbaek-form)의 SiteHeader 를 쓰지 않는다 — 다른 사이트다.
+ * 계약서 작성·실사보고서 작성도 이 아래다 — 포털(hanbaek-form)에 있다가 2026-10-01 들어왔다.
  * 로그인 화면도 이 구역에 있어서, 세션이 없으면 껍데기 없이 그대로 통과시킨다.
  *
  * 껍데기 자체는 클라이언트 컴포넌트다(사이드바를 접고 펴야 한다). 세션은 여기서 읽어

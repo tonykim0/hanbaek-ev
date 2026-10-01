@@ -11,7 +11,7 @@ import { HEC_PHOTO_SLOTS } from '@/lib/survey/spec';
 
 export default function HecSurveyPage() {
   return (
-    <ContractPageShell title="현대엔지니어링 실사보고서 (사진대지)" back={{ href: '/#survey', label: '← 실사보고서 작성' }}>
+    <ContractPageShell title="현대엔지니어링 실사보고서 (사진대지)" back={{ href: '/survey', label: '← 운영사 다시 선택' }}>
       <SurveyEditor
         cpo="hec"
         slots={HEC_PHOTO_SLOTS}
