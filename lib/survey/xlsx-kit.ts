@@ -12,6 +12,7 @@
  */
 import type JSZip from 'jszip';
 import type { PreparedImage } from './docx-kit';
+import { marksXml } from './xlsx-marks';
 
 const S_NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -94,6 +95,8 @@ export class Workbook {
   private docs = new Map<string, Document>();
   private picN = 0;
   private relN = 0;
+  /** 표시 도형의 id — 그림 부품 안에서 겹치면 안 된다(사진 5000번대 · 범례 6000번대 위로) */
+  private shapeN = 10000;
 
   private constructor(private zip: JSZip) {}
 
@@ -408,7 +411,18 @@ export class Workbook {
     await this.addRel(drawingPath, rid, `${REL}/image`, `../media/${media.slice('xl/media/'.length)}`);
     const id = 5000 + this.picN;
     const ns = `xmlns:xdr="${XDR_NS}" xmlns:a="${A_NS}" xmlns:r="${R_NS}"`;
-    const pic = (cx: number, cy: number, crop: string) => `<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="사진 ${this.picN}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${rid}"/>${crop}<a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/>`;
+    /*
+     * 표시가 있으면 사진과 한 묶음(그룹)으로 — 묶음이 칸에 맞춰 늘면 안의 표시도 같이 는다(xlsx-marks 머리말).
+     * 묶음 안 좌표는 사진이 보이는 틀 그대로(0~cx, 0~cy)다.
+     */
+    const pic = (cx: number, cy: number, crop: string, cut = { l: 0, t: 0, r: 0, b: 0 }) => {
+      const p = `<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="사진 ${this.picN}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${rid}"/>${crop}<a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>`;
+      if (!img.marks?.length) return `${p}<xdr:clientData/>`;
+      const shapes = marksXml(img.marks, img, { cx, cy, crop: cut }, img.markStyle ?? 'red', () => (this.shapeN += 1));
+      const gid = (this.shapeN += 1);
+      const xf = `<a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/><a:chOff x="0" y="0"/><a:chExt cx="${cx}" cy="${cy}"/>`;
+      return `<xdr:grpSp><xdr:nvGrpSpPr><xdr:cNvPr id="${gid}" name="사진 ${this.picN} · 표시"/><xdr:cNvGrpSpPr/></xdr:nvGrpSpPr><xdr:grpSpPr><a:xfrm>${xf}</a:xfrm></xdr:grpSpPr>${p}${shapes}</xdr:grpSp><xdr:clientData/>`;
+    };
 
     let xml: string;
     if (mode === 'fill') {
@@ -417,7 +431,7 @@ export class Workbook {
       const w = crop(img.width / img.height, (boxW - 2 * inset) / (boxH - 2 * inset), img.focus);
       const pct = (v: number) => Math.round(v * 100000);
       const src = `<a:srcRect l="${pct(w.l)}" t="${pct(w.t)}" r="${pct(w.r)}" b="${pct(w.b)}"/>`;
-      xml = `<xdr:twoCellAnchor ${ns}><xdr:from><xdr:col>${a.col - 1}</xdr:col><xdr:colOff>${inset}</xdr:colOff><xdr:row>${a.row - 1}</xdr:row><xdr:rowOff>${inset}</xdr:rowOff></xdr:from><xdr:to><xdr:col>${b.col - 1}</xdr:col><xdr:colOff>${Math.max(0, colW(b.col) - inset)}</xdr:colOff><xdr:row>${b.row - 1}</xdr:row><xdr:rowOff>${Math.max(0, Math.round(rowH(b.row)) - inset)}</xdr:rowOff></xdr:to>${pic(Math.round(boxW - 2 * inset), Math.round(boxH - 2 * inset), src)}</xdr:twoCellAnchor>`;
+      xml = `<xdr:twoCellAnchor ${ns}><xdr:from><xdr:col>${a.col - 1}</xdr:col><xdr:colOff>${inset}</xdr:colOff><xdr:row>${a.row - 1}</xdr:row><xdr:rowOff>${inset}</xdr:rowOff></xdr:from><xdr:to><xdr:col>${b.col - 1}</xdr:col><xdr:colOff>${Math.max(0, colW(b.col) - inset)}</xdr:colOff><xdr:row>${b.row - 1}</xdr:row><xdr:rowOff>${Math.max(0, Math.round(rowH(b.row)) - inset)}</xdr:rowOff></xdr:to>${pic(Math.round(boxW - 2 * inset), Math.round(boxH - 2 * inset), src, w)}</xdr:twoCellAnchor>`;
     } else {
       const scale = Math.min((boxW * 0.92) / img.width, (boxH * 0.92) / img.height);
       const cx = Math.round(img.width * scale);

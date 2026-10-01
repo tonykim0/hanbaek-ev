@@ -333,7 +333,7 @@ function SpotCard({
  * 넘치는 장은 버린다. 여러 장 칸에서 하나를 빼면 뒤의 것이 당겨진다(서식에 빈 칸을 남기지 않는다).
  */
 /** 표시 화면의 도구 — 플러그링크만 도면 기호·거점 라벨을 쓴다(MarkEditor) */
-export interface MarkTools { legend?: boolean; labels?: SpotLabel[]; line?: LineKind; size?: number }
+export interface MarkTools { legend?: boolean; labels?: SpotLabel[]; labelPick?: string; line?: LineKind; size?: number }
 
 export function PhotoSlots({ slots, photos, marks, onChange, expected, style, tools }: {
   slots: PhotoSlot[];

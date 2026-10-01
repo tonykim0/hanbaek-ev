@@ -39,3 +39,69 @@ describe('표시 조작', () => {
     expect(moveAnnot({ t: 'sym', k: 'charger', x: 0.95, y: 0.5, r: 90 }, 0.2, 0)).toEqual({ t: 'sym', k: 'charger', x: 1, y: 0.5, r: 90 });
   });
 });
+
+describe('파워포인트식 조정', () => {
+  const W = 1600; const H = 1200;
+  it('기호는 모서리를 끈 거리만큼 고르게 커진다', async () => {
+    const { boxOf, resizeAnnot } = await import('@/lib/survey/annot');
+    const a = { t: 'sym' as const, k: 'charger' as const, x: 0.5, y: 0.5, z: 1 };
+    const b = boxOf(a, W, H);
+    const big = resizeAnnot(a, 1, 1, b.cx + b.w, b.cy + b.h, W, H);
+    expect(big.z).toBeCloseTo(2, 5);
+  });
+
+  it('네모는 맞은편 모서리를 붙박고 늘어난다', async () => {
+    const { resizeAnnot } = await import('@/lib/survey/annot');
+    const a = { t: 'box' as const, a: { x: 0.25, y: 0.25 }, b: { x: 0.5, y: 0.5 } };
+    const r = resizeAnnot(a, 1, 1, 0.75 * W, 0.75 * H, W, H);
+    if (r.t !== 'box') throw new Error('네모가 아니다');
+    expect(r.a.x).toBeCloseTo(0.25, 5); expect(r.a.y).toBeCloseTo(0.25, 5);
+    expect(r.b.x).toBeCloseTo(0.75, 5); expect(r.b.y).toBeCloseTo(0.75, 5);
+  });
+
+  it('회전은 15° 근처에서 붙고, 선은 점을 돌린다', async () => {
+    const { rotateAnnot } = await import('@/lib/survey/annot');
+    expect(rotateAnnot({ t: 'sym', k: 'charger', x: 0.5, y: 0.5 }, 88, W, H).r).toBe(90);
+    expect(rotateAnnot({ t: 'sym', k: 'charger', x: 0.5, y: 0.5 }, 50, W, H).r).toBe(50);
+    const l = rotateAnnot({ t: 'line', pts: [{ x: 0.4, y: 0.5 }, { x: 0.6, y: 0.5 }] }, 90, W, H);
+    if (l.t !== 'line') throw new Error('선이 아니다');
+    expect(l.pts[0].x * W).toBeCloseTo(800, 3); expect(l.pts[1].x * W).toBeCloseTo(800, 3);
+  });
+
+  it('누른 자리의 표시 — 위에 그린 것부터, 돌린 상자 안도 잡는다', async () => {
+    const { hitAnnot } = await import('@/lib/survey/annot');
+    const list = [
+      { t: 'sym' as const, k: 'charger' as const, x: 0.5, y: 0.5 },
+      { t: 'sym' as const, k: 'panelNew' as const, x: 0.5, y: 0.5, r: 90 },
+    ];
+    expect(hitAnnot(list, 800, 600, W, H)).toBe(1);
+    expect(hitAnnot(list, 100, 100, W, H)).toBe(-1);
+  });
+});
+
+describe('엑셀 도형', () => {
+  it('표시마다 도형 하나 — 번호는 숫자 든 타원, 화살표는 끝 화살촉, 라벨은 상자 둘의 묶음', async () => {
+    const { marksXml } = await import('@/lib/survey/xlsx-marks');
+    let id = 100;
+    const xml = marksXml([
+      { t: 'num', x: 0.5, y: 0.5 },
+      { t: 'line', k: 'arrow', pts: [{ x: 0.1, y: 0.1 }, { x: 0.3, y: 0.3 }] },
+      { t: 'label', x: 0.5, y: 0.2, head: ['1거점 신규 4대'], body: ['CV 16sq-4C  35m'] },
+      { t: 'sym', k: 'charger', x: 0.2, y: 0.8, r: 90 },
+    ], { width: 1600, height: 1200 }, { cx: 1600 * 9525, cy: 1200 * 9525, crop: { l: 0, t: 0, r: 0, b: 0 } }, 'red', () => (id += 1));
+    expect(xml.match(/<xdr:sp /g)?.length).toBe(5); // 번호 · 선 · 라벨 둘 · 충전기
+    expect(xml).toContain('prst="ellipse"');
+    expect(xml).toContain('<a:t>1</a:t>');
+    expect(xml).toContain('tailEnd type="triangle"');
+    expect(xml).toContain('<xdr:grpSp>');
+    expect(xml).toContain('rot="5400000"');
+  });
+
+  it('칸 비율로 잘린 바깥의 표시는 뺀다', async () => {
+    const { marksXml } = await import('@/lib/survey/xlsx-marks');
+    const xml = marksXml([{ t: 'num', x: 0.05, y: 0.5 }, { t: 'num', x: 0.5, y: 0.5 }],
+      { width: 1600, height: 1200 }, { cx: 800 * 9525, cy: 1200 * 9525, crop: { l: 0.25, t: 0, r: 0.25, b: 0 } }, 'red', () => 1);
+    expect(xml.match(/<xdr:sp /g)?.length).toBe(1);
+    expect(xml).toContain('<a:t>2</a:t>'); // 번호는 그린 순서 그대로 — 빠진 1 이 2 를 1 로 당기지 않는다
+  });
+});

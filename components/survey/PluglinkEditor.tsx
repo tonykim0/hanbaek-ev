@@ -128,14 +128,15 @@ export default function PluglinkEditor() {
         spots[s.id] = {};
         for (const sl of PL_PHOTO_SLOTS) {
           for (const { key, file } of slotFiles(s.photos, sl)) {
-            spots[s.id][key] = await prepareImage(file, s.marks[key] ?? [], 'red');
+            // 굽지 않는다 — 표시는 엑셀 도형으로 얹어 엑셀에서 다시 고친다(lib/survey/xlsx-marks)
+            spots[s.id][key] = await prepareImage(file, s.marks[key] ?? [], 'red', false);
             tick();
           }
         }
       }
       const overview = f.overview ? await prepareImage(f.overview) : undefined;
       if (overview) tick();
-      const plan = f.plan ? await prepareImage(f.plan, f.planMarks) : undefined;
+      const plan = f.plan ? await prepareImage(f.plan, f.planMarks, 'red', false) : undefined;
       if (plan) tick();
       setBusy('서식 채우는 중…');
       const res = await fetch('/survey/pluglink-v22.xlsx');
@@ -232,7 +233,8 @@ export default function PluglinkEditor() {
                 onChange={(p) => setSpot(s.id, p)}
                 expected={plQtyOf(s)}
                 style="red"
-                tools={{ legend: true, labels: [plSpotLabel(s, i + 1)] }}
+                // 라벨은 거점 모두 — 도면 확대도에는 이웃 거점이 같이 찍힌다. 처음 고른 것은 이 거점
+                tools={{ legend: true, labels: f.spots.map((x, k) => plSpotLabel(x, k + 1)), labelPick: `${i + 1}거점` }}
               />
             </div>
             {f.spots.length > 1 && (

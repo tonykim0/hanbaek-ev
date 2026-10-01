@@ -24,6 +24,12 @@ export interface PreparedImage {
   height: number;
   /** 사진 위 표시가 든 자리(비율 0~1) — 칸에 맞춰 자를 때 이 자리는 남긴다(xlsx-kit addPicture fill) */
   focus?: { x0: number; y0: number; x1: number; y1: number };
+  /**
+   * 굽지 않은 표시 — 엑셀(플러그링크)은 사진에 굽지 않고 엑셀 도형으로 얹는다(lib/survey/xlsx-marks).
+   * 워드는 굽는다(이 칸이 비어 있다).
+   */
+  marks?: import('./annot').Annot[];
+  markStyle?: import('./annot').NumStyle;
 }
 
 export const childrenNamed = (el: Element, local: string): Element[] =>

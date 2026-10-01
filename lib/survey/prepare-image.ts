@@ -30,7 +30,11 @@ async function jpegOf(canvas: HTMLCanvasElement, name: string): Promise<Prepared
   return { bytes: new Uint8Array(await blob.arrayBuffer()), width: canvas.width, height: canvas.height };
 }
 
-export async function prepareImage(file: File, marks: Annot[] = [], style: NumStyle = 'red'): Promise<PreparedImage> {
+/**
+ * @param bake 표시를 사진에 굽는가 — 워드 서식은 굽고(true), 엑셀은 굽지 않고 표시를 실어 보낸다(false —
+ *             xlsx-kit 이 엑셀 도형으로 얹어 엑셀에서 다시 고칠 수 있게 한다)
+ */
+export async function prepareImage(file: File, marks: Annot[] = [], style: NumStyle = 'red', bake = true): Promise<PreparedImage> {
   const bmp = await bitmapOf(file);
   const scale = Math.min(1, LONG_EDGE / Math.max(bmp.width, bmp.height));
   const width = Math.round(bmp.width * scale);
@@ -46,10 +50,14 @@ export async function prepareImage(file: File, marks: Annot[] = [], style: NumSt
   ctx.drawImage(bmp, 0, 0, width, height);
   bmp.close?.();
   // 사진 위 표시를 합쳐 굽는다 — 미리보기와 같은 함수다(lib/survey/annot)
-  if (marks.length) drawAnnots(ctx, width, height, marks, style);
+  if (marks.length && bake) drawAnnots(ctx, width, height, marks, style);
   const out = await jpegOf(canvas, file.name);
-  const focus = annotBounds(marks);
-  return focus ? { ...out, focus } : out;
+  const focus = annotBounds(marks, width, height);
+  return {
+    ...out,
+    ...(focus ? { focus } : {}),
+    ...(!bake && marks.length ? { marks, markStyle: style } : {}),
+  };
 }
 
 /**
