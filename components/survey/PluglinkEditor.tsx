@@ -79,7 +79,7 @@ export default function PluglinkEditor() {
     contractorShare: null,
     gridInclude: false, gridType: '공중공급', gridOverNew: null, gridOverAdd: null,
     safetyCheck: true,
-    overview: null, plan: null,
+    overview: null, plan: null, planMarks: [],
     spots: [newPlSpot(nextId())],
   }));
   const [busy, setBusy] = useState<string | null>(null);
@@ -125,13 +125,13 @@ export default function PluglinkEditor() {
         for (const sl of PL_PHOTO_SLOTS) {
           const file = s.photos[sl.key];
           if (!file) continue;
-          spots[s.id][sl.key] = await prepareImage(file);
+          spots[s.id][sl.key] = await prepareImage(file, s.marks[sl.key] ?? []);
           tick();
         }
       }
       const overview = f.overview ? await prepareImage(f.overview) : undefined;
       if (overview) tick();
-      const plan = f.plan ? await prepareImage(f.plan) : undefined;
+      const plan = f.plan ? await prepareImage(f.plan, f.planMarks) : undefined;
       if (plan) tick();
       setBusy('서식 채우는 중…');
       const res = await fetch('/survey/pluglink-v22.xlsx');
@@ -170,7 +170,15 @@ export default function PluglinkEditor() {
           </label>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             <PhotoBox slot={OVERVIEW} file={f.overview} onFiles={(fs) => set({ overview: fs[0] })} onClear={() => set({ overview: null })} />
-            <PhotoBox slot={PLAN} file={f.plan} onFiles={(fs) => set({ plan: fs[0] })} onClear={() => set({ plan: null })} />
+            <PhotoBox
+              slot={PLAN}
+              file={f.plan}
+              onFiles={(fs) => set({ plan: fs[0], planMarks: [] })}
+              onClear={() => set({ plan: null, planMarks: [] })}
+              marks={f.planMarks}
+              onMarks={(m) => set({ planMarks: m })}
+              expected={f.spots.reduce((n, s) => n + plQtyOf(s), 0)}
+            />
           </div>
         </div>
       </Section>
@@ -211,9 +219,18 @@ export default function PluglinkEditor() {
                         if (rest.length === 0) break;
                         if (!next[later.key]) next[later.key] = rest.shift()!;
                       }
-                      setSpot(s.id, { photos: next });
+                      const marks = { ...s.marks };
+                      for (const key of Object.keys(next)) if (next[key] !== s.photos[key]) delete marks[key];
+                      setSpot(s.id, { photos: next, marks });
                     }}
-                    onClear={() => setSpot(s.id, { photos: { ...s.photos, [sl.key]: null } })}
+                    onClear={() => {
+                      const marks = { ...s.marks };
+                      delete marks[sl.key];
+                      setSpot(s.id, { photos: { ...s.photos, [sl.key]: null }, marks });
+                    }}
+                    marks={s.marks[sl.key] ?? []}
+                    onMarks={(m) => setSpot(s.id, { marks: { ...s.marks, [sl.key]: m } })}
+                    expected={plQtyOf(s)}
                   />
                 ))}
               </div>

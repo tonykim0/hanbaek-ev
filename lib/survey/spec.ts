@@ -26,6 +26,12 @@ export interface PhotoSlot {
   hint?: string;
 }
 
+/**
+ * 사진 위 번호 표시 하나 — 사진의 가로·세로에 대한 비율(0~1). 번호는 순서(1부터)다.
+ * 「이 주차면에 몇 기」를 사진 위에서 보이는 자리(한백 지시 2026-10-01 — 워드·엑셀에서 손으로 그리던 것).
+ */
+export interface Mark { x: number; y: number }
+
 /** 거점 하나 — 분전반 하나에 묶인 충전기 무리 */
 export interface SurveySpot {
   id: string;
@@ -47,6 +53,8 @@ export interface SurveySpot {
   qty: number | null;
   /** 사진 — 칸 key → 사진 파일. 브라우저 안에서만 산다 */
   photos: Record<string, File | null>;
+  /** 사진 위 번호 — 칸 key → 표시들. 서식에 넣을 때 사진에 합쳐 굽는다 */
+  marks: Record<string, Mark[]>;
   /** 체크리스트 — 항목 key → 확인(O)·미확인(X), 비고 */
   checks: Record<string, { ok: boolean; note: string }>;
 }
@@ -129,6 +137,7 @@ export function newSpot(id: string): SurveySpot {
     farSpec: '', nearSpec: '',
     address: '', panelNote: '', qty: null,
     photos: {},
+    marks: {},
     checks: Object.fromEntries(HEC_CHECK_KEYS.map((k) => [k, { ok: true, note: '' }])),
   };
 }
@@ -162,6 +171,7 @@ export interface PlSpot {
   bollard: number | null;
   note: string;
   photos: Record<string, File | null>;
+  marks: Record<string, Mark[]>;
 }
 
 export interface PlForm {
@@ -189,6 +199,8 @@ export interface PlForm {
   /** 시트 하나에 한 장 — 전경사진 · 도면(주차장 평면도) */
   overview: File | null;
   plan: File | null;
+  /** 도면 위 설치위치 표기 — 사진대지와 같은 번호 표시 */
+  planMarks: Mark[];
   spots: PlSpot[];
 }
 
@@ -216,7 +228,7 @@ export function newPlSpot(id: string): PlSpot {
   return {
     id, location: '', newQty: null, replQty: null, panelName: '', mainBreaker: '', inletBreaker: '',
     pipeSize: null, pipeLen: null, cableSize: null, cableLen: null,
-    modem: null, stand: null, canopy: null, bollard: null, note: '', photos: {},
+    modem: null, stand: null, canopy: null, bollard: null, note: '', photos: {}, marks: {},
   };
 }
 

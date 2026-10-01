@@ -17,8 +17,9 @@ import { downloadBlob } from '@/lib/download';
 import { useLeaveGuard } from '@/lib/use-leave-guard';
 import { prepareImage } from '@/lib/survey/prepare-image';
 import type { PreparedImage } from '@/lib/survey/docx-kit';
+import MarkEditor, { MarkOverlay } from './MarkEditor';
 import {
-  HEC_CHECKS, newSpot, type PhotoSlot, type SurveyCpo, type SurveyForm, type SurveySpot,
+  HEC_CHECKS, fastOf, newSpot, slowOf, type Mark, type PhotoSlot, type SurveyCpo, type SurveyForm, type SurveySpot,
 } from '@/lib/survey/spec';
 
 export interface SurveyEditorProps {
@@ -88,7 +89,7 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
         for (const sl of slots) {
           const f = s.photos[sl.key];
           if (!f) continue;
-          images[s.id][sl.key] = await prepareImage(f);
+          images[s.id][sl.key] = await prepareImage(f, s.marks[sl.key] ?? []);
           done += 1;
           setBusy(`사진 준비 중 ${done}/${total}`);
         }
@@ -259,9 +260,19 @@ function SpotCard({
                     if (rest.length === 0) break;
                     if (!next[later.key]) next[later.key] = rest.shift()!;
                   }
-                  onChange({ photos: next });
+                  // 사진이 바뀐 칸의 번호는 걷는다 — 다른 사진 위의 자리는 뜻이 없다
+                  const marks = { ...spot.marks };
+                  for (const k of Object.keys(next)) if (next[k] !== spot.photos[k]) delete marks[k];
+                  onChange({ photos: next, marks });
                 }}
-                onClear={() => onChange({ photos: { ...spot.photos, [sl.key]: null } })}
+                onClear={() => {
+                  const marks = { ...spot.marks };
+                  delete marks[sl.key];
+                  onChange({ photos: { ...spot.photos, [sl.key]: null }, marks });
+                }}
+                marks={spot.marks[sl.key] ?? []}
+                onMarks={(m) => onChange({ marks: { ...spot.marks, [sl.key]: m } })}
+                expected={variant === 'ledger' ? spot.qty : slowOf(spot) + fastOf(spot)}
               />
             ))}
           </div>
@@ -321,15 +332,22 @@ function SpotCard({
 }
 
 /** 사진 칸 하나 — 누르면 고르고, 끌어다 놓아도 된다. 넣은 사진은 그 자리에서 보인다 */
-export function PhotoBox({ slot, file, onFiles, onClear }: {
+export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expected }: {
   slot: PhotoSlot;
   file: File | null;
   onFiles: (files: File[]) => void;
   onClear: () => void;
+  /** 번호 표시 — 주면 사진 위에 번호를 찍을 수 있다 */
+  marks?: Mark[];
+  onMarks?: (marks: Mark[]) => void;
+  /** 그 거점의 설치 대수 — 찍은 수와 견준다 */
+  expected?: number | null;
 }) {
   const dragging = useFileDragging();
   const [over, setOver] = useState(false);
   const [url, setUrl] = useState<string | null>(null);
+  const [aspect, setAspect] = useState(4 / 3);
+  const [marking, setMarking] = useState(false);
   useEffect(() => {
     if (!file) { setUrl(null); return; }
     const u = URL.createObjectURL(file);
@@ -354,8 +372,21 @@ export function PhotoBox({ slot, file, onFiles, onClear }: {
         }`}
       >
         {url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt={slot.label} className="h-full w-full object-contain" />
+          /* 번호는 사진 위 자리라 사진과 같은 틀(비율)에 얹는다 — object-contain 의 빈 띠에 뜨지 않게 */
+          <span
+            className="relative block"
+            // 칸은 4:3 이다 — 그보다 넓은 사진은 폭을, 좁은(세로) 사진은 높이를 채운다
+            style={aspect >= 4 / 3 ? { width: '100%', aspectRatio: String(aspect) } : { height: '100%', aspectRatio: String(aspect) }}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={url}
+              alt={slot.label}
+              onLoad={(e) => setAspect(e.currentTarget.naturalWidth / (e.currentTarget.naturalHeight || 1))}
+              className="h-full w-full object-contain"
+            />
+            {marks && marks.length > 0 && <MarkOverlay marks={marks} aspect={aspect} />}
+          </span>
         ) : (
           <span className="px-3 text-center text-sm font-bold text-slate-400">
             {dragging ? '여기에 놓기' : '사진 고르기 · 끌어다 놓기'}
@@ -374,12 +405,31 @@ export function PhotoBox({ slot, file, onFiles, onClear }: {
           {slot.label}
           {slot.hint && <span className="ml-1 text-xs font-normal text-gray-400">{slot.hint}</span>}
         </span>
+        {file && onMarks && (
+          <button
+            type="button"
+            onClick={() => setMarking(true)}
+            className={`text-xs font-bold ${marks?.length ? 'text-[#e11d2a]' : 'text-brand-700'} hover:underline`}
+          >
+            {marks?.length ? `번호 ${marks.length}개` : '번호 표시'}
+          </button>
+        )}
         {file && (
           <button type="button" onClick={onClear} className="text-xs font-bold text-slate-400 hover:text-red-700">
             빼기
           </button>
         )}
       </div>
+      {marking && file && onMarks && (
+        <MarkEditor
+          file={file}
+          marks={marks ?? []}
+          expected={expected}
+          title={`${slot.label} — 설치 위치에 번호`}
+          onClose={() => setMarking(false)}
+          onDone={(m) => { onMarks(m); setMarking(false); }}
+        />
+      )}
     </div>
   );
 }
