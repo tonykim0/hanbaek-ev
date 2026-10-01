@@ -6,7 +6,9 @@
  * 「무엇이 필요한가」는 lib/doc-rules 가 정하고(docs 프롭), 여기서는 그 목록을 그린다.
  * 올리는 절차는 lib/intake-upload 가 안다 — 이 부품은 고른 파일을 onPick 으로 넘길 뿐이다.
  */
+import { useState } from 'react';
 import { Finding, Preview } from './parts';
+import { useFileDragging } from '@/components/DocFiles';
 import type { StagedFile } from '@/components/IntakeForm';
 import { PANEL, Tag } from '@/components/ui';
 import type { EvaluatedDoc } from '@/lib/doc-rules';
@@ -24,6 +26,45 @@ const DOC_SECTIONS = [
   { req: 'o' as const, label: '선택', note: '있으면 함께 냅니다' },
 ];
 
+/**
+ * 칸에 끌어다 놓는 덮개 (한백 지시 2026-10-01 「고르기 + 드래그 하게끔」).
+ *
+ * 현장 상세의 서류 칸(DocUpload)과 같은 꼴이다 — 파일을 끌고 있을 때만 칸 전체를 덮어
+ * 「여기에 놓기」를 띄운다. 칸 아래 「고르기」 단추만 받게 두면 제목이나 파일 목록 위에
+ * 놓았을 때 브라우저가 그 파일을 새 탭으로 열어 버린다(조준할 것을 없앤다, 2026-08-30).
+ * 평소에는 없다 — 깔려 있으면 칸 안의 미리보기·빼기를 가린다. 올리는 중에도 안 띄운다.
+ *
+ * 끄는 신호는 창에 한 벌이다(useFileDragging) — 빗맞힌 드롭도 거기서 삼킨다.
+ */
+function DropCover({ onFiles }: { onFiles: (files: File[]) => void }) {
+  const [over, setOver] = useState(false);
+  return (
+    <div
+      onDragEnter={(e) => { e.preventDefault(); setOver(true); }}
+      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragLeave={(e) => {
+        // 자식으로 들어간 것은 떠난 것이 아니다 — 안 걸러내면 깜빡인다
+        if (e.currentTarget.contains(e.relatedTarget as Node | null)) return;
+        setOver(false);
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        setOver(false);
+        // 놓은 목록은 먼저 꺼내 둔다 — 고르기 쪽과 같은 습관(test/conventions/file-input)
+        const dropped = [...e.dataTransfer.files];
+        if (dropped.length > 0) onFiles(dropped);
+      }}
+      className={`absolute inset-0 z-10 flex items-center justify-center rounded-box border-2 border-dashed text-tiny font-bold transition ${
+        over
+          ? 'border-brand-500 bg-brand-50/95 text-brand-800'
+          : 'border-slate-300 bg-white/90 text-slate-500'
+      }`}
+    >
+      여기에 놓기
+    </div>
+  );
+}
+
 export function DocSection({
   docs, check, issueCount, review, staged, picking, onPick, onRemove,
 }: {
@@ -39,6 +80,7 @@ export function DocSection({
   /** 장 단위로 뺀다 — 두 장 중 하나만 잘못 온 경우가 있다 */
   onRemove: (kind: string, index: number) => void;
 }) {
+  const filesInFlight = useFileDragging();
   return (
     /*
      * ★계약 탭의 서류 구역과 같은 꼴이다★ (한백 지시 2026-08-31 「접수 UI 를 계약 페이지와
@@ -130,6 +172,9 @@ export function DocSection({
                               : 'border-dashed border-slate-200 bg-white'
                       }`}
                     >
+                      {filesInFlight && uploading === undefined && (
+                        <DropCover onFiles={(dropped) => onPick(d.key, dropped)} />
+                      )}
                       {/* 이름과 상태 — 계약 탭과 같은 줄 배치다 */}
                       <div className="flex items-start justify-between gap-2">
                         <p className="break-keep text-small font-bold leading-snug text-slate-800">
