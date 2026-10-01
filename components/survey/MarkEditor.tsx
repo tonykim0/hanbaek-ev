@@ -12,8 +12,11 @@
  *     크기, 꼭지를 끌면 회전(15° 근처에서 붙는다). Delete 로 빼고, 화살표 키로 한 칸씩 민다.
  *   · 도구를 고르면 빈 곳을 누를 때 그것이 찍힌다 — 표시 위를 누르면 찍지 않고 고른다(같은 자리에
  *     하나 더 찍히지 않게). 고른 도구를 다시 누르면 풀린다.
- *   · 오른쪽 단추 — 표시 위에서 누르면 뺀다 · 선을 긋는 중이면 선 끝(한백 지시).
- *   · 선 — 누를 때마다 꺾이고, 두 번 누르거나 오른쪽 단추·「선 끝」. 기호·번호를 누르면 그 가운데에 붙는다(분전반에서
+ *   · 지우기 — 도구 줄의 「지우기」를 켜고 표시를 누르면 지워진다(Delete 키는 고른 것을). 오른쪽 단추로
+ *     지우던 것은 걷었다 — 손에 따라 안 먹었다(한백 「안 되는데 그냥 없애줘, 지우기 기능을 추가」). 고른 틀 옆의
+ *     「빼기」 단추도 걷었다(잘 안 보였다).
+ *   · 되돌리기 — 찍기·지우기·옮기기·크기·회전을 하나씩 거꾸로(마지막 것만 빼던 것을 바꿨다 — 지운 것도 살아난다).
+ *   · 선 — 누를 때마다 꺾이고, 두 번 누르거나 「선 끝」. 기호·번호를 누르면 그 가운데에 붙는다(분전반에서
  *     분전반으로 잇는 배선이 정확히 닿게). 가로·세로에 가까우면 곧게 붙는다.
  *   · 크기를 바꾼 기호·번호·글자는 다음에 찍는 같은 것도 그 크기로 나온다 — 충전기 넷을 하나씩 줄이지 않게.
  *   · 확대·축소 — 평면도는 칸이 촘촘해 100% 로는 주차면을 못 짚는다.
@@ -26,14 +29,15 @@ import {
 } from '@/lib/survey/annot';
 
 /* 동그라미는 걷었다(한백 「동그라미는 필요 없어」) — 예전에 그린 동그라미는 그대로 그려지고 고를 수 있다 */
-type Tool = 'num' | 'sym' | 'line' | 'box' | 'text' | 'label';
+type Tool = 'num' | 'sym' | 'line' | 'box' | 'text' | 'label' | 'erase';
 const TOOLS: Array<{ key: Tool; label: string; hint: string }> = [
   { key: 'num', label: '번호', hint: '빈 곳을 누르면 다음 번호' },
   { key: 'sym', label: '기호', hint: '기호를 고르고 빈 곳을 누릅니다' },
-  { key: 'line', label: '선', hint: '누를 때마다 꺾입니다 · 오른쪽 단추나 두 번 누르면 끝 · 기호를 누르면 가운데에 붙습니다' },
+  { key: 'line', label: '선', hint: '누를 때마다 꺾입니다 · 두 번 누르거나 「선 끝」 · 기호를 누르면 가운데에 붙습니다' },
   { key: 'box', label: '네모', hint: '빈 곳에서 끌어서 그립니다' },
   { key: 'text', label: '글자', hint: '글자를 고르고 빈 곳을 누릅니다' },
   { key: 'label', label: '거점 라벨', hint: '거점을 고르고 빈 곳을 누릅니다' },
+  { key: 'erase', label: '지우기', hint: '지울 표시를 누릅니다 · 잘못 지웠으면 되돌리기' },
 ];
 
 const SYMS: SymKind[] = ['charger', 'panelNew', 'panelOld', 'pole', 'ipPole'];
@@ -164,21 +168,43 @@ export default function MarkEditor({
 
   const zOf = (key: string) => lastZ.current[key] ?? size;
 
+  /*
+   * 되돌리기 — 바꾸기 직전의 목록을 쌓는다. 끌기는 시작할 때 한 번 쌓고, 끝나서 그대로면(누르기만 한 것) 걷는다.
+   */
+  const past = useRef<Annot[][]>([]);
+  const [undoN, setUndoN] = useState(0);
+  const listRef = useRef(list);
+  listRef.current = list;
+  const snap = useCallback(() => {
+    past.current.push(listRef.current);
+    if (past.current.length > 200) past.current.shift();
+    setUndoN(past.current.length);
+  }, []);
+  const undo = () => {
+    setSel(null);
+    if (draft) { setDraft(null); return; }
+    const prev = past.current.pop();
+    setUndoN(past.current.length);
+    if (prev) setList(prev);
+  };
+
   /* 그리던 선은 다른 일을 하면 끝낸 것으로 본다 — 두 점이 안 되면 버린다 */
   const commitDraft = useCallback((d: Annot | null = draft) => {
     if (d && d.t === 'line') {
       const pts = d.pts.slice(0, -1); // 마지막 점은 손가락을 따라오던 자리다
       if (pts.length >= 2) {
+        snap();
         setList((l) => { setSel(l.length); return [...l, { ...d, pts }]; });
       }
     }
     setDraft(null);
-  }, [draft]);
+  }, [draft, snap]);
 
   const remove = useCallback((i: number) => {
+    snap();
     setList((l) => l.filter((_, k) => k !== i));
     setSel(null);
-  }, []);
+  }, [snap]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -196,12 +222,13 @@ export default function MarkEditor({
         const step = (e.shiftKey ? 10 : 1);
         const dx = e.key === 'ArrowLeft' ? -step / W : e.key === 'ArrowRight' ? step / W : 0;
         const dy = e.key === 'ArrowUp' ? -step / H : e.key === 'ArrowDown' ? step / H : 0;
+        snap();
         setList((l) => l.map((a, k) => (k === sel ? moveAnnot(a, dx, dy) : a)));
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [draft, sel, remove, W, H]);
+  }, [draft, sel, remove, snap, W, H]);
 
   const at = (e: { clientX: number; clientY: number }): Pt | null => {
     const r = frame.current?.getBoundingClientRect();
@@ -216,12 +243,15 @@ export default function MarkEditor({
   /** 고른 표시를 고친다 */
   const patchSel = (f: (a: Annot) => Annot) => {
     if (sel === null) return;
+    snap();
     setList((l) => l.map((a, k) => (k === sel ? f(a) : a)));
   };
-  const add = (a: Annot) => setList((l) => { setSel(l.length); return [...l, a]; });
+  const add = (a: Annot) => { snap(); setList((l) => { setSel(l.length); return [...l, a]; }); };
+  /** 끌기를 시작한다 — 되돌리기 자리를 하나 쌓아 둔다(끝나서 그대로면 onUp 이 걷는다) */
+  const begin = (o: Op) => { snap(); op.current = o; };
 
   function onDown(e: React.PointerEvent) {
-    // 오른쪽 단추는 onContext 가 맡는다 — 여기서 받으면 점이 하나 더 찍히거나 표시가 끌려 간다
+    // 왼쪽 단추만 — 오른쪽·가운데 단추는 쓰지 않는다(오른쪽으로 지우던 것은 걷었다)
     if (e.button !== 0) return;
     const p = at(e);
     if (!p) return;
@@ -232,21 +262,26 @@ export default function MarkEditor({
       const orig = list[sel];
       if (handle === 'rot') {
         const b = boxOf(orig, W, H);
-        op.current = { kind: 'rotate', i: sel, orig, a0: Math.atan2(p.y * H - b.cy, p.x * W - b.cx) };
+        begin({ kind: 'rotate', i: sel, orig, a0: Math.atan2(p.y * H - b.cy, p.x * W - b.cx) });
       } else {
-        op.current = { kind: 'resize', i: sel, orig, sx: handle.includes('e') ? 1 : -1, sy: handle.includes('s') ? 1 : -1 };
+        begin({ kind: 'resize', i: sel, orig, sx: handle.includes('e') ? 1 : -1, sy: handle.includes('s') ? 1 : -1 });
       }
       return;
     }
     const now = Date.now();
     const hit = hitAnnot(list, p.x * W, p.y * H, W, H);
 
+    if (tool === 'erase') {
+      if (hit >= 0) remove(hit);
+      return;
+    }
+
     if (tool === 'line') {
       // 기호·번호를 누르면 그 가운데에 붙는다 — 분전반에서 분전반으로 정확히 잇게
       const target = hit >= 0 ? list[hit] : null;
       const center = target && (target.t === 'sym' || target.t === 'num') ? { x: target.x, y: target.y } : null;
       if (!draft || draft.t !== 'line') {
-        if (target && target.t === 'line') { setSel(hit); op.current = { kind: 'move', i: hit, orig: target, from: p }; return; }
+        if (target && target.t === 'line') { setSel(hit); begin({ kind: 'move', i: hit, orig: target, from: p }); return; }
         setSel(null);
         const q = center ?? p;
         setDraft({ t: 'line', pts: [q, q], k: lineKind });
@@ -270,7 +305,7 @@ export default function MarkEditor({
       }
       lastTap.current = { i: hit, t: now };
       setSel(hit);
-      op.current = { kind: 'move', i: hit, orig: list[hit], from: p };
+      begin({ kind: 'move', i: hit, orig: list[hit], from: p });
       return;
     }
     setSel(null);
@@ -284,16 +319,6 @@ export default function MarkEditor({
       const spot = Number(/^(\d+)거점$/.exec(l?.name ?? '')?.[1]) || undefined;
       if (l) add({ t: 'label', x: p.x, y: p.y, head: l.head, body: l.body, spot, z: zOf('label') });
     }
-  }
-
-  /** 오른쪽 단추 — 선을 긋는 중이면 선 끝, 표시 위면 빼기 */
-  function onContext(e: React.MouseEvent) {
-    e.preventDefault();
-    if (draft?.t === 'line') { commitDraft(); return; }
-    const p = at(e);
-    if (!p) return;
-    const hit = hitAnnot(list, p.x * W, p.y * H, W, H);
-    if (hit >= 0) remove(hit);
   }
 
   function onMove(e: React.PointerEvent) {
@@ -323,6 +348,11 @@ export default function MarkEditor({
   function onUp() {
     const o = op.current;
     op.current = null;
+    // 누르기만 하고 안 움직였으면 쌓아 둔 되돌리기 자리는 걷는다(같은 목록이다)
+    if (o && past.current.length && past.current[past.current.length - 1] === listRef.current) {
+      past.current.pop();
+      setUndoN(past.current.length);
+    }
     // 크기를 바꾼 것은 다음에 찍는 같은 것의 크기가 된다
     if (o?.kind === 'resize') {
       const a = list[o.i];
@@ -385,8 +415,8 @@ export default function MarkEditor({
           <span className="w-12 text-center text-small font-bold tabular-nums text-slate-600">{Math.round(zoom * 100)}%</span>
           <Btn size="sm" kind="quiet" disabled={zoom >= ZOOMS[ZOOMS.length - 1]} onClick={() => setZoom((v) => ZOOMS[Math.min(ZOOMS.length - 1, ZOOMS.indexOf(v) + 1)])}>＋</Btn>
           <span className="ml-auto flex items-center gap-1.5">
-            <Btn size="sm" kind="quiet" disabled={!draft && list.length === 0} onClick={() => { setSel(null); if (draft) setDraft(null); else setList((l) => l.slice(0, -1)); }}>되돌리기</Btn>
-            <Btn size="sm" kind="quiet" disabled={list.length === 0} onClick={() => { setSel(null); setDraft(null); setList([]); }}>모두 지우기</Btn>
+            <Btn size="sm" kind="quiet" disabled={!draft && undoN === 0} onClick={undo}>되돌리기</Btn>
+            <Btn size="sm" kind="quiet" disabled={list.length === 0} onClick={() => { snap(); setSel(null); setDraft(null); setList([]); }}>모두 지우기</Btn>
           </span>
         </div>
 
@@ -418,13 +448,10 @@ export default function MarkEditor({
             <Choice key={l.name} on={label === l.name} onClick={() => { setLabel(l.name); setSel(null); }}>{l.name}</Choice>
           ))}
           {!picked && (
-            <span className="text-small text-slate-500">{current ? current.hint : '표시를 누르면 골라집니다 · 오른쪽 단추로 누르면 뺍니다 · 위에서 도구를 고르면 그것을 찍습니다'}</span>
+            <span className="text-small text-slate-500">{current ? current.hint : '표시를 누르면 골라집니다 · 위에서 도구를 고르면 그것을 찍습니다'}</span>
           )}
           {picked && (
-            <span className="ml-auto flex items-center gap-1.5">
-              <span className="text-small text-slate-500">끌면 옮김 · 모서리는 크기 · 위 꼭지는 회전 · 오른쪽 단추는 빼기</span>
-              <Btn size="sm" kind="undo" onClick={() => remove(sel!)}>빼기</Btn>
-            </span>
+            <span className="ml-auto text-small text-slate-500">끌면 옮김 · 모서리는 크기 · 위 꼭지는 회전 · Delete 키나 「지우기」로 지움</span>
           )}
         </div>
       </div>
@@ -433,12 +460,11 @@ export default function MarkEditor({
         {url && (
           <div
             ref={frame}
-            className={`relative m-auto inline-block shrink-0 touch-none select-none ${tool ? 'cursor-crosshair' : 'cursor-default'}`}
+            className={`relative m-auto inline-block shrink-0 touch-none select-none ${tool === 'erase' ? 'cursor-pointer' : tool ? 'cursor-crosshair' : 'cursor-default'}`}
             onPointerDown={onDown}
             onPointerMove={onMove}
             onPointerUp={onUp}
             onPointerCancel={onUp}
-            onContextMenu={onContext}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
