@@ -433,6 +433,33 @@ export class Workbook {
     dd.documentElement.appendChild(dd.importNode(node, true));
   }
 
+  /**
+   * 시트의 그림에서 시작 칸(0부터 센 열·행)이 맞는 도형을 걷는다 — 서식에 박힌 「예시」 도형을
+   * 지울 때(fill-pluglink 도면). 걷은 수를 돌려준다.
+   */
+  async removeAnchors(sheetName: string, hit: (col: number, row: number) => boolean): Promise<number> {
+    const s = this.sheet(sheetName);
+    const dd = await this.doc(await this.drawingOf(s.path));
+    let n = 0;
+    for (const a of Array.from(dd.documentElement.childNodes) as Element[]) {
+      if (a.nodeType !== 1) continue;
+      const from = elems(a, XDR_NS, 'from')[0];
+      if (!from) continue;
+      const col = Number(elems(from, XDR_NS, 'col')[0]?.textContent);
+      const row = Number(elems(from, XDR_NS, 'row')[0]?.textContent);
+      if (hit(col, row)) { dd.documentElement.removeChild(a); n += 1; }
+    }
+    return n;
+  }
+
+  /** 시트의 그림에 도형(앵커 XML 한 덩이)을 덧붙인다 — 범례에 없는 기호를 더할 때(fill-pluglink) */
+  async addAnchorXml(sheetName: string, anchorXml: string): Promise<void> {
+    const s = this.sheet(sheetName);
+    const dd = await this.doc(await this.drawingOf(s.path));
+    const wrapped = anchorXml.replace(/^<xdr:(\w+)/, `<xdr:$1 xmlns:xdr="${XDR_NS}" xmlns:a="${A_NS}" xmlns:r="${R_NS}"`);
+    dd.documentElement.appendChild(dd.importNode(parse(wrapped).documentElement, true));
+  }
+
   /** 시트의 그림 부품 경로 — 서식의 시트는 모두 그림(도형·가이드)을 갖고 있다 */
   private async drawingOf(sheetPath: string): Promise<string> {
     const f = this.zip.file(relsOf(sheetPath));

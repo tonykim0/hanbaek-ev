@@ -5,7 +5,7 @@
  *
  * ★서버에 아무것도 안 보낸다★ — 사진은 브라우저 안에서 줄여(lib/survey/prepare-image) 서식에
  * 넣고 그 자리에서 내려받는다. 계약서 작성과 같은 길이다. 그래서 창을 닫으면 넣은 것이 사라진다 —
- * 사진이 들어 있는 동안 나가려 하면 한 번 묻는다.
+ * 임시 저장(이 브라우저 안, lib/survey/use-draft)이 있고, 저장 뒤 바꾼 것을 두고 나가려 하면 묻는다.
  *
  * 화면은 운영사와 상관없이 하나다 — 거점·값·사진 칸. 칸 목록과 생성기만 운영사가 정한다.
  */
@@ -14,11 +14,12 @@ import { Section, contractInputClass } from '@/components/contracts/FormControls
 import { Alerts, Btn, Choice } from '@/components/ui';
 import { useFileDragging } from '@/components/DocFiles';
 import { downloadBlob } from '@/lib/download';
-import { useLeaveGuard } from '@/lib/use-leave-guard';
+import { useSurveyDraft } from '@/lib/survey/use-draft';
+import { DraftFound, SurveyActions } from './DraftControls';
 import { prepareCollage, prepareImage } from '@/lib/survey/prepare-image';
 import type { PreparedImage } from '@/lib/survey/docx-kit';
-import type { NumStyle } from '@/lib/survey/annot';
-import MarkEditor, { AnnotCanvas } from './MarkEditor';
+import type { LineKind, NumStyle } from '@/lib/survey/annot';
+import MarkEditor, { AnnotCanvas, type SpotLabel } from './MarkEditor';
 import {
   HEC_CHECKS, fastOf, markStyleOf, newSpot, slotFiles, slowOf, subKey,
   type Mark, type PhotoSlot, type SurveyCpo, type SurveyForm, type SurveySpot,
@@ -56,7 +57,11 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
   const style = markStyleOf(cpo);
 
   const photoCount = spots.reduce((n, s) => n + Object.values(s.photos).filter(Boolean).length, 0);
-  useLeaveGuard(photoCount > 0 || busy !== null, '넣은 사진과 값은 저장되지 않습니다 — 나가면 사라집니다. 나가시겠습니까?');
+  // 임시 저장 — 화면의 값 셋을 한 덩이로(어느 하나가 바뀌면 새 덩이다)
+  const value = useMemo(() => ({ siteName, surveyDate, spots }), [siteName, surveyDate, spots]);
+  const draft = useSurveyDraft(`survey:${cpo}`, value, (v) => {
+    setSiteName(v.siteName); setSurveyDate(v.surveyDate); setSpots(v.spots);
+  }, busy !== null);
 
   const patch = (id: string, p: Partial<SurveySpot>) =>
     setSpots((list) => list.map((s) => (s.id === id ? { ...s, ...p } : s)));
@@ -115,8 +120,13 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
     }
   }
 
+  const canMake = siteName.trim() ? true as const : '현장명 미입력 — 만들 수 없음';
+  const actions = <SurveyActions draft={draft} make={() => void make()} busy={busy} canMake={canMake} />;
+
   return (
     <div className="flex flex-col gap-5">
+      <DraftFound draft={draft} what={draft.found ? draftWhat(draft.found.data) : undefined} />
+      {actions}
       <Section title="1. 현장">
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block">
@@ -152,13 +162,15 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
       {error && <Alerts tone="stop" title="만들지 못했습니다" items={[{ text: error }]} />}
       <Alerts tone="warn" title={`확인할 것 ${review.length}건`} items={review.map((text) => ({ text }))} />
 
-      <div className="flex flex-wrap items-center gap-3">
-        <Btn onClick={() => void make()} busy={busy !== null} busyLabel={busy ?? undefined} disabled={!siteName.trim()}>
-          {siteName.trim() ? '실사보고서 만들기' : '현장명 미입력 — 만들 수 없음'}
-        </Btn>
-      </div>
+      {actions}
     </div>
   );
+}
+
+/** 저장본 한 줄 요약 — 「광주 OO아파트 · 거점 2 · 사진 9장」 */
+function draftWhat(v: { siteName: string; spots: SurveySpot[] }): string {
+  const photos = v.spots.reduce((n, s) => n + Object.values(s.photos).filter(Boolean).length, 0);
+  return [v.siteName.trim(), `거점 ${v.spots.length}`, `사진 ${photos}장`].filter(Boolean).join(' · ');
 }
 
 export function num(v: string): number | null {
@@ -326,14 +338,17 @@ function SpotCard({
  * 고르는 일이 많다), 여러 장 칸에서는 그 묶음에 다 넣는다 — 「인입라인에 고른 사진은 인입라인으로」.
  * 넘치는 장은 버린다. 여러 장 칸에서 하나를 빼면 뒤의 것이 당겨진다(서식에 빈 칸을 남기지 않는다).
  */
-export function PhotoSlots({ slots, photos, marks, onChange, expected, style, charger }: {
+/** 표시 화면의 도구 — 플러그링크만 도면 기호·거점 라벨을 쓴다(MarkEditor) */
+export interface MarkTools { legend?: boolean; labels?: SpotLabel[]; line?: LineKind; size?: number }
+
+export function PhotoSlots({ slots, photos, marks, onChange, expected, style, tools }: {
   slots: PhotoSlot[];
   photos: Record<string, File | null>;
   marks: Record<string, Mark[]>;
   onChange: (p: { photos: Record<string, File | null>; marks: Record<string, Mark[]> }) => void;
   expected?: number | null;
   style: NumStyle;
-  charger?: boolean;
+  tools?: MarkTools;
 }) {
   /* 사진이 바뀐 자리의 표시는 걷는다 — 다른 사진 위의 자리는 뜻이 없다. 자리를 옮긴 사진은 표시도 같이 옮긴다 */
   const commit = (next: Record<string, File | null>, moved: Record<string, string> = {}) => {
@@ -392,7 +407,7 @@ export function PhotoSlots({ slots, photos, marks, onChange, expected, style, ch
             onMarks={(m) => onChange({ photos, marks: { ...marks, [key]: m } })}
             expected={expected}
             style={style}
-            charger={charger}
+            tools={tools}
           />
         );
         if (!sl.multi) {
@@ -414,7 +429,7 @@ export function PhotoSlots({ slots, photos, marks, onChange, expected, style, ch
 }
 
 /** 사진 칸 하나 — 누르면 고르고, 끌어다 놓아도 된다. 넣은 사진은 그 자리에서 보인다 */
-export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expected, style = 'red', charger = false }: {
+export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expected, style = 'red', tools }: {
   slot: PhotoSlot;
   file: File | null;
   onFiles: (files: File[]) => void;
@@ -426,8 +441,8 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expecte
   expected?: number | null;
   /** 번호 모양 — 서식이 정한다 */
   style?: NumStyle;
-  /** 충전기 표시 도구 — 도면에서만 */
-  charger?: boolean;
+  /** 표시 화면의 도구 — 플러그링크의 도면 기호·거점 라벨 */
+  tools?: MarkTools;
 }) {
   const dragging = useFileDragging();
   const [over, setOver] = useState(false);
@@ -513,7 +528,7 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expecte
           expected={expected}
           title={slot.label}
           style={style}
-          charger={charger}
+          {...tools}
           onClose={() => setMarking(false)}
           onDone={(m) => { onMarks(m); setMarking(false); }}
         />

@@ -304,3 +304,32 @@ export const plQtyOf = (s: PlSpot) => (s.qty ?? 0) + (s.replQty ?? 0);
 export const plModemOf = (s: PlSpot) => (plQtyOf(s) > 0 ? Math.ceil(plQtyOf(s) / 6) : 0);
 /** 스탠드·캐노피·볼라드 — 비웠으면 대수만큼 */
 export const plFixture = (s: PlSpot, v: number | null) => v ?? plQtyOf(s);
+
+/**
+ * 접지선(GV) 굵기 — 배선(CV) 굵기에서. KEC 보호도체 규칙(상도체 16㎟ 이하는 같게 · 35㎟ 이하는 16 ·
+ * 그 위는 절반을 올린 규격)이고, 제출본 도면 라벨 690개의 짝이 이것과 맞는다(6-6 · 10-10 · 16-16 ·
+ * 25-16 · 35-16 · 50-25 · 70-35 · 95-50 이 대부분).
+ */
+export function gvOf(cv: number): number {
+  if (cv <= 16) return cv;
+  if (cv <= 35) return 16;
+  const SIZES = [25, 35, 50, 70, 95, 120, 150, 185, 240];
+  return SIZES.find((s) => s >= cv / 2) ?? Math.ceil(cv / 2);
+}
+
+/**
+ * 도면의 거점 라벨 — 제출본 도면의 그 상자다(위 칸 빨강 · 아래 칸 검정):
+ *   1거점 신규 4대              ← 거점 · 신규/교체 대수
+ *   LEM2-B-B3 PANEL             ← 분전반 이름(한전인입이면 「한전인입」)
+ *   ─────────
+ *   CV 16sq-4C  35m             ← 배선 굵기 · 길이
+ *   GV 16sq     35m             ← 접지선(gvOf) · 같은 길이
+ * 값이 빈 줄은 뺀다.
+ */
+export function plSpotLabel(s: PlSpot, n: number): { name: string; head: string[]; body: string[] } {
+  const parts = [s.qty ? `신규 ${s.qty}대` : '', s.replQty ? `교체 ${s.replQty}대` : ''].filter(Boolean);
+  const head = [`${n}거점${parts.length ? ` ${parts.join(' · ')}` : ''}`, s.inlet === '한전인입' ? '한전인입' : s.panelName.trim()];
+  const len = s.cableLen ? `  ${s.cableLen}m` : '';
+  const body = s.cableSize ? [`CV ${s.cableSize}sq-4C${len}`, `GV ${gvOf(s.cableSize)}sq${len}`] : [];
+  return { name: `${n}거점`, head: head.filter(Boolean), body };
+}

@@ -125,9 +125,16 @@ export async function fillPluglinkSurvey(
     await wb.addPicture(S.photo, 'A4:O48', images.overview, 'fill');
   }
   if (images.plan) {
+    /*
+     * 서식 도면 칸에는 「이렇게 그려라」 예시(하늘색 충전기 줄·빨간 배선·라벨 상자·분전반 그림)가 박혀 있다.
+     * 평면도를 넣으면 그림 뒤로 숨지만 그림이 칸보다 좁으면 가장자리로 비친다 — 걷는다. 범례(22열~ ·
+     * 40행~)와 칸 밖의 작성 가이드(25열)는 둔다.
+     */
+    await wb.removeAnchors(S.plan, (col, row) => col < 21 && row >= 3 && row <= 50);
     await wb.set(S.plan, 'A4', '');
     await wb.addPicture(S.plan, 'A4:X50', images.plan);
   }
+  await addLegend(wb, form.planMarks);
   await wb.set(S.plan, 'R51', form.spots.map((s) => s.location.trim()).filter(Boolean).join(' / '));
   await wb.set(S.plan, 'R53', `충전기 ${totalQty}대 / 통신함 ${sum(plModemOf)}대`);
 
@@ -237,6 +244,31 @@ export async function fillPluglinkSurvey(
     ? await zip.generateAsync({ ...opts, type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
     : await zip.generateAsync({ ...opts, type: 'uint8array' });
   return { blob, warnings };
+}
+
+/**
+ * 도면 범례 늘리기 — 서식 범례는 충전기·충전기 분전반·기존 분전반 셋이다. 전신주·IP 전주를 찍었으면
+ * 그 둘을 범례 바로 위에 같은 꼴로 더한다(제출본 41곳이 범례에 이 둘을 더해 냈다 — 빨간 겹동그라미 ·
+ * 파란 동그라미). 자리는 서식 범례 상자(22~24열, 40~49행)에 맞췄다.
+ */
+async function addLegend(wb: Workbook, marks: PlForm['planMarks']): Promise<void> {
+  const used = (['pole', 'ipPole'] as const).filter((k) => marks.some((m) => m.t === 'sym' && m.k === k));
+  if (used.length === 0) return;
+  const LEGEND_TOP = 39; // 서식 범례 상자의 첫 행(0부터)
+  const top = LEGEND_TOP - (used.length * 2 + 1);
+  const para = (t: string) => t
+    ? `<a:p><a:r><a:rPr lang="ko-KR" altLang="en-US" sz="1200" b="1"/><a:t>${t}</a:t></a:r></a:p>`
+    : '<a:p><a:endParaRPr lang="ko-KR" altLang="en-US" sz="1200" b="1"/></a:p>';
+  const paras = [para(''), ...used.flatMap((k) => [para(k === 'pole' ? ' 전신주' : ' IP 전주'), para('')])];
+  const id = (n: number) => 6000 + n;
+  await wb.addAnchorXml(S.plan, `<xdr:twoCellAnchor><xdr:from><xdr:col>21</xdr:col><xdr:colOff>415636</xdr:colOff><xdr:row>${top}</xdr:row><xdr:rowOff>51955</xdr:rowOff></xdr:from><xdr:to><xdr:col>23</xdr:col><xdr:colOff>433681</xdr:colOff><xdr:row>${LEGEND_TOP - 1}</xdr:row><xdr:rowOff>190000</xdr:rowOff></xdr:to><xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="${id(0)}" name="범례 더함"/><xdr:cNvSpPr txBox="1"/></xdr:nvSpPr><xdr:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom><a:solidFill><a:schemeClr val="lt1"/></a:solidFill><a:ln w="9525"><a:solidFill><a:sysClr val="windowText" lastClr="000000"/></a:solidFill></a:ln></xdr:spPr><xdr:txBody><a:bodyPr vertOverflow="clip" horzOverflow="clip" wrap="square" rtlCol="0" anchor="t"/><a:lstStyle/>${paras.join('')}</xdr:txBody></xdr:sp><xdr:clientData/></xdr:twoCellAnchor>`);
+  for (const [i, k] of used.entries()) {
+    const row = top + 1 + i * 2;
+    const geom = k === 'pole'
+      ? '<a:prstGeom prst="donut"><a:avLst><a:gd name="adj" fmla="val 18000"/></a:avLst></a:prstGeom><a:noFill/><a:ln w="22225"><a:solidFill><a:srgbClr val="FF0000"/></a:solidFill></a:ln>'
+      : '<a:prstGeom prst="ellipse"><a:avLst/></a:prstGeom><a:solidFill><a:srgbClr val="0000FF"/></a:solidFill><a:ln w="9525"><a:solidFill><a:sysClr val="windowText" lastClr="000000"/></a:solidFill></a:ln>';
+    await wb.addAnchorXml(S.plan, `<xdr:twoCellAnchor><xdr:from><xdr:col>22</xdr:col><xdr:colOff>560000</xdr:colOff><xdr:row>${row}</xdr:row><xdr:rowOff>20000</xdr:rowOff></xdr:from><xdr:to><xdr:col>23</xdr:col><xdr:colOff>142300</xdr:colOff><xdr:row>${row + 1}</xdr:row><xdr:rowOff>28385</xdr:rowOff></xdr:to><xdr:sp macro="" textlink=""><xdr:nvSpPr><xdr:cNvPr id="${id(i + 1)}" name="범례 ${k === 'pole' ? '전신주' : 'IP 전주'}"/><xdr:cNvSpPr/></xdr:nvSpPr><xdr:spPr>${geom}</xdr:spPr></xdr:sp><xdr:clientData/></xdr:twoCellAnchor>`);
+  }
 }
 
 export const plSurveyFileName = (siteName: string) =>
