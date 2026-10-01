@@ -146,16 +146,28 @@ export function newSpot(id: string): SurveySpot {
 export const slowOf = (s: SurveySpot) => (s.wallSlow ?? 0) + (s.standSlow ?? 0);
 export const fastOf = (s: SurveySpot) => (s.wallFast ?? 0) + (s.standFast ?? 0);
 
-/* ── 플러그링크 실사보고서 v22 (엑셀) ─────────────────────────────────────────── */
+/* ── 플러그링크 실사보고서 v22 (엑셀) ───────────────────────────────────────────
+ *
+ * ★받는 칸은 실제 제출본이 채운 것만이다★ (한백 지시 2026-10-01 「불필요한 것까지 들어갔다 — DB 예시를
+ * 보고 필요한 것만」). 프로덕션의 플러그링크 제출본 8건을 열어 본 결과로 정했다:
+ *   · 교체 대수 · 시공사 부담금 · 계통 초과거리 — 8건 모두 비어 있다 → 받지 않는다
+ *   · 계통타입 — 8건 모두 「공중공급」 → 고정
+ *   · 계통연계 포함 — 분전반 이름이 「한전인입」인 현장이 Yes → 거점의 인입 방식에서 유도
+ *   · 스탠드·캐노피·볼라드 — 7건이 대수와 같다 → 기본은 대수만큼
+ *   · 통신 — 6기당 1개 → 자동
+ *   · 기타비용 — 인건비·IP전주(한전인입) → 항목 목록
+ */
 
 /** 거점 — 실사개요 거점 표 한 줄 + 사진대지 시트 한 장 */
 export interface PlSpot {
   id: string;
   /** 상세위치 — 「지하2층 102동 앞 G02기둥」(가이드: 단순 지상/지하주차장 금지) */
   location: string;
-  newQty: number | null;
-  replQty: number | null;
-  /** 인입점(1차) 분전반 이름 · 메인차단기 · 인입점(사용) 차단기 — 「4P 100A」 꼴 */
+  /** 대수 — 신규. 교체는 제출본에서 쓴 적이 없어 받지 않는다 */
+  qty: number | null;
+  /** 인입 — 한전에서 새로 끌어오는가(계통연계 견적 포함), 기존 분전반에서 따는가 */
+  inlet: '한전인입' | '분전반';
+  /** 분전반일 때만 — 이름 · 메인차단기 · 사용(인입점) 차단기, 「4P 100A」 꼴 */
   panelName: string;
   mainBreaker: string;
   inletBreaker: string;
@@ -164,8 +176,7 @@ export interface PlSpot {
   pipeLen: number | null;
   cableSize: number | null;
   cableLen: number | null;
-  /** 기자재 — 통신(비우면 충전기 6기당 1개), 스탠드·캐노피·볼라드 */
-  modem: number | null;
+  /** 스탠드·캐노피·볼라드 — 비우면(null) 대수만큼 */
   stand: number | null;
   canopy: number | null;
   bollard: number | null;
@@ -174,64 +185,61 @@ export interface PlSpot {
   marks: Record<string, Mark[]>;
 }
 
+/** 기타비용 한 줄 — 공사내역서(입력) 29~38행(사양·수량·단가). 단가를 비우면 서식 값 */
+export interface PlEtc { spec: string; qty: number | null; price: number | null }
+
 export interface PlForm {
   siteName: string;
   surveyDate: string;
   address: string;
   /** 연락처/팩스 — 현장(관리사무소) 연락처 */
   siteTel: string;
-  surveyorCompany: string;
-  surveyorName: string;
-  surveyorTel: string;
-  existingSlow: number | null;
-  existingFast: number | null;
+  /** 현장실사자 — 「한백 / 홍길동 / 010-0000-0000」 한 줄(제출본이 다 그렇게 썼다) */
+  surveyor: string;
+  /** 기설치대수 — 「완속 8기」·「에버온 16대」 한 줄 */
+  existing: string;
   siteNote: string;
-  /** 공사내역서(입력) — 거점에서 셈할 수 없는 것들 */
-  roadCutM: number | null; roadCutSpec: string; roadCutPrice: number | null;
-  digM: number | null; digSpec: string; digPrice: number | null;
-  etcQty: number | null; etcSpec: string; etcPrice: number | null;
-  contractorShare: number | null;
-  gridInclude: boolean;
-  gridType: '공중공급' | '지중공급';
-  gridOverNew: number | null;
-  gridOverAdd: number | null;
+  /** 공사내역서(입력) — 거점에서 셈할 수 없는 것 */
+  roadCutM: number | null; roadCutPrice: number | null;
+  digM: number | null; digPrice: number | null;
+  etc: PlEtc[];
   safetyCheck: boolean;
   /** 시트 하나에 한 장 — 전경사진 · 도면(주차장 평면도) */
   overview: File | null;
   plan: File | null;
-  /** 도면 위 설치위치 표기 — 사진대지와 같은 번호 표시 */
   planMarks: Mark[];
   spots: PlSpot[];
 }
 
 /**
  * 사진대지 시트의 사진 칸 — 2열 × 6줄, 순서가 곧 자리다(왼쪽→오른쪽, 위→아래).
- * 설명 칸에는 칸 이름을 적는다. 서식의 설명은 예시라 겹친다(분전반 내부가 둘) — 우리가 정한다.
- * 앞 넷 짝(8칸)이 서식의 인쇄 영역이다. 뒤 두 짝을 쓰면 인쇄 영역을 늘린다.
+ * 칸 이름은 제출본들이 실제로 단 설명이다. 앞 넷 짝(8칸)이 서식의 인쇄 영역이고, 뒤를 쓰면 늘린다.
  */
 export const PL_PHOTO_SLOTS: PhotoSlot[] = [
-  { key: 'zoom', label: '도면 확대도', hint: '도면 시트 그대로도 됨' },
-  { key: 'place', label: '설치예정 위치', hint: '주차면 정면, 설치위치 표기' },
-  { key: 'panelOut', label: '1차측 분전반 외부' },
+  { key: 'zoom', label: '도면 확대도' },
+  { key: 'place', label: '설치예정 위치', hint: '주차면 정면 · 번호 표시' },
+  { key: 'placeBack', label: '설치예정 위치 후면' },
+  { key: 'panelOut', label: '1차측 분전반 외부', hint: '인입점' },
   { key: 'panelIn', label: '1차측 분전반 내부' },
-  { key: 'route1', label: '전력간선 인입라인 - 1', hint: '붉은 선으로 루트' },
+  { key: 'route1', label: '전력간선 인입라인 - 1' },
   { key: 'route2', label: '전력간선 인입라인 - 2' },
   { key: 'route3', label: '전력간선 인입라인 - 3' },
-  { key: 'cctv', label: 'CCTV(지하설치)', hint: '지하 설치일 때' },
   { key: 'route4', label: '전력간선 인입라인 - 4' },
-  { key: 'route5', label: '전력간선 인입라인 - 5' },
-  { key: 'route6', label: '전력간선 인입라인 - 6' },
-  { key: 'etc', label: '기타' },
+  { key: 'pole', label: '전주번호', hint: '한전인입일 때' },
+  { key: 'sub', label: '2차측 분전함' },
+  { key: 'cctv', label: 'CCTV(지하설치)', hint: '지하일 때' },
 ];
 
 export function newPlSpot(id: string): PlSpot {
   return {
-    id, location: '', newQty: null, replQty: null, panelName: '', mainBreaker: '', inletBreaker: '',
+    id, location: '', qty: null, inlet: '분전반', panelName: '', mainBreaker: '', inletBreaker: '',
     pipeSize: null, pipeLen: null, cableSize: null, cableLen: null,
-    modem: null, stand: null, canopy: null, bollard: null, note: '', photos: {}, marks: {},
+    stand: null, canopy: null, bollard: null, note: '', photos: {}, marks: {},
   };
 }
 
-export const plQtyOf = (s: PlSpot) => (s.newQty ?? 0) + (s.replQty ?? 0);
-/** 통신 — 비워 두면 충전기 최대 6기당 1개(가이드 8) */
-export const plModemOf = (s: PlSpot) => s.modem ?? (plQtyOf(s) > 0 ? Math.ceil(plQtyOf(s) / 6) : 0);
+export const plQtyOf = (s: PlSpot) => s.qty ?? 0;
+/** 통신 — 충전기 최대 6기당 1개(가이드 8) */
+export const plModemOf = (s: PlSpot) => (plQtyOf(s) > 0 ? Math.ceil(plQtyOf(s) / 6) : 0);
+/** 스탠드·캐노피·볼라드 — 비웠으면 대수만큼 */
+export const plFixture = (s: PlSpot, v: number | null) => v ?? plQtyOf(s);

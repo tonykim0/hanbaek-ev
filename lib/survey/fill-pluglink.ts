@@ -12,7 +12,7 @@
 import JSZip from 'jszip';
 import { Workbook } from './xlsx-kit';
 import type { PreparedImage } from './docx-kit';
-import { PL_PHOTO_SLOTS, plModemOf, plQtyOf, type PlForm, type PlSpot } from './spec';
+import { PL_PHOTO_SLOTS, plFixture, plModemOf, plQtyOf, type PlForm, type PlSpot } from './spec';
 
 const S = {
   overview: '2. 실사개요',
@@ -60,21 +60,22 @@ export async function fillPluglinkSurvey(
     for (let i = 1; i < form.spots.length; i++) await wb.cloneSheet(sheetOf(0), sheetOf(i));
   }
 
-  const totalNew = form.spots.reduce((a, s) => a + (s.newQty ?? 0), 0);
-  const totalRepl = form.spots.reduce((a, s) => a + (s.replQty ?? 0), 0);
-  const totalQty = totalNew + totalRepl;
+  const totalQty = form.spots.reduce((a, s) => a + plQtyOf(s), 0);
   const sum = (f: (s: PlSpot) => number | null) => form.spots.reduce((a, s) => a + (f(s) ?? 0), 0);
+  /* 한전에서 새로 끌어오는 거점이 있으면 계통연계 견적을 넣는다(제출본: 분전반 「한전인입」 = Yes) */
+  const kepco = form.spots.some((s) => s.inlet === '한전인입');
+  const panelOf = (s: PlSpot) => (s.inlet === '한전인입' ? '한전인입' : s.panelName);
 
   // ── 2. 실사개요
   const ov = S.overview;
   await wb.set(ov, 'B3', `${form.siteName} 플러그링크 충전인프라 구축사업`);
-  await wb.set(ov, 'I3', `현장실사자 : ${[form.surveyorCompany, form.surveyorName, form.surveyorTel].filter((x) => x.trim()).join(' / ')}`);
+  await wb.set(ov, 'I3', `현장실사자 : ${form.surveyor.trim()}`);
   await wb.set(ov, 'D4', form.surveyDate);
   await wb.set(ov, 'L4', form.siteTel);
   await wb.set(ov, 'D5', form.siteName);
-  await wb.set(ov, 'L5', `신규 (   ${totalNew || ' '}   )기, 교체 (   ${totalRepl || ' '}   )기`);
+  await wb.set(ov, 'L5', `신규 (   ${totalQty || ' '}   )기, 교체 (       )기`);
   await wb.set(ov, 'D6', form.address);
-  await wb.set(ov, 'L6', `완속 ${form.existingSlow ?? 0}기, 급속 ${form.existingFast ?? 0}기`);
+  await wb.set(ov, 'L6', form.existing.trim());
   for (let i = 0; i < MAX_SPOTS; i++) {
     const r = 11 + i;
     const s = form.spots[i];
@@ -83,22 +84,24 @@ export async function fillPluglinkSurvey(
       for (const c of ['Q', 'R', 'S', 'T']) await wb.set(ov, `${c}${r}`, '');
       continue;
     }
-    const kind = (s.newQty ?? 0) > 0 && (s.replQty ?? 0) > 0 ? '신규·교체' : (s.replQty ?? 0) > 0 ? '교체' : '신규';
     await wb.set(ov, `B${r}`, s.location);
     await wb.set(ov, `F${r}`, plQtyOf(s) || '');
     await wb.set(ov, `G${r}`, 7);
-    await wb.set(ov, `H${r}`, kind);
-    await wb.set(ov, `I${r}`, s.panelName);
-    await wb.set(ov, `J${r}`, s.mainBreaker);
-    await wb.set(ov, `L${r}`, s.inletBreaker);
+    await wb.set(ov, `H${r}`, '신규');
+    await wb.set(ov, `I${r}`, panelOf(s));
+    // 한전인입이면 차단기 칸은 서식의 빈 꼴(「P A」)을 그대로 둔다 — 제출본들이 그렇게 냈다
+    if (s.inlet === '분전반') {
+      if (s.mainBreaker.trim()) await wb.set(ov, `J${r}`, s.mainBreaker.trim());
+      if (s.inletBreaker.trim()) await wb.set(ov, `L${r}`, s.inletBreaker.trim());
+    }
     await wb.set(ov, `M${r}`, s.pipeSize ?? '');
     await wb.set(ov, `N${r}`, s.pipeLen ?? '');
     await wb.set(ov, `O${r}`, s.cableSize ?? '');
     await wb.set(ov, `P${r}`, s.cableLen ?? '');
     await wb.set(ov, `Q${r}`, plModemOf(s) || '');
-    await wb.set(ov, `R${r}`, s.stand ?? '');
-    await wb.set(ov, `S${r}`, s.canopy ?? '');
-    await wb.set(ov, `T${r}`, s.bollard ?? '');
+    await wb.set(ov, `R${r}`, plFixture(s, s.stand));
+    await wb.set(ov, `S${r}`, plFixture(s, s.canopy));
+    await wb.set(ov, `T${r}`, plFixture(s, s.bollard));
   }
   if (form.siteNote.trim()) await wb.set(ov, 'A25', form.siteNote.trim());
 
@@ -119,8 +122,8 @@ export async function fillPluglinkSurvey(
     const s = form.spots[i];
     const sh = sheetOf(i);
     await wb.set(sh, 'D3', s.location);
-    await wb.set(sh, 'L3', s.panelName);
-    await wb.set(sh, 'T3', `신규(   ${n(s.newQty)}   )기, 교체(   ${n(s.replQty)}   )기`);
+    await wb.set(sh, 'L3', panelOf(s));
+    await wb.set(sh, 'T3', `신규(   ${n(s.qty)}   )기, 교체(       )기`);
     await wb.set(sh, 'D4', `1차측 메인 (   ${amp(s.mainBreaker)}   )A / 사용 차단기 (   ${amp(s.inletBreaker)}   )A`);
     await wb.set(sh, 'L4', `배관(   ${n(s.pipeLen)}   )m, 배선(   ${n(s.cableLen)}   )m`);
     await wb.set(sh, 'T4', `(   ${plModemOf(s) || ' '}   )기`);
@@ -150,19 +153,16 @@ export async function fillPluglinkSurvey(
 
   // ── 5. 공사내역서(입력) — 수량만. 금액은 수식이 계산한다
   const co = S.cost;
-  await wb.set(co, 'D3', totalNew || '');
-  await wb.set(co, 'D4', totalRepl || '');
-  await wb.set(co, 'D5', sum((s) => s.canopy) || '');
-  await wb.set(co, 'D6', sum((s) => s.stand) || '');
-  await wb.set(co, 'D7', sum((s) => s.bollard) || '');
+  await wb.set(co, 'D3', totalQty || '');
+  await wb.set(co, 'D5', sum((s) => plFixture(s, s.canopy)) || '');
+  await wb.set(co, 'D6', sum((s) => plFixture(s, s.stand)) || '');
+  await wb.set(co, 'D7', sum((s) => plFixture(s, s.bollard)) || '');
   if (form.roadCutM) {
     await wb.set(co, 'D8', form.roadCutM);
-    if (form.roadCutSpec.trim()) await wb.set(co, 'F8', form.roadCutSpec.trim());
     if (form.roadCutPrice !== null) await wb.set(co, 'H8', form.roadCutPrice);
   }
   if (form.digM) {
     await wb.set(co, 'D9', form.digM);
-    if (form.digSpec.trim()) await wb.set(co, 'F9', form.digSpec.trim());
     if (form.digPrice !== null) await wb.set(co, 'H9', form.digPrice);
   }
   const cable = new Map<number, number>();
@@ -183,17 +183,22 @@ export async function fillPluglinkSurvey(
   }
   for (const [row, m] of cable) await wb.set(co, `D${row}`, m);
   for (const [row, m] of pipe) await wb.set(co, `D${row}`, m);
-  if (form.etcQty) {
-    await wb.set(co, 'D29', form.etcQty);
-    if (form.etcSpec.trim()) await wb.set(co, 'F29', form.etcSpec.trim());
-    if (form.etcPrice !== null) await wb.set(co, 'H29', form.etcPrice);
+  /*
+   * 기타비용 — 29~38행(사양·수량·단가). 29행은 서식에 「인건비 250,000」이 박혀 있다.
+   * 줄 순서대로 채우고, 단가를 비우면 그 줄의 서식 단가를 둔다. 수량이 없는 줄은 건너뛴다.
+   */
+  const etc = form.etc.filter((e) => e.spec.trim() && e.qty);
+  if (etc.length > 10) warnings.push(`기타비용은 10줄까지 들어갑니다 — ${etc.length - 10}줄을 넣지 못했습니다`);
+  for (const [i, e] of etc.slice(0, 10).entries()) {
+    const r = 29 + i;
+    await wb.set(co, `F${r}`, e.spec.trim());
+    await wb.set(co, `D${r}`, e.qty);
+    if (e.price !== null) await wb.set(co, `H${r}`, e.price);
   }
-  if (form.contractorShare) await wb.set(co, 'D39', form.contractorShare);
   await wb.set(co, 'D40', totalQty * 7 || '');
-  await wb.set(co, 'D41', form.gridInclude ? 'Yes' : 'No');
-  await wb.set(co, 'D42', form.gridType);
-  await wb.set(co, 'D43', form.gridOverNew ?? 0);
-  await wb.set(co, 'D44', form.gridOverAdd ?? 0);
+  await wb.set(co, 'D41', kepco ? 'Yes' : 'No');
+  // 계통타입 — 제출본 8건이 모두 공중공급이다. 지중은 받은 파일에서 고친다
+  await wb.set(co, 'D42', '공중공급');
   await wb.set(co, 'D46', form.spots.length);
   await wb.set(co, 'D47', totalQty || '');
   await wb.set(co, 'D48', form.safetyCheck ? 'Yes' : 'No');

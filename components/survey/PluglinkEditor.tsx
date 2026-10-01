@@ -4,8 +4,9 @@
  * 플러그링크 실사보고서 v22 작성 화면 — 실사개요·전경사진·도면·거점별 사진대지·공사내역서(입력).
  *
  * 사진대지 화면(SurveyEditor)과 같은 길이다 — 브라우저 안에서 사진을 줄여 서식에 넣고 내려받는다.
- * 받는 값이 훨씬 많아 화면을 따로 둔다: 거점마다 분전반·차단기·배관/배선·기자재, 그리고 공사내역서에
- * 들어갈 현장 단위 값(도로커팅·땅파기·기타비용·한전인입·전기안전점검). 금액은 서식의 수식이 계산한다.
+ * ★받는 칸은 실제 제출본이 채운 것만이다★ (lib/survey/spec 의 플러그링크 머리말 — 프로덕션 제출본
+ * 8건에서 정했다). 나머지(통신·기자재·계통연계·계통타입·전기안전점검 수량)는 셈하거나 고정한다.
+ * 금액은 서식의 수식이 계산한다.
  */
 import { useMemo, useState, type ReactNode } from 'react';
 import { Section, contractInputClass } from '@/components/contracts/FormControls';
@@ -16,7 +17,7 @@ import { prepareImage } from '@/lib/survey/prepare-image';
 import type { PreparedImage } from '@/lib/survey/docx-kit';
 import { fillPluglinkSurvey, plSurveyFileName } from '@/lib/survey/fill-pluglink';
 import {
-  PL_PHOTO_SLOTS, newPlSpot, plModemOf, plQtyOf, type PhotoSlot, type PlForm, type PlSpot,
+  PL_PHOTO_SLOTS, newPlSpot, plModemOf, plQtyOf, type PhotoSlot, type PlEtc, type PlForm, type PlSpot,
 } from '@/lib/survey/spec';
 import { PhotoBox, nextId, num, today } from './SurveyEditor';
 
@@ -71,13 +72,10 @@ const Grid = ({ children }: { children: ReactNode }) => <div className="grid gap
 export default function PluglinkEditor() {
   const [f, setF] = useState<PlForm>(() => ({
     siteName: '', surveyDate: today(), address: '', siteTel: '',
-    surveyorCompany: '', surveyorName: '', surveyorTel: '',
-    existingSlow: null, existingFast: null, siteNote: '',
-    roadCutM: null, roadCutSpec: '', roadCutPrice: null,
-    digM: null, digSpec: '', digPrice: null,
-    etcQty: null, etcSpec: '인건비', etcPrice: null,
-    contractorShare: null,
-    gridInclude: false, gridType: '공중공급', gridOverNew: null, gridOverAdd: null,
+    surveyor: '', existing: '', siteNote: '',
+    roadCutM: null, roadCutPrice: null, digM: null, digPrice: null,
+    // 제출본에 나온 기타비용 둘 — 단가는 서식 값(인건비 250,000)과 제출본의 IP전주 값
+    etc: [{ spec: '인건비', qty: null, price: 250000 }, { spec: 'IP전주', qty: null, price: 250000 }],
     safetyCheck: true,
     overview: null, plan: null, planMarks: [],
     spots: [newPlSpot(nextId())],
@@ -88,6 +86,8 @@ export default function PluglinkEditor() {
   const set = (p: Partial<PlForm>) => setF((x) => ({ ...x, ...p }));
   const setSpot = (id: string, p: Partial<PlSpot>) =>
     setF((x) => ({ ...x, spots: x.spots.map((s) => (s.id === id ? { ...s, ...p } : s)) }));
+  const setEtc = (i: number, p: Partial<PlEtc>) =>
+    setF((x) => ({ ...x, etc: x.etc.map((e, k) => (k === i ? { ...e, ...p } : e)) }));
 
   const photoCount = (f.overview ? 1 : 0) + (f.plan ? 1 : 0)
     + f.spots.reduce((n, s) => n + Object.values(s.photos).filter(Boolean).length, 0);
@@ -97,15 +97,14 @@ export default function PluglinkEditor() {
   const review = useMemo(() => {
     const out: string[] = [];
     if (!f.address.trim()) out.push('주소가 비어 있습니다');
-    if (!f.siteTel.trim()) out.push('현장 연락처가 비어 있습니다');
     if (!f.overview) out.push('전경사진이 비어 있습니다');
     if (!f.plan) out.push('도면이 비어 있습니다');
     f.spots.forEach((s, i) => {
       const tag = f.spots.length > 1 ? `${i + 1}거점 · ` : '';
       if (!s.location.trim()) out.push(`${tag}상세위치가 비어 있습니다`);
-      if (plQtyOf(s) === 0) out.push(`${tag}충전기 대수(신규·교체)가 비어 있습니다`);
-      if (!s.panelName.trim()) out.push(`${tag}분전반 이름이 비어 있습니다`);
-      const must = ['place', 'panelOut', 'panelIn', 'route1'];
+      if (plQtyOf(s) === 0) out.push(`${tag}대수가 비어 있습니다`);
+      if (s.inlet === '분전반' && !s.panelName.trim()) out.push(`${tag}분전반 이름이 비어 있습니다`);
+      const must = ['place', 'panelOut', 'route1'];
       const empty = PL_PHOTO_SLOTS.filter((sl) => must.includes(sl.key) && !s.photos[sl.key]).map((sl) => sl.label);
       if (empty.length) out.push(`${tag}사진 비어 있음 — ${empty.join(', ')}`);
     });
@@ -148,7 +147,7 @@ export default function PluglinkEditor() {
 
   return (
     <div className="flex flex-col gap-5">
-      <Section title="1. 현장 · 실사개요">
+      <Section title="1. 현장">
         <div className="flex flex-col gap-5">
           <Grid>
             <Text label="현장명" req wide value={f.siteName} onChange={(v) => set({ siteName: v })} placeholder="창동서울가든아파트" />
@@ -158,16 +157,10 @@ export default function PluglinkEditor() {
             </label>
             <Text label="현장 연락처" value={f.siteTel} onChange={(v) => set({ siteTel: v })} placeholder="02-000-0000" />
             <Text label="주소" wide value={f.address} onChange={(v) => set({ address: v })} placeholder="서울특별시 도봉구 해등로 32" />
-            <Num label="기설치 완속" unit="기" value={f.existingSlow} onChange={(v) => set({ existingSlow: v })} />
-            <Num label="기설치 급속" unit="기" value={f.existingFast} onChange={(v) => set({ existingFast: v })} />
-            <Text label="실사자 — 회사" value={f.surveyorCompany} onChange={(v) => set({ surveyorCompany: v })} />
-            <Text label="실사자 — 이름" value={f.surveyorName} onChange={(v) => set({ surveyorName: v })} />
-            <Text label="실사자 — 연락처" value={f.surveyorTel} onChange={(v) => set({ surveyorTel: v })} placeholder="010-0000-0000" />
+            <Text label="현장실사자" wide value={f.surveyor} onChange={(v) => set({ surveyor: v })} placeholder="한백 / 홍길동 / 010-0000-0000" />
+            <Text label="기설치대수" wide value={f.existing} onChange={(v) => set({ existing: v })} placeholder="완속 8기" />
+            <Text label="현장 특이사항" wide value={f.siteNote} onChange={(v) => set({ siteNote: v })} placeholder="터파기 구간, 기존 배관 이용 여부" />
           </Grid>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700">현장 특이사항</span>
-            <textarea rows={2} value={f.siteNote} onChange={(e) => set({ siteNote: e.target.value })} placeholder="현장실사 시 전달사항, 터파기 구간, 기존 배관 이용 여부" className={contractInputClass} />
-          </label>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             <PhotoBox slot={OVERVIEW} file={f.overview} onFiles={(fs) => set({ overview: fs[0] })} onClear={() => set({ overview: null })} />
             <PhotoBox
@@ -188,19 +181,33 @@ export default function PluglinkEditor() {
           <div className="flex flex-col gap-5">
             <Grid>
               <Text label="상세위치" wide value={s.location} onChange={(v) => setSpot(s.id, { location: v })} placeholder="지하2층 102동 앞 G02기둥" />
-              <Num label="신규" unit="기" value={s.newQty} onChange={(v) => setSpot(s.id, { newQty: v })} />
-              <Num label="교체" unit="기" value={s.replQty} onChange={(v) => setSpot(s.id, { replQty: v })} />
-              <Text label="분전반 이름" value={s.panelName} onChange={(v) => setSpot(s.id, { panelName: v })} placeholder="PM-305" />
-              <Text label="메인차단기" value={s.mainBreaker} onChange={(v) => setSpot(s.id, { mainBreaker: v })} placeholder="4P 225A" />
-              <Text label="인입점(사용) 차단기" value={s.inletBreaker} onChange={(v) => setSpot(s.id, { inletBreaker: v })} placeholder="4P 75A" />
-              <Num label="통신" unit="개" value={s.modem} onChange={(v) => setSpot(s.id, { modem: v })} placeholder={String(plModemOf({ ...s, modem: null }))} />
+              <Num label="대수" unit="기" value={s.qty} onChange={(v) => setSpot(s.id, { qty: v })} />
+              <div>
+                <span className="mb-1.5 block text-sm font-medium text-gray-700">인입</span>
+                <div className="flex gap-1.5">
+                  <Choice on={s.inlet === '분전반'} onClick={() => setSpot(s.id, { inlet: '분전반' })}>분전반</Choice>
+                  <Choice on={s.inlet === '한전인입'} onClick={() => setSpot(s.id, { inlet: '한전인입' })}>한전인입</Choice>
+                </div>
+              </div>
+              {s.inlet === '분전반' && (
+                <>
+                  <Text label="분전반 이름" value={s.panelName} onChange={(v) => setSpot(s.id, { panelName: v })} placeholder="PM-305" />
+                  <Text label="메인차단기" value={s.mainBreaker} onChange={(v) => setSpot(s.id, { mainBreaker: v })} placeholder="4P 225A" />
+                  <Text label="사용 차단기" value={s.inletBreaker} onChange={(v) => setSpot(s.id, { inletBreaker: v })} placeholder="4P 75A" />
+                  <span className="hidden lg:block" />
+                </>
+              )}
               <SizePick label="배관 SIZE" value={s.pipeSize} sizes={PIPE_SIZES} unit="mm" onChange={(v) => setSpot(s.id, { pipeSize: v })} />
-              <Num label="배관 길이(1차측 전체)" unit="m" value={s.pipeLen} onChange={(v) => setSpot(s.id, { pipeLen: v })} />
+              <Num label="배관 길이" unit="m" value={s.pipeLen} onChange={(v) => setSpot(s.id, { pipeLen: v })} />
               <SizePick label="배선 SIZE" value={s.cableSize} sizes={CABLE_SIZES} unit="sq" onChange={(v) => setSpot(s.id, { cableSize: v })} />
-              <Num label="배선 길이(1차측 전체)" unit="m" value={s.cableLen} onChange={(v) => setSpot(s.id, { cableLen: v })} />
-              <Num label="스탠드" unit="개" value={s.stand} onChange={(v) => setSpot(s.id, { stand: v })} />
-              <Num label="캐노피" unit="개" value={s.canopy} onChange={(v) => setSpot(s.id, { canopy: v })} />
-              <Num label="볼라드" unit="개" value={s.bollard} onChange={(v) => setSpot(s.id, { bollard: v })} />
+              <Num label="배선 길이" unit="m" value={s.cableLen} onChange={(v) => setSpot(s.id, { cableLen: v })} />
+              <Num label="스탠드" unit="개" value={s.stand} onChange={(v) => setSpot(s.id, { stand: v })} placeholder={String(plQtyOf(s))} />
+              <Num label="캐노피" unit="개" value={s.canopy} onChange={(v) => setSpot(s.id, { canopy: v })} placeholder={String(plQtyOf(s))} />
+              <Num label="볼라드" unit="개" value={s.bollard} onChange={(v) => setSpot(s.id, { bollard: v })} placeholder={String(plQtyOf(s))} />
+              <div>
+                <span className="mb-1 block text-sm font-medium text-gray-700">통신</span>
+                <span className="block py-2 text-sm font-bold text-gray-700">{plModemOf(s)}개</span>
+              </div>
               <Text label="특이사항" wide value={s.note} onChange={(v) => setSpot(s.id, { note: v })} />
             </Grid>
             <div>
@@ -250,49 +257,41 @@ export default function PluglinkEditor() {
         </Btn>
       </div>
 
-      <Section title={`${f.spots.length + 2}. 공사내역서`}>
+      <Section title={`${f.spots.length + 2}. 추가 공사`}>
         <div className="flex flex-col gap-5">
           <Grid>
             <Num label="도로커팅" unit="m" value={f.roadCutM} onChange={(v) => set({ roadCutM: v })} />
-            <Text label="도로커팅 사양" value={f.roadCutSpec} onChange={(v) => set({ roadCutSpec: v })} placeholder="아스팔트·콘크리트·보도블럭" />
-            <Num label="도로커팅 단가" unit="원/m" value={f.roadCutPrice} onChange={(v) => set({ roadCutPrice: v })} placeholder="서식 값" />
-            <span className="hidden lg:block" />
+            <Num label="도로커팅 단가" unit="원/m" value={f.roadCutPrice} onChange={(v) => set({ roadCutPrice: v })} placeholder="22000" />
             <Num label="땅파기" unit="m" value={f.digM} onChange={(v) => set({ digM: v })} />
-            <Text label="땅파기 사양" value={f.digSpec} onChange={(v) => set({ digSpec: v })} placeholder="화단·보도블럭" />
-            <Num label="땅파기 단가" unit="원/m" value={f.digPrice} onChange={(v) => set({ digPrice: v })} placeholder="서식 값" />
-            <span className="hidden lg:block" />
-            <Num label="기타비용" unit="대" value={f.etcQty} onChange={(v) => set({ etcQty: v })} />
-            <Text label="기타비용 사양" value={f.etcSpec} onChange={(v) => set({ etcSpec: v })} placeholder="고소작업·인건비" />
-            <Num label="기타비용 단가" unit="원" value={f.etcPrice} onChange={(v) => set({ etcPrice: v })} placeholder="서식 값" />
-            <Num label="시공사 부담금" unit="원" value={f.contractorShare} onChange={(v) => set({ contractorShare: v })} />
+            <Num label="땅파기 단가" unit="원/m" value={f.digPrice} onChange={(v) => set({ digPrice: v })} placeholder="20000" />
           </Grid>
-          <div className="flex flex-wrap items-end gap-x-6 gap-y-4">
-            <div>
-              <span className="mb-1.5 block text-sm font-medium text-gray-700">한전 계통연계 견적</span>
-              <div className="flex gap-1.5">
-                <Choice on={f.gridInclude} onClick={() => set({ gridInclude: true })}>포함</Choice>
-                <Choice on={!f.gridInclude} onClick={() => set({ gridInclude: false })}>미포함</Choice>
-              </div>
-            </div>
-            {f.gridInclude && (
-              <>
-                <div>
-                  <span className="mb-1.5 block text-sm font-medium text-gray-700">계통타입</span>
-                  <div className="flex gap-1.5">
-                    <Choice on={f.gridType === '공중공급'} onClick={() => set({ gridType: '공중공급' })}>공중</Choice>
-                    <Choice on={f.gridType === '지중공급'} onClick={() => set({ gridType: '지중공급' })}>지중</Choice>
-                  </div>
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-gray-700">기타비용</span>
+            <div className="flex flex-col gap-2">
+              {f.etc.map((e, i) => (
+                <div key={i} className="flex flex-wrap items-center gap-2">
+                  <input value={e.spec} onChange={(ev) => setEtc(i, { spec: ev.target.value })} placeholder="항목(고소작업 등)" className={`${contractInputClass} !w-48`} />
+                  <input inputMode="numeric" value={e.qty ?? ''} onChange={(ev) => setEtc(i, { qty: num(ev.target.value) })} placeholder="수량" className={`${contractInputClass} !w-20 text-right`} />
+                  <span className="text-sm text-gray-500">×</span>
+                  <input inputMode="numeric" value={e.price ?? ''} onChange={(ev) => setEtc(i, { price: num(ev.target.value) })} placeholder="단가" className={`${contractInputClass} !w-32 text-right`} />
+                  <span className="text-sm text-gray-500">원</span>
+                  {f.etc.length > 1 && (
+                    <button type="button" onClick={() => set({ etc: f.etc.filter((_, k) => k !== i) })} className="text-xs font-bold text-slate-400 hover:text-red-700">빼기</button>
+                  )}
                 </div>
-                <Num label="초과거리(신설)" unit="m" value={f.gridOverNew} onChange={(v) => set({ gridOverNew: v })} />
-                <Num label="초과거리(첨가)" unit="m" value={f.gridOverAdd} onChange={(v) => set({ gridOverAdd: v })} />
-              </>
-            )}
-            <div>
-              <span className="mb-1.5 block text-sm font-medium text-gray-700">전기안전점검 수수료</span>
-              <div className="flex gap-1.5">
-                <Choice on={f.safetyCheck} onClick={() => set({ safetyCheck: true })}>포함</Choice>
-                <Choice on={!f.safetyCheck} onClick={() => set({ safetyCheck: false })}>미포함</Choice>
-              </div>
+              ))}
+              {f.etc.length < 10 && (
+                <div>
+                  <Btn size="sm" kind="quiet" onClick={() => set({ etc: [...f.etc, { spec: '', qty: null, price: null }] })}>항목 추가</Btn>
+                </div>
+              )}
+            </div>
+          </div>
+          <div>
+            <span className="mb-1.5 block text-sm font-medium text-gray-700">전기안전점검 수수료</span>
+            <div className="flex gap-1.5">
+              <Choice on={f.safetyCheck} onClick={() => set({ safetyCheck: true })}>포함</Choice>
+              <Choice on={!f.safetyCheck} onClick={() => set({ safetyCheck: false })}>미포함</Choice>
             </div>
           </div>
         </div>
