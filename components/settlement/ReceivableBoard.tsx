@@ -162,7 +162,14 @@ export default function ReceivableBoard({ rows, canEdit }: {
       plan: (a, b) => b.planTotal - a.planTotal,
       name: (a, b) => a.name.localeCompare(b.name, 'ko'),
     };
-    return rows.filter(passes).sort(by[sort]);
+    /*
+     * ★정산 규칙 미지정은 어떤 정렬에서도 맨 위다★ (한백 지시 2026-10-01). 규칙이 없으면 차수도
+     * 금액도 없어 받을 돈·미수금이 0 으로 계산되고, 금액순 정렬에서는 늘 맨 아래로 가라앉았다 —
+     * 가장 먼저 손대야 할 현장이 가장 안 보이는 자리에 있었다. 그 안끼리는 고른 정렬을 따른다.
+     */
+    const noRuleFirst = (a: SettlementSummary, b: SettlementSummary) =>
+      Number(a.ruleName !== null) - Number(b.ruleName !== null);
+    return rows.filter(passes).sort((a, b) => noRuleFirst(a, b) || by[sort](a, b));
   }, [rows, q, flags, cpos, sort]);
 
   /*
