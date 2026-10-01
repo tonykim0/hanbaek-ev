@@ -62,7 +62,7 @@ export function Field({
         {children}
       </span>
       {issue
-        ? <span className="mt-1 block text-tiny font-bold text-red-700">{issue}</span>
+        ? <span className="mt-1 block text-base font-bold text-red-700">{issue}</span>
         : hint && <span className="mt-1 block text-tiny text-slate-400">{hint}</span>}
     </label>
   );

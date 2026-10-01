@@ -33,7 +33,7 @@ import { checkDraft, type IntakeIssueField } from '@/lib/intake-validate';
 import { regionPrefixOf, withRegionPrefix } from '@/lib/region';
 import { useLeaveGuard } from '@/lib/use-leave-guard';
 // 부품은 콘솔·포털이 같이 쓴다 — 같은 일에 같은 모양이어야 접수 폼이 다른 앱처럼 보이지 않는다
-import { Btn, FIELD } from '@/components/ui';
+import { Alerts, Btn, FIELD } from '@/components/ui';
 import { Card, Field, OrgPicks, QtyGrid, Select } from './intake/parts';
 import { DocSection } from './intake/DocSection';
 import type { DocReview } from '@/types/intake-auto';
@@ -472,6 +472,27 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
     bizType: '사업구분', qty: '대수', termYears: '계약연수', preNote: '기설치 현황',
   };
   const blockedBy = [...new Set(check.issues.map((i) => ISSUE_LABEL[i.field]))];
+
+  /*
+   * 확인할 것 — 판독이 알려 준 것(notes)과 검증의 경고(빠진 필수 서류 등)를 한 목록으로.
+   * 막지는 않는다(한백 지시 2026-09-14 「기본 현장정보만 입력해서 일단 계약접수 할 수 있게」)
+   * 그래도 그려야 한다 — 경고를 만들고 안 그려서 대수 0 인 현장이 말없이 나간 적이 있다
+   * (HB-2026-184, 2026-09-22).
+   *
+   * ★같은 말을 두 번 하지 않는다★ — 판독의 「대수를 못 읽었습니다」·「계약주체를 알 수 없습니다」는
+   * 막는 것(issues)에 같은 칸이 이미 있으면 뺀다. 위아래로 같은 말이 뜨던 자리다(2026-10-01).
+   */
+  const hasIssue = (f: IntakeIssueField) => check.issues.some((i) => i.field === f);
+  const reviewItems = [...new Set([
+    ...notes.filter((n) => !(
+      (n.startsWith('계약기간·대수를 읽지 못했습니다') && (hasIssue('qty') || hasIssue('termYears')))
+      || (n.startsWith('회의록이 없어 계약주체를') && hasIssue('contractParty'))
+    )),
+    ...check.warnings,
+  ])];
+  const reviewCount = reviewItems.length;
+  const goToReview = () =>
+    document.getElementById('intake-review')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   /** 그 칸으로 데려가 바로 고칠 수 있게 입력칸에 커서를 둔다 */
   const goTo = (f: IntakeIssueField) => {
     setReveal(true);
@@ -671,24 +692,32 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
           {busy ?? 'ZIP 고르기 · 끌어다 놓기'}
         </span>
         {autoCount > 0 && (
-          <p className="mt-2 text-small font-bold text-brand-800">
+          <p className="mt-2 text-base font-bold text-brand-800">
             {autoCount}개 칸을 자동으로 채웠습니다 · 서류{' '}
             {Object.values(staged).reduce((n, l) => n + l.length, 0)}건 첨부
+            {reviewCount > 0 && (
+              <>
+                {' · '}
+                {/* 상자 전체가 label 이라 그냥 누르면 파일 창이 열린다 — 기본 동작을 막는다 */}
+                <button
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); goToReview(); }}
+                  className="text-amber-800 underline decoration-amber-400 underline-offset-2 hover:decoration-amber-700"
+                >
+                  확인할 것 {reviewCount}건 — 아래에서 보기
+                </button>
+              </>
+            )}
           </p>
         )}
       </label>
 
-      {zipError && (
-        <p role="alert" className="rounded-xl border-l-[3px] border-red-500 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
-          {zipError}
-        </p>
-      )}
-
-      {notes.length > 0 && (
-        <ul className="flex flex-col gap-1 rounded-xl border-l-[3px] border-amber-500 bg-amber-50/70 px-4 py-3 text-xs leading-relaxed text-amber-900">
-          {notes.map((n) => <li key={n}>{n}</li>)}
-        </ul>
-      )}
+      {/*
+        * ★위에는 ZIP 올리기의 실패만 남는다★ (한백 지적 2026-10-01 「위에도 떠 있고 아래도 떠 있고」).
+        * 판독이 알려 준 것(notes)은 접수 단추 위 한 자리로 옮겼다 — 같은 말(「대수를 못 읽었다」·
+        * 「대수를 적어주세요」)이 위아래로 두 번 떠서 어느 것을 봐야 할지 몰랐다.
+        */}
+      {zipError && <Alerts tone="stop" title="ZIP 을 읽지 못했습니다" items={[{ text: zipError }]} />}
 
       <Card title="현장정보">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -840,11 +869,23 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
         />
       </Card>
 
-      {error && (
-        <p role="alert" className="rounded-xl border-l-[3px] border-red-500 bg-red-50 px-4 py-3 text-sm font-semibold text-red-800">
-          {error}
-        </p>
-      )}
+      {/*
+        * ★알릴 것은 여기 한 자리다 — 접수 단추 바로 위★ (한백 지적 2026-10-01). 위아래로 흩어져
+        * 노랑 작은 글씨로 떠서 안 보였다. 순서는 무게 순: 접수가 실패한 이유 → 접수를 막는 것
+        * (빨강, 누르면 그 칸으로) → 막지는 않지만 확인할 것(주황 — 판독이 알려 준 것 + 빠진 서류).
+        */}
+      {error && <Alerts tone="stop" title="접수하지 못했습니다" items={[{ text: error }]} />}
+      <Alerts
+        tone="stop"
+        title={`접수를 막는 것 ${check.issues.length}건`}
+        items={check.issues.map((i) => ({ text: i.message, onClick: () => goTo(i.field) }))}
+      />
+      <Alerts
+        id="intake-review"
+        tone="warn"
+        title={`확인할 것 ${reviewItems.length}건`}
+        items={reviewItems.map((text) => ({ text }))}
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         {/*
@@ -879,44 +920,6 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
         * 무엇이 막는지 그 자리에 적는다 — 「별표 칸을 채우세요」로는 어느 칸인지 알 수 없다.
         * 검증이 내는 문구를 그대로 쓴다(lib/intake-validate) — 서버가 거절할 때와 같은 말이다.
         */}
-      {/*
-        * 줄마다 누르면 그 칸으로 간다 — 목록은 「무엇이」를, 칸은 「어디서」를 말한다.
-        * 회색이던 것을 붉게 바꿨다: 접수를 막는 것이다(필수 서류처럼 안 막는 것은 아래 주황).
-        */}
-      {check.issues.length > 0 && (
-        <ul className="flex flex-col gap-1 rounded-xl border-l-[3px] border-red-400 bg-red-50 px-4 py-3 text-xs font-semibold leading-relaxed text-red-800">
-          {check.issues.map((i) => (
-            <li key={i.message}>
-              <button
-                type="button"
-                onClick={() => goTo(i.field)}
-                className="text-left underline decoration-red-300 underline-offset-2 transition hover:decoration-red-600"
-              >
-                {i.message}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {/*
-        * ★막지는 않지만 보이게 한다★ (한백 지적 2026-09-22 「계약서에 다 나와있는데 왜
-        * 계약서류 접수단계에서 이걸 그냥 내보낸거야」).
-        *
-        * checkDraft 는 「대수를 아직 안 적었습니다」를 warnings 로 내고 있었는데 ★그 목록을
-        * 아무 데서도 안 그렸다★ — 만들어 놓고 안 보여 준 것이다. 그래서 대수 0 인 현장이
-        * 아무 말도 없이 나갔다(HB-2026-184).
-        *
-        * 막지 않는 것은 그대로다 — 「기본 현장정보만 입력해서 일단 계약접수 할 수 있게」
-        * (한백 지시 2026-09-14). 대수·서류는 며칠에 걸쳐 모이고, 그동안 현장이 콘솔에
-        * 없으면 진행 상황을 적을 자리도 없다. 그래서 색이 다르다: 막는 것은 회색(위),
-        * 알리는 것은 노랑이다.
-        */}
-      {check.warnings.length > 0 && (
-        <ul className="flex flex-col gap-1 rounded-xl border-l-[3px] border-amber-500 bg-amber-50/70 px-4 py-3 text-xs font-semibold leading-relaxed text-amber-900">
-          {check.warnings.map((w) => <li key={w}>{w}</li>)}
-        </ul>
-      )}
     </div>
   );
 }

@@ -363,9 +363,8 @@ function PartnerCard({
         </div>
       </div>
 
-      {fileError && (
-        <p className="mt-2 text-tiny font-semibold text-red-700">{fileError}</p>
-      )}
+      {/* 실패 문구는 부품 하나다(ui Err) — 자리마다 작게 적던 것을 모았다(2026-10-01) */}
+      <Err className="mt-2 block">{fileError}</Err>
 
       {/* 읽었지만 검산에 걸린 것 — 지우지 않고 그대로 보여 사람이 고치게 한다 */}
       {readIssues.length > 0 && (

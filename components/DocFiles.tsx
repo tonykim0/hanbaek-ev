@@ -470,7 +470,7 @@ export function DownloadAll({
       >
         {busy ? '묶는 중…' : `전체 다운로드 (${total})`}
       </button>
-      {error && <span className="text-tiny font-semibold text-amber-700">{error}</span>}
+      <Err>{error}</Err>
     </div>
   );
 }

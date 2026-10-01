@@ -10,7 +10,7 @@ import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import type { Trigger } from '@/types/project';
 import { RECEIVE_TRIGGERS } from '@/lib/settlement';
 import { won } from '@/lib/format';
-import { Btn, FIELD, FIELD_CELL, Tag } from '@/components/ui';
+import { Btn, Err, FIELD, FIELD_CELL, Tag } from '@/components/ui';
 import { Field, FormSection } from './form-parts';
 
 /** 기성 단계 한 줄의 입력 상태 — 값 칸은 고정이면 원, 비율이면 % 다 */
@@ -123,7 +123,7 @@ export function StepsSection({
           steps.length < 3 && <Btn size="sm" kind="side" onClick={addStep}>차수 추가</Btn>
         )}
         {steps.length > 0 && receive > 0 && stepBad.length > 0 && (
-          <span className="text-tiny font-semibold text-red-600">{stepBad[0]}</span>
+          <Err>{stepBad[0]}</Err>
         )}
       </div>
     </FormSection>

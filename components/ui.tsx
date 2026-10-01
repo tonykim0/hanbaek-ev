@@ -357,10 +357,63 @@ export function Confirm({
  */
 export function Err({ children, className = '' }: { children?: string | null; className?: string }) {
   if (!children) return null;
+  /*
+   * ★본문 크기·굵게★ (한백 지적 2026-10-01 「폰트도 작아서 잘 안 보여」) — 11px 옅은 굵기라
+   * 단추 옆에 떠도 눈이 지나쳤다. 실패는 지금 고쳐야 할 것이라 둘레 글자보다 작으면 안 된다.
+   */
   return (
-    <span role="alert" className={`text-tiny font-semibold text-red-700 ${className}`}>
+    <span role="alert" className={`text-base font-bold text-red-700 ${className}`}>
       {children}
     </span>
+  );
+}
+
+/* ── 알림 상자 ─────────────────────────────────────────────────────────────
+ * 여러 줄을 한꺼번에 알릴 때 — 「접수를 막는 것 3건」처럼 ★제목이 몇 건인지 먼저 말한다★.
+ * (한백 지적 2026-10-01 「위에도 떠 있고 아래도 떠 있고, 노랑색이고 폰트도 작아서 안 보여」)
+ *
+ *   stop  막는 것 — 빨강. 이것을 고쳐야 다음으로 간다
+ *   warn  확인할 것 — 주황. 막지는 않는다
+ *
+ * 줄에 onClick 을 주면 그 줄이 단추가 된다(그 칸으로 데려가는 자리). 모양은 띠(Note)와 같은
+ * 한 겹이다 — 사방 테두리를 두르지 않는다(화면 규칙 1).
+ */
+export function Alerts({
+  tone, title, items, id,
+}: {
+  tone: 'stop' | 'warn';
+  title: string;
+  items: Array<{ text: string; onClick?: () => void }>;
+  /** 다른 자리에서 「아래에서 보기」로 데려올 때 쓴다 */
+  id?: string;
+}) {
+  if (items.length === 0) return null;
+  const look = tone === 'stop'
+    ? 'border-red-500 bg-red-50 text-red-900'
+    : 'border-amber-500 bg-amber-50 text-amber-950';
+  const dot = tone === 'stop' ? 'bg-red-500' : 'bg-amber-500';
+  return (
+    <div id={id} role={tone === 'stop' ? 'alert' : 'status'} className={`scroll-mt-24 rounded-box border-l-4 px-4 py-3 ${look}`}>
+      <p className="text-lead font-black">{title}</p>
+      <ul className="mt-1.5 flex flex-col gap-1">
+        {items.map((it) => (
+          <li key={it.text} className="flex items-baseline gap-2 text-base font-semibold leading-relaxed">
+            <span className={`mt-[0.55em] h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} aria-hidden />
+            {it.onClick ? (
+              <button
+                type="button"
+                onClick={it.onClick}
+                className="text-left underline decoration-current/30 underline-offset-2 transition hover:decoration-current"
+              >
+                {it.text}
+              </button>
+            ) : (
+              <span>{it.text}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

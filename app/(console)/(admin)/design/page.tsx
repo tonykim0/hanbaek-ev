@@ -14,7 +14,7 @@
  * components/ui.tsx(모양) 와 tailwind.config.js(토큰) 에 먼저 추가한다.
  */
 import {
-  Badge, Blank, Btn, Choice, Clear, Empty, Err, FIELD, FIELD_CELL, HR, Note, Saved, Segments, Tag, Td, Th, Val,
+  Alerts, Badge, Blank, Btn, Choice, Clear, Empty, Err, FIELD, FIELD_CELL, HR, Note, Saved, Segments, Tag, Td, Th, Val,
 } from '@/components/ui';
 
 export const metadata = { title: '디자인 기준 — 한백 전기차사업관리시스템' };
@@ -219,6 +219,18 @@ export default function DesignPage() {
             <Note tone="stop" className="w-full">막는 것 — 무엇이 왜 안 되는지 적는다</Note>
             <Note tone="warn" className="w-full">확인할 것 — 저장을 막지는 않는다</Note>
             <Note tone="ok" className="w-full">끝난 것 — 언제 누가 했는지 적는다</Note>
+          </Part>
+
+          <Part label="알림 상자">
+            <div className="flex w-full flex-col gap-2">
+              <Alerts
+                tone="stop"
+                title="접수를 막는 것 2건"
+                /* 이 화면은 서버에서 그린다 — 함수(onClick)를 못 넘기니 누르는 줄 없이 모양만 */
+                items={[{ text: '현장명을 입력하세요.' }, { text: '수전 방식을 선택하세요.' }]}
+              />
+              <Alerts tone="warn" title="확인할 것 1건" items={[{ text: '필수 서류 2건 미첨부: 계약서, 회의록' }]} />
+            </div>
           </Part>
 
           <Part label="누른 뒤">
