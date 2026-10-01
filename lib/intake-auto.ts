@@ -28,7 +28,8 @@ import { classifyInChunks, READ_MAX_TOTAL_BYTES, tooLargeMessage } from './claud
 import { uprightPdfFiles } from './pdf-orient';
 import { checkImagePhoto, checkPdfPhoto } from './photo-check';
 import { buildUploadItems } from './notion';
-import { kindOfCategory, partyFromCategories, preInstallFromCategories } from './doc-category-map';
+import { demoteOldContracts, kindOfCategory, partyFromCategories, preInstallFromCategories } from './doc-category-map';
+import { today } from './date';
 import { docNameOf } from './doc-rules';
 import { withRegionPrefix } from './region';
 
@@ -156,6 +157,20 @@ export async function autoIntakeFromZip(
   );
   if (viewOnly.length > 0) {
     warnings.push('건축물대장이 ★열람용★입니다 — 제출용은 발급용이어야 합니다. 정부24에서 발급용으로 다시 받아주세요.');
+  }
+
+  /*
+   * 예전 계약서는 기설치 증빙이다 — 이번 계약서와 한 칸에 앉히지 않는다(doc-category-map
+   * demoteOldContracts, 한백 지시 2026-10-01). 옮겼으면 말한다 — 날짜를 잘못 읽었을 수 있다.
+   */
+  if (metadata) {
+    const demoted = demoteOldContracts(metadata.files ?? [], today());
+    if (demoted.moved > 0) {
+      metadata = { ...metadata, files: demoted.files };
+      warnings.push(
+        `예전 날짜의 계약서 ${demoted.moved}건을 「기설치 증빙자료」 칸에 넣었습니다 — 이번 계약서가 계약서 칸에 있는지 확인해주세요.`
+      );
+    }
   }
 
   // ── 분할·병합 (노션 호출 없는 순수 함수) ─────────────────────

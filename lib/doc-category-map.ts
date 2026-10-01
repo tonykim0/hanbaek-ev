@@ -143,3 +143,41 @@ export function excelCategory(fileName: string): FileCategory {
   if (/설치이력|기설치|이력서?\b|history/.test(n)) return '기설치 충전기 설치이력';
   return '실사보고서';
 }
+
+/**
+ * ★이번 계약서만 계약서 칸이다★ (한백 지시 2026-10-01 「2026년 계약서만 계약서에 넣어줘」).
+ *
+ * 기설치 이력을 보이려고 ★예전 계약서★(이미 깔린 충전기를 들일 때 맺은 것)를 같이 내는
+ * 현장이 있다. 판독은 그것도 「계약서」로 보고, 그러면 이번 계약서와 한 칸에 앉아 검수하는
+ * 사람이 어느 것이 이번 계약인지 열어 봐야 했다. 판독이 서류마다 읽어 오는 계약일로 가른다 —
+ * 날짜를 읽은 것은 판독이지만 가르는 것은 결정적인 셈이다.
+ *
+ *   접수 연도보다 앞선 해의 계약서 → 기설치 증빙자료
+ *   단, 접수일 60일 안이면 그대로 — 12월에 맺고 1월에 내는 이번 계약을 밀어내지 않는다
+ *   날짜가 없거나 이상하면 그대로 — 모르는 것으로 옮기지 않는다
+ *   ★옮길 것만 있고 남을 것이 없으면 아무것도 안 옮긴다★ — 이월 현장(작년 사업을 올해
+ *   접수)은 이번 계약서 자체가 작년 날짜다. 이번 해 계약서가 따로 있을 때만 가른다.
+ */
+export function demoteOldContracts<T extends { category: FileCategory; date?: string | null }>(
+  files: T[],
+  todayYmd: string
+): { files: T[]; moved: number } {
+  const t = /^(\d{4})-?(\d{2})-?(\d{2})$/.exec(todayYmd);
+  if (!t) return { files, moved: 0 };
+  const todayMs = Date.UTC(+t[1], +t[2] - 1, +t[3]);
+  const isOld = (f: T): boolean => {
+    if (f.category !== '계약서') return false;
+    const d = /^(\d{4})(\d{2})(\d{2})$/.exec(String(f.date ?? '').replace(/\D/g, ''));
+    if (!d) return false;
+    const y = +d[1];
+    const ms = Date.UTC(y, +d[2] - 1, +d[3]);
+    if (Number.isNaN(ms) || y >= +t[1]) return false;
+    return todayMs - ms > 60 * 24 * 60 * 60 * 1000;
+  };
+  const contracts = files.filter((f) => f.category === '계약서');
+  const old = contracts.filter(isOld);
+  if (old.length === 0 || old.length === contracts.length) return { files, moved: 0 };
+  const out = files.map((f) => (isOld(f) ? { ...f, category: '기설치 증빙자료' as FileCategory } : f));
+  return { files: out, moved: old.length };
+}
+

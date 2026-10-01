@@ -5,7 +5,7 @@
  * 박고(categoryFromFileName), 그 규칙만 여기서 지킨다 — 판독이 흔들려도 이 자리는 안 흔들린다.
  */
 import { describe, expect, it } from 'vitest';
-import { categoryFromFileName, excelCategory, kindOfCategory, minutesFromFileName } from '@/lib/doc-category-map';
+import { categoryFromFileName, demoteOldContracts, excelCategory, kindOfCategory, minutesFromFileName } from '@/lib/doc-category-map';
 import { buildStandardName } from '@/lib/files';
 
 describe('전기차 등록대수 확인 공문 — 기설치 설치이력 칸에 앉던 서류 (한백 2026-08-28)', () => {
@@ -144,5 +144,26 @@ describe('이름에 「회의록」이 있으면 회의록 칸이다 (녹동현�
   it('이름에 회의록이 없으면 끼어들지 않는다', () => {
     expect(minutesFromFileName('품의서.pdf', '기타', '상업시설')).toBeNull();
     expect(kindOfCategory('관리단 회의록')).toBe('minutes');
+  });
+});
+
+describe('이번 계약서만 계약서 칸 — 예전 계약서는 기설치 증빙 (한백 2026-10-01)', () => {
+  const c = (date: string, category: '계약서' | '합의서' = '계약서') => ({ originalName: date, category, date });
+  it('올해 계약서가 있으면 예전 해 계약서는 기설치 증빙자료로 간다', () => {
+    const r = demoteOldContracts([c('20260915'), c('20210310'), c('20190101', '합의서')], '2026-10-01');
+    expect(r.moved).toBe(1);
+    expect(r.files.map((f) => f.category)).toEqual(['계약서', '기설치 증빙자료', '합의서']);
+  });
+  it('예전 계약서뿐이면 옮기지 않는다 — 이월 현장의 이번 계약일 수 있다', () => {
+    expect(demoteOldContracts([c('20251120')], '2026-10-01').moved).toBe(0);
+  });
+  it('12월에 맺고 1월에 내는 이번 계약은 밀어내지 않는다(60일)', () => {
+    expect(demoteOldContracts([c('20270105'), c('20261215')], '2027-01-20').moved).toBe(0);
+  });
+  it('날짜를 못 읽은 계약서는 그대로 둔다', () => {
+    expect(demoteOldContracts([c('20260915'), c('')], '2026-10-01').moved).toBe(0);
+  });
+  it('기설치 증빙자료는 기설치 증빙 칸이다', () => {
+    expect(kindOfCategory('기설치 증빙자료')).toBe('legacyev');
   });
 });
