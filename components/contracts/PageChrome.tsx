@@ -31,7 +31,10 @@ export function ContractPageShell({
    * 재발행 화면만 왼쪽으로 붙인다 — 한백 지시 2026-08-26.
    */
   align = 'center',
+  back = { href: '/#contracts', label: '← 운영사 다시 선택' },
 }: {
+  /** 머리의 되돌아가는 길 — 실사보고서 작성은 그 구역으로 돌아간다 */
+  back?: { href: string; label: string };
   title: string;
   children: ReactNode;
   footerText?: string;
@@ -46,10 +49,10 @@ export function ContractPageShell({
       <main className={`max-w-5xl px-5 py-8 sm:px-6 sm:py-10 ${left ? '' : 'mx-auto'}`}>
         <header className="mb-7">
           <Link
-            href="/#contracts"
+            href={back.href}
             className="mb-3 inline-flex items-center gap-1 text-xs font-semibold text-slate-500 transition hover:text-brand-700"
           >
-            ← 운영사 다시 선택
+            {back.label}
           </Link>
           <h1 className="text-2xl font-black tracking-[-0.03em] text-slate-900">{title}</h1>
           {subtitle && <p className="mt-1 text-sm text-slate-400">{subtitle}</p>}

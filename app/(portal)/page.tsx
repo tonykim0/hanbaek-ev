@@ -36,6 +36,15 @@ const cpos = [
   { name: 'SK일렉링크', code: 'SK', href: '/sk' },
 ];
 
+/**
+ * 실사보고서(사진대지) 작성 — 운영사별 (한백 지시 2026-10-01). 현장 사진과 값을 넣으면 운영사
+ * 서식을 채워 내려받는다(components/survey). ★만든 운영사만 올린다★ — 눌러서 「준비 중」이 뜨는
+ * 카드는 두지 않는다(화면 규칙 3: 못 하는 것은 보이지 않거나 눌리지 않게).
+ */
+const surveys = [
+  { name: '현대엔지니어링', code: 'HEC', href: '/survey/hec', hint: '사진대지 · 사전체크리스트' },
+];
+
 /** 조회·자료 — 계약서를 쓰기 전후에 들르는 자리 */
 const tools = [
   { href: '/charger-history', title: '충전기 · 보조금 이력', hint: '주소로 조회' },
@@ -80,6 +89,27 @@ export default function Home() {
                   {cpo.name}
                 </span>
                 <span className="text-tiny text-slate-400">보조금 · 자체투자</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section id="survey" className="scroll-mt-20">
+          <Head title="실사보고서 작성" hint="사진대지" />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {surveys.map((s) => (
+              <Link
+                key={s.href}
+                href={s.href}
+                className="group flex min-h-28 flex-col rounded-2xl border border-slate-200 bg-white p-4 transition hover:border-brand-400"
+              >
+                <span className="flex h-9 w-fit items-center rounded-lg bg-brand-50 px-2.5 text-xs font-black text-brand-700">
+                  {s.code}
+                </span>
+                <span className="mt-auto pt-4 text-base font-bold tracking-[-0.02em] text-slate-900">
+                  {s.name}
+                </span>
+                <span className="text-tiny text-slate-400">{s.hint}</span>
               </Link>
             ))}
           </div>
