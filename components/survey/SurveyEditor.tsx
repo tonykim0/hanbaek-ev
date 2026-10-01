@@ -24,8 +24,12 @@ import {
 export interface SurveyEditorProps {
   cpo: SurveyCpo;
   slots: PhotoSlot[];
-  /** 체크리스트가 있는 운영사만 (현대엔지니어링 [별지 2]) */
-  withChecklist?: boolean;
+  /**
+   * 서식의 종류 — 받는 값이 갈린다.
+   *   hec     전원 공급방식·설치 Type 별 대수·전주번호/차단기 스펙 + 사전체크리스트
+   *   ledger  사진 대장(SK·나이스) — 설치장소(주소)·전력인입점 설명·설치기수
+   */
+  variant: 'hec' | 'ledger';
   /** 채운 서식을 돌려준다 — 운영사별 생성기 */
   build: (form: SurveyForm, images: Record<string, Record<string, PreparedImage | undefined>>) => Promise<Blob>;
   fileName: (siteName: string) => string;
@@ -40,7 +44,7 @@ const today = () => {
 let seq = 0;
 const nextId = () => `s${Date.now().toString(36)}${(seq += 1)}`;
 
-export default function SurveyEditor({ cpo, slots, withChecklist, build, fileName }: SurveyEditorProps) {
+export default function SurveyEditor({ cpo, slots, variant, build, fileName }: SurveyEditorProps) {
   const [siteName, setSiteName] = useState('');
   const [surveyDate, setSurveyDate] = useState(today);
   const [spots, setSpots] = useState<SurveySpot[]>(() => [newSpot(nextId())]);
@@ -58,14 +62,19 @@ export default function SurveyEditor({ cpo, slots, withChecklist, build, fileNam
     const out: string[] = [];
     spots.forEach((s, i) => {
       const tag = spots.length > 1 ? `${i + 1}거점 · ` : '';
-      if (!s.location.trim()) out.push(`${tag}상세 위치가 비어 있습니다`);
-      const qty = (s.wallSlow ?? 0) + (s.wallFast ?? 0) + (s.standSlow ?? 0) + (s.standFast ?? 0);
-      if (qty === 0) out.push(`${tag}충전기 대수가 비어 있습니다`);
+      if (variant === 'ledger') {
+        if (!s.address.trim()) out.push(`${tag}설치장소(주소)가 비어 있습니다`);
+        if (!s.qty) out.push(`${tag}설치기수가 비어 있습니다`);
+      } else {
+        if (!s.location.trim()) out.push(`${tag}상세 위치가 비어 있습니다`);
+        const qty = (s.wallSlow ?? 0) + (s.wallFast ?? 0) + (s.standSlow ?? 0) + (s.standFast ?? 0);
+        if (qty === 0) out.push(`${tag}충전기 대수가 비어 있습니다`);
+      }
       const empty = slots.filter((sl) => !s.photos[sl.key]).map((sl) => sl.label);
       if (empty.length) out.push(`${tag}사진 ${empty.length}칸 비어 있음 — ${empty.join(', ')}`);
     });
     return out;
-  }, [spots, slots]);
+  }, [spots, slots, variant]);
 
   async function make() {
     setError(null);
@@ -115,7 +124,7 @@ export default function SurveyEditor({ cpo, slots, withChecklist, build, fileNam
           n={i + 1}
           spot={s}
           slots={slots}
-          withChecklist={withChecklist}
+          variant={variant}
           onChange={(p) => patch(s.id, p)}
           onRemove={spots.length > 1 ? () => setSpots((l) => l.filter((x) => x.id !== s.id)) : undefined}
         />
@@ -145,12 +154,12 @@ function num(v: string): number | null {
 }
 
 function SpotCard({
-  n, spot, slots, withChecklist, onChange, onRemove,
+  n, spot, slots, variant, onChange, onRemove,
 }: {
   n: number;
   spot: SurveySpot;
   slots: PhotoSlot[];
-  withChecklist?: boolean;
+  variant: 'hec' | 'ledger';
   onChange: (p: Partial<SurveySpot>) => void;
   onRemove?: () => void;
 }) {
@@ -173,6 +182,30 @@ function SpotCard({
   return (
     <Section title={`${n + 1}. ${n}거점`}>
       <div className="flex flex-col gap-5">
+        {variant === 'ledger' && (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block sm:col-span-2">
+              <span className="mb-1 block text-sm font-medium text-gray-700">설치장소(주소)</span>
+              <input value={spot.address} onChange={(e) => onChange({ address: e.target.value })} placeholder="서울 노원구 동일로250길 18 / 103동 지상주차장" className={contractInputClass} />
+            </label>
+            <label className="block sm:col-span-2">
+              <span className="mb-1 block text-sm font-medium text-gray-700">전력인입점 — 판넬·차단기</span>
+              <input value={spot.panelNote} onChange={(e) => onChange({ panelNote: e.target.value })} placeholder="지하1층 PK1-B1A 판넬 (메인 225A / 75A 차단기 신규설치)" className={contractInputClass} />
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">설치기수</span>
+              <span className="flex items-center gap-2">
+                <input inputMode="numeric" value={spot.qty ?? ''} onChange={(e) => onChange({ qty: num(e.target.value) })} placeholder="0" className={`${contractInputClass} !w-24 text-right`} />
+                <span className="text-sm text-gray-500">기</span>
+              </span>
+            </label>
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">설치 위치</span>
+              <input value={spot.location} onChange={(e) => onChange({ location: e.target.value })} placeholder="지하1층 15번 기둥 반대편" className={contractInputClass} />
+            </label>
+          </div>
+        )}
+        {variant === 'hec' && (
         <div className="grid gap-4 sm:grid-cols-2">
           <label className="block sm:col-span-2">
             <span className="mb-1 block text-sm font-medium text-gray-700">상세 위치</span>
@@ -205,6 +238,7 @@ function SpotCard({
             <input value={spot.nearSpec} onChange={(e) => onChange({ nearSpec: e.target.value })} placeholder="전주번호 또는 차단기 스펙" className={contractInputClass} />
           </label>
         </div>
+        )}
 
         <div>
           <span className="mb-2 block text-sm font-medium text-gray-700">사진</span>
@@ -233,7 +267,7 @@ function SpotCard({
           </div>
         </div>
 
-        {withChecklist && (
+        {variant === 'hec' && (
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-gray-700">사전체크리스트</span>

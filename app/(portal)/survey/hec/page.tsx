@@ -15,7 +15,7 @@ export default function HecSurveyPage() {
       <SurveyEditor
         cpo="hec"
         slots={HEC_PHOTO_SLOTS}
-        withChecklist
+        variant="hec"
         fileName={hecSurveyFileName}
         build={async (form, images) => {
           const res = await fetch('/hec/template.docx');

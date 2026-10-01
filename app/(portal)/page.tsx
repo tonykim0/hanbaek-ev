@@ -43,6 +43,8 @@ const cpos = [
  */
 const surveys = [
   { name: '현대엔지니어링', code: 'HEC', href: '/survey/hec', hint: '사진대지 · 사전체크리스트' },
+  { name: '나이스인프라', code: 'NICE', href: '/survey/nice', hint: '사진 대장' },
+  { name: 'SK일렉링크', code: 'SK', href: '/survey/sk', hint: '사진 대장' },
 ];
 
 /** 조회·자료 — 계약서를 쓰기 전후에 들르는 자리 */

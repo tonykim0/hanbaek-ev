@@ -10,7 +10,13 @@
  * 체크리스트만 운영사마다 다르게 정의한다. 서식을 채우는 법은 운영사별 생성기가 안다.
  */
 
-export type SurveyCpo = 'hec';
+/**
+ * 운영사 — 서식은 셋이다(한백 지시 2026-10-01):
+ *   hec       현대엔지니어링 [별지 1] 사진대지 + [별지 2] 사전체크리스트 (워드)
+ *   sk · nice 사전 현장 컨설팅 사진 대장 (워드) — ★나이스는 표준 양식이 없어 SK 양식을 쓴다★
+ *   pluglink  실사보고서 v22 (엑셀 — 실사개요·사진대지·공사내역서)
+ */
+export type SurveyCpo = 'hec' | 'sk' | 'nice' | 'pluglink';
 
 /** 사진 칸 하나 — 서식의 칸 이름을 그대로 쓴다(협력사가 운영사 서식에서 보던 말) */
 export interface PhotoSlot {
@@ -35,6 +41,10 @@ export interface SurveySpot {
   /** 책임분계점 원경·근경 옆 칸 — 전주번호(한전수전) 또는 차단기 스펙(모자분리) */
   farSpec: string;
   nearSpec: string;
+  /** 사진 대장(SK·나이스) — 설치장소(주소) · 전력인입점(판넬) 설명 · 설치기수 */
+  address: string;
+  panelNote: string;
+  qty: number | null;
   /** 사진 — 칸 key → 사진 파일. 브라우저 안에서만 산다 */
   photos: Record<string, File | null>;
   /** 체크리스트 — 항목 key → 확인(O)·미확인(X), 비고 */
@@ -96,6 +106,17 @@ export const HEC_CHECKS: Array<{ group: string; items: Array<{ key: string; labe
   },
 ];
 
+/**
+ * 사전 현장 컨설팅 사진 대장 (SK·나이스) — 거점마다 표 하나, 사진 넷.
+ * 순서가 곧 서식의 자리다(public/survey/ledger.docx 의 사진 줄 둘 × 칸 둘).
+ */
+export const LEDGER_PHOTO_SLOTS: PhotoSlot[] = [
+  { key: 'inlet1', label: '전력인입점 사진 1', hint: '판넬 외부' },
+  { key: 'inlet2', label: '전력인입점 사진 2', hint: '판넬 내부·차단기' },
+  { key: 'front', label: '설치 예정 주차면 — 전면' },
+  { key: 'side', label: '설치 예정 주차면 — 측면' },
+];
+
 export const HEC_CHECK_KEYS = HEC_CHECKS.flatMap((g) => g.items.map((i) => i.key));
 
 /** 새 거점 — 체크리스트는 모두 확인(O)으로 시작한다(현장 대부분이 그렇다, 아닌 것만 고친다) */
@@ -106,6 +127,7 @@ export function newSpot(id: string): SurveySpot {
     powerType: '모자분리',
     wallSlow: null, wallFast: null, standSlow: null, standFast: null,
     farSpec: '', nearSpec: '',
+    address: '', panelNote: '', qty: null,
     photos: {},
     checks: Object.fromEntries(HEC_CHECK_KEYS.map((k) => [k, { ok: true, note: '' }])),
   };
