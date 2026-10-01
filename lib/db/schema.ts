@@ -290,6 +290,24 @@ export const recvPresets = pgTable('recv_presets', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * 실사보고서 임시 저장 (한백 지시 2026-10-01) — 계정마다 여럿. 사진은 Blob(survey-drafts/<계정>/<id>/),
+ * 값은 data. 남의 계정 것은 저장소가 내주지 않는다(store/survey-drafts).
+ */
+export const surveyDrafts = pgTable('survey_drafts', {
+  id: text('id').primaryKey(),
+  ownerId: text('owner_id').notNull(),
+  ownerOrg: text('owner_org'),
+  cpo: text('cpo').notNull(),
+  title: text('title').notNull().default(''),
+  photoCount: integer('photo_count').notNull().default(0),
+  data: jsonb('data').notNull().default({}),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  ownerIdx: index('survey_drafts_owner_idx').on(t.ownerId, t.cpo, t.updatedAt),
+}));
+
 export const chargerModels = pgTable('charger_models', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),

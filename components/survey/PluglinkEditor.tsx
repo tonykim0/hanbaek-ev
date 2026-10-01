@@ -14,7 +14,7 @@ import { Section, contractInputClass } from '@/components/contracts/FormControls
 import { Alerts, Btn, Choice, Picks } from '@/components/ui';
 import { downloadBlob } from '@/lib/download';
 import { useSurveyDraft } from '@/lib/survey/use-draft';
-import { DraftFound, SurveyActions } from './DraftControls';
+import { DraftList, SurveyActions } from './DraftControls';
 import { prepareImage } from '@/lib/survey/prepare-image';
 import type { PreparedImage } from '@/lib/survey/docx-kit';
 import { fillPluglinkSurvey, plSurveyFileName } from '@/lib/survey/fill-pluglink';
@@ -95,8 +95,8 @@ export default function PluglinkEditor() {
 
   const photoCount = (f.overview ? 1 : 0) + (f.plan ? 1 : 0)
     + f.spots.reduce((n, s) => n + Object.values(s.photos).filter(Boolean).length, 0);
-  // 임시 저장 — 이 브라우저 안(lib/survey/use-draft). 저장 뒤 바꾼 것을 두고 나가려 하면 묻는다
-  const draft = useSurveyDraft('survey:pluglink', f, setF, busy !== null);
+  // 임시 저장 — 클라우드(lib/survey/use-draft). 저장 뒤 바꾼 것을 두고 나가려 하면 묻는다
+  const draft = useSurveyDraft('pluglink', f, setF, f.siteName, busy !== null);
 
   /* 확인할 것 — 가이드가 「필히 기입」이라 적은 것들. 막지는 않는다 */
   const review = useMemo(() => {
@@ -152,15 +152,10 @@ export default function PluglinkEditor() {
 
   const canMake = f.siteName.trim() ? true as const : '현장명 미입력 — 만들 수 없음';
   const actions = <SurveyActions draft={draft} make={() => void make()} busy={busy} canMake={canMake} />;
-  const found = draft.found?.data;
-  const foundWhat = found
-    ? [found.siteName.trim(), `거점 ${found.spots.length}`, `사진 ${(found.overview ? 1 : 0) + (found.plan ? 1 : 0)
-      + found.spots.reduce((n, s) => n + Object.values(s.photos).filter(Boolean).length, 0)}장`].filter(Boolean).join(' · ')
-    : undefined;
 
   return (
     <div className="flex flex-col gap-5">
-      <DraftFound draft={draft} what={foundWhat} />
+      <DraftList draft={draft} />
       {actions}
       <Section title="1. 현장">
         <div className="flex flex-col gap-5">

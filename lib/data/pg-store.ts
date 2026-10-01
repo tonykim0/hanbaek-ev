@@ -52,6 +52,7 @@ import { docStore } from './store/docs';
 import { payoutStore } from './store/payouts';
 import { pricingStore } from './store/pricing';
 import { recvPresetStore } from './store/recv-presets';
+import { surveyDraftStore } from './store/survey-drafts';
 import { noticeStore } from './store/notices';
 import {
   accessWhere, assertAdmin, assertHanbaek, mergeDocs, PROCESS_DOC_KEYS, recordsOf,
@@ -185,6 +186,8 @@ export const pgRepository: ProjectRepository = {
   ...noticeStore,
   // 협력사별 자주 쓰는 수령지는 store/recv-presets.ts 에 있다
   ...recvPresetStore,
+  // 실사보고서 임시 저장본은 store/survey-drafts.ts 에 있다
+  ...surveyDraftStore,
 
   async listProjects(viewer: Viewer): Promise<ProjectSummary[]> {
     if (!isHanbaek(viewer.role) && !viewer.org) return [];

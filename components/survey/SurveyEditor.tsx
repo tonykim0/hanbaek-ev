@@ -5,7 +5,7 @@
  *
  * ★서버에 아무것도 안 보낸다★ — 사진은 브라우저 안에서 줄여(lib/survey/prepare-image) 서식에
  * 넣고 그 자리에서 내려받는다. 계약서 작성과 같은 길이다. 그래서 창을 닫으면 넣은 것이 사라진다 —
- * 임시 저장(이 브라우저 안, lib/survey/use-draft)이 있고, 저장 뒤 바꾼 것을 두고 나가려 하면 묻는다.
+ * 임시 저장(클라우드 — 계정마다 여럿, lib/survey/use-draft)이 있고, 저장 뒤 바꾼 것을 두고 나가려 하면 묻는다.
  *
  * 화면은 운영사와 상관없이 하나다 — 거점·값·사진 칸. 칸 목록과 생성기만 운영사가 정한다.
  */
@@ -15,7 +15,7 @@ import { Alerts, Btn, Choice } from '@/components/ui';
 import { useFileDragging } from '@/components/DocFiles';
 import { downloadBlob } from '@/lib/download';
 import { useSurveyDraft } from '@/lib/survey/use-draft';
-import { DraftFound, SurveyActions } from './DraftControls';
+import { DraftList, SurveyActions } from './DraftControls';
 import { prepareCollage, prepareImage } from '@/lib/survey/prepare-image';
 import type { PreparedImage } from '@/lib/survey/docx-kit';
 import type { LineKind, NumStyle } from '@/lib/survey/annot';
@@ -59,9 +59,9 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
   const photoCount = spots.reduce((n, s) => n + Object.values(s.photos).filter(Boolean).length, 0);
   // 임시 저장 — 화면의 값 셋을 한 덩이로(어느 하나가 바뀌면 새 덩이다)
   const value = useMemo(() => ({ siteName, surveyDate, spots }), [siteName, surveyDate, spots]);
-  const draft = useSurveyDraft(`survey:${cpo}`, value, (v) => {
+  const draft = useSurveyDraft(cpo, value, (v) => {
     setSiteName(v.siteName); setSurveyDate(v.surveyDate); setSpots(v.spots);
-  }, busy !== null);
+  }, siteName, busy !== null);
 
   const patch = (id: string, p: Partial<SurveySpot>) =>
     setSpots((list) => list.map((s) => (s.id === id ? { ...s, ...p } : s)));
@@ -125,7 +125,7 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
 
   return (
     <div className="flex flex-col gap-5">
-      <DraftFound draft={draft} what={draft.found ? draftWhat(draft.found.data) : undefined} />
+      <DraftList draft={draft} />
       {actions}
       <Section title="1. 현장">
         <div className="grid gap-4 sm:grid-cols-2">
@@ -165,12 +165,6 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
       {actions}
     </div>
   );
-}
-
-/** 저장본 한 줄 요약 — 「광주 OO아파트 · 거점 2 · 사진 9장」 */
-function draftWhat(v: { siteName: string; spots: SurveySpot[] }): string {
-  const photos = v.spots.reduce((n, s) => n + Object.values(s.photos).filter(Boolean).length, 0);
-  return [v.siteName.trim(), `거점 ${v.spots.length}`, `사진 ${photos}장`].filter(Boolean).join(' · ');
 }
 
 export function num(v: string): number | null {

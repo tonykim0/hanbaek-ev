@@ -19,6 +19,7 @@ import type {
   Notice, NoticeFile, ReviewEvent, ProjectFactsPatch, LineFactsPatch, ProjectAxesPatch, NewContractLine,
 } from '@/types/project';
 import type { Actor, Viewer } from '@/lib/auth/types';
+import type { DraftFull, DraftSummary, PhotoRef } from '@/lib/survey/draft-shape';
 
 export type { Actor };
 
@@ -448,6 +449,17 @@ export interface ProjectRepository {
 
   /** 자주 쓰는 수령지 빼기 [한백 관리자 · 그 협력사] — 현장에 이미 적힌 값은 그대로 남는다 */
   removeRecvPreset(id: string, actor: Actor): Promise<void>;
+
+  /** 실사보고서 임시 저장본 — 그 계정의 것만, 최근이 위 [본인] (store/survey-drafts) */
+  listSurveyDrafts(cpo: string, actor: Actor): Promise<DraftSummary[]>;
+  /** 저장본 하나(값까지) [본인] — 남의 것은 「없다」 */
+  getSurveyDraft(id: string, actor: Actor): Promise<DraftFull>;
+  /** 빈 저장본 — 사진을 올릴 자리(id)가 먼저 있어야 한다 [본인] */
+  createSurveyDraft(input: { cpo: string; title: string }, actor: Actor): Promise<string>;
+  /** 값 저장 — 사진 자리는 라우트가 확인해 넘긴다. 빠진 사진 자리를 돌려준다(라우트가 지운다) [본인] */
+  saveSurveyDraft(id: string, input: { title: string; data: unknown }, actor: Actor): Promise<{ removed: PhotoRef[] }>;
+  /** 저장본 지우기 — 사진은 라우트가 폴더째 지운다 [본인] */
+  deleteSurveyDraft(id: string, actor: Actor): Promise<void>;
 
   /** 공지 목록 — 최신이 위. 로그인한 누구나 본다(열람 전용 포함) */
   listNotices(): Promise<Notice[]>;
