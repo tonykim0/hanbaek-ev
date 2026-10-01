@@ -1,61 +1,78 @@
 'use client';
 
 /**
- * 사진 위에 번호를 찍는 자리 — 「어느 주차면에 몇 기」를 사진에서 보이게 (한백 지시 2026-10-01).
+ * 사진 위에 표시를 그리는 자리 — 번호 · 경로 선(화살표) · 동그라미 · 네모 · 글자 (한백 지시 2026-10-01).
  *
- * 기존 제출본은 주차면(또는 서 있는 차) 위에 번호 동그라미를 워드·엑셀에서 손으로 얹었다.
- * 여기서 찍어 두면 서식에 넣을 때 사진에 합쳐 굽는다(lib/survey/prepare-image drawMarks) — 받은
- * 파일을 다시 열어 그릴 일이 없다.
+ * 제출본들이 워드·엑셀에서 도형으로 얹던 것이다(lib/survey/annot 머리말). 여기서 그려 두면 서식에
+ * 넣을 때 사진에 합쳐 굽는다. ★그리는 함수가 하나다★ — 이 화면과 미리보기와 구운 사진이 모두
+ * drawAnnots 를 부르므로, 본 대로 나온다.
  *
- *   빈 곳을 누른다     → 다음 번호
- *   번호를 끈다        → 옮긴다
- *   번호를 두 번 누른다 → 그 번호를 뺀다(뒤 번호가 하나씩 당겨진다)
- *
- * 찍은 수와 그 거점 설치 대수를 나란히 적는다 — 다르면 노랗게. 막지는 않는다(한 대를 두 장에 나눠
- * 보일 때가 있다).
+ *   번호      빈 곳을 누르면 다음 번호 · 번호를 끌면 옮김 · 두 번 누르면 뺌
+ *   선        누를 때마다 꺾이고, 두 번 누르거나 「선 끝」 — 끝에 화살표
+ *   동그라미·네모  끌어서 그린다
+ *   글자      누른 자리에 글자 상자
+ *   지우개    누른 표시를 뺀다
  */
-import { useEffect, useRef, useState } from 'react';
-import { Btn } from '@/components/ui';
-import type { Mark } from '@/lib/survey/spec';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Btn, Choice } from '@/components/ui';
+import { drawAnnots, hitAnnot, numCount, type Annot, type Pt } from '@/lib/survey/annot';
 
-/**
- * 원의 지름 — 폭에 대한 % 로. 굽는 크기가 「긴 변의 2.6%(반지름)」이라 세로 사진이면 폭보다 커진다.
- * 화면에서 본 크기와 받은 파일의 크기가 같아야 한다.
- */
-export const markSize = (aspect: number) => `${5.2 * Math.max(1, 1 / (aspect || 1))}%`;
+type Tool = 'num' | 'line' | 'oval' | 'box' | 'text' | 'erase';
+const TOOLS: Array<{ key: Tool; label: string; hint: string }> = [
+  { key: 'num', label: '번호', hint: '빈 곳을 누르면 다음 번호 · 끌면 옮김 · 두 번 누르면 뺌' },
+  { key: 'line', label: '선·화살표', hint: '누를 때마다 꺾입니다 · 두 번 누르거나 「선 끝」' },
+  { key: 'oval', label: '동그라미', hint: '끌어서 그립니다' },
+  { key: 'box', label: '네모', hint: '끌어서 그립니다' },
+  { key: 'text', label: '글자', hint: '누른 자리에 글자 상자' },
+  { key: 'erase', label: '지우개', hint: '지울 표시를 누릅니다' },
+];
 
-export function MarkOverlay({ marks, aspect }: { marks: Mark[]; aspect: number }) {
-  const d = markSize(aspect);
-  return (
-    <>
-      {marks.map((m, i) => (
-        <span
-          key={i}
-          className="pointer-events-none absolute flex -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border-[3px] border-[#e11d2a] bg-white/80 font-black text-[#e11d2a]"
-          style={{ left: `${m.x * 100}%`, top: `${m.y * 100}%`, width: d, aspectRatio: '1', fontSize: '10px' }}
-        >
-          {i + 1}
-        </span>
-      ))}
-    </>
-  );
+/** 이미지 위에 표시를 그리는 캔버스 — 부모(사진과 같은 틀)를 꽉 채운다 */
+export function AnnotCanvas({ list }: { list: Annot[] }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  const draw = useCallback(() => {
+    const c = ref.current;
+    const box = c?.parentElement;
+    if (!c || !box) return;
+    const dpr = window.devicePixelRatio || 1;
+    const w = box.clientWidth; const h = box.clientHeight;
+    c.width = Math.max(1, Math.round(w * dpr));
+    c.height = Math.max(1, Math.round(h * dpr));
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, c.width, c.height);
+    drawAnnots(ctx, c.width, c.height, list);
+  }, [list]);
+  useEffect(() => {
+    draw();
+    const box = ref.current?.parentElement;
+    if (!box || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(draw);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [draw]);
+  return <canvas ref={ref} className="pointer-events-none absolute inset-0 h-full w-full" />;
 }
 
 export default function MarkEditor({ file, marks, expected, title, onDone, onClose }: {
   file: File;
-  marks: Mark[];
-  /** 그 거점의 설치 대수 — 찍은 수와 견준다 */
+  marks: Annot[];
+  /** 그 거점의 설치 대수 — 찍은 번호 수와 견준다 */
   expected?: number | null;
   title: string;
-  onDone: (marks: Mark[]) => void;
+  onDone: (marks: Annot[]) => void;
   onClose: () => void;
 }) {
-  const [list, setList] = useState<Mark[]>(marks);
+  const [list, setList] = useState<Annot[]>(marks);
+  const [draft, setDraft] = useState<Annot | null>(null);
+  const [tool, setTool] = useState<Tool>('num');
   const [url, setUrl] = useState<string | null>(null);
   const [aspect, setAspect] = useState(4 / 3);
   const frame = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ i: number; moved: boolean } | null>(null);
+  const drag = useRef<number | null>(null);
   const lastTap = useRef<{ i: number; t: number } | null>(null);
+  const lastLineTap = useRef(0);
+  const down = useRef(false);
 
   useEffect(() => {
     const u = URL.createObjectURL(file);
@@ -63,56 +80,144 @@ export default function MarkEditor({ file, marks, expected, title, onDone, onClo
     return () => URL.revokeObjectURL(u);
   }, [file]);
 
+  /* 그리던 선은 다른 일을 하면 끝낸 것으로 본다 — 두 점이 안 되면 버린다 */
+  const commitDraft = useCallback((d: Annot | null = draft) => {
+    if (d && d.t === 'line') {
+      const pts = d.pts.slice(0, -1); // 마지막 점은 손가락을 따라오던 자리다
+      if (pts.length >= 2) setList((l) => [...l, { t: 'line', pts }]);
+    }
+    setDraft(null);
+  }, [draft]);
+
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      if (draft) setDraft(null);
+      else onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [draft, onClose]);
 
-  const at = (e: { clientX: number; clientY: number }): Mark | null => {
+  const at = (e: { clientX: number; clientY: number }): Pt | null => {
     const r = frame.current?.getBoundingClientRect();
     if (!r || r.width === 0) return null;
     const x = (e.clientX - r.left) / r.width;
     const y = (e.clientY - r.top) / r.height;
-    if (x < 0 || x > 1 || y < 0 || y > 1) return null;
-    return { x, y };
+    return { x: Math.min(1, Math.max(0, x)), y: Math.min(1, Math.max(0, y)) };
   };
 
-  const remove = (i: number) => setList((l) => l.filter((_, k) => k !== i));
+  const pickTool = (t: Tool) => { commitDraft(); setTool(t); };
+
+  function onDown(e: React.PointerEvent) {
+    const p = at(e);
+    if (!p) return;
+    frame.current?.setPointerCapture?.(e.pointerId);
+    down.current = true;
+    const now = Date.now();
+    if (tool === 'num') {
+      const i = hitAnnot(list, p, aspect);
+      if (i >= 0 && list[i].t === 'num') {
+        if (lastTap.current && lastTap.current.i === i && now - lastTap.current.t < 350) {
+          lastTap.current = null;
+          setList((l) => l.filter((_, k) => k !== i));
+          return;
+        }
+        lastTap.current = { i, t: now };
+        drag.current = i;
+        return;
+      }
+      setList((l) => [...l, { t: 'num', x: p.x, y: p.y }]);
+    } else if (tool === 'line') {
+      if (!draft || draft.t !== 'line') {
+        setDraft({ t: 'line', pts: [p, p] });
+      } else if (now - lastLineTap.current < 350) {
+        commitDraft();
+      } else {
+        setDraft({ t: 'line', pts: [...draft.pts.slice(0, -1), p, p] });
+      }
+      lastLineTap.current = now;
+    } else if (tool === 'oval' || tool === 'box') {
+      setDraft({ t: tool, a: p, b: p });
+    } else if (tool === 'text') {
+      down.current = false;
+      const text = window.prompt('넣을 글자', '');
+      if (text && text.trim()) setList((l) => [...l, { t: 'text', x: p.x, y: p.y, text: text.trim() }]);
+    } else if (tool === 'erase') {
+      const i = hitAnnot(list, p, aspect);
+      if (i >= 0) setList((l) => l.filter((_, k) => k !== i));
+    }
+  }
+
+  function onMove(e: React.PointerEvent) {
+    const p = at(e);
+    if (!p) return;
+    if (drag.current !== null && down.current) {
+      const i = drag.current;
+      setList((l) => l.map((a, k) => (k === i && a.t === 'num' ? { ...a, x: p.x, y: p.y } : a)));
+      return;
+    }
+    if (draft?.t === 'line') {
+      setDraft({ t: 'line', pts: [...draft.pts.slice(0, -1), p] });
+    } else if ((draft?.t === 'oval' || draft?.t === 'box') && down.current) {
+      setDraft({ ...draft, b: p });
+    }
+  }
+
+  function onUp() {
+    down.current = false;
+    drag.current = null;
+    if (draft && (draft.t === 'oval' || draft.t === 'box')) {
+      // 거의 안 끈 것은 실수로 본다
+      if (Math.abs(draft.a.x - draft.b.x) > 0.01 || Math.abs(draft.a.y - draft.b.y) > 0.01) setList((l) => [...l, draft]);
+      setDraft(null);
+    }
+  }
+
+  const shown = draft ? [...list, draft] : list;
+  const nums = numCount(list);
+  const current = TOOLS.find((t) => t.key === tool)!;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-slate-900/80 p-3 sm:p-6" role="dialog" aria-label={title}>
-      <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center gap-2 rounded-t-box bg-white px-4 py-3">
-        <span className="min-w-0 flex-1 text-base font-black text-slate-900">{title}</span>
-        <span className={`text-base font-bold tabular-nums ${expected && expected !== list.length ? 'text-amber-700' : 'text-brand-700'}`}>
-          번호 {list.length}{expected ? ` / 설치 ${expected}기` : ''}
-        </span>
-        <Btn size="sm" kind="quiet" disabled={list.length === 0} onClick={() => setList((l) => l.slice(0, -1))}>마지막 빼기</Btn>
-        <Btn size="sm" kind="quiet" disabled={list.length === 0} onClick={() => setList([])}>모두 지우기</Btn>
-        <Btn size="sm" kind="side" onClick={onClose}>취소</Btn>
-        <Btn size="sm" onClick={() => onDone(list)}>완료</Btn>
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-2 rounded-t-box bg-white px-4 py-3">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="min-w-0 flex-1 text-base font-black text-slate-900">{title}</span>
+          <span className={`text-base font-bold tabular-nums ${expected && expected !== nums ? 'text-amber-700' : 'text-brand-700'}`}>
+            번호 {nums}{expected ? ` / 설치 ${expected}기` : ''}
+          </span>
+          <Btn size="sm" kind="side" onClick={onClose}>취소</Btn>
+          <Btn
+            size="sm"
+            onClick={() => {
+              // 그리던 선도 담아 낸다 — 마지막 점은 손가락을 따라오던 자리라 뺀다
+              const tail = draft?.t === 'line' && draft.pts.length > 2 ? [{ t: 'line' as const, pts: draft.pts.slice(0, -1) }] : [];
+              onDone([...list, ...tail]);
+            }}
+          >
+            완료
+          </Btn>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {TOOLS.map((t) => (
+            <Choice key={t.key} on={tool === t.key} onClick={() => pickTool(t.key)}>{t.label}</Choice>
+          ))}
+          <span className="mx-1 h-5 w-px bg-slate-200" aria-hidden />
+          {draft?.t === 'line' && <Btn size="sm" kind="side" onClick={() => commitDraft()}>선 끝</Btn>}
+          <Btn size="sm" kind="quiet" disabled={!draft && list.length === 0} onClick={() => (draft ? setDraft(null) : setList((l) => l.slice(0, -1)))}>되돌리기</Btn>
+          <Btn size="sm" kind="quiet" disabled={list.length === 0} onClick={() => { setDraft(null); setList([]); }}>모두 지우기</Btn>
+          <span className="text-small text-slate-500">{current.hint}</span>
+        </div>
       </div>
       <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 items-center justify-center overflow-auto rounded-b-box bg-slate-100 p-3">
         {url && (
           <div
             ref={frame}
-            className="relative inline-block cursor-crosshair touch-none select-none"
-            onPointerDown={(e) => {
-              // 번호 위에서 누른 것은 끌기·지우기다 — 빈 곳만 새 번호를 찍는다
-              if ((e.target as HTMLElement).dataset.mark !== undefined) return;
-              const p = at(e);
-              if (p) setList((l) => [...l, p]);
-            }}
-            onPointerMove={(e) => {
-              if (!drag.current) return;
-              const p = at(e);
-              if (!p) return;
-              drag.current.moved = true;
-              const i = drag.current.i;
-              setList((l) => l.map((m, k) => (k === i ? p : m)));
-            }}
-            onPointerUp={() => { drag.current = null; }}
-            onPointerLeave={() => { drag.current = null; }}
+            className={`relative inline-block touch-none select-none ${tool === 'erase' ? 'cursor-pointer' : 'cursor-crosshair'}`}
+            onPointerDown={onDown}
+            onPointerMove={onMove}
+            onPointerUp={onUp}
+            onPointerCancel={onUp}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
@@ -120,33 +225,9 @@ export default function MarkEditor({ file, marks, expected, title, onDone, onClo
               alt={title}
               draggable={false}
               onLoad={(e) => setAspect(e.currentTarget.naturalWidth / (e.currentTarget.naturalHeight || 1))}
-              className="block max-h-[75vh] max-w-full"
+              className="block max-h-[72vh] max-w-full"
             />
-            {list.map((m, i) => (
-              <span
-                key={i}
-                data-mark=""
-                role="button"
-                aria-label={`${i + 1}번 — 두 번 눌러 빼기`}
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  (e.currentTarget.parentElement as HTMLElement).setPointerCapture?.(e.pointerId);
-                  // 두 번 누름(마우스 더블클릭·손가락 두 번)은 빼기
-                  const now = Date.now();
-                  if (lastTap.current && lastTap.current.i === i && now - lastTap.current.t < 350) {
-                    lastTap.current = null;
-                    remove(i);
-                    return;
-                  }
-                  lastTap.current = { i, t: now };
-                  drag.current = { i, moved: false };
-                }}
-                className="absolute flex -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center rounded-full border-[3px] border-[#e11d2a] bg-white/80 font-black text-[#e11d2a] active:cursor-grabbing"
-                style={{ left: `${m.x * 100}%`, top: `${m.y * 100}%`, width: markSize(aspect), minWidth: 22, aspectRatio: '1', fontSize: 'clamp(10px, 2.2vw, 22px)' }}
-              >
-                {i + 1}
-              </span>
-            ))}
+            <AnnotCanvas list={shown} />
           </div>
         )}
       </div>

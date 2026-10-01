@@ -26,11 +26,13 @@ export interface PhotoSlot {
   hint?: string;
 }
 
+import type { Annot } from './annot';
+
 /**
- * 사진 위 번호 표시 하나 — 사진의 가로·세로에 대한 비율(0~1). 번호는 순서(1부터)다.
- * 「이 주차면에 몇 기」를 사진 위에서 보이는 자리(한백 지시 2026-10-01 — 워드·엑셀에서 손으로 그리던 것).
+ * 사진 위 표시 하나 — 번호 · 경로 선 · 동그라미 · 네모 · 글자(lib/survey/annot).
+ * 워드·엑셀에서 손으로 얹던 것을 여기서 그려 사진에 합쳐 굽는다(한백 지시 2026-10-01).
  */
-export interface Mark { x: number; y: number }
+export type Mark = Annot;
 
 /** 거점 하나 — 분전반 하나에 묶인 충전기 무리 */
 export interface SurveySpot {
@@ -150,7 +152,8 @@ export const fastOf = (s: SurveySpot) => (s.wallFast ?? 0) + (s.standFast ?? 0);
  *
  * ★받는 칸은 실제 제출본이 채운 것만이다★ (한백 지시 2026-10-01 「불필요한 것까지 들어갔다 — DB 예시를
  * 보고 필요한 것만」). 프로덕션의 플러그링크 제출본 8건을 열어 본 결과로 정했다:
- *   · 교체 대수 · 시공사 부담금 · 계통 초과거리 — 8건 모두 비어 있다 → 받지 않는다
+ *   · 시공사 부담금 · 계통 초과거리 — 8건 모두 비어 있다 → 받지 않는다
+ *   · 교체 대수 — 8건 모두 0 이었지만 앞으로 생긴다(한백) → 받는다
  *   · 계통타입 — 8건 모두 「공중공급」 → 고정
  *   · 계통연계 포함 — 분전반 이름이 「한전인입」인 현장이 Yes → 거점의 인입 방식에서 유도
  *   · 스탠드·캐노피·볼라드 — 7건이 대수와 같다 → 기본은 대수만큼
@@ -163,8 +166,9 @@ export interface PlSpot {
   id: string;
   /** 상세위치 — 「지하2층 102동 앞 G02기둥」(가이드: 단순 지상/지하주차장 금지) */
   location: string;
-  /** 대수 — 신규. 교체는 제출본에서 쓴 적이 없어 받지 않는다 */
+  /** 대수 — 신규·교체 (교체는 앞으로 생긴다 — 한백 2026-10-01) */
   qty: number | null;
+  replQty: number | null;
   /** 인입 — 한전에서 새로 끌어오는가(계통연계 견적 포함), 기존 분전반에서 따는가 */
   inlet: '한전인입' | '분전반';
   /** 분전반일 때만 — 이름 · 메인차단기 · 사용(인입점) 차단기, 「4P 100A」 꼴 */
@@ -232,13 +236,14 @@ export const PL_PHOTO_SLOTS: PhotoSlot[] = [
 
 export function newPlSpot(id: string): PlSpot {
   return {
-    id, location: '', qty: null, inlet: '분전반', panelName: '', mainBreaker: '', inletBreaker: '',
+    id, location: '', qty: null, replQty: null, inlet: '분전반', panelName: '', mainBreaker: '', inletBreaker: '',
     pipeSize: null, pipeLen: null, cableSize: null, cableLen: null,
     stand: null, canopy: null, bollard: null, note: '', photos: {}, marks: {},
   };
 }
 
-export const plQtyOf = (s: PlSpot) => s.qty ?? 0;
+/** 그 거점 충전기 수 — 신규 + 교체 */
+export const plQtyOf = (s: PlSpot) => (s.qty ?? 0) + (s.replQty ?? 0);
 /** 통신 — 충전기 최대 6기당 1개(가이드 8) */
 export const plModemOf = (s: PlSpot) => (plQtyOf(s) > 0 ? Math.ceil(plQtyOf(s) / 6) : 0);
 /** 스탠드·캐노피·볼라드 — 비웠으면 대수만큼 */

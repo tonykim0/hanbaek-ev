@@ -17,7 +17,7 @@ import { downloadBlob } from '@/lib/download';
 import { useLeaveGuard } from '@/lib/use-leave-guard';
 import { prepareImage } from '@/lib/survey/prepare-image';
 import type { PreparedImage } from '@/lib/survey/docx-kit';
-import MarkEditor, { MarkOverlay } from './MarkEditor';
+import MarkEditor, { AnnotCanvas } from './MarkEditor';
 import {
   HEC_CHECKS, fastOf, newSpot, slowOf, type Mark, type PhotoSlot, type SurveyCpo, type SurveyForm, type SurveySpot,
 } from '@/lib/survey/spec';
@@ -385,7 +385,7 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expecte
               onLoad={(e) => setAspect(e.currentTarget.naturalWidth / (e.currentTarget.naturalHeight || 1))}
               className="h-full w-full object-contain"
             />
-            {marks && marks.length > 0 && <MarkOverlay marks={marks} aspect={aspect} />}
+            {marks && marks.length > 0 && <AnnotCanvas list={marks} />}
           </span>
         ) : (
           <span className="px-3 text-center text-sm font-bold text-slate-400">
@@ -411,7 +411,7 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expecte
             onClick={() => setMarking(true)}
             className={`text-xs font-bold ${marks?.length ? 'text-[#e11d2a]' : 'text-brand-700'} hover:underline`}
           >
-            {marks?.length ? `번호 ${marks.length}개` : '번호 표시'}
+            {marks?.length ? `표시 ${marks.length}개` : '표시하기'}
           </button>
         )}
         {file && (
@@ -425,7 +425,7 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expecte
           file={file}
           marks={marks ?? []}
           expected={expected}
-          title={`${slot.label} — 설치 위치에 번호`}
+          title={slot.label}
           onClose={() => setMarking(false)}
           onDone={(m) => { onMarks(m); setMarking(false); }}
         />

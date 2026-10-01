@@ -102,7 +102,7 @@ export default function PluglinkEditor() {
     f.spots.forEach((s, i) => {
       const tag = f.spots.length > 1 ? `${i + 1}거점 · ` : '';
       if (!s.location.trim()) out.push(`${tag}상세위치가 비어 있습니다`);
-      if (plQtyOf(s) === 0) out.push(`${tag}대수가 비어 있습니다`);
+      if (plQtyOf(s) === 0) out.push(`${tag}대수(신규·교체)가 비어 있습니다`);
       if (s.inlet === '분전반' && !s.panelName.trim()) out.push(`${tag}분전반 이름이 비어 있습니다`);
       const must = ['place', 'panelOut', 'route1'];
       const empty = PL_PHOTO_SLOTS.filter((sl) => must.includes(sl.key) && !s.photos[sl.key]).map((sl) => sl.label);
@@ -181,7 +181,8 @@ export default function PluglinkEditor() {
           <div className="flex flex-col gap-5">
             <Grid>
               <Text label="상세위치" wide value={s.location} onChange={(v) => setSpot(s.id, { location: v })} placeholder="지하2층 102동 앞 G02기둥" />
-              <Num label="대수" unit="기" value={s.qty} onChange={(v) => setSpot(s.id, { qty: v })} />
+              <Num label="신규" unit="기" value={s.qty} onChange={(v) => setSpot(s.id, { qty: v })} />
+              <Num label="교체" unit="기" value={s.replQty} onChange={(v) => setSpot(s.id, { replQty: v })} />
               <div>
                 <span className="mb-1.5 block text-sm font-medium text-gray-700">인입</span>
                 <div className="flex gap-1.5">

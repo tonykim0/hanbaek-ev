@@ -61,6 +61,8 @@ export async function fillPluglinkSurvey(
   }
 
   const totalQty = form.spots.reduce((a, s) => a + plQtyOf(s), 0);
+  const totalNew = form.spots.reduce((a, s) => a + (s.qty ?? 0), 0);
+  const totalRepl = form.spots.reduce((a, s) => a + (s.replQty ?? 0), 0);
   const sum = (f: (s: PlSpot) => number | null) => form.spots.reduce((a, s) => a + (f(s) ?? 0), 0);
   /* 한전에서 새로 끌어오는 거점이 있으면 계통연계 견적을 넣는다(제출본: 분전반 「한전인입」 = Yes) */
   const kepco = form.spots.some((s) => s.inlet === '한전인입');
@@ -73,7 +75,7 @@ export async function fillPluglinkSurvey(
   await wb.set(ov, 'D4', form.surveyDate);
   await wb.set(ov, 'L4', form.siteTel);
   await wb.set(ov, 'D5', form.siteName);
-  await wb.set(ov, 'L5', `신규 (   ${totalQty || ' '}   )기, 교체 (       )기`);
+  await wb.set(ov, 'L5', `신규 (   ${totalNew || ' '}   )기, 교체 (   ${totalRepl || ' '}   )기`);
   await wb.set(ov, 'D6', form.address);
   await wb.set(ov, 'L6', form.existing.trim());
   for (let i = 0; i < MAX_SPOTS; i++) {
@@ -87,7 +89,8 @@ export async function fillPluglinkSurvey(
     await wb.set(ov, `B${r}`, s.location);
     await wb.set(ov, `F${r}`, plQtyOf(s) || '');
     await wb.set(ov, `G${r}`, 7);
-    await wb.set(ov, `H${r}`, '신규');
+    const kind = (s.qty ?? 0) > 0 && (s.replQty ?? 0) > 0 ? '신규·교체' : (s.replQty ?? 0) > 0 ? '교체' : '신규';
+    await wb.set(ov, `H${r}`, kind);
     await wb.set(ov, `I${r}`, panelOf(s));
     // 한전인입이면 차단기 칸은 서식의 빈 꼴(「P A」)을 그대로 둔다 — 제출본들이 그렇게 냈다
     if (s.inlet === '분전반') {
@@ -123,7 +126,7 @@ export async function fillPluglinkSurvey(
     const sh = sheetOf(i);
     await wb.set(sh, 'D3', s.location);
     await wb.set(sh, 'L3', panelOf(s));
-    await wb.set(sh, 'T3', `신규(   ${n(s.qty)}   )기, 교체(       )기`);
+    await wb.set(sh, 'T3', `신규(   ${n(s.qty)}   )기, 교체(   ${n(s.replQty)}   )기`);
     await wb.set(sh, 'D4', `1차측 메인 (   ${amp(s.mainBreaker)}   )A / 사용 차단기 (   ${amp(s.inletBreaker)}   )A`);
     await wb.set(sh, 'L4', `배관(   ${n(s.pipeLen)}   )m, 배선(   ${n(s.cableLen)}   )m`);
     await wb.set(sh, 'T4', `(   ${plModemOf(s) || ' '}   )기`);
@@ -153,7 +156,8 @@ export async function fillPluglinkSurvey(
 
   // ── 5. 공사내역서(입력) — 수량만. 금액은 수식이 계산한다
   const co = S.cost;
-  await wb.set(co, 'D3', totalQty || '');
+  await wb.set(co, 'D3', totalNew || '');
+  await wb.set(co, 'D4', totalRepl || '');
   await wb.set(co, 'D5', sum((s) => plFixture(s, s.canopy)) || '');
   await wb.set(co, 'D6', sum((s) => plFixture(s, s.stand)) || '');
   await wb.set(co, 'D7', sum((s) => plFixture(s, s.bollard)) || '');
