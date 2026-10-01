@@ -7,9 +7,18 @@
 import type { IntakeDraft } from '@/types/project';
 import { buildDocContext, evaluateDocs } from './doc-rules';
 
+/** 막는 문제가 어느 칸의 것인가 — 접수 화면이 그 칸을 붉게 짚고 눌러서 찾아가게 한다 */
+export type IntakeIssueField =
+  | 'name' | 'cpo' | 'contractParty' | 'powerType' | 'bizType' | 'qty' | 'termYears' | 'preNote';
+
 export interface IntakeCheck {
   /** 제출을 막는 문제 */
   errors: string[];
+  /**
+   * 같은 문제를 칸과 함께 (2026-10-01) — 단추 밑 목록만으로는 「무엇이 막는지」가 화면 위쪽
+   * 칸과 이어지지 않았다(한백 지적 「활성화가 안 되는 이유가 안 떠」). errors 와 같은 순서·같은 말이다.
+   */
+  issues: Array<{ field: IntakeIssueField; message: string }>;
   /** 제출은 되지만 알려야 하는 것 (영업비 지급조건 등) */
   warnings: string[];
   requiredCount: number;
@@ -17,7 +26,8 @@ export interface IntakeCheck {
 }
 
 export function checkDraft(draft: IntakeDraft): IntakeCheck {
-  const errors: string[] = [];
+  const issues: IntakeCheck['issues'] = [];
+  const fail = (field: IntakeIssueField, message: string) => { issues.push({ field, message }); };
   const warnings: string[] = [];
 
   /*
@@ -30,11 +40,11 @@ export function checkDraft(draft: IntakeDraft): IntakeCheck {
   const lines = Array.isArray(draft?.lines) ? draft.lines : [];
   const documents = Array.isArray(draft?.documents) ? draft.documents : [];
 
-  if (!draft?.name?.trim()) errors.push('현장명을 입력하세요.');
-  if (!draft?.cpo) errors.push('운영사를 선택하세요.');
-  if (!draft?.contractParty) errors.push('계약 주체를 선택하세요 — 회의록 종류가 여기서 정해집니다.');
-  if (!draft?.powerType) errors.push('수전 방식을 선택하세요.');
-  if (!draft?.bizType) errors.push('사업구분을 선택하세요.');
+  if (!draft?.name?.trim()) fail('name', '현장명을 입력하세요.');
+  if (!draft?.cpo) fail('cpo', '운영사를 선택하세요.');
+  if (!draft?.contractParty) fail('contractParty', '계약 주체를 선택하세요 — 회의록 종류가 여기서 정해집니다.');
+  if (!draft?.powerType) fail('powerType', '수전 방식을 선택하세요.');
+  if (!draft?.bizType) fail('bizType', '사업구분을 선택하세요.');
 
   /*
    * ★대수와 계약연수는 반드시 있어야 접수된다★ (한백 지시 2026-09-22 「막아. 계약연수랑
@@ -49,19 +59,19 @@ export function checkDraft(draft: IntakeDraft): IntakeCheck {
    * 연수는 라인마다 딸려 오므로 아래 검사가 함께 본다(5·7·10 이 아니면 거절).
    */
   if (lines.length === 0) {
-    errors.push('계약대수를 적어주세요 — 계약서의 설치수량과 계약기간이 있어야 접수됩니다.');
+    fail('qty', '계약대수를 적어주세요 — 계약서의 설치수량과 계약기간이 있어야 접수됩니다.');
   } else {
     lines.forEach((l, i) => {
-      if (!l.qty || l.qty < 1) errors.push(`계약 라인 ${i + 1}: 대수를 1 이상으로 입력하세요.`);
-      if (![5, 7, 10].includes(l.termYears)) errors.push(`계약 라인 ${i + 1}: 계약기간을 선택하세요.`);
+      if (!l.qty || l.qty < 1) fail('qty', `계약 라인 ${i + 1}: 대수를 1 이상으로 입력하세요.`);
+      if (![5, 7, 10].includes(l.termYears)) fail('termYears', `계약 라인 ${i + 1}: 계약기간을 선택하세요.`);
       if (draft.powerType === '한전불입+모자분리' && !l.powerType) {
-        errors.push(`계약 라인 ${i + 1}: 혼용 현장이므로 라인의 수전방식을 골라야 합니다.`);
+        fail('qty', `계약 라인 ${i + 1}: 혼용 현장이므로 라인의 수전방식을 골라야 합니다.`);
       }
     });
   }
 
   if (draft?.preInstall === '있음' && !draft.preNote?.trim()) {
-    errors.push('기설치 충전기가 있으므로 기설치 현황을 적어주세요.');
+    fail('preNote', '기설치 충전기가 있으므로 기설치 현황을 적어주세요.');
   }
 
   // 서류 — 조건부 규칙을 그대로 적용
@@ -97,7 +107,8 @@ export function checkDraft(draft: IntakeDraft): IntakeCheck {
    */
 
   return {
-    errors,
+    errors: issues.map((i) => i.message),
+    issues,
     warnings,
     requiredCount: required.length,
     satisfiedCount: required.length - missing.length,

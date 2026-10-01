@@ -29,7 +29,7 @@ export function Card({
 }
 
 export function Field({
-  label, required, hint, span, auto, children,
+  label, required, hint, span, auto, issue, anchor, children,
 }: {
   label: string;
   required?: boolean;
@@ -37,11 +37,18 @@ export function Field({
   span?: boolean;
   /** 판독이 채운 칸 — 사람이 고치면 표시가 사라진다 */
   auto?: boolean;
+  /**
+   * 접수를 막는 이 칸의 문제 (2026-10-01) — 있으면 칸 이름을 붉게 하고 그 밑에 그대로 적는다.
+   * 단추 밑 목록에만 있으면 화면 위쪽의 어느 칸인지 사람이 짝을 지어야 했다.
+   */
+  issue?: string;
+  /** 목록·단추가 이 칸으로 데려갈 때 쓰는 자리 이름 */
+  anchor?: string;
   children: React.ReactNode;
 }) {
   return (
-    <label className={`block ${span ? 'sm:col-span-2' : ''}`}>
-      <span className="mb-1 flex items-baseline gap-1.5 text-tiny font-bold tracking-[0.06em] text-slate-400">
+    <label id={anchor} className={`block scroll-mt-24 ${span ? 'sm:col-span-2' : ''}`}>
+      <span className={`mb-1 flex items-baseline gap-1.5 text-tiny font-bold tracking-[0.06em] ${issue ? 'text-red-700' : 'text-slate-400'}`}>
         {label}
         {required && <span className="text-red-500">*</span>}
         {auto && (
@@ -50,8 +57,13 @@ export function Field({
           </span>
         )}
       </span>
-      {children}
-      {hint && <span className="mt-1 block text-tiny text-slate-400">{hint}</span>}
+      {/* 테두리를 하나 더 두르지 않는다(화면 규칙 1) — 칸 자기 테두리를 붉게 물들인다 */}
+      <span className={`block ${issue ? '[&_input]:border-red-300 [&_select]:border-red-300 [&_input]:bg-red-50/40 [&_select]:bg-red-50/40' : ''}`}>
+        {children}
+      </span>
+      {issue
+        ? <span className="mt-1 block text-tiny font-bold text-red-700">{issue}</span>
+        : hint && <span className="mt-1 block text-tiny text-slate-400">{hint}</span>}
     </label>
   );
 }

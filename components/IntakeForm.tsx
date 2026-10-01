@@ -29,7 +29,7 @@ import { MAX_DOC_BYTES, MAX_INTAKE_ZIP_BYTES, replLabel, SPLITS_SELF_REPL } from
 import { canShrink, shrink } from '@/lib/shrink';
 import { uploadIntakeFile, uploadIntakeZip } from '@/lib/intake-upload';
 import { buildDocContext, evaluateDocs } from '@/lib/doc-rules';
-import { checkDraft } from '@/lib/intake-validate';
+import { checkDraft, type IntakeIssueField } from '@/lib/intake-validate';
 import { regionPrefixOf, withRegionPrefix } from '@/lib/region';
 import { useLeaveGuard } from '@/lib/use-leave-guard';
 // 부품은 콘솔·포털이 같이 쓴다 — 같은 일에 같은 모양이어야 접수 폼이 다른 앱처럼 보이지 않는다
@@ -311,6 +311,8 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
       setAuto(filled);
       setReview(data.review);
       setNotes(data.warnings);
+      // 판독이 못 채운 칸이 곧 할 일이다 — 바로 짚는다
+      setReveal(true);
     } catch (err) {
       setZipError((err as Error).message);
     } finally {
@@ -450,6 +452,34 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
 
   // 화면과 서버가 같은 함수를 본다 — 「왜 안 되는지」가 어긋나지 않는다
   const check = useMemo(() => checkDraft(draft), [draft]);
+
+  /*
+   * ★막힌 칸을 그 칸에서 짚는다★ (한백 지적 2026-10-01 「서류를 다 채웠어도 현장정보가
+   * 누락되면 접수 버튼이 안 켜지는데, 왜 안 되는지 안 떠」). 이유는 단추 밑 회색 목록에만
+   * 있어서, 화면 위쪽 현장정보의 어느 칸인지 사람이 짝을 지어야 했다.
+   *
+   * 빈 폼을 처음 열자마자 칸마다 붉게 칠하지는 않는다 — 아직 아무것도 안 한 사람을
+   * 나무라는 화면이 된다. ZIP 을 읽은 뒤(판독이 못 채운 칸이 곧 할 일이다)나 막힌 단추를
+   * 누른 뒤부터 짚는다.
+   */
+  const [reveal, setReveal] = useState(false);
+  const issueOf = (f: IntakeIssueField) =>
+    reveal ? check.issues.find((i) => i.field === f)?.message : undefined;
+  const anchorOf = (f: IntakeIssueField) => `intake-${f}`;
+  /** 단추 이름에 적는 칸 이름 — 막는 이유를 단추가 말한다(화면 규칙 3) */
+  const ISSUE_LABEL: Record<IntakeIssueField, string> = {
+    name: '현장명', cpo: '운영사', contractParty: '계약주체', powerType: '수전방식',
+    bizType: '사업구분', qty: '대수', termYears: '계약연수', preNote: '기설치 현황',
+  };
+  const blockedBy = [...new Set(check.issues.map((i) => ISSUE_LABEL[i.field]))];
+  /** 그 칸으로 데려가 바로 고칠 수 있게 입력칸에 커서를 둔다 */
+  const goTo = (f: IntakeIssueField) => {
+    setReveal(true);
+    const el = document.getElementById(anchorOf(f));
+    if (!el) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.querySelector<HTMLElement>('input, select, textarea')?.focus({ preventScroll: true });
+  };
 
   /** 칸 이름 — 오류 문구에 쓴다 */
   const labelOf = (kind: string) => docs.find((d) => d.key === kind)?.label ?? kind;
@@ -662,10 +692,10 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
 
       <Card title="현장정보">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="운영사" required auto={auto.has('cpo')}>
+          <Field label="운영사" required auto={auto.has('cpo')} issue={issueOf('cpo')} anchor={anchorOf('cpo')}>
             <Select value={cpo} onChange={(v) => { setCpo(v as CpoName); touched('cpo'); }} options={CPOS} />
           </Field>
-          <Field label="현장명" required auto={auto.has('name')}>
+          <Field label="현장명" required auto={auto.has('name')} issue={issueOf('name')} anchor={anchorOf('name')}>
             <input value={name} onChange={(e) => { setName(e.target.value); touched('name'); }} placeholder="서울 강남 행복아파트" className={FIELD} />
             {/*
               * 판독이 채운 이름에는 이미 지역이 붙어 있다(lib/region). 사람이 직접 칠 때만
@@ -690,7 +720,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
           <Field label="총 주차면수" auto={auto.has('parkTotal')}>
             <input value={parkTotal} onChange={(e) => { setParkTotal(e.target.value.replace(/\D/g, '')); touched('parkTotal'); }} inputMode="numeric" placeholder="120" className={FIELD} />
           </Field>
-          <Field label="계약연수" required auto={auto.has('termYears')}>
+          <Field label="계약연수" required auto={auto.has('termYears')} issue={issueOf('termYears')} anchor={anchorOf('termYears')}>
             <select
               value={termYears}
               onChange={(e) => { setTermYears(Number(e.target.value)); touched('termYears'); }}
@@ -699,13 +729,15 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
               {TERMS.map((t) => <option key={t} value={t}>{t}년</option>)}
             </select>
           </Field>
-          <Field label="계약주체" required auto={auto.has('contractParty')} hint="회의록 종류가 여기서 정해집니다">
+          <Field label="계약주체" required auto={auto.has('contractParty')} hint="회의록 종류가 여기서 정해집니다" issue={issueOf('contractParty')} anchor={anchorOf('contractParty')}>
             <Select value={contractParty ?? ''} onChange={(v) => { setContractParty((v || null) as ContractParty | null); touched('contractParty'); }} options={PARTIES} blank />
           </Field>
           <Field
             label="사업구분"
             required
             auto={auto.has('bizType')}
+            issue={issueOf('bizType')}
+            anchor={anchorOf('bizType')}
             hint={bizType === '자체투자' ? '제자리교체·신규위치를 대수 칸에서 나눕니다'
               : bizType === '기설치 연동' ? '이미 깔린 충전기를 운영사 시스템에 붙이는 사업입니다' : undefined}
           >
@@ -716,7 +748,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
               blank
             />
           </Field>
-          <Field label="수전방식" required auto={auto.has('powerType')}>
+          <Field label="수전방식" required auto={auto.has('powerType')} issue={issueOf('powerType')} anchor={anchorOf('powerType')}>
             <Select value={powerType ?? ''} onChange={(v) => { setPowerType((v || null) as PowerType | null); touched('powerType'); }} options={POWERS} blank />
           </Field>
           <Field
@@ -724,6 +756,8 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
             required
             span
             auto={auto.has('qty')}
+            issue={issueOf('qty')}
+            anchor={anchorOf('qty')}
             hint={
               replRows.length > 1 || powerCols.length > 1
                 ? '단가가 교체유형·수전방식별로 갈립니다 — 칸마다 몇 기인지 적어주세요'
@@ -813,9 +847,16 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
       )}
 
       <div className="flex flex-wrap items-center gap-3">
+        {/*
+          * ★막혔어도 누를 수 있다 — 누르면 그 칸으로 데려간다★ (한백 지적 2026-10-01). 흐린 단추는
+          * 눌러 볼 수도 없어서, 이름에 「n건 남음」이 있어도 무엇을 고치라는지 찾아갈 길이 없었다.
+          * 이름이 무엇이 비었는지 말하고(화면 규칙 3), 누르면 첫 칸으로 가 붉게 짚는다.
+          * 올리는 중·소속 없음은 사람이 지금 고칠 수 있는 일이 아니라 그대로 잠근다.
+          */}
         <Btn
-          onClick={() => void submit()}
-          disabled={check.errors.length > 0 || uploading ||   /* 임시 자리로 올라가는 중(picking)에도 잠근다 — 올리던 파일이 빠진 채 접수됐다 (감사 M25) */ (!isAdmin && !org)}
+          kind={check.issues.length > 0 && !uploading ? 'side' : 'do'}
+          onClick={() => (check.issues.length > 0 ? goTo(check.issues[0].field) : void submit())}
+          disabled={uploading ||   /* 임시 자리로 올라가는 중(picking)에도 잠근다 — 올리던 파일이 빠진 채 접수됐다 (감사 M25) */ (!isAdmin && !org)}
         >
           {/*
             * ★못 하는 이유를 단추 이름에 적는다★ (화면 규칙 3 · 한백 지적 2026-09-14
@@ -823,7 +864,12 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
             * 안 막고 있었고, 실제로 막던 것은 안 고른 별표 칸이었다. 단추가 흐리기만 하고
             * 까닭을 안 적으니 앞서 고친 서류 쪽이 안 된 줄로 읽혔다).
             */}
-          {busy ?? (check.errors.length > 0 ? `${check.errors.length}건 남음 — 접수 불가` : '접수하기')}
+          {busy
+            /* 올리는 중에 흐린 「접수하기」만 서 있으면 왜 안 눌리는지 모른다 */
+            ?? (Object.keys(picking).length > 0 ? '서류 올리는 중 — 끝나면 접수할 수 있습니다'
+              : blockedBy.length > 0
+                ? `접수 불가 — ${blockedBy.slice(0, 3).join('·')}${blockedBy.length > 3 ? ` 외 ${blockedBy.length - 3}건` : ''} 확인`
+                : '접수하기')}
         </Btn>
         {!isAdmin && !org && (
           <span className="text-xs text-slate-400">소속이 없는 계정이라 접수할 수 없습니다</span>
@@ -833,9 +879,23 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
         * 무엇이 막는지 그 자리에 적는다 — 「별표 칸을 채우세요」로는 어느 칸인지 알 수 없다.
         * 검증이 내는 문구를 그대로 쓴다(lib/intake-validate) — 서버가 거절할 때와 같은 말이다.
         */}
-      {check.errors.length > 0 && (
-        <ul className="flex flex-col gap-1 rounded-xl border-l-[3px] border-slate-300 bg-slate-50 px-4 py-3 text-xs font-semibold leading-relaxed text-slate-600">
-          {check.errors.map((e) => <li key={e}>{e}</li>)}
+      {/*
+        * 줄마다 누르면 그 칸으로 간다 — 목록은 「무엇이」를, 칸은 「어디서」를 말한다.
+        * 회색이던 것을 붉게 바꿨다: 접수를 막는 것이다(필수 서류처럼 안 막는 것은 아래 주황).
+        */}
+      {check.issues.length > 0 && (
+        <ul className="flex flex-col gap-1 rounded-xl border-l-[3px] border-red-400 bg-red-50 px-4 py-3 text-xs font-semibold leading-relaxed text-red-800">
+          {check.issues.map((i) => (
+            <li key={i.message}>
+              <button
+                type="button"
+                onClick={() => goTo(i.field)}
+                className="text-left underline decoration-red-300 underline-offset-2 transition hover:decoration-red-600"
+              >
+                {i.message}
+              </button>
+            </li>
+          ))}
         </ul>
       )}
 

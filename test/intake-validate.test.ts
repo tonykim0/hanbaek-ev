@@ -98,3 +98,20 @@ describe('checkDraft — 적힌 대수가 틀리면 그대로 막는다', () => 
     expect(checkDraft(basic({ lines: [line()] })).errors).toEqual([]);
   });
 });
+
+describe('checkDraft — 막는 문제는 어느 칸의 것인지 함께 말한다', () => {
+  it('빈 칸마다 그 칸 이름이 붙고, 말은 errors 와 같은 순서다', () => {
+    const r = checkDraft(basic({ name: ' ', powerType: null, bizType: null, lines: [] }));
+    expect(r.issues.map((i) => i.field)).toEqual(['name', 'powerType', 'bizType', 'qty']);
+    expect(r.issues.map((i) => i.message)).toEqual(r.errors);
+  });
+
+  it('라인의 대수·연수는 대수·계약연수 칸으로 간다', () => {
+    const r = checkDraft(basic({ lines: [{ termYears: 3, qty: 0, powerType: '모자분리', replType: null, memo: null }] }));
+    expect(r.issues.map((i) => i.field)).toEqual(['qty', 'termYears']);
+  });
+
+  it('다 채웠으면 막는 것이 없다', () => {
+    expect(checkDraft(basic()).issues).toEqual([]);
+  });
+});
