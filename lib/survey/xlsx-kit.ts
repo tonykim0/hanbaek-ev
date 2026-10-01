@@ -60,6 +60,30 @@ const elems = (d: Document | Element, ns: string, local: string) => Array.from(d
 interface SheetInfo { name: string; path: string; el: Element }
 
 /**
+ * 칸 비율로 자를 창 — 잘라 낼 몫(왼·위·오른·아래, 0~1). 사진이 칸보다 납작하면 양옆을, 길쭉하면
+ * 위아래를 자른다. 창은 가운데가 기본이고, 표시 범위(focus)가 있으면 그것이 들어오게 옮긴다 —
+ * 창보다 넓으면 표시 범위의 가운데에 맞춘다. 사진 밖으로는 나가지 않는다.
+ */
+export function crop(
+  imgAspect: number,
+  boxAspect: number,
+  focus?: { x0: number; y0: number; x1: number; y1: number }
+): { l: number; t: number; r: number; b: number } {
+  const winW = imgAspect > boxAspect ? boxAspect / imgAspect : 1;
+  const winH = imgAspect > boxAspect ? 1 : imgAspect / boxAspect;
+  const place = (win: number, f0?: number, f1?: number) => {
+    let start = (1 - win) / 2;
+    if (f0 !== undefined && f1 !== undefined) {
+      start = f1 - f0 <= win ? Math.min(Math.max(start, f1 - win), f0) : (f0 + f1) / 2 - win / 2;
+    }
+    return Math.min(Math.max(0, start), 1 - win);
+  };
+  const l = place(winW, focus?.x0, focus?.x1);
+  const t = place(winH, focus?.y0, focus?.y1);
+  return { l, t, r: Math.max(0, 1 - l - winW), b: Math.max(0, 1 - t - winH) };
+}
+
+/**
  * 열린 통합 문서 — 시트 XML 을 들고 있다가 save 에 한꺼번에 쓴다.
  * 시트는 이름으로 부른다(사람이 서식에서 보는 이름 그대로).
  */
@@ -265,6 +289,77 @@ export class Workbook {
     if (dn) dn.textContent = `'${sheetName.replace(/'/g, "''")}'!${range}`;
   }
 
+  /**
+   * 줄 묶음(from~to)을 그 바로 아래에 times 번 이어 붙인다 — 칸 모양·높이·병합까지 그대로.
+   * 사진대지의 사진 짝(25줄)이 서식에 여섯뿐인데 제출본은 인입라인만 18장까지 낸다(lib/survey/spec).
+   * ★수식이 있는 줄은 베끼지 않는다★ — 상대 참조를 옮겨 적는 일까지 하지 않으려고, 있으면 멈춘다.
+   * 붙일 자리에 이미 줄이 있으면 멈춘다(서식이 바뀐 것이다).
+   */
+  async appendRowBlock(sheetName: string, from: number, to: number, times: number): Promise<void> {
+    if (times <= 0) return;
+    const d = await this.doc(this.sheet(sheetName).path);
+    const data = elems(d, S_NS, 'sheetData')[0];
+    const rowNo = (r: Element) => Number(r.getAttribute('r'));
+    const src = elems(data, S_NS, 'row').filter((r) => rowNo(r) >= from && rowNo(r) <= to);
+    if (src.some((r) => elems(r, S_NS, 'f').length > 0)) throw new Error(`「${sheetName}」 ${from}~${to}행에 수식이 있어 늘릴 수 없습니다.`);
+    const h = to - from + 1;
+    const last = to + h * times;
+    if (elems(data, S_NS, 'row').some((r) => rowNo(r) > to && rowNo(r) <= last)) {
+      throw new Error(`「${sheetName}」 ${to}행 아래가 비어 있지 않아 사진 칸을 늘릴 수 없습니다 — 서식이 바뀌었는지 확인이 필요합니다.`);
+    }
+    const after = elems(data, S_NS, 'row').find((r) => rowNo(r) > last) ?? null;
+    const shiftRef = (ref: string, off: number) => {
+      const { col, row } = splitRef(ref);
+      return `${colName(col)}${row + off}`;
+    };
+    const mc = elems(d, S_NS, 'mergeCells')[0];
+    const merges = mc ? elems(mc, S_NS, 'mergeCell').filter((m) => {
+      const [a, b] = (m.getAttribute('ref') ?? '').split(':').map(splitRef);
+      return a.row >= from && b.row <= to;
+    }) : [];
+    for (let k = 1; k <= times; k++) {
+      const off = h * k;
+      for (const r of src) {
+        const copy = r.cloneNode(true) as Element;
+        copy.setAttribute('r', String(rowNo(r) + off));
+        for (const c of elems(copy, S_NS, 'c')) c.setAttribute('r', shiftRef(c.getAttribute('r') ?? 'A1', off));
+        data.insertBefore(copy, after);
+      }
+      for (const m of merges) {
+        const copy = m.cloneNode(true) as Element;
+        copy.setAttribute('ref', (m.getAttribute('ref') ?? '').split(':').map((x) => shiftRef(x, off)).join(':'));
+        mc!.appendChild(copy);
+      }
+    }
+    if (mc) mc.setAttribute('count', String(elems(mc, S_NS, 'mergeCell').length));
+    const dim = elems(d, S_NS, 'dimension')[0];
+    const ref = dim?.getAttribute('ref');
+    if (dim && ref?.includes(':')) {
+      const [a, b] = ref.split(':');
+      const end = splitRef(b);
+      if (end.row < last) dim.setAttribute('ref', `${a}:${colName(end.col)}${last}`);
+    }
+  }
+
+  /** 손으로 넣은 쪽 나눔(가로) — 그 줄 다음에서 쪽이 넘어간다. 서식에 이미 있는 나눔 자리를 고친다 */
+  async setRowBreaks(sheetName: string, rows: number[]): Promise<void> {
+    const d = await this.doc(this.sheet(sheetName).path);
+    const rb = elems(d, S_NS, 'rowBreaks')[0];
+    if (!rb) throw new Error(`「${sheetName}」에 쪽 나눔 자리가 없습니다 — 서식이 바뀌었는지 확인이 필요합니다.`);
+    const proto = elems(rb, S_NS, 'brk')[0];
+    const max = proto?.getAttribute('max') ?? '16383';
+    for (const b of elems(rb, S_NS, 'brk')) rb.removeChild(b);
+    for (const r of rows) {
+      const b = d.createElementNS(S_NS, 'brk');
+      b.setAttribute('id', String(r));
+      b.setAttribute('max', max);
+      b.setAttribute('man', '1');
+      rb.appendChild(b);
+    }
+    rb.setAttribute('count', String(rows.length));
+    rb.setAttribute('manualBreakCount', String(rows.length));
+  }
+
   /** 칸 크기(EMU) — 열 폭(글자 수)·행 높이(pt)를 쌓는다. 열 폭은 작게 잡는 쪽으로(넘치지 않게) */
   private async geometry(d: Document) {
     const fmt = elems(d, S_NS, 'sheetFormatPr')[0];
@@ -287,24 +382,22 @@ export class Workbook {
   }
 
   /**
-   * 사진을 칸 범위(「A6:L28」) 안에 비율을 지켜 가운데 넣는다.
-   * 칸 크기는 어림이라(엑셀의 글꼴 폭에 따라 다르다) 범위의 92% 안에 들인다.
+   * 사진을 칸 범위(「A6:L28」)에 넣는다 — 두 방식:
+   *   contain  비율을 지켜 범위 안 가운데(92% — 칸 크기는 어림이라 넘치지 않게). 도면처럼 잘리면 안 되는 것
+   *   fill     ★범위를 꽉 채운다★ (한백 지시 2026-10-01 「사진이 각 엑셀칸에 맞춰서 사이즈 조정」).
+   *            제출본들은 칸 모서리에 맞춰 사진을 늘려 붙였다(2026 사진 451장 중 대부분이 A6→L28 처럼 칸에
+   *            꼭 맞고, 가로세로가 1.25~2.2배 일그러졌다). 늘리지 않고 칸 비율로 자른다 — 사진 위 표시가
+   *            있으면 그 자리가 남게 창을 옮긴다(img.focus). 자르기는 엑셀의 「자르기」(srcRect)라 원본이
+   *            파일에 그대로 있고, 받은 사람이 엑셀에서 자른 자리를 다시 고를 수 있다.
+   *            칸 모서리에 붙여 두어(twoCellAnchor) 칸 크기를 어림한 오차와 상관없이 칸에 맞는다.
    */
-  async addPicture(sheetName: string, range: string, img: PreparedImage): Promise<void> {
+  async addPicture(sheetName: string, range: string, img: PreparedImage, mode: 'contain' | 'fill' = 'contain'): Promise<void> {
     const s = this.sheet(sheetName);
     const d = await this.doc(s.path);
     const [a, b] = range.split(':').map(splitRef);
     const { colW, rowH } = await this.geometry(d);
     let boxW = 0; for (let c = a.col; c <= b.col; c++) boxW += colW(c);
     let boxH = 0; for (let r = a.row; r <= b.row; r++) boxH += rowH(r);
-    const scale = Math.min((boxW * 0.92) / img.width, (boxH * 0.92) / img.height);
-    const cx = Math.round(img.width * scale);
-    const cy = Math.round(img.height * scale);
-    // 가운데 자리 — 시작 칸에서 얼마나 들어가는지를 칸을 넘어가며 센다
-    let offX = Math.round((boxW - cx) / 2); let col = a.col;
-    while (offX >= colW(col) && col < b.col) { offX -= colW(col); col += 1; }
-    let offY = Math.round((boxH - cy) / 2); let row = a.row;
-    while (offY >= rowH(row) && row < b.row) { offY -= rowH(row); row += 1; }
 
     const drawingPath = await this.drawingOf(s.path);
     const dd = await this.doc(drawingPath);
@@ -314,7 +407,28 @@ export class Workbook {
     const rid = `rIdSurveyPic${this.picN}`;
     await this.addRel(drawingPath, rid, `${REL}/image`, `../media/${media.slice('xl/media/'.length)}`);
     const id = 5000 + this.picN;
-    const xml = `<xdr:oneCellAnchor xmlns:xdr="${XDR_NS}" xmlns:a="${A_NS}" xmlns:r="${R_NS}"><xdr:from><xdr:col>${col - 1}</xdr:col><xdr:colOff>${offX}</xdr:colOff><xdr:row>${row - 1}</xdr:row><xdr:rowOff>${offY}</xdr:rowOff></xdr:from><xdr:ext cx="${cx}" cy="${cy}"/><xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="사진 ${this.picN}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/></xdr:oneCellAnchor>`;
+    const ns = `xmlns:xdr="${XDR_NS}" xmlns:a="${A_NS}" xmlns:r="${R_NS}"`;
+    const pic = (cx: number, cy: number, crop: string) => `<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="사진 ${this.picN}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${rid}"/>${crop}<a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic><xdr:clientData/>`;
+
+    let xml: string;
+    if (mode === 'fill') {
+      // 칸 테두리가 사진에 덮이지 않게 둘레를 2px 남긴다
+      const inset = 2 * EMU_PER_PX;
+      const w = crop(img.width / img.height, (boxW - 2 * inset) / (boxH - 2 * inset), img.focus);
+      const pct = (v: number) => Math.round(v * 100000);
+      const src = `<a:srcRect l="${pct(w.l)}" t="${pct(w.t)}" r="${pct(w.r)}" b="${pct(w.b)}"/>`;
+      xml = `<xdr:twoCellAnchor ${ns}><xdr:from><xdr:col>${a.col - 1}</xdr:col><xdr:colOff>${inset}</xdr:colOff><xdr:row>${a.row - 1}</xdr:row><xdr:rowOff>${inset}</xdr:rowOff></xdr:from><xdr:to><xdr:col>${b.col - 1}</xdr:col><xdr:colOff>${Math.max(0, colW(b.col) - inset)}</xdr:colOff><xdr:row>${b.row - 1}</xdr:row><xdr:rowOff>${Math.max(0, Math.round(rowH(b.row)) - inset)}</xdr:rowOff></xdr:to>${pic(Math.round(boxW - 2 * inset), Math.round(boxH - 2 * inset), src)}</xdr:twoCellAnchor>`;
+    } else {
+      const scale = Math.min((boxW * 0.92) / img.width, (boxH * 0.92) / img.height);
+      const cx = Math.round(img.width * scale);
+      const cy = Math.round(img.height * scale);
+      // 가운데 자리 — 시작 칸에서 얼마나 들어가는지를 칸을 넘어가며 센다
+      let offX = Math.round((boxW - cx) / 2); let col = a.col;
+      while (offX >= colW(col) && col < b.col) { offX -= colW(col); col += 1; }
+      let offY = Math.round((boxH - cy) / 2); let row = a.row;
+      while (offY >= rowH(row) && row < b.row) { offY -= rowH(row); row += 1; }
+      xml = `<xdr:oneCellAnchor ${ns}><xdr:from><xdr:col>${col - 1}</xdr:col><xdr:colOff>${offX}</xdr:colOff><xdr:row>${row - 1}</xdr:row><xdr:rowOff>${offY}</xdr:rowOff></xdr:from><xdr:ext cx="${cx}" cy="${cy}"/>${pic(cx, cy, '')}</xdr:oneCellAnchor>`;
+    }
     const node = parse(xml).documentElement;
     dd.documentElement.appendChild(dd.importNode(node, true));
   }

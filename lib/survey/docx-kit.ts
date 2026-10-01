@@ -22,6 +22,8 @@ export interface PreparedImage {
   bytes: Uint8Array;
   width: number;
   height: number;
+  /** 사진 위 표시가 든 자리(비율 0~1) — 칸에 맞춰 자를 때 이 자리는 남긴다(xlsx-kit addPicture fill) */
+  focus?: { x0: number; y0: number; x1: number; y1: number };
 }
 
 export const childrenNamed = (el: Element, local: string): Element[] =>

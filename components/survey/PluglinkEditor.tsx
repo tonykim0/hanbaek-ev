@@ -5,21 +5,23 @@
  *
  * 사진대지 화면(SurveyEditor)과 같은 길이다 — 브라우저 안에서 사진을 줄여 서식에 넣고 내려받는다.
  * ★받는 칸은 실제 제출본이 채운 것만이다★ (lib/survey/spec 의 플러그링크 머리말 — 프로덕션 제출본
- * 8건에서 정했다). 나머지(통신·기자재·계통연계·계통타입·전기안전점검 수량)는 셈하거나 고정한다.
+ * 8건에서 정하고 내 컴퓨터의 제출본 349곳으로 다시 봤다). 나머지(통신·기자재·계통연계·전기안전점검
+ * 수량)는 셈한다.
  * 금액은 서식의 수식이 계산한다.
  */
 import { useMemo, useState, type ReactNode } from 'react';
 import { Section, contractInputClass } from '@/components/contracts/FormControls';
-import { Alerts, Btn, Choice } from '@/components/ui';
+import { Alerts, Btn, Choice, Picks } from '@/components/ui';
 import { downloadBlob } from '@/lib/download';
 import { useLeaveGuard } from '@/lib/use-leave-guard';
 import { prepareImage } from '@/lib/survey/prepare-image';
 import type { PreparedImage } from '@/lib/survey/docx-kit';
 import { fillPluglinkSurvey, plSurveyFileName } from '@/lib/survey/fill-pluglink';
 import {
-  PL_PHOTO_SLOTS, newPlSpot, plModemOf, plQtyOf, type PhotoSlot, type PlEtc, type PlForm, type PlSpot,
+  PL_ETC_PRESETS, PL_PHOTO_SLOTS, newPlSpot, plModemOf, plQtyOf, slotFiles,
+  type PhotoSlot, type PlEtc, type PlForm, type PlSpot,
 } from '@/lib/survey/spec';
-import { PhotoBox, nextId, num, today } from './SurveyEditor';
+import { PhotoBox, PhotoSlots, nextId, num, today } from './SurveyEditor';
 
 const CABLE_SIZES = [6, 10, 16, 25, 35, 50, 70, 95, 120, 150];
 const PIPE_SIZES = [16, 22, 28, 36, 42, 54, 70, 82, 104];
@@ -75,7 +77,8 @@ export default function PluglinkEditor() {
     surveyor: '', existing: '', siteNote: '',
     roadCutM: null, roadCutPrice: null, digM: null, digPrice: null,
     // 제출본에 나온 기타비용 둘 — 단가는 서식 값(인건비 250,000)과 제출본의 IP전주 값
-    etc: [{ spec: '인건비', qty: null, price: 250000 }, { spec: 'IP전주', qty: null, price: 250000 }],
+    etc: [{ spec: '인건비', qty: null, price: 250000 }, { spec: 'IP전주', qty: null, price: 300000 }],
+    gridType: '공중공급',
     safetyCheck: true,
     overview: null, plan: null, planMarks: [],
     spots: [newPlSpot(nextId())],
@@ -104,8 +107,8 @@ export default function PluglinkEditor() {
       if (!s.location.trim()) out.push(`${tag}상세위치가 비어 있습니다`);
       if (plQtyOf(s) === 0) out.push(`${tag}대수(신규·교체)가 비어 있습니다`);
       if (s.inlet === '분전반' && !s.panelName.trim()) out.push(`${tag}분전반 이름이 비어 있습니다`);
-      const must = ['place', 'panelOut', 'route1'];
-      const empty = PL_PHOTO_SLOTS.filter((sl) => must.includes(sl.key) && !s.photos[sl.key]).map((sl) => sl.label);
+      const must = ['place', 'panelOut', 'route'];
+      const empty = PL_PHOTO_SLOTS.filter((sl) => must.includes(sl.key) && slotFiles(s.photos, sl).length === 0).map((sl) => sl.label);
       if (empty.length) out.push(`${tag}사진 비어 있음 — ${empty.join(', ')}`);
     });
     return out;
@@ -122,10 +125,10 @@ export default function PluglinkEditor() {
       for (const s of f.spots) {
         spots[s.id] = {};
         for (const sl of PL_PHOTO_SLOTS) {
-          const file = s.photos[sl.key];
-          if (!file) continue;
-          spots[s.id][sl.key] = await prepareImage(file, s.marks[sl.key] ?? []);
-          tick();
+          for (const { key, file } of slotFiles(s.photos, sl)) {
+            spots[s.id][key] = await prepareImage(file, s.marks[key] ?? [], 'red');
+            tick();
+          }
         }
       }
       const overview = f.overview ? await prepareImage(f.overview) : undefined;
@@ -171,6 +174,7 @@ export default function PluglinkEditor() {
               marks={f.planMarks}
               onMarks={(m) => set({ planMarks: m })}
               expected={f.spots.reduce((n, s) => n + plQtyOf(s), 0)}
+              charger
             />
           </div>
         </div>
@@ -213,35 +217,14 @@ export default function PluglinkEditor() {
             </Grid>
             <div>
               <span className="mb-2 block text-sm font-medium text-gray-700">사진대지</span>
-              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                {PL_PHOTO_SLOTS.map((sl, k) => (
-                  <PhotoBox
-                    key={sl.key}
-                    slot={sl}
-                    file={s.photos[sl.key] ?? null}
-                    onFiles={(files) => {
-                      // 여러 장이면 이 칸부터 빈 칸 순서대로(사진대지 화면과 같은 규칙)
-                      const next = { ...s.photos, [sl.key]: files[0] };
-                      const rest = files.slice(1);
-                      for (const later of PL_PHOTO_SLOTS.slice(k + 1)) {
-                        if (rest.length === 0) break;
-                        if (!next[later.key]) next[later.key] = rest.shift()!;
-                      }
-                      const marks = { ...s.marks };
-                      for (const key of Object.keys(next)) if (next[key] !== s.photos[key]) delete marks[key];
-                      setSpot(s.id, { photos: next, marks });
-                    }}
-                    onClear={() => {
-                      const marks = { ...s.marks };
-                      delete marks[sl.key];
-                      setSpot(s.id, { photos: { ...s.photos, [sl.key]: null }, marks });
-                    }}
-                    marks={s.marks[sl.key] ?? []}
-                    onMarks={(m) => setSpot(s.id, { marks: { ...s.marks, [sl.key]: m } })}
-                    expected={plQtyOf(s)}
-                  />
-                ))}
-              </div>
+              <PhotoSlots
+                slots={PL_PHOTO_SLOTS}
+                photos={s.photos}
+                marks={s.marks}
+                onChange={(p) => setSpot(s.id, p)}
+                expected={plQtyOf(s)}
+                style="red"
+              />
             </div>
             {f.spots.length > 1 && (
               <div className="flex justify-end">
@@ -282,12 +265,31 @@ export default function PluglinkEditor() {
                 </div>
               ))}
               {f.etc.length < 10 && (
-                <div>
+                <div className="flex flex-wrap items-center gap-2">
                   <Btn size="sm" kind="quiet" onClick={() => set({ etc: [...f.etc, { spec: '', qty: null, price: null }] })}>항목 추가</Btn>
+                  <Picks
+                    options={PL_ETC_PRESETS.map((p) => p.spec).filter((spec) => !f.etc.some((e) => e.spec.trim() === spec))}
+                    onPick={(spec) => {
+                      const p = PL_ETC_PRESETS.find((x) => x.spec === spec);
+                      // 빈 줄이 있으면 거기에, 없으면 새 줄로
+                      const blank = f.etc.findIndex((e) => !e.spec.trim());
+                      const row = { spec, qty: null, price: p?.price ?? null };
+                      set({ etc: blank >= 0 ? f.etc.map((e, k) => (k === blank ? row : e)) : [...f.etc, row] });
+                    }}
+                  />
                 </div>
               )}
             </div>
           </div>
+          {f.spots.some((s) => s.inlet === '한전인입') && (
+            <div>
+              <span className="mb-1.5 block text-sm font-medium text-gray-700">계통타입</span>
+              <div className="flex gap-1.5">
+                <Choice on={f.gridType === '공중공급'} onClick={() => set({ gridType: '공중공급' })}>공중공급</Choice>
+                <Choice on={f.gridType === '지중공급'} onClick={() => set({ gridType: '지중공급' })}>지중공급</Choice>
+              </div>
+            </div>
+          )}
           <div>
             <span className="mb-1.5 block text-sm font-medium text-gray-700">전기안전점검 수수료</span>
             <div className="flex gap-1.5">

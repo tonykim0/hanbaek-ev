@@ -15,11 +15,13 @@ import { Alerts, Btn, Choice } from '@/components/ui';
 import { useFileDragging } from '@/components/DocFiles';
 import { downloadBlob } from '@/lib/download';
 import { useLeaveGuard } from '@/lib/use-leave-guard';
-import { prepareImage } from '@/lib/survey/prepare-image';
+import { prepareCollage, prepareImage } from '@/lib/survey/prepare-image';
 import type { PreparedImage } from '@/lib/survey/docx-kit';
+import type { NumStyle } from '@/lib/survey/annot';
 import MarkEditor, { AnnotCanvas } from './MarkEditor';
 import {
-  HEC_CHECKS, fastOf, newSpot, slowOf, type Mark, type PhotoSlot, type SurveyCpo, type SurveyForm, type SurveySpot,
+  HEC_CHECKS, fastOf, markStyleOf, newSpot, slotFiles, slowOf, subKey,
+  type Mark, type PhotoSlot, type SurveyCpo, type SurveyForm, type SurveySpot,
 } from '@/lib/survey/spec';
 
 export interface SurveyEditorProps {
@@ -51,6 +53,7 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
   const [spots, setSpots] = useState<SurveySpot[]>(() => [newSpot(nextId())]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const style = markStyleOf(cpo);
 
   const photoCount = spots.reduce((n, s) => n + Object.values(s.photos).filter(Boolean).length, 0);
   useLeaveGuard(photoCount > 0 || busy !== null, '넣은 사진과 값은 저장되지 않습니다 — 나가면 사라집니다. 나가시겠습니까?');
@@ -71,7 +74,7 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
         const qty = (s.wallSlow ?? 0) + (s.wallFast ?? 0) + (s.standSlow ?? 0) + (s.standFast ?? 0);
         if (qty === 0) out.push(`${tag}충전기 대수가 비어 있습니다`);
       }
-      const empty = slots.filter((sl) => !s.photos[sl.key]).map((sl) => sl.label);
+      const empty = slots.filter((sl) => slotFiles(s.photos, sl).length === 0).map((sl) => sl.label);
       if (empty.length) out.push(`${tag}사진 ${empty.length}칸 비어 있음 — ${empty.join(', ')}`);
     });
     return out;
@@ -87,10 +90,18 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
       for (const s of spots) {
         images[s.id] = {};
         for (const sl of slots) {
-          const f = s.photos[sl.key];
-          if (!f) continue;
-          images[s.id][sl.key] = await prepareImage(f, s.marks[sl.key] ?? []);
-          done += 1;
+          const list = slotFiles(s.photos, sl);
+          if (list.length === 0) continue;
+          if (sl.collage) {
+            // 서식 칸이 하나뿐인 자리 — 여러 장을 한 장으로 모아 그 칸에 넣는다
+            images[s.id][sl.key] = await prepareCollage(list.map(({ key, file }) => ({ file, marks: s.marks[key] ?? [] })), style);
+            done += list.length;
+          } else {
+            for (const { key, file } of list) {
+              images[s.id][key] = await prepareImage(file, s.marks[key] ?? [], style);
+              done += 1;
+            }
+          }
           setBusy(`사진 준비 중 ${done}/${total}`);
         }
       }
@@ -126,6 +137,7 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
           spot={s}
           slots={slots}
           variant={variant}
+          style={style}
           onChange={(p) => patch(s.id, p)}
           onRemove={spots.length > 1 ? () => setSpots((l) => l.filter((x) => x.id !== s.id)) : undefined}
         />
@@ -155,12 +167,13 @@ export function num(v: string): number | null {
 }
 
 function SpotCard({
-  n, spot, slots, variant, onChange, onRemove,
+  n, spot, slots, variant, style, onChange, onRemove,
 }: {
   n: number;
   spot: SurveySpot;
   slots: PhotoSlot[];
   variant: 'hec' | 'ledger';
+  style: NumStyle;
   onChange: (p: Partial<SurveySpot>) => void;
   onRemove?: () => void;
 }) {
@@ -243,39 +256,14 @@ function SpotCard({
 
         <div>
           <span className="mb-2 block text-sm font-medium text-gray-700">사진</span>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {slots.map((sl, i) => (
-              <PhotoBox
-                key={sl.key}
-                slot={sl}
-                file={spot.photos[sl.key] ?? null}
-                onFiles={(files) => {
-                  /*
-                   * ★여러 장이면 이 칸부터 빈 칸 순서대로★ — 현장 사진은 한꺼번에 고르는 일이 많다.
-                   * 첫 장은 이 칸(채워져 있어도 바꾼다), 나머지는 뒤의 빈 칸에. 넘치는 장은 버린다.
-                   */
-                  const next = { ...spot.photos, [sl.key]: files[0] };
-                  const rest = files.slice(1);
-                  for (const later of slots.slice(i + 1)) {
-                    if (rest.length === 0) break;
-                    if (!next[later.key]) next[later.key] = rest.shift()!;
-                  }
-                  // 사진이 바뀐 칸의 번호는 걷는다 — 다른 사진 위의 자리는 뜻이 없다
-                  const marks = { ...spot.marks };
-                  for (const k of Object.keys(next)) if (next[k] !== spot.photos[k]) delete marks[k];
-                  onChange({ photos: next, marks });
-                }}
-                onClear={() => {
-                  const marks = { ...spot.marks };
-                  delete marks[sl.key];
-                  onChange({ photos: { ...spot.photos, [sl.key]: null }, marks });
-                }}
-                marks={spot.marks[sl.key] ?? []}
-                onMarks={(m) => onChange({ marks: { ...spot.marks, [sl.key]: m } })}
-                expected={variant === 'ledger' ? spot.qty : slowOf(spot) + fastOf(spot)}
-              />
-            ))}
-          </div>
+          <PhotoSlots
+            slots={slots}
+            photos={spot.photos}
+            marks={spot.marks}
+            onChange={onChange}
+            expected={variant === 'ledger' ? spot.qty : slowOf(spot) + fastOf(spot)}
+            style={style}
+          />
         </div>
 
         {variant === 'hec' && (
@@ -331,17 +319,115 @@ function SpotCard({
   );
 }
 
+/**
+ * 사진 칸 목록 — 칸마다 사진 한 장, 여러 장 칸(slot.multi)은 넣은 만큼 칸이 늘고 끝에 빈 칸 하나가 붙는다.
+ *
+ * ★여러 장을 한꺼번에 고르면★ 한 장 칸에서는 그 칸부터 뒤의 빈 한 장 칸 순서대로(현장 사진은 한꺼번에
+ * 고르는 일이 많다), 여러 장 칸에서는 그 묶음에 다 넣는다 — 「인입라인에 고른 사진은 인입라인으로」.
+ * 넘치는 장은 버린다. 여러 장 칸에서 하나를 빼면 뒤의 것이 당겨진다(서식에 빈 칸을 남기지 않는다).
+ */
+export function PhotoSlots({ slots, photos, marks, onChange, expected, style, charger }: {
+  slots: PhotoSlot[];
+  photos: Record<string, File | null>;
+  marks: Record<string, Mark[]>;
+  onChange: (p: { photos: Record<string, File | null>; marks: Record<string, Mark[]> }) => void;
+  expected?: number | null;
+  style: NumStyle;
+  charger?: boolean;
+}) {
+  /* 사진이 바뀐 자리의 표시는 걷는다 — 다른 사진 위의 자리는 뜻이 없다. 자리를 옮긴 사진은 표시도 같이 옮긴다 */
+  const commit = (next: Record<string, File | null>, moved: Record<string, string> = {}) => {
+    const m: Record<string, Mark[]> = {};
+    for (const [k, f] of Object.entries(next)) {
+      if (!f) continue;
+      const from = moved[k] ?? k;
+      if (photos[from] === f && marks[from]) m[k] = marks[from];
+    }
+    onChange({ photos: next, marks: m });
+  };
+
+  const putSingle = (i: number, files: File[]) => {
+    const next = { ...photos, [slots[i].key]: files[0] };
+    const rest = files.slice(1);
+    for (const later of slots.slice(i + 1)) {
+      if (rest.length === 0) break;
+      if (!later.multi && !next[later.key]) next[later.key] = rest.shift()!;
+    }
+    commit(next);
+  };
+
+  const putMulti = (sl: PhotoSlot, pos: number, files: File[]) => {
+    const have = slotFiles(photos, sl).map((x) => x.file);
+    const list = [...have];
+    list[pos] = files[0];
+    list.push(...files.slice(1));
+    const next = { ...photos };
+    list.slice(0, sl.multi).forEach((f, i) => { next[subKey(sl.key, i)] = f; });
+    commit(next);
+  };
+
+  const dropMulti = (sl: PhotoSlot, pos: number) => {
+    const have = slotFiles(photos, sl);
+    const next = { ...photos };
+    const moved: Record<string, string> = {};
+    have.forEach((_, i) => { next[subKey(sl.key, i)] = null; });
+    have.filter((_, i) => i !== pos).forEach((x, i) => {
+      next[subKey(sl.key, i)] = x.file;
+      moved[subKey(sl.key, i)] = x.key;
+    });
+    commit(next, moved);
+  };
+
+  return (
+    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+      {slots.flatMap((sl, i) => {
+        const box = (key: string, label: string, file: File | null, onFiles: (fs: File[]) => void, onClear: () => void, hint?: string) => (
+          <PhotoBox
+            key={key}
+            slot={{ key, label, hint }}
+            file={file}
+            onFiles={onFiles}
+            onClear={onClear}
+            marks={marks[key] ?? []}
+            onMarks={(m) => onChange({ photos, marks: { ...marks, [key]: m } })}
+            expected={expected}
+            style={style}
+            charger={charger}
+          />
+        );
+        if (!sl.multi) {
+          return [box(sl.key, sl.label, photos[sl.key] ?? null, (fs) => putSingle(i, fs), () => commit({ ...photos, [sl.key]: null }), sl.hint)];
+        }
+        const max = sl.multi;
+        const have = slotFiles(photos, sl);
+        const label = (k: number) => (have.length + (have.length < max ? 1 : 0) > 1 ? `${sl.label} - ${k + 1}` : sl.label);
+        const cells = have.map((x, k) =>
+          box(x.key, label(k), x.file, (fs) => putMulti(sl, k, fs), () => dropMulti(sl, k), k === 0 ? sl.hint : undefined));
+        if (have.length < max) {
+          const k = have.length;
+          cells.push(box(subKey(sl.key, k), label(k), null, (fs) => putMulti(sl, k, fs), () => undefined, k === 0 ? sl.hint : undefined));
+        }
+        return cells;
+      })}
+    </div>
+  );
+}
+
 /** 사진 칸 하나 — 누르면 고르고, 끌어다 놓아도 된다. 넣은 사진은 그 자리에서 보인다 */
-export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expected }: {
+export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expected, style = 'red', charger = false }: {
   slot: PhotoSlot;
   file: File | null;
   onFiles: (files: File[]) => void;
   onClear: () => void;
-  /** 번호 표시 — 주면 사진 위에 번호를 찍을 수 있다 */
+  /** 사진 위 표시 — 주면 사진 위에 그릴 수 있다 */
   marks?: Mark[];
   onMarks?: (marks: Mark[]) => void;
-  /** 그 거점의 설치 대수 — 찍은 수와 견준다 */
+  /** 그 거점의 설치 대수 — 찍은 번호 수와 견준다 */
   expected?: number | null;
+  /** 번호 모양 — 서식이 정한다 */
+  style?: NumStyle;
+  /** 충전기 표시 도구 — 도면에서만 */
+  charger?: boolean;
 }) {
   const dragging = useFileDragging();
   const [over, setOver] = useState(false);
@@ -385,7 +471,7 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expecte
               onLoad={(e) => setAspect(e.currentTarget.naturalWidth / (e.currentTarget.naturalHeight || 1))}
               className="h-full w-full object-contain"
             />
-            {marks && marks.length > 0 && <AnnotCanvas list={marks} />}
+            {marks && marks.length > 0 && <AnnotCanvas list={marks} style={style} />}
           </span>
         ) : (
           <span className="px-3 text-center text-sm font-bold text-slate-400">
@@ -426,6 +512,8 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expecte
           marks={marks ?? []}
           expected={expected}
           title={slot.label}
+          style={style}
+          charger={charger}
           onClose={() => setMarking(false)}
           onDone={(m) => { onMarks(m); setMarking(false); }}
         />

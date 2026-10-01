@@ -10,25 +10,36 @@
  *   번호      빈 곳을 누르면 다음 번호 · 번호를 끌면 옮김 · 두 번 누르면 뺌
  *   선        누를 때마다 꺾이고, 두 번 누르거나 「선 끝」 — 끝에 화살표
  *   동그라미·네모  끌어서 그린다
- *   글자      누른 자리에 글자 상자
+ *   글자      고른(적은) 글자를 누른 자리에 — 자주 쓰는 말은 제출본의 사진·도면 글상자에서 셌다
+ *   충전기    도면에만 — 범례의 하늘색 네모(lib/survey/annot)
  *   지우개    누른 표시를 뺀다
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Btn, Choice } from '@/components/ui';
-import { drawAnnots, hitAnnot, numCount, type Annot, type Pt } from '@/lib/survey/annot';
+import { Btn, Choice, FIELD_BASE, Picks } from '@/components/ui';
+import { drawAnnots, hitAnnot, numCount, type Annot, type NumStyle, type Pt } from '@/lib/survey/annot';
 
-type Tool = 'num' | 'line' | 'oval' | 'box' | 'text' | 'erase';
+type Tool = 'num' | 'charger' | 'line' | 'oval' | 'box' | 'text' | 'erase';
 const TOOLS: Array<{ key: Tool; label: string; hint: string }> = [
   { key: 'num', label: '번호', hint: '빈 곳을 누르면 다음 번호 · 끌면 옮김 · 두 번 누르면 뺌' },
+  { key: 'charger', label: '충전기', hint: '누른 자리에 충전기 표시 · 끌면 옮김' },
   { key: 'line', label: '선·화살표', hint: '누를 때마다 꺾입니다 · 두 번 누르거나 「선 끝」' },
   { key: 'oval', label: '동그라미', hint: '끌어서 그립니다' },
   { key: 'box', label: '네모', hint: '끌어서 그립니다' },
-  { key: 'text', label: '글자', hint: '누른 자리에 글자 상자' },
+  { key: 'text', label: '글자', hint: '글자를 고르고 넣을 자리를 누릅니다' },
   { key: 'erase', label: '지우개', hint: '지울 표시를 누릅니다' },
 ];
 
+/**
+ * 자주 쓰는 글 — 2025~26 제출본의 사진대지·도면 글상자에서 많이 나온 말(플러그링크 엑셀 349곳,
+ * 현대엔지니어링 별지). 고르면 입력칸에 들어가고 고칠 수 있다(「보도블럭 해체·복구 10m」처럼).
+ */
+const TEXT_PRESETS = [
+  '기존 한전전주', 'IP전주 신설', '분전반 신설', '차단기 신설', '차단기 교체', '코어타공',
+  '터파기', '보도블럭 해체·복구', '노출배관', '기설 트레이', 'CCTV', '한전 협의',
+];
+
 /** 이미지 위에 표시를 그리는 캔버스 — 부모(사진과 같은 틀)를 꽉 채운다 */
-export function AnnotCanvas({ list }: { list: Annot[] }) {
+export function AnnotCanvas({ list, style = 'red' }: { list: Annot[]; style?: NumStyle }) {
   const ref = useRef<HTMLCanvasElement>(null);
   const draw = useCallback(() => {
     const c = ref.current;
@@ -41,8 +52,8 @@ export function AnnotCanvas({ list }: { list: Annot[] }) {
     const ctx = c.getContext('2d');
     if (!ctx) return;
     ctx.clearRect(0, 0, c.width, c.height);
-    drawAnnots(ctx, c.width, c.height, list);
-  }, [list]);
+    drawAnnots(ctx, c.width, c.height, list, style);
+  }, [list, style]);
   useEffect(() => {
     draw();
     const box = ref.current?.parentElement;
@@ -54,18 +65,23 @@ export function AnnotCanvas({ list }: { list: Annot[] }) {
   return <canvas ref={ref} className="pointer-events-none absolute inset-0 h-full w-full" />;
 }
 
-export default function MarkEditor({ file, marks, expected, title, onDone, onClose }: {
+export default function MarkEditor({ file, marks, expected, title, style = 'red', charger = false, onDone, onClose }: {
   file: File;
   marks: Annot[];
   /** 그 거점의 설치 대수 — 찍은 번호 수와 견준다 */
   expected?: number | null;
   title: string;
+  /** 번호 모양 — 서식이 정한다(lib/survey/spec markStyleOf) */
+  style?: NumStyle;
+  /** 충전기 표시 도구를 보인다 — 도면에서만 */
+  charger?: boolean;
   onDone: (marks: Annot[]) => void;
   onClose: () => void;
 }) {
   const [list, setList] = useState<Annot[]>(marks);
   const [draft, setDraft] = useState<Annot | null>(null);
   const [tool, setTool] = useState<Tool>('num');
+  const [text, setText] = useState('');
   const [url, setUrl] = useState<string | null>(null);
   const [aspect, setAspect] = useState(4 / 3);
   const frame = useRef<HTMLDivElement>(null);
@@ -115,7 +131,11 @@ export default function MarkEditor({ file, marks, expected, title, onDone, onClo
     frame.current?.setPointerCapture?.(e.pointerId);
     down.current = true;
     const now = Date.now();
-    if (tool === 'num') {
+    if (tool === 'charger') {
+      const i = hitAnnot(list, p, aspect);
+      if (i >= 0 && list[i].t === 'charger') { drag.current = i; return; }
+      setList((l) => [...l, { t: 'charger', x: p.x, y: p.y }]);
+    } else if (tool === 'num') {
       const i = hitAnnot(list, p, aspect);
       if (i >= 0 && list[i].t === 'num') {
         if (lastTap.current && lastTap.current.i === i && now - lastTap.current.t < 350) {
@@ -141,8 +161,7 @@ export default function MarkEditor({ file, marks, expected, title, onDone, onClo
       setDraft({ t: tool, a: p, b: p });
     } else if (tool === 'text') {
       down.current = false;
-      const text = window.prompt('넣을 글자', '');
-      if (text && text.trim()) setList((l) => [...l, { t: 'text', x: p.x, y: p.y, text: text.trim() }]);
+      if (text.trim()) setList((l) => [...l, { t: 'text', x: p.x, y: p.y, text: text.trim() }]);
     } else if (tool === 'erase') {
       const i = hitAnnot(list, p, aspect);
       if (i >= 0) setList((l) => l.filter((_, k) => k !== i));
@@ -154,7 +173,7 @@ export default function MarkEditor({ file, marks, expected, title, onDone, onClo
     if (!p) return;
     if (drag.current !== null && down.current) {
       const i = drag.current;
-      setList((l) => l.map((a, k) => (k === i && a.t === 'num' ? { ...a, x: p.x, y: p.y } : a)));
+      setList((l) => l.map((a, k) => (k === i && (a.t === 'num' || a.t === 'charger') ? { ...a, x: p.x, y: p.y } : a)));
       return;
     }
     if (draft?.t === 'line') {
@@ -199,7 +218,7 @@ export default function MarkEditor({ file, marks, expected, title, onDone, onClo
           </Btn>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          {TOOLS.map((t) => (
+          {TOOLS.filter((t) => charger || t.key !== 'charger').map((t) => (
             <Choice key={t.key} on={tool === t.key} onClick={() => pickTool(t.key)}>{t.label}</Choice>
           ))}
           <span className="mx-1 h-5 w-px bg-slate-200" aria-hidden />
@@ -208,6 +227,17 @@ export default function MarkEditor({ file, marks, expected, title, onDone, onClo
           <Btn size="sm" kind="quiet" disabled={list.length === 0} onClick={() => { setDraft(null); setList([]); }}>모두 지우기</Btn>
           <span className="text-small text-slate-500">{current.hint}</span>
         </div>
+        {tool === 'text' && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <input
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              placeholder="넣을 글자"
+              className={`${FIELD_BASE} w-56`}
+            />
+            <Picks options={TEXT_PRESETS} onPick={setText} />
+          </div>
+        )}
       </div>
       <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 items-center justify-center overflow-auto rounded-b-box bg-slate-100 p-3">
         {url && (
@@ -227,7 +257,7 @@ export default function MarkEditor({ file, marks, expected, title, onDone, onClo
               onLoad={(e) => setAspect(e.currentTarget.naturalWidth / (e.currentTarget.naturalHeight || 1))}
               className="block max-h-[72vh] max-w-full"
             />
-            <AnnotCanvas list={shown} />
+            <AnnotCanvas list={shown} style={style} />
           </div>
         )}
       </div>

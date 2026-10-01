@@ -24,9 +24,34 @@ export interface PhotoSlot {
   label: string;
   /** 칸 이름만으로 무엇을 찍을지 모를 때 붙는 한 줄 — 서식에 적힌 괄호 말이다 */
   hint?: string;
+  /**
+   * 여러 장 받는 칸 — 최대 장수. 제출본이 한 칸 이름으로 사진을 여러 장 냈다(아래 각 칸 주석).
+   * 둘째 장부터는 key 에 「~2」·「~3」을 붙여 같은 사진 묶음에 둔다(subKey).
+   */
+  multi?: number;
+  /** 여러 장을 서식의 한 칸에 모아(바둑판) 넣는다 — 서식 칸이 하나뿐인 자리 */
+  collage?: boolean;
 }
 
-import type { Annot } from './annot';
+/** 여러 장 칸의 i번째(0부터) 사진 자리 — 첫 장은 칸 key 그대로라 한 장짜리와 같다 */
+export const subKey = (key: string, i: number) => (i === 0 ? key : `${key}~${i + 1}`);
+
+/** 칸에 든 사진들 — 순서대로, 빈 자리 없이(빼면 당겨 채운다) */
+export function slotFiles<T>(photos: Record<string, T | null | undefined>, slot: PhotoSlot): Array<{ key: string; file: T }> {
+  const out: Array<{ key: string; file: T }> = [];
+  for (let i = 0; i < (slot.multi ?? 1); i++) {
+    const key = subKey(slot.key, i);
+    const file = photos[key];
+    if (!file) break;
+    out.push({ key, file });
+  }
+  return out;
+}
+
+import type { Annot, NumStyle } from './annot';
+
+/** 번호 모양 — SK·나이스 사진 대장은 노란 원, 나머지는 빨간 원(lib/survey/annot 머리말) */
+export const markStyleOf = (cpo: SurveyCpo): NumStyle => (cpo === 'sk' || cpo === 'nice' ? 'yellow' : 'red');
 
 /**
  * 사진 위 표시 하나 — 번호 · 경로 선 · 동그라미 · 네모 · 글자(lib/survey/annot).
@@ -80,7 +105,11 @@ export const HEC_PHOTO_SLOTS: PhotoSlot[] = [
   { key: 'siteWide', label: '충전소 설치 위치(전경)' },
   { key: 'siteClose', label: '충전소 설치 위치(근경)' },
   { key: 'panel', label: '전기차 분전반 설치위치' },
-  { key: 'route', label: '선로 인입경로', hint: '책임분계점 ~ 전기차 분전반' },
+  /*
+   * 경로가 길면 사진 한 장에 안 담긴다 — 제출본들은 이 칸 하나에 4~6장을 바둑판으로 붙였다
+   * (2026 별지 41건 중 여럿 · 부천 옥길데시앙은 여섯 장에 빨간 경로 선). 그래서 여러 장을 받아 한 칸에 모은다.
+   */
+  { key: 'route', label: '선로 인입경로', hint: '책임분계점 ~ 전기차 분전반', multi: 6, collage: true },
   { key: 'cctv', label: 'CCTV(실내) 또는 옥외 조명(실외)' },
 ];
 
@@ -154,7 +183,7 @@ export const fastOf = (s: SurveySpot) => (s.wallFast ?? 0) + (s.standFast ?? 0);
  * 보고 필요한 것만」). 프로덕션의 플러그링크 제출본 8건을 열어 본 결과로 정했다:
  *   · 시공사 부담금 · 계통 초과거리 — 8건 모두 비어 있다 → 받지 않는다
  *   · 교체 대수 — 8건 모두 0 이었지만 앞으로 생긴다(한백) → 받는다
- *   · 계통타입 — 8건 모두 「공중공급」 → 고정
+ *   · 계통타입 — 8건 모두 「공중공급」이었으나 내 컴퓨터의 제출본 349곳에는 지중공급이 9곳 있다 → 고른다(기본 공중)
  *   · 계통연계 포함 — 분전반 이름이 「한전인입」인 현장이 Yes → 거점의 인입 방식에서 유도
  *   · 스탠드·캐노피·볼라드 — 7건이 대수와 같다 → 기본은 대수만큼
  *   · 통신 — 6기당 1개 → 자동
@@ -207,6 +236,8 @@ export interface PlForm {
   roadCutM: number | null; roadCutPrice: number | null;
   digM: number | null; digPrice: number | null;
   etc: PlEtc[];
+  /** 계통타입 — 한전인입 거점이 있을 때만 뜻이 있다(공사내역서 D42) */
+  gridType: '공중공급' | '지중공급';
   safetyCheck: boolean;
   /** 시트 하나에 한 장 — 전경사진 · 도면(주차장 평면도) */
   overview: File | null;
@@ -216,8 +247,8 @@ export interface PlForm {
 }
 
 /**
- * 사진대지 시트의 사진 칸 — 2열 × 6줄, 순서가 곧 자리다(왼쪽→오른쪽, 위→아래).
- * 칸 이름은 제출본들이 실제로 단 설명이다. 앞 넷 짝(8칸)이 서식의 인쇄 영역이고, 뒤를 쓰면 늘린다.
+ * 사진대지 시트의 사진 칸 — 이 순서로 넣은 사진만 두 장씩 짝지어 채운다(빈 칸은 건너뛴다).
+ * 칸 이름은 제출본들이 실제로 단 설명이다. 서식은 여섯 짝이고, 넘치면 시트를 늘린다.
  */
 export const PL_PHOTO_SLOTS: PhotoSlot[] = [
   { key: 'zoom', label: '도면 확대도' },
@@ -225,13 +256,38 @@ export const PL_PHOTO_SLOTS: PhotoSlot[] = [
   { key: 'placeBack', label: '설치예정 위치 후면' },
   { key: 'panelOut', label: '1차측 분전반 외부', hint: '인입점' },
   { key: 'panelIn', label: '1차측 분전반 내부' },
-  { key: 'route1', label: '전력간선 인입라인 - 1' },
-  { key: 'route2', label: '전력간선 인입라인 - 2' },
-  { key: 'route3', label: '전력간선 인입라인 - 3' },
-  { key: 'route4', label: '전력간선 인입라인 - 4' },
+  /*
+   * ★인입라인은 장수가 정해져 있지 않다★ — 2026 제출본 사진대지 시트 하나에 0~18장, 6장·8장이 흔하다
+   * (내 컴퓨터의 플러그링크 엑셀 84곳 실측). 네 칸으로 묶어 두었더니 모자랐다. 서식은 짝(두 장)마다
+   * 25줄이라 넘치면 시트를 늘린다(fill-pluglink).
+   */
+  { key: 'route', label: '전력간선 인입라인', multi: 20 },
   { key: 'pole', label: '전주번호', hint: '한전인입일 때' },
-  { key: 'sub', label: '2차측 분전함' },
-  { key: 'cctv', label: 'CCTV(지하설치)', hint: '지하일 때' },
+  { key: 'sub', label: '2차측 분전함', multi: 4 },
+  { key: 'cctv', label: 'CCTV(지하설치)', hint: '지하일 때', multi: 4 },
+];
+
+/** 사진대지 한 장의 설명 — 여러 장 칸은 두 장 이상이면 모두 번호를 단다(「전력간선 인입라인 - 1」, 제출본의 꼴) */
+export const photoCaption = (slot: PhotoSlot, i: number, count: number) =>
+  count > 1 ? `${slot.label} - ${i + 1}` : slot.label;
+
+/**
+ * 기타비용 자주 쓰는 항목 — 2025~26 제출본 349곳의 공사내역서(입력) 29~38행에서 많이 나온 순,
+ * 단가는 실제로 수량을 넣은 줄의 중앙값이다. 누르면 그 줄이 생기고 단가는 고칠 수 있다.
+ */
+export const PL_ETC_PRESETS: Array<{ spec: string; price: number | null }> = [
+  { spec: '인건비', price: 250000 },
+  { spec: 'IP전주', price: 300000 },
+  { spec: '기초패드', price: 90000 },
+  { spec: '코어타공', price: 100000 },
+  { spec: '차단기 교체', price: null },
+  { spec: '분전반', price: 500000 },
+  { spec: '카 스토퍼', price: 10000 },
+  { spec: '보도블럭 철거 및 복구', price: 20000 },
+  { spec: '포크레인 0.5일', price: 450000 },
+  { spec: '포크레인 1일', price: 700000 },
+  { spec: '완속 철거(폐기물처분포함)', price: 200000 },
+  { spec: '급속 철거(지게차/폐기물포함)', price: 600000 },
 ];
 
 export function newPlSpot(id: string): PlSpot {

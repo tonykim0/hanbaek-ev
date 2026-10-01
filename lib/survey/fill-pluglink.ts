@@ -7,12 +7,13 @@
  * 기본공사 70m 를 넘는 길이다. 금액은 서식의 수식이 계산한다(공사내역서(출력)·일위대가) —
  * 우리는 수량만 넣고, 열 때 다시 계산하게 한다(lib/survey/xlsx-kit save).
  *
- * 거점은 6개까지다 — 실사개요의 거점 표(1안)가 여섯 줄이다.
+ * 거점은 6개까지다 — 실사개요의 거점 표(1안)가 여섯 줄이다. 사진은 거점마다 몇 장이든 된다 — 사진대지
+ * 시트를 늘린다(appendRowBlock).
  */
 import JSZip from 'jszip';
 import { Workbook } from './xlsx-kit';
 import type { PreparedImage } from './docx-kit';
-import { PL_PHOTO_SLOTS, plFixture, plModemOf, plQtyOf, type PlForm, type PlSpot } from './spec';
+import { PL_PHOTO_SLOTS, photoCaption, plFixture, plModemOf, plQtyOf, subKey, type PlForm, type PlSpot } from './spec';
 
 const S = {
   overview: '2. 실사개요',
@@ -28,8 +29,17 @@ const BASE_LEN = 70;
 const CABLE_ROW: Record<number, number> = { 6: 10, 10: 11, 16: 12, 25: 13, 35: 14, 50: 15, 70: 16, 95: 17, 120: 18, 150: 19 };
 /** 배관 SIZE(mm, 아연도) → 줄 */
 const PIPE_ROW: Record<number, number> = { 16: 20, 22: 21, 28: 22, 36: 23, 42: 24, 54: 25, 70: 26, 82: 27, 104: 28 };
-/** 사진대지의 사진 짝 — 시작 줄. 칸은 A·M 열에서 23줄, 설명은 그 밑 줄의 D·P */
-const PAIR_ROWS = [6, 31, 56, 81, 106, 131];
+/**
+ * 사진대지의 사진 짝 — 첫 짝이 6행에서 시작하고 짝마다 25줄(사진 칸 23줄 + 설명 2줄). 칸은 A·M 열,
+ * 설명은 사진 밑 줄의 D·P. 서식에는 여섯 짝이 있고 넘치면 마지막 짝을 베껴 늘린다.
+ * 쪽은 두 짝마다 넘어간다(서식의 손 나눔이 55행 — 제출본들도 55·105·155·205 로 이었다).
+ */
+const FIRST_PAIR = 6;
+const PAIR_H = 25;
+const TEMPLATE_PAIRS = 6;
+/** 인쇄 영역은 적어도 넷째 짝까지 — 서식의 인쇄 영역이 그렇다 */
+const MIN_PAIRS = 4;
+const pairTop = (p: number) => FIRST_PAIR + PAIR_H * p;
 const MAX_SPOTS = 6;
 
 const amp = (s: string) => /(\d+)\s*A/i.exec(s)?.[1] ?? '';
@@ -73,7 +83,8 @@ export async function fillPluglinkSurvey(
   await wb.set(ov, 'B3', `${form.siteName} 플러그링크 충전인프라 구축사업`);
   await wb.set(ov, 'I3', `현장실사자 : ${form.surveyor.trim()}`);
   await wb.set(ov, 'D4', form.surveyDate);
-  await wb.set(ov, 'L4', form.siteTel);
+  // 연락처/팩스 칸은 「T 전화 / F 팩스」 꼴이다(서식 예시 · 제출본)
+  await wb.set(ov, 'L4', form.siteTel.trim() ? `T ${form.siteTel.trim().replace(/^T\s*/i, '')}` : '');
   await wb.set(ov, 'D5', form.siteName);
   await wb.set(ov, 'L5', `신규 (   ${totalNew || ' '}   )기, 교체 (   ${totalRepl || ' '}   )기`);
   await wb.set(ov, 'D6', form.address);
@@ -111,7 +122,7 @@ export async function fillPluglinkSurvey(
   // ── 3. 전경사진 · 3. 도면
   if (images.overview) {
     await wb.set(S.photo, 'A4', '');
-    await wb.addPicture(S.photo, 'A4:O48', images.overview);
+    await wb.addPicture(S.photo, 'A4:O48', images.overview, 'fill');
   }
   if (images.plan) {
     await wb.set(S.plan, 'A4', '');
@@ -132,26 +143,39 @@ export async function fillPluglinkSurvey(
     await wb.set(sh, 'T4', `(   ${plModemOf(s) || ' '}   )기`);
     await wb.set(sh, 'D5', s.note);
 
+    // 넣은 사진만 칸 순서대로 — 빈 칸은 건너뛰고 두 장씩 짝을 채운다
     const imgs = images.spots[s.id] ?? {};
-    let lastPair = 3; // 서식의 인쇄 영역이 넷째 짝까지다
-    for (let k = 0; k < PL_PHOTO_SLOTS.length; k++) {
-      const pair = Math.floor(k / 2);
+    const photos: Array<{ img: PreparedImage; caption: string }> = [];
+    for (const sl of PL_PHOTO_SLOTS) {
+      const keys: string[] = [];
+      for (let k = 0; k < (sl.multi ?? 1); k++) if (imgs[subKey(sl.key, k)]) keys.push(subKey(sl.key, k));
+      keys.forEach((key, k) => photos.push({ img: imgs[key]!, caption: photoCaption(sl, k, keys.length) }));
+    }
+    const pairs = Math.max(MIN_PAIRS, Math.ceil(photos.length / 2));
+    if (pairs > TEMPLATE_PAIRS) {
+      await wb.appendRowBlock(sh, pairTop(TEMPLATE_PAIRS - 1), pairTop(TEMPLATE_PAIRS) - 1, pairs - TEMPLATE_PAIRS);
+    }
+    for (let k = 0; k < Math.max(pairs, TEMPLATE_PAIRS) * 2; k++) {
+      const top = pairTop(Math.floor(k / 2));
       const left = k % 2 === 0;
-      const top = PAIR_ROWS[pair];
       const anchor = `${left ? 'A' : 'M'}${top}`;
       const caption = `${left ? 'D' : 'P'}${top + 23}`;
-      const img = imgs[PL_PHOTO_SLOTS[k].key];
       // 「사진 첨부(공란 시 내용 삭제)」 — 넣었든 안 넣었든 이 글은 지운다(서식의 지시다)
       await wb.set(sh, anchor, '');
-      if (!img) {
+      const p = photos[k];
+      if (!p) {
         await wb.set(sh, caption, '');
         continue;
       }
-      await wb.addPicture(sh, `${anchor}:${left ? 'L' : 'X'}${top + 22}`, img);
-      await wb.set(sh, caption, PL_PHOTO_SLOTS[k].label);
-      lastPair = Math.max(lastPair, pair);
+      // 칸을 꽉 채운다 — 비율이 다르면 자른다(표시는 남긴다, xlsx-kit addPicture fill)
+      await wb.addPicture(sh, `${anchor}:${left ? 'L' : 'X'}${top + 22}`, p.img, 'fill');
+      await wb.set(sh, caption, p.caption);
     }
-    wb.setPrintArea(sh, `$A$1:$X$${PAIR_ROWS[lastPair] + 24}`);
+    const lastRow = pairTop(pairs) - 1;
+    wb.setPrintArea(sh, `$A$1:$X$${lastRow}`);
+    const breaks: number[] = [];
+    for (let r = pairTop(2) - 1; r < lastRow; r += PAIR_H * 2) breaks.push(r);
+    await wb.setRowBreaks(sh, breaks);
   }
 
   // ── 5. 공사내역서(입력) — 수량만. 금액은 수식이 계산한다
@@ -201,8 +225,8 @@ export async function fillPluglinkSurvey(
   }
   await wb.set(co, 'D40', totalQty * 7 || '');
   await wb.set(co, 'D41', kepco ? 'Yes' : 'No');
-  // 계통타입 — 제출본 8건이 모두 공중공급이다. 지중은 받은 파일에서 고친다
-  await wb.set(co, 'D42', '공중공급');
+  // 계통타입 — 공중이 대부분이고 지중이 있다(제출본 349곳 중 지중공급 9곳)
+  await wb.set(co, 'D42', form.gridType);
   await wb.set(co, 'D46', form.spots.length);
   await wb.set(co, 'D47', totalQty || '');
   await wb.set(co, 'D48', form.safetyCheck ? 'Yes' : 'No');
