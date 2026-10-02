@@ -114,7 +114,7 @@ type Op =
   | { kind: 'rotate'; i: number; orig: Annot; a0: number };
 
 export default function MarkEditor({
-  file, marks, expected, title, style = 'red', legend = false, labels = [], labelPick, line = 'arrow', size = 1, onDone, onClose,
+  file, marks, expected, title, style = 'red', legend = false, labels = [], labelPick, line = 'arrow', size = 1, large = false, onDone, onClose,
 }: {
   file: File;
   marks: Annot[];
@@ -133,6 +133,11 @@ export default function MarkEditor({
   line?: LineKind;
   /** 처음 찍는 크기 — 도면은 작게 */
   size?: number;
+  /**
+   * 화면 가득 — 전체 도면(평면도)은 칸이 촘촘해 창 안의 그림이 작으면 주차면을 못 짚는다(한백 「전체 도면에
+   * 표시할 때 화면을 더 크게」). 창 둘레를 걷고 그림을 화면 높이·폭에 맞춘다.
+   */
+  large?: boolean;
   onDone: (marks: Annot[]) => void;
   onClose: () => void;
 }) {
@@ -149,6 +154,17 @@ export default function MarkEditor({
   const [dims, setDims] = useState<{ w: number; h: number }>({ w: 1, h: 1 });
   const [url, setUrl] = useState<string | null>(null);
   const frame = useRef<HTMLDivElement>(null);
+  const area = useRef<HTMLDivElement>(null);
+  /* 화면 가득(large) — 그림을 그림 칸(도구 줄 아래 전부)에 맞춰 키운다. 작은 그림도 키운다 */
+  const [nat, setNat] = useState<number | null>(null);
+  const [areaSize, setAreaSize] = useState<{ w: number; h: number } | null>(null);
+  useEffect(() => {
+    const el = area.current;
+    if (!large || !el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => setAreaSize({ w: el.clientWidth - 8, h: el.clientHeight - 8 }));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [large]);
   const op = useRef<Op | null>(null);
   const lastZ = useRef<Record<string, number>>({});
   const lastTap = useRef<{ i: number; t: number } | null>(null);
@@ -372,6 +388,12 @@ export default function MarkEditor({
   }
 
   const shown = resolveLabels(draft ? [...list, draft] : list, labels);
+  const imgStyle: React.CSSProperties | undefined = large && nat && areaSize
+    ? (() => {
+      const w = Math.max(100, Math.min(areaSize.w, areaSize.h * nat));
+      return { width: w * zoom, height: (w / nat) * zoom, maxWidth: 'none', maxHeight: 'none' };
+    })()
+    : zoom > 1 && fitW ? { width: fitW * zoom, maxWidth: 'none', maxHeight: 'none' } : undefined;
   const nums = numCount(list);
   const tools = TOOLS.filter((t) => (t.key !== 'sym' || legend) && (t.key !== 'label' || labels.length > 0));
   const current = tool ? TOOLS.find((t) => t.key === tool)! : null;
@@ -394,8 +416,8 @@ export default function MarkEditor({
   }, [picked, W, H]);
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-slate-900/80 p-3 sm:p-6" role="dialog" aria-label={title}>
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-2 rounded-t-box bg-white px-4 py-3">
+    <div className={`fixed inset-0 z-50 flex flex-col bg-slate-900/80 ${large ? 'p-2' : 'p-3 sm:p-6'}`} role="dialog" aria-label={title}>
+      <div className={`mx-auto flex w-full ${large ? '' : 'max-w-6xl'} flex-col gap-2 rounded-t-box bg-white px-4 py-3`}>
         <div className="flex flex-wrap items-center gap-2">
           <span className="min-w-0 flex-1 text-base font-black text-slate-900">{title}</span>
           <span className={`text-base font-bold tabular-nums ${expected && expected !== nums ? 'text-amber-700' : 'text-brand-700'}`}>
@@ -461,7 +483,7 @@ export default function MarkEditor({
         </div>
       </div>
 
-      <div className="mx-auto flex min-h-0 w-full max-w-6xl flex-1 overflow-auto rounded-b-box bg-slate-100 p-3">
+      <div ref={area} className={`mx-auto flex min-h-0 w-full ${large ? 'p-1' : 'max-w-6xl p-3'} flex-1 overflow-auto rounded-b-box bg-slate-100`}>
         {url && (
           <div
             ref={frame}
@@ -476,10 +498,13 @@ export default function MarkEditor({
               src={url}
               alt={title}
               draggable={false}
-              onLoad={(e) => setFitW(e.currentTarget.clientWidth)}
+              onLoad={(e) => {
+                setFitW(e.currentTarget.clientWidth);
+                setNat(e.currentTarget.naturalWidth / (e.currentTarget.naturalHeight || 1));
+              }}
               // 확대하면 처음 맞춘 폭의 배수로 — 표시는 사진 크기 비율이라 같이 커진다(구운 모양 그대로)
-              style={zoom > 1 && fitW ? { width: fitW * zoom, maxWidth: 'none', maxHeight: 'none' } : undefined}
-              className="block max-h-[70vh] max-w-full"
+              style={imgStyle}
+              className={large ? 'block' : 'block max-h-[70vh] max-w-full'}
             />
             <AnnotCanvas list={shown} style={style} />
             {handles?.kind === 'line' && (

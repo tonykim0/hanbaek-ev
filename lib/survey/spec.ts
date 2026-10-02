@@ -202,8 +202,6 @@ export interface PlSpot {
   inlet: '한전인입' | '분전반';
   /** 한전인입일 때 — 인입 전주번호(「9638W781 초당간218L2」). 도면 라벨의 둘째 줄이 된다 */
   poleNo?: string;
-  /** 전체 도면에서 이 거점의 도면 확대도를 잘라 낸 틀(비율) — 자르기 화면이 그 자리를 다시 보여 준다 */
-  zoomCrop?: { x: number; y: number; w: number; h: number };
   /** 분전반일 때만 — 이름 · 메인차단기 · 사용(인입점) 차단기, 「4P 100A」 꼴 */
   panelName: string;
   mainBreaker: string;

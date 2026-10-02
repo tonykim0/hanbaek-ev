@@ -25,8 +25,6 @@ import {
   type PhotoSlot, type PlEtc, type PlForm, type PlSpot,
 } from '@/lib/survey/spec';
 import { PhotoBox, PhotoSlots, nextId, num, today } from './SurveyEditor';
-import PlanCrop, { type CropRect } from './PlanCrop';
-import { cropImage, cropMarks } from '@/lib/survey/plan-crop';
 
 const CABLE_SIZES = [6, 10, 16, 25, 35, 50, 70, 95, 120, 150];
 const PIPE_SIZES = [16, 22, 28, 36, 42, 54, 70, 82, 104];
@@ -111,28 +109,6 @@ export default function PluglinkEditor() {
    *   ② 도면 확대도 → 그 거점의 라벨(배선·배관 길이가 든 흰 상자)을 얹어 둔다. 거점 값에 묶여 있어 길이를
    *      고치면 따라 바뀐다(annot resolveLabels). 옮기거나 빼는 것은 표시하기에서.
    */
-  /*
-   * 거점별 도면 자르기(components/survey/PlanCrop) — 고른 틀을 그 거점의 도면 확대도로. 도면 위 표시도 옮긴다
-   * (거점 라벨은 지금 값으로 풀어서). 그 거점 라벨이 틀 안에 없으면 하나 얹는다(도면 확대도를 넣을 때와 같다).
-   */
-  const [cropping, setCropping] = useState(false);
-  const cropToZoom = async (i: number, r: CropRect) => {
-    const s = f.spots[i];
-    if (!f.plan || !s) return;
-    const { file, fullW, fullH } = await cropImage(f.plan, r, `도면확대도-${i + 1}거점.jpg`);
-    let marks = cropMarks(resolveLabels(f.planMarks, labels), r, fullW, fullH);
-    if (!marks.some((a) => a.t === 'label' && a.spot === i + 1)) {
-      const L = labels[i];
-      marks = [...marks, { t: 'label', spot: i + 1, x: 0.22, y: 0.14, head: L.head, body: L.body, z: 0.8 }];
-    }
-    setF((x) => ({
-      ...x,
-      spots: x.spots.map((y) => (y.id === s.id
-        ? { ...y, zoomCrop: r, photos: { ...y.photos, zoom: file }, marks: { ...y.marks, zoom: marks } }
-        : y)),
-    }));
-  };
-
   const plate = usePlateReader();
   const fRef = useRef(f);
   fRef.current = f;
@@ -246,24 +222,9 @@ export default function PluglinkEditor() {
               onMarks={(m) => set({ planMarks: m })}
               expected={f.spots.reduce((n, s) => n + plQtyOf(s), 0)}
               // 도면은 촘촘하다 — 작게로 열고, 선은 배선 경로부터(제출본 도면의 빨간 선은 화살표가 없다)
-              tools={{ legend: true, labels, line: 'wire', size: 0.7 }}
+              tools={{ legend: true, labels, line: 'wire', size: 0.7, large: true }}
             />
           </div>
-          {f.plan && (
-            <div>
-              <Btn kind="side" onClick={() => setCropping(true)}>거점별 도면 자르기</Btn>
-            </div>
-          )}
-          {cropping && f.plan && (
-            <PlanCrop
-              file={f.plan}
-              marks={resolveLabels(f.planMarks, labels)}
-              spots={f.spots.map((_, i) => `${i + 1}거점`)}
-              crops={Object.fromEntries(f.spots.map((s, i) => [i, s.photos.zoom ? s.zoomCrop : undefined]))}
-              onCrop={cropToZoom}
-              onClose={() => setCropping(false)}
-            />
-          )}
         </div>
       </Section>
 
