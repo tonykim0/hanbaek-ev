@@ -11,6 +11,7 @@ import { eq } from 'drizzle-orm';
 import { isHanbaek, normalizeOrg, type Role } from '@/lib/roles';
 import { PASSWORD_MIN_LEN, type AccountView, type Actor, type NewAccount, type User } from './types';
 import { hashPassword, verifyPassword } from './crypto';
+import { clearLoginLock } from './throttle';
 import { getDb, hasDatabase } from '@/lib/db/client';
 import { users } from '@/lib/db/schema';
 import { writeAudit } from '@/lib/db/audit';
@@ -352,6 +353,8 @@ export const userStore: UserStore = {
       .update(users)
       .set({ passwordHash: await hashPassword(password) })
       .where(eq(users.id, id));
+    // 새 비밀번호를 받은 사람이 잠금에 걸려 못 들어오면 재설정이 소용없다 (상한 6시간)
+    await clearLoginLock(id);
 
     // 누가 언제 바꿨는지만 남긴다 — 값은 해시 밖으로 꺼내지 않는다
     await writeAudit(db, {

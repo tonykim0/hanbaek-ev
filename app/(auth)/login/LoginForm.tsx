@@ -4,11 +4,13 @@ import { Btn, FIELD, Note } from '@/components/ui';
 
 import { useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { safeNextPath } from '@/lib/auth/next-path';
 
 export default function LoginForm({ devSeed }: { devSeed: boolean }) {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get('next') ?? '/projects';
+  // 돌아갈 자리는 콘솔 안 경로만 — `//가짜.com` 같은 바깥 주소를 거른다(lib/auth/next-path)
+  const next = safeNextPath(params.get('next'));
 
   const [id, setId] = useState('');
   const [password, setPassword] = useState('');
@@ -44,7 +46,7 @@ export default function LoginForm({ devSeed }: { devSeed: boolean }) {
         setBusy(false);
         return;
       }
-      router.replace(next.startsWith('/') ? next : '/projects');
+      router.replace(next);
     } catch {
       setError('서버에 연결하지 못했습니다.');
       setBusy(false);

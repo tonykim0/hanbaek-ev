@@ -86,7 +86,7 @@ export const partnerDetails = pgTable('partner_details', {
 export const loginAttempts = pgTable('login_attempts', {
   key: text('key').primaryKey(),
   fails: integer('fails').notNull().default(0),
-  /** 이 창의 첫 실패 — 창이 지나면 처음부터 다시 센다 */
+  /** 이 창의 첫 실패. 창은 마지막 실패(≈ 잠금 끝)에서 잰다 — lib/auth/throttle failsInWindow */
   firstFailAt: timestamp('first_fail_at', { withTimezone: true }).notNull().defaultNow(),
   /** 이 시각까지 막는다. null 이면 아직 안 막힌 것 */
   lockedUntil: timestamp('locked_until', { withTimezone: true }),

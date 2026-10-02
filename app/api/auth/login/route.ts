@@ -27,10 +27,12 @@ export async function POST(request: Request) {
    */
   const throttle = await checkLoginThrottle(request, id);
   if (throttle.lockedForSec !== null) {
+    // 잠금이 시간 단위까지 간다(상한 6시간) — 「360분」으로 적으면 얼마인지 안 읽힌다
     const min = Math.ceil(throttle.lockedForSec / 60);
+    const wait = min < 60 ? `${min}분` : `${Math.floor(min / 60)}시간${min % 60 ? ` ${min % 60}분` : ''}`;
     return NextResponse.json(
       {
-        error: `로그인 시도가 너무 많습니다. ${min}분 뒤에 다시 시도하세요.`
+        error: `로그인 시도가 너무 많습니다. ${wait} 뒤에 다시 시도하세요.`
           + ' 비밀번호를 잊었다면 한백 담당자에게 재설정을 요청하세요.',
       },
       { status: 429, headers: { 'Retry-After': String(throttle.lockedForSec) } }

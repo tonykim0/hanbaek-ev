@@ -9,8 +9,16 @@
  *
  * ★막는 방식★
  * 처음 4번은 그냥 틀리게 둔다 — 오타는 흔하고, 거기서 막으면 사람이 먼저 불편해진다.
- * 5번째부터 잠그고, 틀릴수록 잠금이 배로 길어진다(1분 → 2 → 4 → 8 → 16 → 30분에서 멈춘다).
- * 30분 상한이면 한 계정에 하루 200번쯤 시도할 수 있다 — 만 가지를 훑는 데 50일이다.
+ * 5번째부터 잠그고, 틀릴수록 잠금이 배로 길어진다(1분 → 2 → 4 → … → 6시간에서 멈춘다).
+ * 두드리는 동안에는 센 것이 안 풀리므로 첫날 15번쯤, 그다음부터 하루 4번이다 — 만 가지를
+ * 훑는 데 몇 해가 걸린다. 진짜 주인이 잠기면 한백이 비밀번호를 재설정한다 — 재설정이
+ * 그 계정의 잠금을 같이 푼다(clearLoginLock). 로그인 실패 문구가 이미 그 길을 안내한다.
+ *
+ * ★창은 마지막 실패에서 잰다★ (2026-10-02 보안 점검). 예전 코드는 ★첫 실패★에서 30분을
+ * 재서, 잠금이 16분까지 오른 다음 실패가 창 밖으로 나가 횟수가 0으로 돌아갔다 — 31분마다
+ * 9번, 하루 430번(이 머리말이 적은 200번의 두 배)이었고 숫자 4자리를 평균 12일에 훑었다.
+ * 표에 마지막 실패 칸은 없다. 잠금 끝(lockedUntil)이 「마지막 실패 + 잠금」이라 그보다 늦은
+ * 시각이므로 그것으로 잰다 — 창이 조금 길어지는 쪽으로 틀리고, 표를 바꾸지 않는다.
  *
  * ★두 가지 열쇠★
  *  id:<로그인ID>  그 계정을 지킨다 — 한 계정의 비밀번호를 훑는 것
@@ -33,10 +41,10 @@ import { loginAttempts } from '@/lib/db/schema';
 const FREE_TRIES = 4;
 /** 첫 잠금 길이. 이후 실패마다 배로 */
 const FIRST_LOCK_MS = 60_000;
-/** 잠금 상한 — 이보다 길게는 안 막는다. 사람이 아예 못 들어오는 일을 만들지 않는다 */
-const MAX_LOCK_MS = 30 * 60_000;
+/** 잠금 상한 — 이보다 길게는 안 막는다. 그 안에 풀어야 하면 한백이 비밀번호를 재설정한다 */
+export const MAX_LOCK_MS = 6 * 60 * 60_000;
 /** 실패를 누적하는 창 — 마지막 실패로부터 이만큼 조용하면 처음부터 다시 센다 */
-const WINDOW_MS = 30 * 60_000;
+export const WINDOW_MS = 24 * 60 * 60_000;
 /** 한 주소가 여러 계정을 훑는 것 — 계정별 몫보다 넉넉해야 한 사무실이 같이 막히지 않는다 */
 const IP_FREE_TRIES = 20;
 
@@ -54,22 +62,26 @@ function clientIp(request: Request): string | null {
   return first || request.headers.get('x-real-ip')?.trim() || null;
 }
 
-interface Row {
+export interface Row {
   key: string;
   fails: number;
   firstFailAt: Date;
   lockedUntil: Date | null;
 }
 
-/** 창이 지났으면 0부터 — 오래전 오타가 오늘의 잠금을 앞당기지 않는다 */
-function failsInWindow(row: Row | undefined, now: number): number {
+/**
+ * 창이 지났으면 0부터 — 오래전 오타가 오늘의 잠금을 앞당기지 않는다.
+ * 마지막 실패는 잠금 끝으로 갈음한다(머리말) — 잠금 전의 오타 몇 번은 첫 실패로 잰다.
+ */
+export function failsInWindow(row: Row | undefined, now: number): number {
   if (!row) return 0;
-  if (now - row.firstFailAt.getTime() > WINDOW_MS) return 0;
+  const lastAt = Math.max(row.firstFailAt.getTime(), row.lockedUntil?.getTime() ?? 0);
+  if (now - lastAt > WINDOW_MS) return 0;
   return row.fails;
 }
 
 /** 계정 몫과 주소 몫이 같은 셈을 쓴다 — 넉넉함만 다르다 */
-function lockMsFor(fails: number, freeTries: number): number | null {
+export function lockMsFor(fails: number, freeTries: number): number | null {
   if (fails <= freeTries) return null;
   return Math.min(MAX_LOCK_MS, FIRST_LOCK_MS * 2 ** (fails - freeTries - 1));
 }
@@ -163,8 +175,8 @@ export async function checkLoginThrottle(request: Request, loginId: string): Pro
      * 잠긴 동안의 시도는 세지 않는다 — 비밀번호를 아예 확인하지 않았으니 새 실패가 아니다.
      * 세면 두드리는 것만으로 잠금이 끝없이 늘어나 진짜 주인이 돌아올 자리가 없어진다.
      *
-     * 그래도 아는 ID 를 계속 틀려 그 계정을 30분씩 막아 두는 것은 막지 못한다 —
-     * 잠금 방식이 원래 지는 자리다. 상한을 30분으로 둔 이유이기도 하다.
+     * 그래도 아는 ID 를 계속 틀려 그 계정을 막아 두는 것은 막지 못한다 — 잠금 방식이
+     * 원래 지는 자리다. 그때 푸는 길이 한백의 비밀번호 재설정이다(clearLoginLock).
      */
     return { ...PASS, lockedForSec: Math.ceil((lockedUntil - now) / 1000) };
   }
@@ -227,4 +239,20 @@ export async function checkLoginThrottle(request: Request, loginId: string): Pro
         ? Promise.resolve()
         : write((db) => db.delete(loginAttempts).where(inArray(loginAttempts.key, keys))),
   };
+}
+
+/**
+ * 그 계정의 잠금을 푼다 — 한백이 비밀번호를 재설정할 때 (lib/auth/users resetPassword).
+ *
+ * 잠금 상한이 6시간이라 진짜 주인이 잠기면 기다릴 수 없다. 새 비밀번호를 받은 사람이
+ * 그 자리에서 못 들어오면 재설정이 소용없다. 계정 몫만 지운다 — 주소 몫은 그 사람의
+ * 것이 아닐 수 있다. 실패해도 재설정을 뒤집지 않는다(로그인 결과를 안 뒤집는 것과 같다).
+ */
+export async function clearLoginLock(loginId: string): Promise<void> {
+  if (!hasDatabase()) return;
+  try {
+    await getDb().delete(loginAttempts).where(inArray(loginAttempts.key, [idKey(loginId)]));
+  } catch (err) {
+    console.error('[auth] 잠금을 못 풀었습니다:', err);
+  }
 }
