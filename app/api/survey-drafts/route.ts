@@ -8,7 +8,8 @@
 import { NextResponse } from 'next/server';
 import { getRepository } from '@/lib/data';
 import { actorOf, getSessionUser } from '@/lib/auth/session';
-import { BadRequest, sessionWrite } from '@/lib/api/write-route';
+import { BadRequest, SERVER_ERROR_MESSAGE, isUnexpectedError, sessionWrite } from '@/lib/api/write-route';
+import { canWrite } from '@/lib/roles';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,9 +18,15 @@ export async function GET(request: Request) {
   if (!session) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
   const cpo = new URL(request.url).searchParams.get('cpo') ?? '';
   try {
-    return NextResponse.json({ drafts: await getRepository().listSurveyDrafts(cpo, actorOf(session)) });
+    // canSave — 열람 전용은 저장하지 못한다. 화면이 단추 이름에 그 이유를 적는다(화면 규칙 3)
+    const drafts = await getRepository().listSurveyDrafts(cpo, actorOf(session));
+    return NextResponse.json({ drafts, canSave: canWrite(session.role) });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : '불러오지 못했습니다.' }, { status: 400 });
+    if (isUnexpectedError(e)) {
+      console.error('[api] GET /api/survey-drafts', e);
+      return NextResponse.json({ error: SERVER_ERROR_MESSAGE }, { status: 500 });
+    }
+    return NextResponse.json({ error: (e as Error).message }, { status: 400 });
   }
 }
 

@@ -33,6 +33,21 @@ describe('실사보고서 임시 저장본', () => {
     expect((one.json?.draft as { data: { siteName: string } }).data.siteName).toBe(title);
   });
 
+  it('다른 창·기기가 먼저 저장했으면 낡은 판으로는 저장하지 못한다', async () => {
+    await signIn(USERS.ecoelec);
+    const one = await call(GET, { method: 'GET', params: { id } });
+    const base = String((one.json?.draft as { updatedAt: string }).updatedAt);
+    const first = await call(PUT, { method: 'PUT', params: { id }, body: { title, data: { siteName: 'A' }, base } });
+    expect(first.status).toBe(200);
+    const stale = await call(PUT, { method: 'PUT', params: { id }, body: { title, data: { siteName: 'B' }, base } });
+    expect(stale.status).toBe(422);
+    expect(String(stale.json?.error)).toContain('먼저 저장');
+    const next = await call(PUT, { method: 'PUT', params: { id }, body: { title, data: { siteName: 'C' }, base: String(first.json?.savedAt) } });
+    expect(next.status).toBe(200);
+    const after = await call(GET, { method: 'GET', params: { id } });
+    expect((after.json?.draft as { data: { siteName: string } }).data.siteName).toBe('C');
+  });
+
   it('다른 계정은 목록에 안 나오고, 열기·저장·지우기·사진 토큰이 모두 거절된다', async () => {
     await signIn(USERS.daesang);
     const res = await listGET(new Request('http://test.local/api/survey-drafts?cpo=pluglink'));

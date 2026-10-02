@@ -17,35 +17,21 @@
 import JSZip from 'jszip';
 import { LEDGER_PHOTO_SLOTS, type SurveyForm, type SurveySpot } from './spec';
 import {
-  ImageRegistry, W_NS, cellWidth, cellsOf, childrenNamed, putImage, rowHeight, rowsOf,
-  setCellText, textOf, unlockDocument, type PreparedImage,
+  ImageRegistry, W_NS, cellWidth, cellsOf, finishDocx, pPrChild, photoCellsOf, putImage, rowsOf,
+  setCellText, setParagraphText, textOf, type PreparedImage,
 } from './docx-kit';
+import { surveyFileName } from './pack';
 
-const PHOTO_ROW_MIN = 3000;
 const PAD = 160;
 
 /** 다음 거점은 새 쪽에서 — 표가 쪽을 거의 채우므로 쪽 나눔 문단을 따로 두면 빈 쪽이 생길 수 있다 */
-function breakBefore(p: Element): void {
-  const doc = p.ownerDocument;
-  let pPr = childrenNamed(p, 'pPr')[0];
-  if (!pPr) { pPr = doc.createElementNS(W_NS, 'w:pPr'); p.insertBefore(pPr, p.firstChild); }
-  if (childrenNamed(pPr, 'pageBreakBefore').length === 0) {
-    pPr.insertBefore(doc.createElementNS(W_NS, 'w:pageBreakBefore'), pPr.firstChild);
-  }
-}
-
-function setParagraphText(p: Element, text: string): void {
-  // 문단도 칸과 같은 셈으로 바꾼다 — 첫 글줄에 적고 나머지는 비운다
-  const runs = childrenNamed(p, 'r');
-  const ts = runs.flatMap((r) => Array.from(r.getElementsByTagNameNS(W_NS, 't')));
-  if (ts.length === 0) throw new Error('사진 대장 머리 글이 예상과 다릅니다.');
-  ts.forEach((t, i) => { t.textContent = i === 0 ? text : ''; });
-}
+const breakBefore = (p: Element) => { pPrChild(p, 'pageBreakBefore'); };
 
 function fillOne(
   [head, gap, table]: Element[], address: string, spot: SurveySpot, n: number,
   images: Record<string, PreparedImage | undefined>, reg: ImageRegistry
 ): Element[] {
+  if (!textOf(head).includes('사진 대장')) throw new Error('사진 대장 머리 글이 예상과 다릅니다.');
   setParagraphText(head, `사전 현장 컨설팅 사진 대장 - ${n}거점`);
   if (n > 1) breakBefore(head);
   const rows = rowsOf(table);
@@ -55,9 +41,7 @@ function fillOne(
   const where = spot.location.trim();
   setCellText(cellsOf(rows[7])[0], `설치기수 ${spot.qty ?? '  '}기${where ? ` / ${where}` : ''}`);
 
-  const photoCells = rows
-    .filter((r) => rowHeight(r) >= PHOTO_ROW_MIN)
-    .flatMap((r) => cellsOf(r).map((tc) => ({ tc, h: rowHeight(r) })));
+  const photoCells = photoCellsOf(rows);
   if (photoCells.length !== LEDGER_PHOTO_SLOTS.length) {
     throw new Error(`사진 대장 사진 칸이 ${photoCells.length}개입니다 — 서식이 바뀌었는지 확인이 필요합니다.`);
   }
@@ -89,17 +73,7 @@ export async function fillLedgerSurvey(
   const out = form.spots.flatMap((spot, i) =>
     fillOne(proto.map((e) => e.cloneNode(true) as Element), form.address, spot, i + 1, images[spot.id] ?? {}, reg));
 
-  for (const k of Array.from(body.childNodes)) body.removeChild(k);
-  for (const e of out) body.appendChild(e);
-  if (sectPr) body.appendChild(sectPr);
-  zip.file('word/document.xml', new XMLSerializer().serializeToString(doc));
-  await reg.flush();
-  await unlockDocument(zip);
-  const opts = { compression: 'DEFLATE' as const };
-  return typeof window !== 'undefined'
-    ? zip.generateAsync({ ...opts, type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' })
-    : zip.generateAsync({ ...opts, type: 'uint8array' });
+  return finishDocx(zip, doc, out, sectPr, reg);
 }
 
-export const ledgerSurveyFileName = (siteName: string) =>
-  `${siteName.trim() || '현장'}_실사보고서 (사진대지).docx`;
+export const ledgerSurveyFileName = (siteName: string) => surveyFileName(siteName, 'docx');

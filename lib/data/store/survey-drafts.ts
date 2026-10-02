@@ -28,10 +28,12 @@ const summary = (r: Row): DraftSummary => ({
   id: r.id, cpo: r.cpo as DraftCpo, title: r.title, photoCount: r.photoCount, updatedAt: r.updatedAt.toISOString(),
 });
 
+const NOT_FOUND = '임시 저장본을 찾을 수 없습니다 — 지워졌거나 다른 계정의 것입니다.';
+
 async function own(id: string, actor: Actor): Promise<Row> {
   const [row] = await getDb().select().from(surveyDrafts).where(eq(surveyDrafts.id, id)).limit(1);
   // 남의 것도 「없다」로 — 있는지조차 알려주지 않는다
-  if (!row || row.ownerId !== actor.id) throw new Error('임시 저장본을 찾을 수 없습니다 — 지워졌거나 다른 계정의 것입니다.');
+  if (!row || row.ownerId !== actor.id) throw new Error(NOT_FOUND);
   return row;
 }
 
@@ -69,14 +71,26 @@ export const surveyDraftStore: Pick<
     return id;
   },
 
-  async saveSurveyDraft(id, input, actor): Promise<{ removed: PhotoRef[] }> {
-    const row = await own(id, actor);
-    const keep = new Set(photoRefsOf(input.data).map((r) => r.path));
-    const removed = photoRefsOf(row.data).filter((r) => !keep.has(r.path));
-    await getDb().update(surveyDrafts)
-      .set({ title: clip(input.title), data: input.data as object, photoCount: keep.size, updatedAt: new Date() })
-      .where(eq(surveyDrafts.id, id));
-    return { removed };
+  /**
+   * ★판본을 본다★ — 화면은 마지막으로 불러오거나 저장한 판(base = updatedAt)을 같이 보낸다. 그 뒤에 다른 창·기기가
+   * 저장했으면 거절한다: 낡은 값으로 덮으면 새 값이 사라지고, 「빠진 사진」으로 셈해 다른 쪽이 쓰는 사진까지
+   * 지운다. 줄을 잠그고 보니 같은 때 들어온 저장 둘도 하나씩 지나간다. base 가 없는 것은 막 만든 저장본이다.
+   */
+  async saveSurveyDraft(id, input, actor): Promise<{ removed: PhotoRef[]; updatedAt: string }> {
+    return getDb().transaction(async (tx) => {
+      const [row] = await tx.select().from(surveyDrafts).where(eq(surveyDrafts.id, id)).for('update');
+      if (!row || row.ownerId !== actor.id) throw new Error(NOT_FOUND);
+      if (input.base && row.updatedAt.toISOString() !== input.base) {
+        throw new Error('다른 창이나 기기에서 이 저장본을 먼저 저장했습니다 — 저장본을 다시 불러온 뒤 저장해 주세요.');
+      }
+      const keep = new Set(photoRefsOf(input.data).map((r) => r.path));
+      const removed = photoRefsOf(row.data).filter((r) => !keep.has(r.path));
+      const updatedAt = new Date();
+      await tx.update(surveyDrafts)
+        .set({ title: clip(input.title), data: input.data as object, photoCount: keep.size, updatedAt })
+        .where(eq(surveyDrafts.id, id));
+      return { removed, updatedAt: updatedAt.toISOString() };
+    });
   },
 
   async deleteSurveyDraft(id, actor): Promise<void> {

@@ -457,7 +457,7 @@ export interface ProjectRepository {
   /** 빈 저장본 — 사진을 올릴 자리(id)가 먼저 있어야 한다 [본인] */
   createSurveyDraft(input: { cpo: string; title: string }, actor: Actor): Promise<string>;
   /** 값 저장 — 사진 자리는 라우트가 확인해 넘긴다. 빠진 사진 자리를 돌려준다(라우트가 지운다) [본인] */
-  saveSurveyDraft(id: string, input: { title: string; data: unknown }, actor: Actor): Promise<{ removed: PhotoRef[] }>;
+  saveSurveyDraft(id: string, input: { title: string; data: unknown; base?: string }, actor: Actor): Promise<{ removed: PhotoRef[]; updatedAt: string }>;
   /** 저장본 지우기 — 사진은 라우트가 폴더째 지운다 [본인] */
   deleteSurveyDraft(id: string, actor: Actor): Promise<void>;
 

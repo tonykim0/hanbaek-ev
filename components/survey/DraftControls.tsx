@@ -14,7 +14,7 @@ import { stamp, type useSurveyDraft } from '@/lib/survey/use-draft';
 type Draft = ReturnType<typeof useSurveyDraft<unknown>>;
 
 /** 내 임시 저장본 — 이 서식의 것, 최근이 위. 지금 여는 것에는 표시가 붙는다 */
-export function DraftList({ draft }: { draft: Pick<Draft, 'drafts' | 'id' | 'restore' | 'remove' | 'work'> }) {
+export function DraftList({ draft }: { draft: Pick<Draft, 'drafts' | 'id' | 'restore' | 'remove' | 'work' | 'dirty'> }) {
   const [drop, setDrop] = useState<{ id: string; title: string } | null>(null);
   if (draft.drafts.length === 0) return null;
   return (
@@ -29,7 +29,18 @@ export function DraftList({ draft }: { draft: Pick<Draft, 'drafts' | 'id' | 'res
               {d.id === draft.id && <span className="ml-2 text-tiny font-bold text-brand-700">지금 쓰는 중</span>}
             </span>
             {d.id !== draft.id && (
-              <Btn size="sm" kind="side" disabled={draft.work !== null} onClick={() => void draft.restore(d.id)}>불러오기</Btn>
+              <Btn
+                size="sm"
+                kind="side"
+                disabled={draft.work !== null}
+                // 불러오면 지금 화면이 통째로 바뀐다 — 저장 안 한 것이 있으면 나갈 때처럼 묻는다
+                onClick={() => {
+                  if (draft.dirty && !window.confirm('임시 저장하지 않은 내용이 있습니다. 불러오면 지금 화면의 내용이 바뀝니다 — 불러올까요?')) return;
+                  void draft.restore(d.id);
+                }}
+              >
+                불러오기
+              </Btn>
             )}
             <Btn size="sm" kind="undo" disabled={draft.work !== null} onClick={() => setDrop({ id: d.id, title: d.title })}>지우기</Btn>
           </li>
@@ -48,7 +59,7 @@ export function DraftList({ draft }: { draft: Pick<Draft, 'drafts' | 'id' | 'res
 }
 
 export function SurveyActions({ draft, make, busy, canMake }: {
-  draft: Pick<Draft, 'save' | 'work' | 'savedAt' | 'dirty' | 'error'>;
+  draft: Pick<Draft, 'save' | 'work' | 'savedAt' | 'dirty' | 'error' | 'canSave'>;
   make: () => void;
   busy: string | null;
   /** 만들 수 없으면 그 이유 — 단추 이름에 적는다(화면 규칙 3) */
@@ -59,8 +70,8 @@ export function SurveyActions({ draft, make, busy, canMake }: {
       <Btn onClick={make} busy={busy !== null} busyLabel={busy ?? undefined} disabled={canMake !== true || draft.work !== null}>
         {canMake === true ? '실사보고서 만들기' : canMake}
       </Btn>
-      <Btn kind="side" onClick={() => void draft.save()} busy={draft.work !== null} busyLabel={draft.work ?? undefined} disabled={busy !== null}>
-        임시 저장
+      <Btn kind="side" onClick={() => void draft.save()} busy={draft.work !== null} busyLabel={draft.work ?? undefined} disabled={busy !== null || !draft.canSave}>
+        {draft.canSave ? '임시 저장' : '열람 전용 — 임시 저장 불가'}
       </Btn>
       {draft.savedAt && !draft.dirty && <Saved>임시 저장됨 · {stamp(draft.savedAt)}</Saved>}
       {draft.savedAt && draft.dirty && <span className="text-tiny font-bold text-amber-700">{stamp(draft.savedAt)} 저장 뒤 바뀐 것 있음</span>}

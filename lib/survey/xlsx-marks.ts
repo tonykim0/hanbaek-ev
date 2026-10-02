@@ -13,6 +13,7 @@
  * 자리·크기·회전은 화면과 같은 상자(annot boxOf)에서 나온다 — 화면에서 늘리고 돌린 그대로다.
  * 사진을 칸 비율로 잘랐으면(srcRect) 잘린 바깥의 표시는 뺀다(칸 밖으로 떠 나가지 않게).
  */
+import { xmlSafe } from './xml-safe';
 import {
   INK, RED, SYM_COLOR, YELLOW, boxOf, lineKindOf, lineWidthOf, textLayout, type Annot, type NumStyle,
 } from './annot';
@@ -21,7 +22,7 @@ import {
 export interface Frame { cx: number; cy: number; crop: { l: number; t: number; r: number; b: number } }
 
 const hex = (c: string) => c.replace('#', '').toUpperCase();
-const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const esc = (s: string) => xmlSafe(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const fill = (c: string | null) => (c ? `<a:solidFill><a:srgbClr val="${hex(c)}"/></a:solidFill>` : '<a:noFill/>');
 const ln = (w: number, c: string | null, extra = '') =>
   c ? `<a:ln w="${Math.max(3175, Math.round(w))}">${fill(c)}${extra}</a:ln>` : '<a:ln><a:noFill/></a:ln>';
@@ -124,6 +125,7 @@ export function marksXml(marks: Annot[], img: { width: number; height: number },
       if (L.body.length) {
         parts.push(shape(a.t === 'label' ? '라벨' : '글상자', x, top, w, L.bodyH * k, 0, prst('rect'), `${fill('#ffffff')}${thin}`, txBody(L.body, pt, INK)));
       }
+      if (parts.length === 0) continue; // 글이 빈 글상자 — 빈 묶음은 엑셀이 「복구」할 거리다
       if (parts.length === 1 && !bx.r) { out.push(parts[0]); continue; }
       const id = nextId();
       const rotA = bx.r ? ` rot="${Math.round(bx.r * 60000)}"` : '';

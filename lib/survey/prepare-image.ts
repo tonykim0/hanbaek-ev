@@ -25,6 +25,25 @@ async function bitmapOf(file: File): Promise<ImageBitmap> {
   return bmp;
 }
 
+/**
+ * 사진 → 바로 세우고 긴 변 longEdge 안으로 줄인 판(흰 바탕). 임시 저장(use-draft)도 이것으로 줄여 올린다.
+ */
+export async function canvasOf(file: File, longEdge = LONG_EDGE): Promise<HTMLCanvasElement> {
+  const bmp = await bitmapOf(file);
+  const scale = Math.min(1, longEdge / Math.max(bmp.width, bmp.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(bmp.width * scale);
+  canvas.height = Math.round(bmp.height * scale);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('사진을 그릴 수 없습니다 — 다른 브라우저에서 다시 해주세요.');
+  // JPEG 는 투명을 모른다 — PNG 의 빈 자리가 검게 나오지 않게 흰 바탕을 깐다
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+  bmp.close?.();
+  return canvas;
+}
+
 async function jpegOf(canvas: HTMLCanvasElement, name: string): Promise<PreparedImage> {
   const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/jpeg', QUALITY));
   if (!blob) throw new Error(`${name} — 사진을 굽지 못했습니다.`);
@@ -36,22 +55,10 @@ async function jpegOf(canvas: HTMLCanvasElement, name: string): Promise<Prepared
  *             xlsx-kit 이 엑셀 도형으로 얹어 엑셀에서 다시 고칠 수 있게 한다)
  */
 export async function prepareImage(file: File, marks: Annot[] = [], style: NumStyle = 'red', bake = true): Promise<PreparedImage> {
-  const bmp = await bitmapOf(file);
-  const scale = Math.min(1, LONG_EDGE / Math.max(bmp.width, bmp.height));
-  const width = Math.round(bmp.width * scale);
-  const height = Math.round(bmp.height * scale);
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext('2d');
-  if (!ctx) throw new Error('사진을 그릴 수 없습니다 — 다른 브라우저에서 다시 해주세요.');
-  // JPEG 는 투명을 모른다 — PNG 의 빈 자리가 검게 나오지 않게 흰 바탕을 깐다
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, width, height);
-  ctx.drawImage(bmp, 0, 0, width, height);
-  bmp.close?.();
+  const canvas = await canvasOf(file);
+  const { width, height } = canvas;
   // 사진 위 표시를 합쳐 굽는다 — 미리보기와 같은 함수다(lib/survey/annot)
-  if (marks.length && bake) drawAnnots(ctx, width, height, marks, style);
+  if (marks.length && bake) drawAnnots(canvas.getContext('2d')!, width, height, marks, style);
   const out = await jpegOf(canvas, file.name);
   const focus = annotBounds(marks, width, height);
   return {
@@ -79,17 +86,10 @@ export async function prepareCollage(items: Array<{ file: File; marks: Annot[] }
   ctx.fillRect(0, 0, W, H);
   for (const [i, it] of items.entries()) {
     const t = tiles[i];
-    const bmp = await bitmapOf(it.file);
     // 표시는 사진 크기 기준이라 사진만 한 판에 굽고, 그 판을 조각 모양으로 잘라 옮긴다
-    const s = Math.min(1, LONG_EDGE / Math.max(bmp.width, bmp.height));
-    const pw = Math.round(bmp.width * s); const ph = Math.round(bmp.height * s);
-    const tile = document.createElement('canvas');
-    tile.width = pw; tile.height = ph;
-    const tc = tile.getContext('2d');
-    if (!tc) throw new Error('사진을 그릴 수 없습니다 — 다른 브라우저에서 다시 해주세요.');
-    tc.drawImage(bmp, 0, 0, pw, ph);
-    bmp.close?.();
-    if (it.marks.length) drawAnnots(tc, pw, ph, it.marks, style);
+    const tile = await canvasOf(it.file);
+    const pw = tile.width; const ph = tile.height;
+    if (it.marks.length) drawAnnots(tile.getContext('2d')!, pw, ph, it.marks, style);
     const w = crop(pw / ph, t.w / t.h, annotBounds(it.marks, pw, ph) ?? undefined);
     const sx = w.l * pw; const sy = w.t * ph;
     const sw = pw * (1 - w.l - w.r); const sh = ph * (1 - w.t - w.b);

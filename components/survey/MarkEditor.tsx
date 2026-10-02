@@ -143,11 +143,12 @@ export default function MarkEditor({
   onDone: (marks: Annot[]) => void;
   onClose: () => void;
 }) {
-  const [list, setList] = useState<Annot[]>(marks);
+  // 거점 라벨은 지금 거점 값으로 풀어 연다 — 화면에 그린 글(여러 줄)과 누르기·크기 잴 상자가 같아야 한다
+  const [list, setList] = useState<Annot[]>(() => resolveLabels(marks, labels));
   const [draft, setDraft] = useState<Annot | null>(null);
   const [tool, setTool] = useState<Tool | null>(start ?? (legend ? 'sym' : 'num'));
   const [sym, setSym] = useState<SymKind>('charger');
-  const [lineKind, setLineKind] = useState<LineKind>(line === ('leader' as LineKind) ? 'arrow' : line);
+  const [lineKind, setLineKind] = useState<LineKind>(line);
   const [text, setText] = useState('');
   const [label, setLabel] = useState<string | null>(labelPick ?? labels[0]?.name ?? null);
   const [sel, setSel] = useState<number | null>(null);
@@ -209,9 +210,6 @@ export default function MarkEditor({
     if (prev) setList(prev);
   };
 
-  /* 그리던 것(끌던 선·네모)은 다른 일을 하면 버린다 — 선은 손을 떼는 순간 끝나므로 남는 것이 없다 */
-  const commitDraft = useCallback(() => setDraft(null), []);
-
   /** 그 자리의 기호·번호 가운데 — 선 끝을 붙인다. 없으면 null */
   const centerAt = (p: Pt): Pt | null => {
     const marks = list.map((a, i) => ({ a, i })).filter((x) => x.a.t === 'sym' || x.a.t === 'num');
@@ -261,14 +259,20 @@ export default function MarkEditor({
     };
   };
 
-  const pickTool = (t: Tool) => { commitDraft(); setSel(null); setTool((cur) => (cur === t ? null : t)); };
-  /** 고른 표시를 고친다 */
-  const patchSel = (f: (a: Annot) => Annot) => {
-    if (sel === null) return;
-    snap();
-    setList((l) => l.map((a, k) => (k === sel ? f(a) : a)));
+  /* 그리던 것(끌던 선·네모)은 다른 일을 하면 버린다 — 선은 손을 떼는 순간 끝나므로 남는 것이 없다 */
+  const pickTool = (t: Tool) => { setDraft(null); setSel(null); setTool((cur) => (cur === t ? null : t)); };
+  const add = (a: Annot) => { snap(); setSel(listRef.current.length); setList((l) => [...l, a]); };
+  /*
+   * 글상자 글 고치기 — 되돌리기 자리는 고치기 시작할 때 한 번만 쌓는다(글자마다 쌓으면 200칸이 금방 찬다).
+   * 입력칸을 떠나면 다음 고치기는 새 자리다.
+   */
+  const typing = useRef(false);
+  const retext = (v: string) => {
+    setText(v);
+    if (sel === null || listRef.current[sel]?.t !== 'text') return;
+    if (!typing.current) { snap(); typing.current = true; }
+    setList((l) => l.map((a, k) => (k === sel && a.t === 'text' ? { ...a, text: v } : a)));
   };
-  const add = (a: Annot) => { snap(); setList((l) => { setSel(l.length); return [...l, a]; }); };
   /** 끌기를 시작한다 — 되돌리기 자리를 하나 쌓아 둔다(끝나서 그대로면 onUp 이 걷는다) */
   const begin = (o: Op) => { snap(); op.current = o; };
 
@@ -358,7 +362,7 @@ export default function MarkEditor({
     }
     if (draft?.t === 'line' && e.buttons) {
       setDraft({ ...draft, pts: [draft.pts[0], endAt(p, draft.pts[0])] });
-    } else if ((draft?.t === 'oval' || draft?.t === 'box') && e.buttons) {
+    } else if (draft?.t === 'box' && e.buttons) {
       setDraft({ ...draft, b: p });
     }
   }
@@ -382,7 +386,7 @@ export default function MarkEditor({
       if (Math.hypot((a.x - b.x) * W, (a.y - b.y) * H) > 6) add(draft);
       setDraft(null);
     }
-    if (draft && (draft.t === 'oval' || draft.t === 'box')) {
+    if (draft?.t === 'box') {
       // 거의 안 끈 것은 실수로 본다
       if (Math.abs(draft.a.x - draft.b.x) > 0.01 || Math.abs(draft.a.y - draft.b.y) > 0.01) add(draft);
       setDraft(null);
@@ -428,9 +432,8 @@ export default function MarkEditor({
           <Btn size="sm" kind="side" onClick={onClose}>취소</Btn>
           <Btn
             size="sm"
-            onClick={() => {
-              onDone(list);
-            }}
+            // 글을 다 지운 글상자는 걷는다 — 빈 상자가 엑셀에 빈 도형으로 남았다
+            onClick={() => onDone(list.filter((a) => a.t !== 'text' || a.text.trim()))}
           >
             완료
           </Btn>
@@ -460,17 +463,18 @@ export default function MarkEditor({
             <Choice key={k} on={sym === k} onClick={() => { setSym(k); setSel(null); }}><SymSwatch k={k} />{SYM_LABEL[k]}</Choice>
           ))}
           {tool === 'line' && LINES.map((l) => (
-            <Choice key={l.key} on={lineKind === l.key} onClick={() => { commitDraft(); setLineKind(l.key); setSel(null); }}>{l.label}</Choice>
+            <Choice key={l.key} on={lineKind === l.key} onClick={() => { setDraft(null); setLineKind(l.key); setSel(null); }}>{l.label}</Choice>
           ))}
           {tool === 'text' && (
             <>
               <input
                 value={picked?.t === 'text' ? picked.text : text}
-                onChange={(e) => { setText(e.target.value); patchSel((a) => (a.t === 'text' ? { ...a, text: e.target.value } : a)); }}
+                onFocus={() => { typing.current = false; }}
+                onChange={(e) => retext(e.target.value)}
                 placeholder="넣을 글자"
                 className={`${FIELD_BASE} w-56`}
               />
-              <Picks options={TEXT_PRESETS} onPick={(v) => { setText(v); patchSel((a) => (a.t === 'text' ? { ...a, text: v } : a)); }} />
+              <Picks options={TEXT_PRESETS} onPick={(v) => { typing.current = false; retext(v); }} />
             </>
           )}
           {tool === 'label' && labels.map((l) => (

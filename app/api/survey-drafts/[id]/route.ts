@@ -9,7 +9,7 @@
 import { NextResponse } from 'next/server';
 import { getRepository } from '@/lib/data';
 import { actorOf, getSessionUser } from '@/lib/auth/session';
-import { BadRequest, sessionWrite } from '@/lib/api/write-route';
+import { BadRequest, SERVER_ERROR_MESSAGE, isUnexpectedError, sessionWrite } from '@/lib/api/write-route';
 import { dropDraftFolder, dropPhotos, vetPhotos } from '@/lib/survey/draft-blobs';
 import { MAX_DRAFT_JSON } from '@/lib/survey/draft-shape';
 
@@ -21,23 +21,29 @@ export async function GET(_request: Request, { params }: { params: { id: string 
   try {
     return NextResponse.json({ draft: await getRepository().getSurveyDraft(params.id, actorOf(session)) });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : '불러오지 못했습니다.' }, { status: 404 });
+    if (isUnexpectedError(e)) {
+      console.error('[api] GET /api/survey-drafts/[id]', e);
+      return NextResponse.json({ error: SERVER_ERROR_MESSAGE }, { status: 500 });
+    }
+    return NextResponse.json({ error: (e as Error).message }, { status: 404 });
   }
 }
 
-export const PUT = sessionWrite<{ id: string }, { title?: unknown; data?: unknown }>(async ({ params, body, actor }) => {
+export const PUT = sessionWrite<{ id: string }, { title?: unknown; data?: unknown; base?: unknown }>(async ({ params, body, actor }) => {
   if (!body || typeof body.data !== 'object' || body.data === null) throw new BadRequest('저장할 값이 없습니다.');
   if (JSON.stringify(body.data).length > MAX_DRAFT_JSON) throw new BadRequest('저장할 값이 너무 큽니다.');
   const repo = getRepository();
   const before = await repo.getSurveyDraft(params.id, actor);
   const data = await vetPhotos(body.data, before.data, actor.id, params.id);
-  const { removed } = await repo.saveSurveyDraft(params.id, {
+  const { removed, updatedAt } = await repo.saveSurveyDraft(params.id, {
     title: typeof body.title === 'string' ? body.title : '', data,
+    base: typeof body.base === 'string' ? body.base : undefined,
   }, actor);
   await dropPhotos(removed);
-  return { savedAt: new Date().toISOString() };
+  return { savedAt: updatedAt };
 });
 
+/* 줄을 먼저 지운다 — 사진 폴더를 못 지워도 저장본은 지워진 것이다(남은 파일은 로그로 안다, draft-blobs) */
 export const DELETE = sessionWrite<{ id: string }, undefined>(async ({ params, actor }) => {
   await getRepository().deleteSurveyDraft(params.id, actor);
   await dropDraftFolder(actor.id, params.id);

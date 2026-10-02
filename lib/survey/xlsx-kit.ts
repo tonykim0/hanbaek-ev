@@ -13,7 +13,8 @@
 import type JSZip from 'jszip';
 import type { PreparedImage } from './docx-kit';
 import { marksXml } from './xlsx-marks';
-import { crop } from './fit';
+import { crop, fits } from './fit';
+import { parseXml, xmlSafe } from './xml-safe';
 
 const S_NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -27,7 +28,7 @@ const CT_DRAWING = 'application/vnd.openxmlformats-officedocument.drawing+xml';
 const EMU_PER_PX = 9525;
 const EMU_PER_PT = 12700;
 
-const parse = (xml: string) => new DOMParser().parseFromString(xml, 'application/xml');
+const parse = parseXml;
 const ser = (d: Document) => new XMLSerializer().serializeToString(d);
 
 /** 「A1」 → 열 번호(1부터)·행 번호 */
@@ -60,9 +61,6 @@ const relsOf = (p: string) => `${dirOf(p)}/_rels/${p.slice(p.lastIndexOf('/') + 
 const elems = (d: Document | Element, ns: string, local: string) => Array.from(d.getElementsByTagNameNS(ns, local));
 
 interface SheetInfo { name: string; path: string; el: Element }
-
-/* 칸 비율로 자를 창은 lib/survey/fit 에 있다 — 워드(docx-kit)·바둑판(prepare-image)도 같은 것을 쓴다 */
-export { crop } from './fit';
 
 /**
  * 열린 통합 문서 — 시트 XML 을 들고 있다가 save 에 한꺼번에 쓴다.
@@ -134,7 +132,7 @@ export class Workbook {
     const is = d.createElementNS(S_NS, 'is');
     const t = d.createElementNS(S_NS, 't');
     t.setAttribute('xml:space', 'preserve');
-    t.textContent = value;
+    t.textContent = xmlSafe(value);
     is.appendChild(t);
     c.appendChild(is);
   }
@@ -158,13 +156,6 @@ export class Workbook {
     const after = cells.find((x) => splitRef(x.getAttribute('r') ?? 'A1').col > col);
     rowEl.insertBefore(c, after ?? null);
     return c;
-  }
-
-  /** 칸의 지금 글자(공유 문자열이 아니라 직접 쓴 것만 — 시험용) */
-  async text(sheetName: string, ref: string): Promise<string> {
-    const d = await this.doc(this.sheet(sheetName).path);
-    const c = elems(d, S_NS, 'c').find((x) => x.getAttribute('r') === ref);
-    return c?.textContent ?? '';
   }
 
   /** 다음 부품 번호 — 같은 종류 파일 이름이 겹치지 않게(sheet12.xml · drawing9.xml …) */
@@ -343,8 +334,39 @@ export class Workbook {
     rb.setAttribute('manualBreakCount', String(rows.length));
   }
 
-  /** 칸 크기(EMU) — 열 폭(글자 수)·행 높이(pt)를 쌓는다. 열 폭은 작게 잡는 쪽으로(넘치지 않게) */
-  private async geometry(d: Document) {
+  /**
+   * 칸 크기(EMU) — 열 폭(글자 단위)·행 높이(pt)를 쌓는다.
+   *
+   * ★열 폭 한 단위가 몇 EMU 인지는 서식의 그림에서 잰다★ — 엑셀은 열 폭을 기본 글꼴의 숫자 폭으로 픽셀로 바꾼다.
+   * 7px 로 어림했더니 이 서식(숫자 폭 약 8px)에서 7% 좁게 잡혀, 칸에 꽉 채운다는 사진이 칸 비율보다 납작하게 잘린
+   * 뒤 엑셀이 다시 늘렸다(표시 도형도 같이). 서식에 이미 있는 그림(엑셀이 저장한 것)이 몇 열에 걸쳐 몇 EMU 인지로
+   * 한 단위를 얻는다(가운데 값). 그림이 없으면 8px. 시트마다 처음 한 번 잰다 — 우리가 넣은 그림으로 다시 재지 않게.
+   */
+  private perUnit = new Map<string, number>();
+  private async unitOf(sheetPath: string, units: (c: number) => number): Promise<number> {
+    const have = this.perUnit.get(sheetPath);
+    if (have) return have;
+    const dd = await this.drawingOf(sheetPath).then((p) => this.doc(p)).catch(() => null);
+    const n = (e: Element | undefined, k: string) => Number(e ? elems(e, XDR_NS, k)[0]?.textContent : NaN);
+    const est: number[] = [];
+    for (const anc of dd ? elems(dd, XDR_NS, 'twoCellAnchor') : []) {
+      const from = elems(anc, XDR_NS, 'from')[0];
+      const to = elems(anc, XDR_NS, 'to')[0];
+      const xfrm = elems(anc, A_NS, 'xfrm')[0];
+      const ext = xfrm ? elems(xfrm, A_NS, 'ext')[0] : undefined;
+      const fc = n(from, 'col'); const tc = n(to, 'col');
+      if (!ext || !(tc > fc)) continue;
+      let span = 0;
+      for (let c = fc + 1; c <= tc; c++) span += units(c);
+      const v = (Number(ext.getAttribute('cx')) + n(from, 'colOff') - n(to, 'colOff')) / span;
+      if (Number.isFinite(v) && v > 0) est.push(v);
+    }
+    const unit = est.length ? est.sort((x, y) => x - y)[Math.floor(est.length / 2)] : 8 * EMU_PER_PX;
+    this.perUnit.set(sheetPath, unit);
+    return unit;
+  }
+
+  private async geometry(d: Document, sheetPath: string) {
     const fmt = elems(d, S_NS, 'sheetFormatPr')[0];
     const defW = Number(fmt?.getAttribute('defaultColWidth') ?? 9);
     const defH = Number(fmt?.getAttribute('defaultRowHeight') ?? 15);
@@ -356,10 +378,9 @@ export class Workbook {
       const ht = r.getAttribute('ht');
       if (ht) rows.set(Number(r.getAttribute('r')), Number(ht));
     }
-    const colW = (c: number) => {
-      const w = cols.find((x) => c >= x.min && c <= x.max)?.w ?? defW;
-      return Math.floor(w * 7 + 5) * EMU_PER_PX;
-    };
+    const units = (c: number) => cols.find((x) => c >= x.min && c <= x.max)?.w ?? defW;
+    const unit = await this.unitOf(sheetPath, units);
+    const colW = (c: number) => Math.round(units(c) * unit);
     const rowH = (r: number) => (rows.get(r) ?? defH) * EMU_PER_PT;
     return { colW, rowH };
   }
@@ -378,7 +399,7 @@ export class Workbook {
     const s = this.sheet(sheetName);
     const d = await this.doc(s.path);
     const [a, b] = range.split(':').map(splitRef);
-    const { colW, rowH } = await this.geometry(d);
+    const { colW, rowH } = await this.geometry(d, s.path);
     let boxW = 0; for (let c = a.col; c <= b.col; c++) boxW += colW(c);
     let boxH = 0; for (let r = a.row; r <= b.row; r++) boxH += rowH(r);
 
@@ -405,10 +426,11 @@ export class Workbook {
     };
 
     let xml: string;
-    if (mode === 'fill') {
-      // 칸 테두리가 사진에 덮이지 않게 둘레를 2px 남긴다
-      const inset = 2 * EMU_PER_PX;
-      const w = crop(img.width / img.height, (boxW - 2 * inset) / (boxH - 2 * inset), img.focus);
+    // 칸 테두리가 사진에 덮이지 않게 둘레를 2px 남긴다
+    const inset = 2 * EMU_PER_PX;
+    const w = crop(img.width / img.height, (boxW - 2 * inset) / (boxH - 2 * inset), img.focus);
+    // 표시가 자른 창에 다 안 들면 자르지 않고 들인다 — 잘라 넣으면 표시 도형이 사진 밖으로 삐져나간다
+    if (mode === 'fill' && fits(w, img.focus)) {
       const pct = (v: number) => Math.round(v * 100000);
       const src = `<a:srcRect l="${pct(w.l)}" t="${pct(w.t)}" r="${pct(w.r)}" b="${pct(w.b)}"/>`;
       xml = `<xdr:twoCellAnchor ${ns}><xdr:from><xdr:col>${a.col - 1}</xdr:col><xdr:colOff>${inset}</xdr:colOff><xdr:row>${a.row - 1}</xdr:row><xdr:rowOff>${inset}</xdr:rowOff></xdr:from><xdr:to><xdr:col>${b.col - 1}</xdr:col><xdr:colOff>${Math.max(0, colW(b.col) - inset)}</xdr:colOff><xdr:row>${b.row - 1}</xdr:row><xdr:rowOff>${Math.max(0, Math.round(rowH(b.row)) - inset)}</xdr:rowOff></xdr:to>${pic(Math.round(boxW - 2 * inset), Math.round(boxH - 2 * inset), src, w)}</xdr:twoCellAnchor>`;

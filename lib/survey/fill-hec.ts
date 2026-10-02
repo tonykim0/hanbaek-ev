@@ -15,12 +15,10 @@ import {
   type SurveyForm, type SurveySpot,
 } from './spec';
 import {
-  ImageRegistry, W_NS, cellWidth, cellsOf, childrenNamed, pageBreak, putImage,
-  rowHeight, rowsOf, setCellText, textOf, unlockDocument, type PreparedImage,
+  ImageRegistry, PHOTO_ROW_MIN, W_NS, cellWidth, cellsOf, finishDocx, pageBreak, photoCellsOf, putImage,
+  rowHeight, rowsOf, setCellText, textOf, type PreparedImage,
 } from './docx-kit';
-
-/** 사진 줄로 보는 높이(트윕) — 서식의 사진 줄은 4500, 글자 줄은 1000 아래다 */
-const PHOTO_ROW_MIN = 3000;
+import { surveyFileName } from './pack';
 /** 칸 안 여백(트윕) — 사진이 칸 선에 붙지 않게 */
 const PAD = 180;
 
@@ -90,17 +88,12 @@ function fillPhotoSheet(
   setCellText(cellsOf(hr[4])[0], `상세 위치 : ${spot.location}`);
 
   // 사진 칸 — 사진 줄의 칸을 위에서 아래·왼쪽에서 오른쪽 순서로 모은다
-  const photoCells: Array<{ tc: Element; h: number }> = [];
+  const photoCells = photoTables.flatMap((t) => photoCellsOf(rowsOf(t)));
+  // 첫 사진 줄 바로 밑이 원경·근경 이름 줄 — 그 사이 칸에 전주번호·차단기 스펙을 적는다
   let specRow: Element | null = null;
-  for (const t of photoTables) {
-    const rows = rowsOf(t);
-    rows.forEach((r, i) => {
-      if (rowHeight(r) >= PHOTO_ROW_MIN) {
-        for (const tc of cellsOf(r)) photoCells.push({ tc, h: rowHeight(r) });
-        // 첫 사진 줄 바로 밑이 원경·근경 이름 줄 — 그 사이 칸에 전주번호·차단기 스펙을 적는다
-        if (!specRow && rows[i + 1] && cellsOf(rows[i + 1]).length === 4) specRow = rows[i + 1];
-      }
-    });
+  for (const rows of photoTables.map(rowsOf)) {
+    const i = rows.findIndex((r, k) => rowHeight(r) >= PHOTO_ROW_MIN && rows[k + 1] && cellsOf(rows[k + 1]).length === 4);
+    if (i >= 0) { specRow = rows[i + 1]; break; }
   }
   // 마지막 줄의 둘째 칸은 비어 있는 자리다(CCTV 옆) — 일곱 칸까지만 쓴다
   if (photoCells.length < HEC_PHOTO_SLOTS.length) {
@@ -186,25 +179,7 @@ export async function fillHecSurvey(
   });
 
   // 본문을 갈아 끼운다 — 계약서 본문은 버리고 쪽 설정(sectPr)만 남긴다
-  for (const k of Array.from(body.childNodes)) body.removeChild(k);
-  for (const e of out) body.appendChild(e);
-  if (blocks.sectPr) body.appendChild(blocks.sectPr);
-
-  zip.file('word/document.xml', new XMLSerializer().serializeToString(doc));
-  await reg.flush();
-  await unlockDocument(zip);
-  const opts = { compression: 'DEFLATE' as const };
-  return typeof Blob !== 'undefined' && typeof window !== 'undefined'
-    ? zip.generateAsync({
-      ...opts, type: 'blob',
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    })
-    : zip.generateAsync({ ...opts, type: 'uint8array' });
+  return finishDocx(zip, doc, out, blocks.sectPr, reg);
 }
 
-/** 협력사가 받는 파일 이름 — 접수 ZIP 의 표준 이름과 같은 꼴(현장명_서류명) */
-export const hecSurveyFileName = (siteName: string) =>
-  `${siteName.trim() || '현장'}_실사보고서 (사진대지).docx`;
-
-// 시험에서 쓰려고 내보낸다
-export const _internal = { cutBlocks, childrenNamed };
+export const hecSurveyFileName = (siteName: string) => surveyFileName(siteName, 'docx');

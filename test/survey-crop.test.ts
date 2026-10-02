@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { crop } from '@/lib/survey/xlsx-kit';
-import { collageTiles, type Tile } from '@/lib/survey/fit';
+import { collageTiles, crop, fits, type Tile } from '@/lib/survey/fit';
 
 const near = (a: number, b: number) => expect(Math.abs(a - b)).toBeLessThan(1e-9);
 
@@ -84,5 +83,14 @@ describe('한 칸에 사진 여러 장 — 바둑판', () => {
         expect(overlap).toBe(false);
       }
     }
+  });
+});
+
+describe('표시가 자른 창에 다 드는가', () => {
+  it('표시가 창 안이면 자른다, 삐져나가면 자르지 않는다(칸 안에 들인다)', () => {
+    const w = crop(4 / 3, 2); // 위아래 1/6 씩 잘린다
+    expect(fits(w)).toBe(true);
+    expect(fits(w, { x0: 0.2, y0: 0.3, x1: 0.8, y1: 0.7 })).toBe(true);
+    expect(fits(w, { x0: 0.1, y0: 0.05, x1: 0.9, y1: 0.95 })).toBe(false);
   });
 });

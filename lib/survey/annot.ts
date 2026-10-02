@@ -73,6 +73,19 @@ export function resolveLabels(list: Annot[], labels: SpotLabel[] | undefined): A
   });
 }
 
+/**
+ * 거점 하나를 뺐을 때 — ★라벨은 거점 번호에 묶이므로★ 그 거점의 라벨은 걷고, 뒤 거점의 라벨은 번호를 하나씩
+ * 당긴다. 그대로 두면 3거점 중 2거점을 뺐을 때 도면의 「2거점」 상자에 옛 3거점의 값이 들어가고, 옛 3거점의
+ * 라벨은 빈 「3거점」 상자가 된다(엑셀에 조용히 틀린 값이 나간다).
+ */
+export function dropSpotLabels(list: Annot[], removed: number): Annot[] {
+  if (!list.some((a) => a.t === 'label' && a.spot)) return list;
+  return list.flatMap((a) => {
+    if (a.t !== 'label' || !a.spot || a.spot < removed) return [a];
+    return a.spot === removed ? [] : [{ ...a, spot: a.spot - 1 }];
+  });
+}
+
 /** 번호 모양 — 위 머리말 */
 export type NumStyle = 'red' | 'yellow';
 
@@ -356,7 +369,14 @@ export function hitAnnot(list: Annot[], px: number, py: number, w: number, h: nu
 
 /** 표시를 통째로 옮긴다(dx·dy 는 비율) — 선·동그라미·네모는 점마다 같이 민다 */
 export function moveAnnot(a: Annot, dx: number, dy: number): Annot {
-  const m = (p: Pt): Pt => ({ x: Math.min(1, Math.max(0, p.x + dx)), y: Math.min(1, Math.max(0, p.y + dy)) });
+  /*
+   * 점이 여럿인 것(선·네모)은 ★옮길 거리를 줄여★ 모양을 지킨다 — 점마다 사진 끝에서 자르면 끝에 닿은 점만 멈춰
+   * 선이 꺾이고 네모가 찌그러졌다. 점 하나인 것은 그 점만 사진 안에 둔다.
+   */
+  const pts = a.t === 'line' ? a.pts : a.t === 'oval' || a.t === 'box' ? [a.a, a.b] : [a];
+  const fit = (d: number, vs: number[]) => Math.min(Math.max(d, -Math.min(...vs)), 1 - Math.max(...vs));
+  const fx = fit(dx, pts.map((p) => p.x)); const fy = fit(dy, pts.map((p) => p.y));
+  const m = (p: Pt): Pt => ({ x: p.x + fx, y: p.y + fy });
   if (a.t === 'line') return { ...a, pts: a.pts.map(m) };
   if (a.t === 'oval' || a.t === 'box') return { ...a, a: m(a.a), b: m(a.b) };
   return { ...a, ...m(a) };

@@ -10,6 +10,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { logLlmCall } from '@/lib/llm-usage';
+import type { PlateRead } from './use-plate';
 
 type CreateWithOutputConfig = Anthropic.MessageCreateParamsNonStreaming & {
   output_config?: { effort?: 'low' | 'medium' | 'high'; format?: { type: 'json_schema'; schema: unknown } };
@@ -18,16 +19,15 @@ type CreateWithOutputConfig = Anthropic.MessageCreateParamsNonStreaming & {
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 /** 짧은 글자 몇 줄이라 빠른 쪽으로 — 그래도 번호 한 자리가 틀리면 다른 전주라 최신 모델을 쓴다 */
 const MODEL = 'claude-opus-5-5';
-const CALL_TIMEOUT_MS = 60_000;
+/*
+ * 시간 — 라우트는 60초에 끊긴다(maxDuration). 한 번 25초 · 다시 한 번까지(50초)로 그 안에서 끝낸다.
+ * SDK 기본(60초 · 두 번 더)이면 Vercel 이 먼저 끊어 [survey-plate] 줄도 안 남았다.
+ */
+const CALL_TIMEOUT_MS = 25_000;
+const MAX_RETRIES = 1;
+/** claude-opus-5-5 는 생각을 끌 수 없고 그것도 max_tokens 에 든다 — 답(몇 줄)보다 넉넉히 */
+const MAX_TOKENS = 8192;
 
-export interface PlateRead {
-  /** 분전반(판넬) 이름 — 「PM-101」「LE-117」「L-CAR」「LV-5 ATS」 */
-  panel: string | null;
-  /** 한전 전주번호 — 「2175G142 송정선 49R3」(전산화번호 + 선로명·번호) */
-  pole: string | null;
-  /** 메인차단기 — 「225A」「4P 150A」. 외함 안 차단기에 또렷이 보일 때만 */
-  breaker: string | null;
-}
 
 const SCHEMA = {
   type: 'object',
@@ -59,12 +59,17 @@ export async function readPlate(image: { data: string; mediaType: 'image/jpeg' |
   const at = Date.now();
   const params: CreateWithOutputConfig = {
     model: MODEL,
-    max_tokens: 1024,
+    max_tokens: MAX_TOKENS,
     messages: [{ role: 'user', content }],
     output_config: { effort: 'medium', format: { type: 'json_schema', schema: SCHEMA } },
   };
-  const message = await anthropic.messages.create(params, { timeout: CALL_TIMEOUT_MS });
+  const message = await anthropic.messages.create(params, { timeout: CALL_TIMEOUT_MS, maxRetries: MAX_RETRIES });
   logLlmCall({ route: 'survey-plate', model: MODEL, ms: Date.now() - at, usage: message.usage });
+  // 잘렸거나 거절한 답은 JSON 이 아니다 — 읽지 못한 것으로 두고 까닭을 남긴다(칸은 사람이 적는다)
+  if (message.stop_reason === 'max_tokens' || message.stop_reason === 'refusal') {
+    console.error(`[survey-plate] 답이 끝나지 않음 — stop_reason=${message.stop_reason}`);
+    return { panel: null, pole: null, breaker: null };
+  }
   const text = message.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('').trim();
   const raw = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')) as Partial<PlateRead>;
   const clean = (v: unknown) => (typeof v === 'string' && v.trim() && v.trim().length <= 60 ? v.trim().replace(/\s+/g, ' ') : null);

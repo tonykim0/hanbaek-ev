@@ -23,12 +23,15 @@ interface UsageLike {
 }
 
 /**
- * 눈대중용 단가 (2026-08-27 기준, claude-opus-5 · 100만 토큰당 달러).
+ * 눈대중용 단가 (100만 토큰당 달러) — claude-opus-5 는 2026-08-27, claude-opus-5-5 는 2026-10-02 기준.
  *
- * ★청구서가 아니다★ — 어느 경로가 비싼지 견주는 데만 쓴다. 캐시 읽기는 입력의 0.1배,
- * 캐시 쓰기는 1.25배다. 단가가 바뀌면 이 숫자도 바뀌므로 날짜를 같이 적어 둔다.
+ * ★청구서가 아니다★ — 어느 경로가 비싼지 견주는 데만 쓴다. 캐시 읽기는 입력의 0.1배(5.5 는 0.05배),
+ * 캐시 쓰기는 1.25배다. 단가가 바뀌면 이 숫자도 바뀌므로 날짜를 같이 적어 둔다. 모르는 모델은 opus-5 값.
  */
-const PRICE = { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 } as const;
+const PRICES: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
+  'claude-opus-5': { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
+  'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
+};
 
 export interface LlmCallLog {
   /** 어느 경로인가 — 로그에서 이 이름으로 묶어 본다 (claude-import · partner-doc · intake-review) */
@@ -50,6 +53,7 @@ export function logLlmCall({ route, model, ms, pages, usage }: LlmCallLog): void
     const output = usage?.output_tokens ?? 0;
     const cacheRead = usage?.cache_read_input_tokens ?? 0;
     const cacheWrite = usage?.cache_creation_input_tokens ?? 0;
+    const PRICE = PRICES[model] ?? PRICES['claude-opus-5'];
     const usd =
       (input * PRICE.input
         + output * PRICE.output

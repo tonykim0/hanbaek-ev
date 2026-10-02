@@ -17,12 +17,18 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLeaveGuard } from '@/lib/use-leave-guard';
-import type { DraftCpo, DraftFull, DraftSummary, PhotoRef } from './draft-shape';
+import { isPhotoRef, photoRefsOf, type DraftCpo, type DraftFull, type DraftSummary, type PhotoRef } from './draft-shape';
+import { canvasOf } from './prepare-image';
 
 export const LEAVE_MESSAGE = '실사보고서 작성을 중단하시겠습니까? 임시 저장하지 않은 내용은 초기화됩니다.';
 
-/** 이 화면에서 올렸거나 내려받은 사진 → 그 자리. 같은 사진을 두 번 올리지 않는다 */
+/**
+ * 이 화면에서 올렸거나 내려받은 사진 → 그 자리. 같은 사진을 두 번 올리지 않는다. ★그 자리가 지금 저장본의
+ * 폴더일 때만 쓴다★(inFolder) — 저장본을 지우고 새로 저장하면 옛 폴더의 자리를 실어 보내 서버가 「이 저장본의
+ * 사진이 아닙니다」로 매번 거절했다.
+ */
 const uploaded = new WeakMap<Blob, PhotoRef>();
+const inFolder = (r: PhotoRef | undefined, draftId: string): r is PhotoRef => !!r && r.path.includes(`/${draftId}/`);
 
 /** 값 속 사진(File)들 — 순서대로, 겹치지 않게 */
 function filesOf(v: unknown, out: Blob[] = []): Blob[] {
@@ -32,33 +38,30 @@ function filesOf(v: unknown, out: Blob[] = []): Blob[] {
   return out;
 }
 
-/** 사진 → 자리, 자리 → 사진으로 바꾼 값 */
-function swap(v: unknown, f: (x: unknown) => unknown | undefined): unknown {
-  const hit = f(v);
-  if (hit !== undefined) return hit;
-  if (Array.isArray(v)) return v.map((x) => swap(x, f));
-  if (v && typeof v === 'object' && !(v instanceof Blob)) {
-    return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, swap(x, f)]));
-  }
+/** 사진(File) → 자리로 바꾼 값 — 저장할 때. 되돌리는 쪽은 draft-shape 의 mapPhotoRefs 다 */
+function toRefs(v: unknown, ref: (b: Blob) => PhotoRef): unknown {
+  if (v instanceof Blob) return ref(v);
+  if (Array.isArray(v)) return v.map((x) => toRefs(x, ref));
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, toRefs(x, ref)]));
   return v;
 }
 
+/** 올릴 꼴 — 바로 세우고 긴 변 2400px JPEG. 못 여는 사진(HEIC 등)은 그대로 */
 async function shrink(file: File): Promise<Blob> {
   try {
-    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
-    const s = Math.min(1, 2400 / Math.max(bmp.width, bmp.height));
-    const c = document.createElement('canvas');
-    c.width = Math.round(bmp.width * s); c.height = Math.round(bmp.height * s);
-    const ctx = c.getContext('2d');
-    if (!ctx) return file;
-    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
-    ctx.drawImage(bmp, 0, 0, c.width, c.height);
-    bmp.close?.();
-    const out = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/jpeg', 0.9));
-    return out ?? file;
+    const c = await canvasOf(file, 2400);
+    return (await new Promise<Blob | null>((res) => c.toBlob(res, 'image/jpeg', 0.9))) ?? file;
   } catch {
     return file;
   }
+}
+
+/** 차례로 하되 넷씩 같이 — 사진 수십 장 저장본을 받는 시간이 줄어든다 */
+async function pool<T>(items: T[], run: (x: T, i: number) => Promise<void>, size = 4): Promise<void> {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(size, items.length) }, async () => {
+    while (next < items.length) { const i = next++; await run(items[i], i); }
+  }));
 }
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -83,14 +86,19 @@ async function uploadPhoto(draftId: string, file: File): Promise<PhotoRef> {
 /**
  * @param cpo   서식 — 저장본 목록이 서식별이다
  * @param value 지금 화면의 값(사진 포함). 바뀔 때마다 새 객체여야 한다(React 상태 그대로)
- * @param apply 저장본을 화면에 되살린다
+ * @param apply 저장본을 화면에 되살린다 — 고쳐서(빠진 칸을 기본값으로) 세웠으면 세운 값을 돌려준다. 그 값이
+ *              「저장한 그대로」의 기준이 된다(안 돌려주면 받은 값 — 그러면 고친 화면이 늘 「바뀐 것 있음」이다)
  * @param title 저장본 이름 — 현장명
  * @param busy  만드는 중 — 그동안 나가도 묻는다
  */
-export function useSurveyDraft<T>(cpo: DraftCpo, value: T, apply: (v: T) => void, title: string, busy = false) {
+export function useSurveyDraft<T>(cpo: DraftCpo, value: T, apply: (v: T) => T | void, title: string, busy = false) {
   /** 마지막으로 저장(또는 불러온) 값 — 이것과 다르면 「바뀐 것이 있다」 */
   const base = useRef<T>(value);
+  /** 마지막으로 불러오거나 저장한 판(updatedAt) — 저장할 때 같이 보내 다른 창·기기의 저장을 덮지 않는다 */
+  const version = useRef<string | null>(null);
   const [id, setId] = useState<string | null>(null);
+  /** 열람 전용은 저장하지 못한다 — 목록이 알려준다 */
+  const [canSave, setCanSave] = useState(true);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [drafts, setDrafts] = useState<DraftSummary[]>([]);
   /** 도는 일 — 「사진 올리는 중 3/12」처럼 단추 이름이 된다 */
@@ -99,7 +107,9 @@ export function useSurveyDraft<T>(cpo: DraftCpo, value: T, apply: (v: T) => void
 
   const refresh = useCallback(async () => {
     try {
-      setDrafts((await api<{ drafts: DraftSummary[] }>(`/api/survey-drafts?cpo=${cpo}`)).drafts);
+      const r = await api<{ drafts: DraftSummary[]; canSave?: boolean }>(`/api/survey-drafts?cpo=${cpo}`);
+      setDrafts(r.drafts);
+      setCanSave(r.canSave !== false);
     } catch {
       // 목록을 못 받아도 쓰는 일은 막지 않는다
     }
@@ -112,29 +122,38 @@ export function useSurveyDraft<T>(cpo: DraftCpo, value: T, apply: (v: T) => void
   const save = useCallback(async () => {
     setError(null);
     const snapshot = value;
+    /* 새로 만든 저장본이 값을 받기 전에 실패하면 지운다 — 빈 줄이 목록에 남아 열면 화면이 깨졌다 */
+    let created: string | null = null;
     try {
       setWork('저장 준비 중…');
       let draftId = id;
       if (!draftId) {
-        draftId = (await api<{ id: string }>('/api/survey-drafts', {
+        draftId = created = (await api<{ id: string }>('/api/survey-drafts', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cpo, title }),
         })).id;
-        setId(draftId);
+        version.current = null;
       }
-      const todo = filesOf(snapshot).filter((f) => !uploaded.has(f));
-      for (const [i, f] of todo.entries()) {
-        setWork(`사진 올리는 중 ${i + 1}/${todo.length}`);
-        uploaded.set(f, await uploadPhoto(draftId, f as File));
-      }
-      setWork('저장 중…');
-      const data = swap(snapshot, (x) => (x instanceof Blob ? uploaded.get(x) : undefined));
-      await api(`/api/survey-drafts/${draftId}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, data }),
+      const folder = draftId;
+      const todo = filesOf(snapshot).filter((f) => !inFolder(uploaded.get(f), folder));
+      let done = 0;
+      await pool(todo, async (f) => {
+        uploaded.set(f, await uploadPhoto(folder, f as File));
+        setWork(`사진 올리는 중 ${(done += 1)}/${todo.length}`);
       });
+      setWork('저장 중…');
+      const data = toRefs(snapshot, (b) => uploaded.get(b)!);
+      const { savedAt: at } = await api<{ savedAt: string }>(`/api/survey-drafts/${draftId}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, data, base: version.current ?? undefined }),
+      });
+      created = null;
+      version.current = at;
+      setId(draftId);
       base.current = snapshot;
-      setSavedAt(Date.now());
+      setSavedAt(new Date(at).getTime());
       void refresh();
     } catch (err) {
+      if (created) void fetch(`/api/survey-drafts/${created}`, { method: 'DELETE' }).catch(() => undefined);
       setError(`임시 저장하지 못했습니다 — ${(err as Error)?.message || '다시 해 주세요'}`);
     } finally {
       setWork(null);
@@ -146,25 +165,23 @@ export function useSurveyDraft<T>(cpo: DraftCpo, value: T, apply: (v: T) => void
     try {
       setWork('불러오는 중…');
       const { draft } = await api<{ draft: DraftFull }>(`/api/survey-drafts/${draftId}`);
-      const refs: PhotoRef[] = [];
-      swap(draft.data, (x) => {
-        if (x && typeof x === 'object' && (x as PhotoRef).__photo) { refs.push(x as PhotoRef); return x; }
-        return undefined;
-      });
+      if (!draft.data || typeof draft.data !== 'object' || Object.keys(draft.data).length === 0) {
+        throw new Error('값이 없는 저장본입니다(저장하다 끊긴 것) — 지워 주세요');
+      }
+      const refs = photoRefsOf(draft.data);
       const files = new Map<string, File>();
-      for (const [i, r] of refs.entries()) {
-        setWork(`사진 받는 중 ${i + 1}/${refs.length}`);
+      let done = 0;
+      await pool(refs, async (r) => {
         const res = await fetch(r.url);
         if (!res.ok) throw new Error(`사진을 받지 못했습니다 (${r.name})`);
         const file = new File([await res.blob()], r.name, { type: r.type });
         uploaded.set(file, r);
         files.set(r.path, file);
-      }
-      const v = swap(draft.data, (x) =>
-        x && typeof x === 'object' && (x as PhotoRef).__photo ? files.get((x as PhotoRef).path) ?? null : undefined
-      ) as T;
-      base.current = v;
-      apply(v);
+        setWork(`사진 받는 중 ${(done += 1)}/${refs.length}`);
+      });
+      const v = toFiles(draft.data, files) as T;
+      base.current = apply(v) ?? v;
+      version.current = draft.updatedAt;
       setId(draft.id);
       setSavedAt(new Date(draft.updatedAt).getTime());
     } catch (err) {
@@ -178,14 +195,22 @@ export function useSurveyDraft<T>(cpo: DraftCpo, value: T, apply: (v: T) => void
     setError(null);
     try {
       await api(`/api/survey-drafts/${draftId}`, { method: 'DELETE' });
-      if (draftId === id) { setId(null); setSavedAt(null); }
+      if (draftId === id) { setId(null); setSavedAt(null); version.current = null; }
       await refresh();
     } catch (err) {
       setError(`지우지 못했습니다 — ${(err as Error)?.message || '다시 해 주세요'}`);
     }
   }, [id, refresh]);
 
-  return { id, drafts, save, restore, remove, work, savedAt, dirty, error };
+  return { id, drafts, save, restore, remove, work, savedAt, dirty, error, canSave };
+}
+
+/** 자리 → 내려받은 사진(File). 못 받은 자리는 빈 칸(null) */
+function toFiles(v: unknown, files: Map<string, File>): unknown {
+  if (isPhotoRef(v)) return files.get(v.path) ?? null;
+  if (Array.isArray(v)) return v.map((x) => toFiles(x, files));
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, toFiles(x, files)]));
+  return v;
 }
 
 /** 「10/01 21:30」 */

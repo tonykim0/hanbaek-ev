@@ -15,7 +15,7 @@ import { Alerts, Btn, Choice, Err, Picks } from '@/components/ui';
 import { downloadBlob } from '@/lib/download';
 import { useSurveyDraft } from '@/lib/survey/use-draft';
 import { newPhotos, usePlateReader } from '@/lib/survey/use-plate';
-import { resolveLabels, type Annot, type SpotLabel } from '@/lib/survey/annot';
+import { dropSpotLabels, resolveLabels, type Annot, type SpotLabel } from '@/lib/survey/annot';
 import { DraftList, SurveyActions } from './DraftControls';
 import { prepareImage } from '@/lib/survey/prepare-image';
 import type { PreparedImage } from '@/lib/survey/docx-kit';
@@ -25,7 +25,8 @@ import {
   type PhotoSlot, type PlEtc, type PlForm, type PlSpot,
 } from '@/lib/survey/spec';
 import { autoCrops, cropImage, cropMarks, imageSize, type CropRect } from '@/lib/survey/plan-crop';
-import { PhotoBox, PhotoSlots, nextId, num, today } from './SurveyEditor';
+import { nextId, num, today } from '@/lib/survey/form-utils';
+import { PhotoBox, PhotoSlots } from './PhotoSlots';
 import PlanCrop from './PlanCrop';
 
 const CABLE_SIZES = [6, 10, 16, 25, 35, 50, 70, 95, 120, 150];
@@ -81,18 +82,33 @@ const zoomLabel = (n: number, labels: SpotLabel[]): Annot => {
 
 const Grid = ({ children }: { children: ReactNode }) => <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{children}</div>;
 
+const newPlForm = (): PlForm => ({
+  siteName: '', surveyDate: today(), address: '', siteTel: '',
+  surveyor: '', existing: '', siteNote: '',
+  roadCutM: null, roadCutPrice: null, digM: null, digPrice: null,
+  // 제출본에 나온 기타비용 둘 — 단가는 서식 값(인건비 250,000)과 제출본의 IP전주 값
+  etc: [{ spec: '인건비', qty: null, price: 250000 }, { spec: 'IP전주', qty: null, price: 300000 }],
+  gridType: '공중공급',
+  safetyCheck: true,
+  overview: null, plan: null, planMarks: [],
+  spots: [newPlSpot(nextId())],
+});
+
+/** 저장본 → 화면 값 — 빠진 것은 기본값으로(옛 꼴·덜 저장된 저장본도 화면이 깨지지 않게) */
+function plFormOf(v: Partial<PlForm> | null | undefined): PlForm {
+  const base = newPlForm();
+  const spots = Array.isArray(v?.spots) && v.spots.length ? v.spots : base.spots;
+  return {
+    ...base,
+    ...v,
+    etc: Array.isArray(v?.etc) ? v.etc : base.etc,
+    planMarks: Array.isArray(v?.planMarks) ? v.planMarks : [],
+    spots: spots.map((s) => ({ ...newPlSpot(s.id ?? nextId()), ...s })),
+  };
+}
+
 export default function PluglinkEditor() {
-  const [f, setF] = useState<PlForm>(() => ({
-    siteName: '', surveyDate: today(), address: '', siteTel: '',
-    surveyor: '', existing: '', siteNote: '',
-    roadCutM: null, roadCutPrice: null, digM: null, digPrice: null,
-    // 제출본에 나온 기타비용 둘 — 단가는 서식 값(인건비 250,000)과 제출본의 IP전주 값
-    etc: [{ spec: '인건비', qty: null, price: 250000 }, { spec: 'IP전주', qty: null, price: 300000 }],
-    gridType: '공중공급',
-    safetyCheck: true,
-    overview: null, plan: null, planMarks: [],
-    spots: [newPlSpot(nextId())],
-  }));
+  const [f, setF] = useState<PlForm>(newPlForm);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [made, setMade] = useState<string[] | null>(null);
@@ -105,8 +121,8 @@ export default function PluglinkEditor() {
   const photoCount = (f.overview ? 1 : 0) + (f.plan ? 1 : 0)
     + f.spots.reduce((n, s) => n + Object.values(s.photos).filter(Boolean).length, 0);
   // 임시 저장 — 클라우드(lib/survey/use-draft). 저장 뒤 바꾼 것을 두고 나가려 하면 묻는다
-  const draft = useSurveyDraft('pluglink', f, setF, f.siteName, busy !== null);
-  /** 거점 라벨 — 넣은 거점은 그 값으로, 그 뒤로 10거점까지는 번호만(spec plSpotLabels) */
+  const draft = useSurveyDraft('pluglink', f, (v) => { const next = plFormOf(v); setF(next); return next; }, f.siteName, busy !== null);
+  /** 거점 라벨 — 넣은 거점은 그 값으로, 그 뒤로 여섯 거점까지는 번호만(spec plSpotLabels) */
   const labels = useMemo(() => plSpotLabels(f.spots), [f.spots]);
 
   /*
@@ -126,18 +142,23 @@ export default function PluglinkEditor() {
       marks = { ...marks, zoom: [zoomLabel(n, labels)] };
     }
     for (const [key, file] of newPhotos(s.photos, p.photos, ['panelOut', 'panelIn', 'pole'])) {
-      const field = key === 'pole' ? 'poleNo' : 'panelName';
-      plate.read(`${s.id}:${field}`, file, (r) => {
+      // 읽은 것 → 칸. 메인차단기는 외함 안을 찍은 사진에서만 — 바깥 사진의 숫자는 다른 차단기일 수 있다
+      const fields: Array<'poleNo' | 'panelName' | 'mainBreaker'> =
+        key === 'pole' ? ['poleNo'] : key === 'panelIn' ? ['poleNo', 'panelName', 'mainBreaker'] : ['poleNo', 'panelName'];
+      const tag = (k: string) => `${s.id}:${k}`;
+      plate.read(tag(key), fields.map(tag), file, (r) => {
         const now = fRef.current.spots.find((x) => x.id === s.id);
-        if (!now) return false;
+        if (!now || now.photos[key] !== file) return null;
+        const got = { poleNo: r.pole, panelName: r.panel, mainBreaker: r.breaker };
         const fill: Partial<PlSpot> = {};
-        if (r.pole && !now.poleNo?.trim()) fill.poleNo = r.pole;
-        if (key !== 'pole' && r.panel && !now.panelName.trim()) fill.panelName = r.panel;
-        // 메인차단기는 외함 안을 찍은 사진에서만 — 바깥 사진의 숫자는 다른 차단기일 수 있다
-        if (key === 'panelIn' && r.breaker && !now.mainBreaker.trim()) fill.mainBreaker = r.breaker;
-        if (Object.keys(fill).length === 0) return false;
+        const filled: Record<string, string> = {};
+        for (const k of fields) {
+          const v = got[k];
+          if (v && plate.canFill(tag(k), now[k] ?? '')) { fill[k] = v; filled[tag(k)] = v; }
+        }
+        if (Object.keys(fill).length === 0) return null;
         setF((x) => ({ ...x, spots: x.spots.map((y) => (y.id === s.id ? { ...y, ...fill } : y)) }));
-        return true;
+        return filled;
       });
     }
     // 도면 확대도를 손으로 바꾸거나 뺐으면 도면에서 잘라 넣은 것이 아니다 — 다시 자르기에서 빠진다
@@ -204,6 +225,21 @@ export default function PluglinkEditor() {
       setZooming(false);
     }
   }
+  /**
+   * 거점 빼기 — 라벨이 거점 번호에 묶여 있으니 도면·사진의 라벨 번호를 같이 당긴다(annot dropSpotLabels).
+   * 도면에서 잘라 넣고 손대지 않은 확대도는 당긴 뒤에도 「손대지 않음」으로 남게 sig 를 새로 잰다.
+   */
+  const removeSpot = (i: number) => setF((x) => {
+    const n = i + 1;
+    const spots = x.spots.filter((_, k) => k !== i).map((s) => {
+      const was = !!s.zoomCrop && JSON.stringify(s.marks.zoom ?? []) === s.zoomCrop.sig;
+      const marks = Object.fromEntries(Object.entries(s.marks).map(([k, m]) => [k, dropSpotLabels(m, n)]));
+      const zoomCrop = s.zoomCrop && was ? { ...s.zoomCrop, sig: JSON.stringify(marks.zoom ?? []) } : s.zoomCrop;
+      return { ...s, marks, zoomCrop };
+    });
+    return { ...x, planMarks: dropSpotLabels(x.planMarks, n), spots };
+  });
+
   /** 범위 고치기 — 사람이 잡은 틀이라 손댄 확대도도 그 틀로 다시 자른다 */
   async function recrop(i: number, rect: CropRect) {
     if (!f.plan) return;
@@ -393,7 +429,7 @@ export default function PluglinkEditor() {
             </Grid>
             {f.spots.length > 1 && (
               <div className="flex justify-end">
-                <Btn size="sm" kind="undo" onClick={() => set({ spots: f.spots.filter((x) => x.id !== s.id) })}>{i + 1}거점 빼기</Btn>
+                <Btn size="sm" kind="undo" onClick={() => removeSpot(i)}>{i + 1}거점 빼기</Btn>
               </div>
             )}
           </div>

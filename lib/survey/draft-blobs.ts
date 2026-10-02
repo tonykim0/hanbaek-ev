@@ -29,21 +29,28 @@ export async function vetPhotos(data: unknown, before: unknown, ownerId: string,
   return mapPhotoRefs(data, (r) => ({ ...r, url: known.get(r.path) ?? fresh.get(r.path)! }));
 }
 
+/** 지우지 못한 파일 — 저장은 된 것이라 막지 않고 로그로 남긴다(감시가 [survey-drafts] 를 본다) */
+const lost = (what: string) => (e: unknown) => console.error(`[survey-drafts] ${what} — 파일이 남았습니다`, e);
+
 /** 빠진 사진 지우기 — 실패해도 저장은 된 것이다(파일 하나 남는 편이 낫다) */
 export async function dropPhotos(refs: PhotoRef[]): Promise<void> {
   for (let i = 0; i < refs.length; i += 25) {
-    await del(refs.slice(i, i + 25).map((r) => r.url), { token: token() }).catch(() => {});
+    await del(refs.slice(i, i + 25).map((r) => r.url), { token: token() }).catch(lost('빠진 사진 지우기'));
   }
 }
 
-/** 저장본 폴더째 지우기 — 올리고 저장 안 한 사진까지 같이 걷힌다 */
+/** 저장본 폴더째 지우기 — 올리고 저장 안 한 사진까지 같이 걷힌다. 실패해도 던지지 않는다(저장본은 이미 지워졌다) */
 export async function dropDraftFolder(ownerId: string, draftId: string): Promise<void> {
   const prefix = draftPrefix(ownerId, draftId);
-  let cursor: string | undefined;
-  do {
-    const page = await list({ prefix, cursor, limit: 1000, token: token() });
-    const urls = page.blobs.map((b) => b.url);
-    for (let i = 0; i < urls.length; i += 25) await del(urls.slice(i, i + 25), { token: token() }).catch(() => {});
-    cursor = page.hasMore ? page.cursor : undefined;
-  } while (cursor);
+  try {
+    let cursor: string | undefined;
+    do {
+      const page = await list({ prefix, cursor, limit: 1000, token: token() });
+      const urls = page.blobs.map((b) => b.url);
+      for (let i = 0; i < urls.length; i += 25) await del(urls.slice(i, i + 25), { token: token() }).catch(lost(prefix));
+      cursor = page.hasMore ? page.cursor : undefined;
+    } while (cursor);
+  } catch (e) {
+    lost(prefix)(e);
+  }
 }

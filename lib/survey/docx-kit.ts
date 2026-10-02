@@ -8,7 +8,9 @@
  * DOMParser·XMLSerializer 만 쓴다 — 브라우저에서 돌고, 시험에서는 xmldom 을 꽂는다.
  */
 import type JSZip from 'jszip';
-import { crop } from './fit';
+import { crop, fits } from './fit';
+import { parseXml, xmlSafe } from './xml-safe';
+import { packZip } from './pack';
 
 export const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -66,69 +68,87 @@ function el(doc: Document, local: string): Element {
   return doc.createElementNS(W_NS, `w:${local}`);
 }
 
-/** 문단의 글자 모양 — 새 글줄(run)이 칸의 글자 크기를 따르게 문단 표시의 모양을 베낀다 */
+/**
+ * 문단의 글자 모양 — 새 글줄(run)이 칸의 글자 크기를 따르게. 글자가 든 첫 글줄의 모양(서식이 보여 주던 글의
+ * 꼴), 없으면 문단 표시의 모양을 베낀다.
+ */
 function paragraphRunProps(p: Element): Element | null {
+  const textRun = childrenNamed(p, 'r').find((r) => r.getElementsByTagNameNS(W_NS, 't').length > 0);
+  const runPr = textRun ? childrenNamed(textRun, 'rPr')[0] : undefined;
+  if (runPr) return runPr.cloneNode(true) as Element;
   const pPr = childrenNamed(p, 'pPr')[0];
   const rPr = pPr ? childrenNamed(pPr, 'rPr')[0] : undefined;
-  if (rPr) return rPr.cloneNode(true) as Element;
-  const firstRun = childrenNamed(p, 'r')[0];
-  const runPr = firstRun ? childrenNamed(firstRun, 'rPr')[0] : undefined;
-  return runPr ? (runPr.cloneNode(true) as Element) : null;
+  return rPr ? (rPr.cloneNode(true) as Element) : null;
+}
+
+/** 문단을 비운다 — 모양(pPr)만 남긴다 */
+function emptyParagraph(p: Element): void {
+  for (const k of Array.from(p.childNodes)) if ((k as Element).localName !== 'pPr') p.removeChild(k);
 }
 
 /**
- * 칸의 글자를 통째로 바꾼다 — 첫 문단의 첫 글줄에 적고 나머지 글자는 비운다.
- * 글줄이 하나도 없는 빈 칸이면 문단 모양을 따라 새 글줄을 만든다.
- * 줄바꿈(\n)은 같은 글줄 안의 줄바꿈(<w:br/>)으로 넣는다.
+ * 문단의 글을 통째로 바꾼다 — 글자 모양은 문단의 첫 글줄(없으면 문단 표시)의 것을 따른다.
+ * ★문단을 통째로 비우고 새 글줄 하나를 짓는다★ — 글줄(r)의 글자만 비우면 서식의 빈칸 꼴(밑줄 친 입력란 sdt)·
+ * 탭이 남아 「＿＿＿ 2 기」가 되고, 사진 칸에서는 탭 뒤로 사진이 다음 줄로 밀렸다(SK 측면이 전면보다 낮았다).
+ * 줄바꿈(\n)은 같은 글줄 안의 줄바꿈(<w:br/>)으로 넣는다. 빈 글이면 문단만 비운다.
+ */
+export function setParagraphText(p: Element, text: string): void {
+  const doc = p.ownerDocument;
+  const rPr = paragraphRunProps(p);
+  emptyParagraph(p);
+  if (!text) return;
+  const run = el(doc, 'r');
+  if (rPr) {
+    // 서식의 안내 칸은 노란 형광이다(「여기에 적으세요」) — 값을 넣었으면 그 표시는 끝났다
+    for (const h of childrenNamed(rPr, 'highlight')) rPr.removeChild(h);
+    run.appendChild(rPr);
+  }
+  xmlSafe(text).split('\n').forEach((line, i) => {
+    if (i > 0) run.appendChild(el(doc, 'br'));
+    const t = el(doc, 't');
+    t.setAttribute('xml:space', 'preserve');
+    t.textContent = line;
+    run.appendChild(t);
+  });
+  p.appendChild(run);
+}
+
+/**
+ * 칸의 글자를 통째로 바꾼다 — 첫 문단에 적고(setParagraphText), 둘째 문단부터는 비운다(서식의 안내 글 —
+ * 괄호 말이 남으면 값과 섞인다). 문단 수는 그대로 둔다 — 칸 높이가 서식대로 남는다.
  */
 export function setCellText(tc: Element, text: string): void {
   const doc = tc.ownerDocument;
   const ps = childrenNamed(tc, 'p');
   const p = ps[0] ?? tc.appendChild(el(doc, 'p'));
-  // 둘째 문단부터는 비운다 — 서식의 안내 글(괄호 말)이 남으면 값과 섞인다
-  for (const extra of ps.slice(1)) {
-    for (const t of Array.from(extra.getElementsByTagNameNS(W_NS, 't'))) t.textContent = '';
-  }
-  const runs = childrenNamed(p, 'r');
-  for (const r of runs) for (const t of Array.from(r.getElementsByTagNameNS(W_NS, 't'))) t.textContent = '';
-  let run = runs.find((r) => r.getElementsByTagNameNS(W_NS, 't').length > 0);
-  if (!run) {
-    run = el(doc, 'r');
-    const rPr = paragraphRunProps(p);
-    if (rPr) run.appendChild(rPr);
-    p.appendChild(run);
-  }
-  /*
-   * 서식의 안내 칸은 노란 형광으로 칠해져 있다(「여기에 적으세요」의 표시). 값을 넣었으면 그
-   * 표시는 끝난 것이다 — 남기면 제출본에 형광이 그대로 나간다.
-   */
-  if (text) {
-    for (const r of childrenNamed(p, 'r')) {
-      const rPr = childrenNamed(r, 'rPr')[0];
-      if (rPr) for (const h of childrenNamed(rPr, 'highlight')) rPr.removeChild(h);
-    }
-  }
-  // 그 글줄의 글자 자리를 새로 짓는다(줄바꿈을 넣으려면 t 와 br 을 번갈아 둔다)
-  for (const old of Array.from(run.childNodes)) {
-    if ((old as Element).localName === 't' || (old as Element).localName === 'br') run.removeChild(old);
-  }
-  text.split('\n').forEach((line, i) => {
-    if (i > 0) run!.appendChild(el(doc, 'br'));
-    const t = el(doc, 't');
-    t.setAttribute('xml:space', 'preserve');
-    t.textContent = line;
-    run!.appendChild(t);
-  });
+  for (const extra of ps.slice(1)) emptyParagraph(extra);
+  setParagraphText(p, text);
+}
+
+/** 문단 모양(pPr)의 자식 순서 — 스키마(CT_PPr)가 정한다. 어긋나면 워드가 무시하거나 검사기가 잡는다 */
+const PPR_ORDER = [
+  'pStyle', 'keepNext', 'keepLines', 'pageBreakBefore', 'framePr', 'widowControl', 'numPr', 'suppressLineNumbers',
+  'pBdr', 'shd', 'tabs', 'suppressAutoHyphens', 'kinsoku', 'wordWrap', 'overflowPunct', 'topLinePunct', 'autoSpaceDE',
+  'autoSpaceDN', 'bidi', 'adjustRightInd', 'snapToGrid', 'spacing', 'ind', 'contextualSpacing', 'mirrorIndents',
+  'suppressOverlap', 'jc', 'textDirection', 'textAlignment', 'textboxTightWrap', 'outlineLvl', 'divId', 'cnfStyle',
+  'rPr', 'sectPr', 'pPrChange',
+];
+
+/** 문단 모양에 한 가지를 둔다(있으면 그것) — 스키마 순서 자리에 */
+export function pPrChild(p: Element, local: string): Element {
+  const doc = p.ownerDocument;
+  let pPr = childrenNamed(p, 'pPr')[0];
+  if (!pPr) { pPr = el(doc, 'pPr'); p.insertBefore(pPr, p.firstChild); }
+  const have = childrenNamed(pPr, local)[0];
+  if (have) return have;
+  const rank = PPR_ORDER.indexOf(local);
+  const after = Array.from(pPr.childNodes).find((k) => k.nodeType === 1 && PPR_ORDER.indexOf((k as Element).localName) > rank);
+  return pPr.insertBefore(el(doc, local), after ?? null);
 }
 
 /** 칸 문단을 가운데로 — 사진은 칸 가운데 선다 */
 function centerParagraph(p: Element): void {
-  const doc = p.ownerDocument;
-  let pPr = childrenNamed(p, 'pPr')[0];
-  if (!pPr) { pPr = el(doc, 'pPr'); p.insertBefore(pPr, p.firstChild); }
-  let jc = childrenNamed(pPr, 'jc')[0];
-  if (!jc) { jc = el(doc, 'jc'); pPr.appendChild(jc); }
-  jc.setAttributeNS(W_NS, 'w:val', 'center');
+  pPrChild(p, 'jc').setAttributeNS(W_NS, 'w:val', 'center');
 }
 
 /** 쪽 나눔 문단 */
@@ -209,11 +229,14 @@ export function putImage(
   setCellText(tc, '');
   const p = childrenNamed(tc, 'p')[0];
   centerParagraph(p);
-  const cx = Math.round(maxW * EMU_PER_TWIP);
-  const cy = Math.round(maxH * EMU_PER_TWIP);
   const w = crop(img.width / img.height, maxW / maxH, img.focus);
+  // 표시가 자른 창에 다 안 들면 자르지 않고 칸 안에 들인다 — 사진에 구운 번호·경로가 잘려 나가지 않게
+  const fill = fits(w, img.focus);
+  const k = fill ? 1 : Math.min(maxW / img.width, maxH / img.height);
+  const cx = Math.round((fill ? maxW : img.width * k) * EMU_PER_TWIP);
+  const cy = Math.round((fill ? maxH : img.height * k) * EMU_PER_TWIP);
   const pct = (v: number) => Math.round(v * 100000);
-  const srcRect = `<a:srcRect l="${pct(w.l)}" t="${pct(w.t)}" r="${pct(w.r)}" b="${pct(w.b)}"/>`;
+  const srcRect = fill ? `<a:srcRect l="${pct(w.l)}" t="${pct(w.t)}" r="${pct(w.r)}" b="${pct(w.b)}"/>` : '';
   const { relId, docPrId, name } = reg.add(img);
 
   /*
@@ -224,8 +247,31 @@ export function putImage(
     xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
     xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
     xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${docPrId}" name="${name}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${docPrId}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/>${srcRect}<a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
-  const frag = new DOMParser().parseFromString(xml, 'application/xml').documentElement;
+  const frag = parseXml(xml).documentElement;
   p.appendChild(tc.ownerDocument.importNode(frag, true));
+}
+
+/** 사진 줄로 보는 높이(트윕) — 두 서식 다 사진 줄은 4500 남짓, 글자 줄은 1000 아래다 */
+export const PHOTO_ROW_MIN = 3000;
+
+/** 사진 칸 — 사진 줄(높은 줄)의 칸을 위에서 아래·왼쪽에서 오른쪽 순서로. h 는 그 줄 높이(트윕) */
+export function photoCellsOf(rows: Element[]): Array<{ tc: Element; h: number }> {
+  return rows.filter((r) => rowHeight(r) >= PHOTO_ROW_MIN).flatMap((r) => cellsOf(r).map((tc) => ({ tc, h: rowHeight(r) })));
+}
+
+/**
+ * 본문을 갈아 끼우고 문서를 마무리해 묶는다 — 서식 본문은 버리고 쪽 설정(sectPr)만 남긴다. 사진 부품을 쓰고
+ * (ImageRegistry.flush) 문서 보호를 푼다.
+ */
+export async function finishDocx(zip: JSZip, doc: Document, nodes: Element[], sectPr: Element | null, reg: ImageRegistry): Promise<Blob | Uint8Array> {
+  const body = doc.getElementsByTagNameNS(W_NS, 'body')[0];
+  for (const k of Array.from(body.childNodes)) body.removeChild(k);
+  for (const e of nodes) body.appendChild(e);
+  if (sectPr) body.appendChild(sectPr);
+  zip.file('word/document.xml', new XMLSerializer().serializeToString(doc));
+  await reg.flush();
+  await unlockDocument(zip);
+  return packZip(zip, 'docx');
 }
 
 /** 서식의 문서 보호를 푼다 — 받은 사람이 고칠 수 있어야 한다(계약서 생성기와 같은 처리) */

@@ -30,6 +30,16 @@ export function crop(
   return { l, t, r: Math.max(0, 1 - l - winW), b: Math.max(0, 1 - t - winH) };
 }
 
+/**
+ * 자른 창 안에 표시 범위가 다 드는가 — 안 들면 자르지 않고 칸 안에 들인다(contain). 자르면 엑셀은 표시 도형이
+ * 사진 밖(이웃 칸·사진 설명)으로 삐져나가고, 워드는 사진에 구운 표시가 잘려 나간다.
+ */
+export function fits(w: { l: number; t: number; r: number; b: number }, focus?: { x0: number; y0: number; x1: number; y1: number }): boolean {
+  if (!focus) return true;
+  const e = 1e-6;
+  return focus.x0 >= w.l - e && focus.x1 <= 1 - w.r + e && focus.y0 >= w.t - e && focus.y1 <= 1 - w.b + e;
+}
+
 export interface Tile { x: number; y: number; w: number; h: number }
 
 /**

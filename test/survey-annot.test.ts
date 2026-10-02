@@ -30,11 +30,12 @@ describe('표시 조작', () => {
     expect(snapPt({ x: 0.2, y: 0.5 }, free, 4 / 3)).toBe(free);
   });
 
-  it('옮기면 선의 점이 다 같이 움직이고, 사진 밖으로는 안 나간다', () => {
+  it('옮기면 선의 점이 다 같이 움직이고, 사진 끝에 닿으면 모양을 지킨 채 멈춘다', () => {
     const l = moveAnnot({ t: 'line', pts: [{ x: 0.1, y: 0.1 }, { x: 0.5, y: 0.2 }], k: 'wire' }, 0.1, -0.15);
     if (l.t !== 'line') throw new Error('선이 아니다');
     expect(l.k).toBe('wire');
-    const want = [[0.2, 0], [0.6, 0.05]];
+    // 위로 0.15 를 끌었지만 첫 점이 0.1 에서 끝에 닿는다 — 두 점 다 0.1 만 오른다(선이 꺾이지 않는다)
+    const want = [[0.2, 0], [0.6, 0.1]];
     l.pts.forEach((p, i) => { expect(p.x).toBeCloseTo(want[i][0], 9); expect(p.y).toBeCloseTo(want[i][1], 9); });
     expect(moveAnnot({ t: 'sym', k: 'charger', x: 0.95, y: 0.5, r: 90 }, 0.2, 0)).toEqual({ t: 'sym', k: 'charger', x: 1, y: 0.5, r: 90 });
   });
@@ -180,5 +181,17 @@ describe('전체 도면 → 거점 도면', () => {
   it('라벨이 없으면 틀도 없다', async () => {
     const { autoCrops } = await import('@/lib/survey/plan-crop');
     expect(autoCrops([ch(0.5, 0.5)], W, H).size).toBe(0);
+  });
+});
+
+describe('거점을 빼면 라벨 번호가 따라 당겨진다', () => {
+  it('뺀 거점의 라벨은 걷고, 뒤 거점의 라벨은 하나씩 앞으로', async () => {
+    const { dropSpotLabels } = await import('@/lib/survey/annot');
+    const lab = (spot: number) => ({ t: 'label' as const, spot, x: 0.5, y: 0.5, head: [`${spot}거점`], body: [] });
+    const sym = { t: 'sym' as const, k: 'charger' as const, x: 0.1, y: 0.1 };
+    const out = dropSpotLabels([lab(1), lab(2), sym, lab(3)], 2);
+    expect(out.map((a) => (a.t === 'label' ? a.spot : a.t))).toEqual([1, 'sym', 2]);
+    const same = [sym];
+    expect(dropSpotLabels(same, 1)).toBe(same);
   });
 });

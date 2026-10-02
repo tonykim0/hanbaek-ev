@@ -12,6 +12,7 @@
  */
 import JSZip from 'jszip';
 import { Workbook } from './xlsx-kit';
+import { packZip, surveyFileName } from './pack';
 import type { PreparedImage } from './docx-kit';
 import { PL_MAX_SPOTS, PL_PHOTO_SLOTS, photoCaption, plFixture, plModemOf, plQtyOf, subKey, type PlForm, type PlSpot } from './spec';
 
@@ -219,15 +220,22 @@ export async function fillPluglinkSurvey(
   for (const [row, m] of pipe) await wb.set(co, `D${row}`, m);
   /*
    * 기타비용 — 29~38행(사양·수량·단가). 29행은 서식에 「인건비 250,000」이 박혀 있다.
-   * 줄 순서대로 채우고, 단가를 비우면 그 줄의 서식 단가를 둔다. 수량이 없는 줄은 건너뛴다.
+   * 줄 순서대로 채운다. 수량이 없는 줄은 건너뛴다. ★단가를 비운 줄은 단가 칸도 비운다★ — 서식 단가를 두면
+   * 첫 줄에 넣은 「차단기 교체」가 인건비 25만 원으로 셈해졌다. 서식 단가를 쓰는 것은 그 줄의 서식 사양
+   * (29행 인건비) 그대로일 때뿐이다. 비운 단가는 알린다 — 금액이 0 으로 조용히 빠진다.
    */
   const etc = form.etc.filter((e) => e.spec.trim() && e.qty);
   if (etc.length > 10) warnings.push(`기타비용은 10줄까지 들어갑니다 — ${etc.length - 10}줄을 넣지 못했습니다`);
   for (const [i, e] of etc.slice(0, 10).entries()) {
     const r = 29 + i;
-    await wb.set(co, `F${r}`, e.spec.trim());
+    const spec = e.spec.trim();
+    await wb.set(co, `F${r}`, spec);
     await wb.set(co, `D${r}`, e.qty);
     if (e.price !== null) await wb.set(co, `H${r}`, e.price);
+    else if (!(r === 29 && spec === '인건비')) {
+      await wb.set(co, `H${r}`, '');
+      warnings.push(`기타비용 「${spec}」의 단가가 비어 있습니다 — 공사내역서에서 넣어 주세요`);
+    }
   }
   await wb.set(co, 'D40', totalQty * 7 || '');
   await wb.set(co, 'D41', kepco ? 'Yes' : 'No');
@@ -238,11 +246,7 @@ export async function fillPluglinkSurvey(
   await wb.set(co, 'D48', form.safetyCheck ? 'Yes' : 'No');
 
   await wb.save();
-  const opts = { compression: 'DEFLATE' as const };
-  const blob = typeof window !== 'undefined'
-    ? await zip.generateAsync({ ...opts, type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
-    : await zip.generateAsync({ ...opts, type: 'uint8array' });
-  return { blob, warnings };
+  return { blob: await packZip(zip, 'xlsx'), warnings };
 }
 
 /**
@@ -270,5 +274,4 @@ async function addLegend(wb: Workbook, marks: PlForm['planMarks']): Promise<void
   }
 }
 
-export const plSurveyFileName = (siteName: string) =>
-  `${siteName.trim() || '현장'}_실사보고서 (사진대지).xlsx`;
+export const plSurveyFileName = (siteName: string) => surveyFileName(siteName, 'xlsx');
