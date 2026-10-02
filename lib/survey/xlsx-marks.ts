@@ -85,7 +85,7 @@ export function marksXml(marks: Annot[], img: { width: number; height: number },
     if (a.t === 'num') {
       const rr = w / 2;
       const pt = (rr * 1.15) / 12700; // 글자 크기(em) — 화면과 같은 값
-      const paint = style === 'yellow' ? `${fill('#ffff00')}${ln(rr * 0.08, '#1f2937')}` : `<a:noFill/>${ln(rr * 0.14, RED)}`;
+      const paint = style === 'yellow' ? `${fill('#ffff00')}${ln(rr * 0.08, '#1f2937')}` : `${fill('#ffff00')}${ln(rr * 0.14, RED)}`;
       out.push(shape('번호', x, y, w, h, bx.r, prst('ellipse'), paint, txBody([String(n)], pt, style === 'yellow' ? INK : RED)));
     } else if (a.t === 'sym') {
       const thin = ln(Math.max(9525, u * 0.0014 * k), INK);

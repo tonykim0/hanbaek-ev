@@ -211,7 +211,7 @@ export default function PluglinkEditor() {
             <Text label="기설치대수" wide value={f.existing} onChange={(v) => set({ existing: v })} placeholder="완속 8기" />
             <Text label="현장 특이사항" wide value={f.siteNote} onChange={(v) => set({ siteNote: v })} placeholder="터파기 구간, 기존 배관 이용 여부" />
           </Grid>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid items-start gap-x-3 gap-y-4 sm:grid-cols-2">
             <PhotoBox slot={OVERVIEW} file={f.overview} onFiles={(fs) => set({ overview: fs[0] })} onClear={() => set({ overview: null })} />
             <PhotoBox
               slot={PLAN}
@@ -231,6 +231,20 @@ export default function PluglinkEditor() {
       {f.spots.map((s, i) => (
         <Section key={s.id} title={`${i + 2}. ${i + 1}거점`}>
           <div className="flex flex-col gap-5">
+            {/* 사진이 먼저 — 분전반·전주 사진이 아래 분전반 이름·전주번호 칸을 채운다(한백 2026-10-02) */}
+            <div>
+              <span className="mb-2 block text-sm font-medium text-gray-700">사진대지</span>
+              <PhotoSlots
+                slots={PL_PHOTO_SLOTS}
+                photos={s.photos}
+                marks={s.marks}
+                onChange={(p) => onSpotPhotos(s, p)}
+                expected={plQtyOf(s)}
+                style="red"
+                // 라벨은 거점 모두 — 도면 확대도에는 이웃 거점이 같이 찍힌다. 처음 고른 것은 이 거점
+                tools={{ legend: true, labels, labelPick: `${i + 1}거점` }}
+              />
+            </div>
             <Grid>
               <Text label="상세위치" wide value={s.location} onChange={(v) => setSpot(s.id, { location: v })} placeholder="지하2층 102동 앞 G02기둥" />
               <Num label="신규" unit="기" value={s.qty} onChange={(v) => setSpot(s.id, { qty: v })} />
@@ -274,19 +288,6 @@ export default function PluglinkEditor() {
               <Num label="통신" unit="개" value={s.modem ?? null} onChange={(v) => setSpot(s.id, { modem: v })} placeholder={String(plModemAuto(s))} />
               <Text label="특이사항" wide value={s.note} onChange={(v) => setSpot(s.id, { note: v })} />
             </Grid>
-            <div>
-              <span className="mb-2 block text-sm font-medium text-gray-700">사진대지</span>
-              <PhotoSlots
-                slots={PL_PHOTO_SLOTS}
-                photos={s.photos}
-                marks={s.marks}
-                onChange={(p) => onSpotPhotos(s, p)}
-                expected={plQtyOf(s)}
-                style="red"
-                // 라벨은 거점 모두 — 도면 확대도에는 이웃 거점이 같이 찍힌다. 처음 고른 것은 이 거점
-                tools={{ legend: true, labels, labelPick: `${i + 1}거점` }}
-              />
-            </div>
             {f.spots.length > 1 && (
               <div className="flex justify-end">
                 <Btn size="sm" kind="undo" onClick={() => set({ spots: f.spots.filter((x) => x.id !== s.id) })}>{i + 1}거점 빼기</Btn>

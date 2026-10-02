@@ -43,14 +43,14 @@ function setParagraphText(p: Element, text: string): void {
 }
 
 function fillOne(
-  [head, gap, table]: Element[], spot: SurveySpot, n: number,
+  [head, gap, table]: Element[], address: string, spot: SurveySpot, n: number,
   images: Record<string, PreparedImage | undefined>, reg: ImageRegistry
 ): Element[] {
   setParagraphText(head, `사전 현장 컨설팅 사진 대장 - ${n}거점`);
   if (n > 1) breakBefore(head);
   const rows = rowsOf(table);
   if (rows.length < 8) throw new Error('사진 대장 표의 줄 수가 예상과 다릅니다.');
-  setCellText(cellsOf(rows[0])[1], spot.address.trim());
+  setCellText(cellsOf(rows[0])[1], address.trim()); // 거점마다 같은 현장 주소(spec SurveyForm.address)
   setCellText(cellsOf(rows[3])[0], spot.panelNote.trim());
   const where = spot.location.trim();
   setCellText(cellsOf(rows[7])[0], `설치기수 ${spot.qty ?? '  '}기${where ? ` / ${where}` : ''}`);
@@ -87,7 +87,7 @@ export async function fillLedgerSurvey(
   }
   const reg = new ImageRegistry(zip);
   const out = form.spots.flatMap((spot, i) =>
-    fillOne(proto.map((e) => e.cloneNode(true) as Element), spot, i + 1, images[spot.id] ?? {}, reg));
+    fillOne(proto.map((e) => e.cloneNode(true) as Element), form.address, spot, i + 1, images[spot.id] ?? {}, reg));
 
   for (const k of Array.from(body.childNodes)) body.removeChild(k);
   for (const e of out) body.appendChild(e);

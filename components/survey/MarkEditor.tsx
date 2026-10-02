@@ -114,7 +114,7 @@ type Op =
   | { kind: 'rotate'; i: number; orig: Annot; a0: number };
 
 export default function MarkEditor({
-  file, marks, expected, title, style = 'red', legend = false, labels = [], labelPick, line = 'arrow', size = 1, large = false, onDone, onClose,
+  file, marks, expected, title, style = 'red', legend = false, labels = [], labelPick, line = 'arrow', size = 1, large = false, start, onDone, onClose,
 }: {
   file: File;
   marks: Annot[];
@@ -138,12 +138,14 @@ export default function MarkEditor({
    * 표시할 때 화면을 더 크게」). 창 둘레를 걷고 그림을 화면 높이·폭에 맞춘다.
    */
   large?: boolean;
+  /** 처음 잡힌 도구 — 연 단추가 말한 일(「주차면 번호 찍기」면 번호). 없으면 도면은 기호, 사진은 번호 */
+  start?: 'num' | 'line' | 'box';
   onDone: (marks: Annot[]) => void;
   onClose: () => void;
 }) {
   const [list, setList] = useState<Annot[]>(marks);
   const [draft, setDraft] = useState<Annot | null>(null);
-  const [tool, setTool] = useState<Tool | null>(legend ? 'sym' : 'num');
+  const [tool, setTool] = useState<Tool | null>(start ?? (legend ? 'sym' : 'num'));
   const [sym, setSym] = useState<SymKind>('charger');
   const [lineKind, setLineKind] = useState<LineKind>(line === ('leader' as LineKind) ? 'arrow' : line);
   const [text, setText] = useState('');

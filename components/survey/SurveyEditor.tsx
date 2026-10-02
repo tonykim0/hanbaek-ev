@@ -52,6 +52,8 @@ export const nextId = () => `s${Date.now().toString(36)}${(seq += 1)}`;
 export default function SurveyEditor({ cpo, slots, variant, build, fileName }: SurveyEditorProps) {
   const [siteName, setSiteName] = useState('');
   const [surveyDate, setSurveyDate] = useState(today);
+  /** 사진 대장의 설치장소(주소) — 거점마다 같은 현장 주소(spec SurveyForm.address) */
+  const [address, setAddress] = useState('');
   const [spots, setSpots] = useState<SurveySpot[]>(() => [newSpot(nextId())]);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -59,9 +61,11 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
 
   const photoCount = spots.reduce((n, s) => n + Object.values(s.photos).filter(Boolean).length, 0);
   // 임시 저장 — 화면의 값 셋을 한 덩이로(어느 하나가 바뀌면 새 덩이다)
-  const value = useMemo(() => ({ siteName, surveyDate, spots }), [siteName, surveyDate, spots]);
+  const value = useMemo(() => ({ siteName, surveyDate, address, spots }), [siteName, surveyDate, address, spots]);
   const draft = useSurveyDraft(cpo, value, (v) => {
     setSiteName(v.siteName); setSurveyDate(v.surveyDate); setSpots(v.spots);
+    // 주소를 거점마다 받던 때의 저장본 — 첫 거점의 주소를 현장 주소로
+    setAddress(v.address ?? (v.spots[0] as { address?: string } | undefined)?.address ?? '');
   }, siteName, busy !== null);
 
   const patch = (id: string, p: Partial<SurveySpot>) =>
@@ -107,10 +111,10 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
   /* 확인할 것 — 막지 않는다. 빈 칸으로 내도 서식은 그 칸을 빈 채로 둔다 */
   const review = useMemo(() => {
     const out: string[] = [];
+    if (variant === 'ledger' && !address.trim()) out.push('설치장소(주소)가 비어 있습니다');
     spots.forEach((s, i) => {
       const tag = spots.length > 1 ? `${i + 1}거점 · ` : '';
       if (variant === 'ledger') {
-        if (!s.address.trim()) out.push(`${tag}설치장소(주소)가 비어 있습니다`);
         if (!s.qty) out.push(`${tag}설치기수가 비어 있습니다`);
       } else {
         if (!s.location.trim()) out.push(`${tag}상세 위치가 비어 있습니다`);
@@ -121,7 +125,7 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
       if (empty.length) out.push(`${tag}사진 ${empty.length}칸 비어 있음 — ${empty.join(', ')}`);
     });
     return out;
-  }, [spots, slots, variant]);
+  }, [spots, slots, variant, address]);
 
   async function make() {
     setError(null);
@@ -149,7 +153,7 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
         }
       }
       setBusy('서식 채우는 중…');
-      const form: SurveyForm = { cpo, siteName: siteName.trim(), surveyDate, spots };
+      const form: SurveyForm = { cpo, siteName: siteName.trim(), surveyDate, address, spots };
       downloadBlob(await build(form, images), fileName(siteName));
     } catch (err) {
       setError((err as Error).message || '만들지 못했습니다.');
@@ -175,6 +179,12 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
             <span className="mb-1 block text-sm font-medium text-gray-700">조사일</span>
             <input type="date" value={surveyDate} onChange={(e) => setSurveyDate(e.target.value)} className={contractInputClass} />
           </label>
+          {variant === 'ledger' && (
+            <label className="block sm:col-span-2">
+              <span className="mb-1 block text-sm font-medium text-gray-700">설치장소(주소)</span>
+              <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="경기도 수원시 영통구 삼성로 268번길 30" className={contractInputClass} />
+            </label>
+          )}
         </div>
       </Section>
 
@@ -240,19 +250,46 @@ function SpotCard({
     </label>
   );
 
+  const photos = (part: PhotoSlot[]) => (
+    <PhotoSlots
+      slots={part}
+      photos={spot.photos}
+      marks={spot.marks}
+      onChange={onChange}
+      expected={variant === 'ledger' ? spot.qty : slowOf(spot) + fastOf(spot)}
+      style={style}
+    />
+  );
+
   return (
     <Section title={`${n + 1}. ${n}거점`}>
       <div className="flex flex-col gap-5">
-        {variant === 'ledger' && (
+        {/*
+          ★사진이 먼저, 글이 나중★(한백 「사진을 먼저 넣고 텍스트 입력 또는 수정이 나중에」 2026-10-02) — 전력인입점
+          사진이 판넬명·전주번호 칸을 채우므로(위 PLATE) 그 사진 칸을 먼저 두고 그 칸을 바로 밑에 둔다. 나머지 사진과
+          값이 그 뒤다. 사진은 워드 서식처럼 한 줄에 두 칸이다(PhotoSlots).
+        */}
+        {photos(slots.slice(0, 2))}
+        {variant === 'ledger' ? (
+          <label className="block">
+            <span className="mb-1 block text-sm font-medium text-gray-700">전력인입점 — 판넬·차단기<span className="font-bold text-brand-700">{plateNote('panelNote')}</span></span>
+            <input value={spot.panelNote} onChange={(e) => onChange({ panelNote: e.target.value })} placeholder="사진을 넣으면 자동 입력 · 예) 지하1층 PK1-B1A 판넬 (메인 225A / 75A 차단기 신규설치)" className={contractInputClass} />
+          </label>
+        ) : (
           <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block sm:col-span-2">
-              <span className="mb-1 block text-sm font-medium text-gray-700">설치장소(주소)</span>
-              <input value={spot.address} onChange={(e) => onChange({ address: e.target.value })} placeholder="서울 노원구 동일로250길 18 / 103동 지상주차장" className={contractInputClass} />
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">원경 — 전주번호 또는 차단기 스펙<span className="font-bold text-brand-700">{plateNote('farSpec')}</span></span>
+              <input value={spot.farSpec} onChange={(e) => onChange({ farSpec: e.target.value })} placeholder="사진을 넣으면 자동 입력 · 예) 104동 공용분전반 350A" className={contractInputClass} />
             </label>
-            <label className="block sm:col-span-2">
-              <span className="mb-1 block text-sm font-medium text-gray-700">전력인입점 — 판넬·차단기<span className="font-bold text-brand-700">{plateNote('panelNote')}</span></span>
-              <input value={spot.panelNote} onChange={(e) => onChange({ panelNote: e.target.value })} placeholder="지하1층 PK1-B1A 판넬 (메인 225A / 75A 차단기 신규설치)" className={contractInputClass} />
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium text-gray-700">근경 — 전주번호 또는 차단기 스펙<span className="font-bold text-brand-700">{plateNote('nearSpec')}</span></span>
+              <input value={spot.nearSpec} onChange={(e) => onChange({ nearSpec: e.target.value })} placeholder="사진을 넣으면 자동 입력" className={contractInputClass} />
             </label>
+          </div>
+        )}
+        {photos(slots.slice(2))}
+        {variant === 'ledger' ? (
+          <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="mb-1 block text-sm font-medium text-gray-700">설치기수</span>
               <span className="flex items-center gap-2">
@@ -265,53 +302,32 @@ function SpotCard({
               <input value={spot.location} onChange={(e) => onChange({ location: e.target.value })} placeholder="지하1층 15번 기둥 반대편" className={contractInputClass} />
             </label>
           </div>
-        )}
-        {variant === 'hec' && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block sm:col-span-2">
-            <span className="mb-1 block text-sm font-medium text-gray-700">상세 위치</span>
-            <input value={spot.location} onChange={(e) => onChange({ location: e.target.value })} placeholder="103동 앞 지상주차장" className={contractInputClass} />
-          </label>
-          <div>
-            <span className="mb-1.5 block text-sm font-medium text-gray-700">전원 공급방식</span>
-            <div className="flex gap-1.5">
-              <Choice on={spot.powerType === '한전'} onClick={() => onChange({ powerType: '한전' })}>한전 별도수전</Choice>
-              <Choice on={spot.powerType === '모자분리'} onClick={() => onChange({ powerType: '모자분리' })}>모자분리</Choice>
+        ) : (
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block sm:col-span-2">
+              <span className="mb-1 block text-sm font-medium text-gray-700">상세 위치</span>
+              <input value={spot.location} onChange={(e) => onChange({ location: e.target.value })} placeholder="103동 앞 지상주차장" className={contractInputClass} />
+            </label>
+            <div>
+              <span className="mb-1.5 block text-sm font-medium text-gray-700">전원 공급방식</span>
+              <div className="flex gap-1.5">
+                <Choice on={spot.powerType === '한전'} onClick={() => onChange({ powerType: '한전' })}>한전 별도수전</Choice>
+                <Choice on={spot.powerType === '모자분리'} onClick={() => onChange({ powerType: '모자분리' })}>모자분리</Choice>
+              </div>
+            </div>
+            <div>
+              <span className="mb-1.5 block text-sm font-medium text-gray-700">충전기 설치 대수</span>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                <span className="col-span-2 text-xs font-bold text-gray-500">벽부형</span>
+                {qtyCell('wallSlow', '완속')}
+                {qtyCell('wallFast', '급속')}
+                <span className="col-span-2 mt-1 text-xs font-bold text-gray-500">스탠드형</span>
+                {qtyCell('standSlow', '완속')}
+                {qtyCell('standFast', '급속')}
+              </div>
             </div>
           </div>
-          <div>
-            <span className="mb-1.5 block text-sm font-medium text-gray-700">충전기 설치 대수</span>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2">
-              <span className="col-span-2 text-xs font-bold text-gray-500">벽부형</span>
-              {qtyCell('wallSlow', '완속')}
-              {qtyCell('wallFast', '급속')}
-              <span className="col-span-2 mt-1 text-xs font-bold text-gray-500">스탠드형</span>
-              {qtyCell('standSlow', '완속')}
-              {qtyCell('standFast', '급속')}
-            </div>
-          </div>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700">원경 — 전주번호 또는 차단기 스펙<span className="font-bold text-brand-700">{plateNote('farSpec')}</span></span>
-            <input value={spot.farSpec} onChange={(e) => onChange({ farSpec: e.target.value })} placeholder="104동 공용분전반 350A" className={contractInputClass} />
-          </label>
-          <label className="block">
-            <span className="mb-1 block text-sm font-medium text-gray-700">근경 — 전주번호 또는 차단기 스펙<span className="font-bold text-brand-700">{plateNote('nearSpec')}</span></span>
-            <input value={spot.nearSpec} onChange={(e) => onChange({ nearSpec: e.target.value })} placeholder="전주번호 또는 차단기 스펙" className={contractInputClass} />
-          </label>
-        </div>
         )}
-
-        <div>
-          <span className="mb-2 block text-sm font-medium text-gray-700">사진</span>
-          <PhotoSlots
-            slots={slots}
-            photos={spot.photos}
-            marks={spot.marks}
-            onChange={onChange}
-            expected={variant === 'ledger' ? spot.qty : slowOf(spot) + fastOf(spot)}
-            style={style}
-          />
-        </div>
 
         {variant === 'hec' && (
           <div>
@@ -428,13 +444,14 @@ export function PhotoSlots({ slots, photos, marks, onChange, expected, style, to
     commit(next, moved);
   };
 
+  // 한 줄 두 칸 — 워드·엑셀 사진대지가 그렇다(한백 「워드형식에 맞춰서 2칸씩」 2026-10-02)
   return (
-    <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="grid items-start gap-x-3 gap-y-4 sm:grid-cols-2">
       {slots.flatMap((sl, i) => {
         const box = (key: string, label: string, file: File | null, onFiles: (fs: File[]) => void, onClear: () => void, hint?: string) => (
           <PhotoBox
             key={key}
-            slot={{ key, label, hint, draw: sl.draw }}
+            slot={{ key, label, hint, draw: sl.draw, reads: sl.reads }}
             file={file}
             onFiles={onFiles}
             onClear={onClear}
@@ -450,9 +467,25 @@ export function PhotoSlots({ slots, photos, marks, onChange, expected, style, to
         }
         const max = sl.multi;
         const have = slotFiles(photos, sl);
-        const label = (k: number) => (have.length + (have.length < max ? 1 : 0) > 1 ? `${sl.label} - ${k + 1}` : sl.label);
+        // 모으는 묶음은 「더 넣기」가 칸이 아니라 줄이라 실제 장 수로 번호를 붙인다
+        const shown = sl.collage ? have.length : have.length + (have.length < max ? 1 : 0);
+        const label = (k: number) => (shown > 1 ? `${sl.label} - ${k + 1}` : sl.label);
         const cells = have.map((x, k) =>
           box(x.key, label(k), x.file, (fs) => putMulti(sl, k, fs), () => dropMulti(sl, k), k === 0 ? sl.hint : undefined));
+        if (sl.collage) {
+          /*
+           * 서식 칸 하나에 모이는 묶음 — 그 칸 자리 하나에 세로로 쌓는다(워드의 한 칸 = 화면의 한 칸, 한 줄 두 칸이
+           * 서식과 같게). 둘째 장부터는 낮은 「사진 더 넣기」 줄로 받는다 — 빈 칸을 통째로 두면 이웃 칸과 줄이 어긋난다.
+           */
+          const k = have.length;
+          if (k === 0) return [box(subKey(sl.key, 0), sl.label, null, (fs) => putMulti(sl, 0, fs), () => undefined, sl.hint)];
+          return [
+            <div key={sl.key} className="flex flex-col gap-2">
+              {cells}
+              {k < max && <AddMore count={k} max={max} onFiles={(fs) => putMulti(sl, k, fs)} />}
+            </div>,
+          ];
+        }
         if (have.length < max) {
           const k = have.length;
           cells.push(box(subKey(sl.key, k), label(k), null, (fs) => putMulti(sl, k, fs), () => undefined, k === 0 ? sl.hint : undefined));
@@ -463,6 +496,43 @@ export function PhotoSlots({ slots, photos, marks, onChange, expected, style, to
   );
 }
 
+/** 한 칸에 모으는 묶음의 「한 장 더」 — 낮은 줄, 눌러 고르거나 끌어다 놓는다 */
+function AddMore({ count, max, onFiles }: { count: number; max: number; onFiles: (files: File[]) => void }) {
+  const dragging = useFileDragging();
+  const [over, setOver] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  const take = (list: File[]) => {
+    const imgs = list.filter((f) => f.type.startsWith('image/') || /\.(jpe?g|png|heic|heif|webp)$/i.test(f.name));
+    if (imgs.length) onFiles(imgs);
+  };
+  return (
+    <button
+      type="button"
+      onClick={() => input.current?.click()}
+      onDragEnter={(e) => { e.preventDefault(); setOver(true); }}
+      onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(e) => { e.preventDefault(); setOver(false); take([...e.dataTransfer.files]); }}
+      className={`flex items-center justify-center gap-1.5 rounded-box border-2 border-dashed px-3 py-2.5 text-small font-bold transition ${
+        over ? 'border-brand-500 bg-brand-50 text-brand-700' : dragging ? 'border-slate-400 bg-white text-slate-600' : 'border-slate-200 bg-slate-50 text-slate-500 hover:border-slate-300 hover:text-slate-700'
+      }`}
+    >
+      <PlusIcon />
+      {dragging ? '여기에 놓기' : '사진 더 넣기'}
+      <span className="tabular-nums text-slate-400">{count}/{max}</span>
+      <input
+        ref={input}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => { const picked = [...(e.target.files ?? [])]; e.target.value = ''; take(picked); }}
+      />
+    </button>
+  );
+}
+
 /** 펜 — 「사진 위에 그린다」를 말 없이 알리는 그림 */
 function PenIcon() {
   return (
@@ -470,6 +540,15 @@ function PenIcon() {
       <path d="M13.6 2.6a2 2 0 0 1 2.8 0l1 1a2 2 0 0 1 0 2.8l-9.3 9.3-4.1 1.1a.6.6 0 0 1-.7-.7l1.1-4.1 9.2-9.4Zm-1 2.9L5.3 12.8l-.6 2.1 2.1-.6 7.3-7.3-1.5-1.5Z" />
     </svg>
   );
+}
+
+/** 단추가 말한 일의 도구 — 「주차면 번호 찍기」를 눌렀는데 기호가 잡혀 있으면 단추가 거짓말이 된다 */
+function startToolOf(draw?: string): 'num' | 'line' | 'box' | undefined {
+  if (!draw) return undefined;
+  if (draw.endsWith('번호 찍기')) return 'num';
+  if (draw.endsWith('선 긋기')) return 'line';
+  if (draw.endsWith('짚기')) return 'box';
+  return undefined;
 }
 
 /** 더하기 — 빈 칸 */
@@ -566,8 +645,10 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expecte
               {marks && marks.length > 0 && <AnnotCanvas list={resolveLabels(marks, tools?.labels)} style={style} />}
             </span>
           ) : (
-            <span className="px-3 text-center text-sm font-bold text-slate-400">
+            <span className="flex flex-col items-center gap-2 px-3 text-center text-sm font-bold text-slate-400">
               {dragging ? '여기에 놓기' : <PlusIcon big />}
+              {/* 이 사진에서 글자를 읽어 칸을 채운다 — 넣기 전에 안다 */}
+              {slot.reads && !dragging && <span className="rounded-tag bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-700">넣으면 {slot.reads} 자동 입력</span>}
             </span>
           )}
         </div>
@@ -617,6 +698,7 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expecte
           expected={expected}
           title={`${slot.label} — ${drawLabel}`}
           style={style}
+          start={startToolOf(slot.draw)}
           {...tools}
           onClose={() => setMarking(false)}
           onDone={(m) => { onMarks(m); setMarking(false); }}

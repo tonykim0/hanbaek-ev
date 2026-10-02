@@ -20,7 +20,8 @@
  *     wire      빨간 선, 화살표 없음 — 도면의 배선 경로(기존 분전반 → 충전기 분전반)
  *     dash      빨간 점선 — 땅속·벽 속처럼 안 보이는 구간, 계획 경로
  *   번호(num) — 주차면 위 번호. ★모양은 서식마다★:
- *     red       빨간 테두리 · 빈 속 · 빨간 숫자 — 플러그링크(84곳 중 81곳) · 현대엔지니어링 별지
+ *     red       빨간 테두리 · 빨간 숫자 — 플러그링크(84곳 중 81곳) · 현대엔지니어링 별지. 제출본은 속이 비었지만
+ *               노랑으로 채운다(한백 2026-10-02 — 빈 속은 사진에 묻힌다)
  *     yellow    노란 속 · 검은 숫자 — SK·나이스 사진 대장(101건 전부)
  *   글상자(text) — 흰 바탕 · 검은 테 · 검은 글자(도면 318곳). 여러 줄이 된다.
  *   거점 라벨(label) — 도면의 그 상자: 위 칸은 빨간 글자(「1거점 신규 4대」·분전반 이름), 아래 칸은
@@ -257,12 +258,9 @@ export function drawAnnots(ctx: Ctx, w: number, h: number, list: Annot[], style:
         ctx.fillStyle = INK;
         ctx.fillText(String(n), 0, r * 0.04);
       } else {
-        // 빈 속이라 사진에 묻히지 않게 흰 테를 먼저 깔고 빨강을 얹는다(어두운 지하주차장 사진)
-        const rl = Math.max(2, r * 0.14);
-        ctx.lineWidth = rl + Math.max(2, r * 0.1); ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.stroke();
-        ctx.lineWidth = rl; ctx.strokeStyle = RED; ctx.stroke();
-        ctx.lineWidth = Math.max(2, r * 0.14); ctx.lineJoin = 'round'; ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-        ctx.strokeText(String(n), 0, r * 0.04);
+        // 속을 노랑으로 채운다 — 빈 속은 사진(특히 어두운 지하주차장)에 묻혔다(한백 「안에 배경 채워줘 노랑색으로」 2026-10-02)
+        ctx.fillStyle = '#ffff00'; ctx.fill();
+        ctx.lineWidth = Math.max(2, r * 0.14); ctx.strokeStyle = RED; ctx.stroke();
         ctx.fillStyle = RED;
         ctx.fillText(String(n), 0, r * 0.04);
       }

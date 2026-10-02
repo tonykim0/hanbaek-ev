@@ -41,6 +41,11 @@ export interface PhotoSlot {
    * 건지 알 수 없어 — 설명하지 않아도 이해할 수 있어야」). 없으면 「그려 넣기」.
    */
   draw?: string;
+  /**
+   * 이 사진에서 글자를 읽어 채우는 칸 — 빈 사진 칸에 적어 사진을 넣기 전에 안다(한백 「사진 입력하면 판넬명이나
+   * 전주번호 들어간다고 알려줘야」 2026-10-02). 읽는 일 자체는 lib/survey/use-plate.
+   */
+  reads?: string;
 }
 
 /** 워드 서식 사진 칸의 가로/세로 — fill-ledger·fill-hec 의 칸을 잰 값(칸 안 여백을 뺀 것) */
@@ -88,8 +93,7 @@ export interface SurveySpot {
   /** 책임분계점 원경·근경 옆 칸 — 전주번호(한전수전) 또는 차단기 스펙(모자분리) */
   farSpec: string;
   nearSpec: string;
-  /** 사진 대장(SK·나이스) — 설치장소(주소) · 전력인입점(판넬) 설명 · 설치기수 */
-  address: string;
+  /** 사진 대장(SK·나이스) — 전력인입점(판넬) 설명 · 설치기수. 설치장소(주소)는 현장 값이다(SurveyForm.address) */
   panelNote: string;
   qty: number | null;
   /** 사진 — 칸 key → 사진 파일. 브라우저 안에서만 산다 */
@@ -106,6 +110,12 @@ export interface SurveyForm {
   siteName: string;
   /** 조사일 YYYY-MM-DD */
   surveyDate: string;
+  /**
+   * 사진 대장(SK·나이스)의 설치장소(주소) — ★거점마다 같은 현장 주소다★(한백 2026-10-02). 제출본 47건 중 33건이
+   * 거점마다 같았고, 다른 14건은 남의 현장 주소가 남은 것(파주·송파)이거나 「, 지하1층」이 붙은 것뿐이었다 —
+   * 거점마다 갈리는 것은 「설치기수 N기 / 위치」의 위치다. 그래서 위에서 한 번 받아 거점마다 같은 값을 넣는다.
+   */
+  address: string;
   spots: SurveySpot[];
 }
 
@@ -114,8 +124,8 @@ export interface SurveyForm {
  * (public/hec/template.docx 의 사진 줄을 위에서 아래, 왼쪽에서 오른쪽으로 읽은 순서).
  */
 export const HEC_PHOTO_SLOTS: PhotoSlot[] = [
-  { key: 'far', label: '책임분계점(원경)', hint: '인입전주 또는 분전반', draw: '전주·분전반 짚기' },
-  { key: 'near', label: '책임분계점(근경)', hint: '인입전주 또는 분전반', draw: '전주·분전반 짚기' },
+  { key: 'far', label: '책임분계점(원경)', hint: '인입전주 또는 분전반', draw: '전주·분전반 짚기', reads: '전주번호·판넬명' },
+  { key: 'near', label: '책임분계점(근경)', hint: '인입전주 또는 분전반', draw: '전주·분전반 짚기', reads: '전주번호·판넬명' },
   /* 설치 예정 주차면은 한 장에 다 안 담길 때가 있다 — 세 장까지 한 칸에 모은다(한백 「2,3개 사진이 들어갈 수도」) */
   { key: 'siteWide', label: '충전소 설치 위치(전경)', multi: 3, collage: true, aspect: HEC_CELL, draw: '주차면 번호 찍기' },
   { key: 'siteClose', label: '충전소 설치 위치(근경)', multi: 3, collage: true, aspect: HEC_CELL, draw: '주차면 번호 찍기' },
@@ -165,8 +175,8 @@ export const HEC_CHECKS: Array<{ group: string; items: Array<{ key: string; labe
  * 순서가 곧 서식의 자리다(public/survey/ledger.docx 의 사진 줄 둘 × 칸 둘).
  */
 export const LEDGER_PHOTO_SLOTS: PhotoSlot[] = [
-  { key: 'inlet1', label: '전력인입점 사진 1', hint: '판넬 외부', draw: '판넬 짚기' },
-  { key: 'inlet2', label: '전력인입점 사진 2', hint: '판넬 내부·차단기', draw: '차단기 짚기' },
+  { key: 'inlet1', label: '전력인입점 사진 1', hint: '판넬 외부', draw: '판넬 짚기', reads: '판넬명·전주번호' },
+  { key: 'inlet2', label: '전력인입점 사진 2', hint: '판넬 내부·차단기', draw: '차단기 짚기', reads: '판넬명·전주번호' },
   /* 설치 예정 주차면은 세 장까지 한 칸에 모은다(한백 「2,3개 사진이 들어갈 수도」) — 칸이 하나뿐인 서식이다 */
   { key: 'front', label: '설치 예정 주차면 — 전면', multi: 3, collage: true, aspect: LEDGER_CELL, draw: '주차면 번호 찍기' },
   { key: 'side', label: '설치 예정 주차면 — 측면', multi: 3, collage: true, aspect: LEDGER_CELL, draw: '주차면 번호 찍기' },
@@ -182,7 +192,7 @@ export function newSpot(id: string): SurveySpot {
     powerType: '모자분리',
     wallSlow: null, wallFast: null, standSlow: null, standFast: null,
     farSpec: '', nearSpec: '',
-    address: '', panelNote: '', qty: null,
+    panelNote: '', qty: null,
     photos: {},
     marks: {},
     checks: Object.fromEntries(HEC_CHECK_KEYS.map((k) => [k, { ok: true, note: '' }])),
@@ -275,15 +285,15 @@ export const PL_PHOTO_SLOTS: PhotoSlot[] = [
   /* 설치예정 위치는 세 장까지 — 플러그링크는 칸이 늘어나므로 장마다 제 칸이다 */
   { key: 'place', label: '설치예정 위치', hint: '주차면 정면', multi: 3, draw: '주차면 번호 찍기' },
   { key: 'placeBack', label: '설치예정 위치 후면', draw: '그려 넣기' },
-  { key: 'panelOut', label: '1차측 분전반 외부', hint: '인입점', draw: '분전반 짚기' },
-  { key: 'panelIn', label: '1차측 분전반 내부', draw: '차단기 짚기' },
+  { key: 'panelOut', label: '1차측 분전반 외부', hint: '인입점', draw: '분전반 짚기', reads: '분전반 이름' },
+  { key: 'panelIn', label: '1차측 분전반 내부', draw: '차단기 짚기', reads: '분전반 이름·메인차단기' },
   /*
    * ★인입라인은 장수가 정해져 있지 않다★ — 2026 제출본 사진대지 시트 하나에 0~18장, 6장·8장이 흔하다
    * (내 컴퓨터의 플러그링크 엑셀 84곳 실측). 네 칸으로 묶어 두었더니 모자랐다. 서식은 짝(두 장)마다
    * 25줄이라 넘치면 시트를 늘린다(fill-pluglink).
    */
   { key: 'route', label: '전력간선 인입라인', multi: 20, draw: '경로 선 긋기' },
-  { key: 'pole', label: '전주번호', hint: '한전인입일 때', draw: '전주 짚기' },
+  { key: 'pole', label: '전주번호', hint: '한전인입일 때', draw: '전주 짚기', reads: '전주번호' },
   { key: 'sub', label: '2차측 분전함', multi: 4, draw: '분전함 짚기' },
   { key: 'cctv', label: 'CCTV(지하설치)', hint: '지하일 때', multi: 4, draw: 'CCTV 짚기' },
 ];
