@@ -54,7 +54,11 @@ function formOf(v: Partial<Form> | null | undefined): Form {
     siteName: typeof v?.siteName === 'string' ? v.siteName : '',
     surveyDate: typeof v?.surveyDate === 'string' ? v.surveyDate : today(),
     address: typeof v?.address === 'string' ? v.address : ((spots[0] as { address?: string }).address ?? ''),
-    spots: spots.map((x) => ({ ...newSpot(x.id ?? nextId()), ...x })),
+    // 체크리스트는 항목마다 채운다 — 항목이 늘면 옛 저장본의 빈 항목이 화면을 깨뜨린다
+    spots: spots.map((x) => {
+      const d = newSpot(x.id ?? nextId());
+      return { ...d, ...x, checks: { ...d.checks, ...(x.checks ?? {}) } };
+    }),
   };
 }
 
@@ -94,13 +98,13 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
       for (const [key, file] of newPhotos(before.photos, p.photos, Object.keys(PLATE))) {
         const field = PLATE[key];
         const tag = `${id}:${field}`;
-        plate.read(`${id}:${key}`, [tag], file, (r) => {
+        plate.read(`${id}:${key}`, [tag], file, (r, canFill) => {
           const v = plateText(r);
           const now = spotsRef.current.find((x) => x.id === id);
-          if (!v || !now || now.photos[key] !== file || !plate.canFill(tag, now[field])) return null;
+          if (!v || !now || now.photos[key] !== file || !canFill(tag, now[field])) return null;
           setSpots((list) => list.map((x) => (x.id === id ? { ...x, [field]: v } : x)));
           return { [tag]: v };
-        });
+        }, Object.keys(PLATE).indexOf(key));
       }
     }
     // 사람이 칸을 고치면 「사진에서 읽음」은 걷는다

@@ -17,7 +17,9 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLeaveGuard } from '@/lib/use-leave-guard';
-import { isPhotoRef, photoRefsOf, type DraftCpo, type DraftFull, type DraftSummary, type PhotoRef } from './draft-shape';
+import {
+  DRAFT_CONFLICT, DRAFT_NOT_FOUND, isPhotoRef, photoRefsOf, type DraftCpo, type DraftFull, type DraftSummary, type PhotoRef,
+} from './draft-shape';
 import { canvasOf } from './prepare-image';
 
 export const LEAVE_MESSAGE = '실사보고서 작성을 중단하시겠습니까? 임시 저장하지 않은 내용은 초기화됩니다.';
@@ -31,11 +33,11 @@ const uploaded = new WeakMap<Blob, PhotoRef>();
 const inFolder = (r: PhotoRef | undefined, draftId: string): r is PhotoRef => !!r && r.path.includes(`/${draftId}/`);
 
 /** 값 속 사진(File)들 — 순서대로, 겹치지 않게 */
-function filesOf(v: unknown, out: Blob[] = []): Blob[] {
-  if (v instanceof Blob) { if (!out.includes(v)) out.push(v); return out; }
-  if (Array.isArray(v)) v.forEach((x) => filesOf(x, out));
+function filesOf(v: unknown, out = new Set<Blob>()): Blob[] {
+  if (v instanceof Blob) out.add(v);
+  else if (Array.isArray(v)) v.forEach((x) => filesOf(x, out));
   else if (v && typeof v === 'object') Object.values(v).forEach((x) => filesOf(x, out));
-  return out;
+  return [...out];
 }
 
 /** 사진(File) → 자리로 바꾼 값 — 저장할 때. 되돌리는 쪽은 draft-shape 의 mapPhotoRefs 다 */
@@ -56,12 +58,21 @@ async function shrink(file: File): Promise<Blob> {
   }
 }
 
-/** 차례로 하되 넷씩 같이 — 사진 수십 장 저장본을 받는 시간이 줄어든다 */
-async function pool<T>(items: T[], run: (x: T, i: number) => Promise<void>, size = 4): Promise<void> {
+/**
+ * 차례로 하되 넷씩 같이 — 사진 수십 장 저장본을 올리고 받는 시간이 줄어든다.
+ * ★하나가 실패하면 새 일은 집지 않고, 하던 일이 다 끝난 뒤에 실패를 던진다★ — 먼저 던지면 남은 일꾼이 뒤에서
+ * 계속 돌며 「올리는 중」을 다시 써 단추가 멈춘 채 남았고, 지우기(새 저장본 되돌리기)와 올리기가 엇갈렸다.
+ */
+async function pool<T>(items: T[], run: (x: T) => Promise<void>, size = 4): Promise<void> {
   let next = 0;
-  await Promise.all(Array.from({ length: Math.min(size, items.length) }, async () => {
-    while (next < items.length) { const i = next++; await run(items[i], i); }
+  let failed: unknown = null;
+  await Promise.allSettled(Array.from({ length: Math.min(size, items.length) }, async () => {
+    while (failed === null && next < items.length) {
+      const x = items[next++];
+      try { await run(x); } catch (e) { failed ??= e; }
+    }
   }));
+  if (failed !== null) throw failed;
 }
 
 async function api<T>(url: string, init?: RequestInit): Promise<T> {
@@ -104,6 +115,11 @@ export function useSurveyDraft<T>(cpo: DraftCpo, value: T, apply: (v: T) => T | 
   /** 도는 일 — 「사진 올리는 중 3/12」처럼 단추 이름이 된다 */
   const [work, setWork] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * 지금 저장본에 저장할 수 없다 — 다른 창·기기가 먼저 저장했거나(판이 다르다) 저장본이 지워졌다. 응답을 못 받은
+   * 저장 뒤에도 판이 어긋나 여기로 온다. 화면이 「새 저장본으로 저장」과 이 저장본의 「불러오기」를 연다.
+   */
+  const [stale, setStale] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -119,14 +135,14 @@ export function useSurveyDraft<T>(cpo: DraftCpo, value: T, apply: (v: T) => T | 
   const dirty = value !== base.current;
   useLeaveGuard(dirty || busy || work !== null, LEAVE_MESSAGE);
 
-  const save = useCallback(async () => {
+  const save = useCallback(async (asNew = false) => {
     setError(null);
     const snapshot = value;
     /* 새로 만든 저장본이 값을 받기 전에 실패하면 지운다 — 빈 줄이 목록에 남아 열면 화면이 깨졌다 */
     let created: string | null = null;
     try {
       setWork('저장 준비 중…');
-      let draftId = id;
+      let draftId = asNew ? null : id;
       if (!draftId) {
         draftId = created = (await api<{ id: string }>('/api/survey-drafts', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cpo, title }),
@@ -148,13 +164,16 @@ export function useSurveyDraft<T>(cpo: DraftCpo, value: T, apply: (v: T) => T | 
       });
       created = null;
       version.current = at;
+      setStale(false);
       setId(draftId);
       base.current = snapshot;
       setSavedAt(new Date(at).getTime());
       void refresh();
     } catch (err) {
       if (created) void fetch(`/api/survey-drafts/${created}`, { method: 'DELETE' }).catch(() => undefined);
-      setError(`임시 저장하지 못했습니다 — ${(err as Error)?.message || '다시 해 주세요'}`);
+      const msg = (err as Error)?.message;
+      if (msg === DRAFT_CONFLICT || msg === DRAFT_NOT_FOUND) setStale(true);
+      setError(`임시 저장하지 못했습니다 — ${msg || '다시 해 주세요'}`);
     } finally {
       setWork(null);
     }
@@ -170,10 +189,12 @@ export function useSurveyDraft<T>(cpo: DraftCpo, value: T, apply: (v: T) => T | 
       }
       const refs = photoRefsOf(draft.data);
       const files = new Map<string, File>();
+      /* 못 받은 사진은 빈 칸으로 열고 알린다 — 한 장 때문에 저장본 전체가 안 열리면 안 된다. 한 번 더 받아 본다 */
+      const missed: string[] = [];
       let done = 0;
       await pool(refs, async (r) => {
-        const res = await fetch(r.url);
-        if (!res.ok) throw new Error(`사진을 받지 못했습니다 (${r.name})`);
+        const res = await fetch(r.url).then((x) => (x.ok ? x : fetch(r.url))).catch(() => null);
+        if (!res?.ok) { missed.push(r.name); return; }
         const file = new File([await res.blob()], r.name, { type: r.type });
         uploaded.set(file, r);
         files.set(r.path, file);
@@ -182,8 +203,12 @@ export function useSurveyDraft<T>(cpo: DraftCpo, value: T, apply: (v: T) => T | 
       const v = toFiles(draft.data, files) as T;
       base.current = apply(v) ?? v;
       version.current = draft.updatedAt;
+      setStale(false);
       setId(draft.id);
       setSavedAt(new Date(draft.updatedAt).getTime());
+      if (missed.length) {
+        setError(`사진 ${missed.length}장을 받지 못해 빈 칸으로 열었습니다(${missed.slice(0, 3).join(', ')}${missed.length > 3 ? ' …' : ''}) — 다시 불러오면 받을 수 있고, 이대로 저장하면 그 사진은 빠집니다`);
+      }
     } catch (err) {
       setError(`불러오지 못했습니다 — ${(err as Error)?.message || '다시 해 주세요'}`);
     } finally {
@@ -195,14 +220,14 @@ export function useSurveyDraft<T>(cpo: DraftCpo, value: T, apply: (v: T) => T | 
     setError(null);
     try {
       await api(`/api/survey-drafts/${draftId}`, { method: 'DELETE' });
-      if (draftId === id) { setId(null); setSavedAt(null); version.current = null; }
+      if (draftId === id) { setId(null); setSavedAt(null); setStale(false); version.current = null; }
       await refresh();
     } catch (err) {
       setError(`지우지 못했습니다 — ${(err as Error)?.message || '다시 해 주세요'}`);
     }
   }, [id, refresh]);
 
-  return { id, drafts, save, restore, remove, work, savedAt, dirty, error, canSave };
+  return { id, drafts, save, restore, remove, work, savedAt, dirty, error, canSave, stale };
 }
 
 /** 자리 → 내려받은 사진(File). 못 받은 자리는 빈 칸(null) */

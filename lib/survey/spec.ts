@@ -255,7 +255,7 @@ export interface PlSpot {
   marks: Record<string, Mark[]>;
 }
 
-/** 기타비용 한 줄 — 공사내역서(입력) 29~38행(사양·수량·단가). 단가를 비우면 서식 값 */
+/** 기타비용 한 줄 — 공사내역서(입력) 29~38행(사양·수량·단가). 단가를 비우면 단가 칸도 비고 알린다(29행 인건비만 서식 값) */
 export interface PlEtc { spec: string; qty: number | null; price: number | null }
 
 export interface PlForm {

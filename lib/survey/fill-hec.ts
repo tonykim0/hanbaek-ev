@@ -15,9 +15,10 @@ import {
   type SurveyForm, type SurveySpot,
 } from './spec';
 import {
-  ImageRegistry, PHOTO_ROW_MIN, W_NS, cellWidth, cellsOf, finishDocx, pageBreak, photoCellsOf, putImage,
-  rowHeight, rowsOf, setCellText, textOf, type PreparedImage,
+  ImageRegistry, PHOTO_ROW_MIN, W_NS, cellWidth, cellsOf, finishDocx, freshClone, pPrChild, pageBreak, photoCellsOf,
+  putImage, rowHeight, rowsOf, setCellText, textOf, type PreparedImage,
 } from './docx-kit';
+import { parseXml } from './xml-safe';
 import { surveyFileName } from './pack';
 /** 칸 안 여백(트윕) — 사진이 칸 선에 붙지 않게 */
 const PAD = 180;
@@ -161,7 +162,7 @@ export async function fillHecSurvey(
   if (form.spots.length === 0) throw new Error('거점을 하나 이상 넣어주세요.');
   const zip = await JSZip.loadAsync(template);
   const xml = await zip.file('word/document.xml')!.async('string');
-  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  const doc = parseXml(xml);
   const body = doc.getElementsByTagNameNS(W_NS, 'body')[0];
   const blocks = cutBlocks(body);
   const reg = new ImageRegistry(zip);
@@ -169,13 +170,17 @@ export async function fillHecSurvey(
   const out: Element[] = [];
   form.spots.forEach((spot, i) => {
     const n = i + 1;
-    if (i > 0) out.push(pageBreak(doc));
-    const a = blocks.a.map((e) => e.cloneNode(true) as Element);
+    /* 별지는 새 쪽에서 — 첫 문단에 「앞에서 쪽 나눔」을 건다. 쪽 나눔 문단을 따로 두면 다음 쪽 맨 위에 빈 줄이 섰다 */
+    const startPage = (els: Element[]) => {
+      if (els[0]?.localName === 'p') { pPrChild(els[0], 'pageBreakBefore'); return els; }
+      return [pageBreak(doc), ...els];
+    };
+    const a = blocks.a.map(freshClone);
     fillPhotoSheet(a, spot, n, images[spot.id] ?? {}, reg);
-    out.push(...a, pageBreak(doc));
-    const b = blocks.b.map((e) => e.cloneNode(true) as Element);
+    out.push(...(i > 0 ? startPage(a) : a));
+    const b = blocks.b.map(freshClone);
     fillChecklist(b, spot, n, form);
-    out.push(...b);
+    out.push(...startPage(b));
   });
 
   // 본문을 갈아 끼운다 — 계약서 본문은 버리고 쪽 설정(sectPr)만 남긴다

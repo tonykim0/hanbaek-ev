@@ -86,6 +86,19 @@ export function dropSpotLabels(list: Annot[], removed: number): Annot[] {
   });
 }
 
+/**
+ * 표시들이 「같은가」를 재는 꼴 — 저장본(jsonb)을 다녀오면 객체의 열쇠 순서가 바뀌고, 표시 창은 열 때 거점 라벨 글을
+ * 지금 거점 값으로 다시 쓴다. 그래서 열쇠를 정렬하고, 거점에 묶인 라벨의 글(head·body)은 뺀다 — 그 글은 거점 값에서
+ * 다시 나온다(resolveLabels). 쓰는 곳: 도면 확대도가 손대지 않은 그대로인가(PluglinkEditor) · 표시 창을 고친 것 없이
+ * 닫았는가(PhotoBox — 그대로 닫아도 「바뀐 것 있음」이 되고 도면이면 확대도를 다시 잘랐다).
+ */
+export function markSig(marks: Annot[] | undefined): string {
+  const norm = (marks ?? []).map((a) => (a.t === 'label' && a.spot ? { ...a, head: [], body: [] } : a));
+  return JSON.stringify(norm, (_k, v) => (v && typeof v === 'object' && !Array.isArray(v)
+    ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, (v as Record<string, unknown>)[k]]))
+    : v));
+}
+
 /** 번호 모양 — 위 머리말 */
 export type NumStyle = 'red' | 'yellow';
 
@@ -374,7 +387,11 @@ export function moveAnnot(a: Annot, dx: number, dy: number): Annot {
    * 선이 꺾이고 네모가 찌그러졌다. 점 하나인 것은 그 점만 사진 안에 둔다.
    */
   const pts = a.t === 'line' ? a.pts : a.t === 'oval' || a.t === 'box' ? [a.a, a.b] : [a];
-  const fit = (d: number, vs: number[]) => Math.min(Math.max(d, -Math.min(...vs)), 1 - Math.max(...vs));
+  // 이미 사진 밖에 걸친 점이 있으면(옛 저장본) 막을 범위가 없다 — 그대로 옮긴다(튀지 않게)
+  const fit = (d: number, vs: number[]) => {
+    const lo = -Math.min(...vs); const hi = 1 - Math.max(...vs);
+    return lo > hi ? d : Math.min(Math.max(d, lo), hi);
+  };
   const fx = fit(dx, pts.map((p) => p.x)); const fy = fit(dy, pts.map((p) => p.y));
   const m = (p: Pt): Pt => ({ x: p.x + fx, y: p.y + fy });
   if (a.t === 'line') return { ...a, pts: a.pts.map(m) };

@@ -13,7 +13,7 @@
 import type JSZip from 'jszip';
 import type { PreparedImage } from './docx-kit';
 import { marksXml } from './xlsx-marks';
-import { crop, fits } from './fit';
+import { fillWindow } from './fit';
 import { parseXml, xmlSafe } from './xml-safe';
 
 const S_NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
@@ -368,10 +368,11 @@ export class Workbook {
 
   private async geometry(d: Document, sheetPath: string) {
     const fmt = elems(d, S_NS, 'sheetFormatPr')[0];
-    const defW = Number(fmt?.getAttribute('defaultColWidth') ?? 9);
-    const defH = Number(fmt?.getAttribute('defaultRowHeight') ?? 15);
+    // 없는 속성은 브라우저가 null, xmldom 은 '' 을 준다 — 둘 다 기본값으로
+    const defW = Number(fmt?.getAttribute('defaultColWidth') || 9);
+    const defH = Number(fmt?.getAttribute('defaultRowHeight') || 15);
     const cols = elems(d, S_NS, 'col').map((c) => ({
-      min: Number(c.getAttribute('min')), max: Number(c.getAttribute('max')), w: Number(c.getAttribute('width') ?? defW),
+      min: Number(c.getAttribute('min')), max: Number(c.getAttribute('max')), w: Number(c.getAttribute('width') || defW),
     }));
     const rows = new Map<number, number>();
     for (const r of elems(d, S_NS, 'row')) {
@@ -418,8 +419,9 @@ export class Workbook {
      */
     const pic = (cx: number, cy: number, crop: string, cut = { l: 0, t: 0, r: 0, b: 0 }) => {
       const p = `<xdr:pic><xdr:nvPicPr><xdr:cNvPr id="${id}" name="사진 ${this.picN}"/><xdr:cNvPicPr><a:picLocks noChangeAspect="1"/></xdr:cNvPicPr></xdr:nvPicPr><xdr:blipFill><a:blip r:embed="${rid}"/>${crop}<a:stretch><a:fillRect/></a:stretch></xdr:blipFill><xdr:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></xdr:spPr></xdr:pic>`;
-      if (!img.marks?.length) return `${p}<xdr:clientData/>`;
-      const shapes = marksXml(img.marks, img, { cx, cy, crop: cut }, img.markStyle ?? 'red', () => (this.shapeN += 1));
+      // 도형이 하나도 안 나오면(빈 글상자뿐) 묶지 않는다 — 사진 하나뿐인 묶음이 생겼다
+      const shapes = img.marks?.length ? marksXml(img.marks, img, { cx, cy, crop: cut }, img.markStyle ?? 'red', () => (this.shapeN += 1)) : '';
+      if (!shapes) return `${p}<xdr:clientData/>`;
       const gid = (this.shapeN += 1);
       const xf = `<a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/><a:chOff x="0" y="0"/><a:chExt cx="${cx}" cy="${cy}"/>`;
       return `<xdr:grpSp><xdr:nvGrpSpPr><xdr:cNvPr id="${gid}" name="사진 ${this.picN} · 표시"/><xdr:cNvGrpSpPr/></xdr:nvGrpSpPr><xdr:grpSpPr><a:xfrm>${xf}</a:xfrm></xdr:grpSpPr>${p}${shapes}</xdr:grpSp><xdr:clientData/>`;
@@ -428,9 +430,9 @@ export class Workbook {
     let xml: string;
     // 칸 테두리가 사진에 덮이지 않게 둘레를 2px 남긴다
     const inset = 2 * EMU_PER_PX;
-    const w = crop(img.width / img.height, (boxW - 2 * inset) / (boxH - 2 * inset), img.focus);
     // 표시가 자른 창에 다 안 들면 자르지 않고 들인다 — 잘라 넣으면 표시 도형이 사진 밖으로 삐져나간다
-    if (mode === 'fill' && fits(w, img.focus)) {
+    const w = mode === 'fill' ? fillWindow(img.width / img.height, (boxW - 2 * inset) / (boxH - 2 * inset), img.focus) : null;
+    if (w) {
       const pct = (v: number) => Math.round(v * 100000);
       const src = `<a:srcRect l="${pct(w.l)}" t="${pct(w.t)}" r="${pct(w.r)}" b="${pct(w.b)}"/>`;
       xml = `<xdr:twoCellAnchor ${ns}><xdr:from><xdr:col>${a.col - 1}</xdr:col><xdr:colOff>${inset}</xdr:colOff><xdr:row>${a.row - 1}</xdr:row><xdr:rowOff>${inset}</xdr:rowOff></xdr:from><xdr:to><xdr:col>${b.col - 1}</xdr:col><xdr:colOff>${Math.max(0, colW(b.col) - inset)}</xdr:colOff><xdr:row>${b.row - 1}</xdr:row><xdr:rowOff>${Math.max(0, Math.round(rowH(b.row)) - inset)}</xdr:rowOff></xdr:to>${pic(Math.round(boxW - 2 * inset), Math.round(boxH - 2 * inset), src, w)}</xdr:twoCellAnchor>`;

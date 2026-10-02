@@ -12,7 +12,7 @@
  */
 import type { PreparedImage } from './docx-kit';
 import { annotBounds, drawAnnots, type Annot, type NumStyle } from './annot';
-import { collageTiles, crop } from './fit';
+import { collageTiles, fillWindow } from './fit';
 
 const LONG_EDGE = 1600;
 const QUALITY = 0.85;
@@ -90,10 +90,17 @@ export async function prepareCollage(items: Array<{ file: File; marks: Annot[] }
     const tile = await canvasOf(it.file);
     const pw = tile.width; const ph = tile.height;
     if (it.marks.length) drawAnnots(tile.getContext('2d')!, pw, ph, it.marks, style);
-    const w = crop(pw / ph, t.w / t.h, annotBounds(it.marks, pw, ph) ?? undefined);
-    const sx = w.l * pw; const sy = w.t * ph;
-    const sw = pw * (1 - w.l - w.r); const sh = ph * (1 - w.t - w.b);
-    ctx.drawImage(tile, sx, sy, sw, sh, t.x, t.y, t.w, t.h);
+    // 조각 모양으로 잘라 채운다 — 구운 표시가 잘리면(사진 끝까지 그은 경로) 자르지 않고 조각 안에 들인다
+    const w = fillWindow(pw / ph, t.w / t.h, annotBounds(it.marks, pw, ph) ?? undefined);
+    if (w) {
+      const sx = w.l * pw; const sy = w.t * ph;
+      const sw = pw * (1 - w.l - w.r); const sh = ph * (1 - w.t - w.b);
+      ctx.drawImage(tile, sx, sy, sw, sh, t.x, t.y, t.w, t.h);
+    } else {
+      const k = Math.min(t.w / pw, t.h / ph);
+      const dw = pw * k; const dh = ph * k;
+      ctx.drawImage(tile, t.x + (t.w - dw) / 2, t.y + (t.h - dh) / 2, dw, dh);
+    }
   }
   return jpegOf(canvas, items[0].file.name);
 }

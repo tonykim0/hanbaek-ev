@@ -12,6 +12,13 @@ export const MAX_DRAFTS = 50;
 /** 저장본 하나의 값(사진 빼고) 상한 — 표시·체크리스트를 다 넣어도 수십 KB 다 */
 export const MAX_DRAFT_JSON = 2 * 1024 * 1024;
 
+/**
+ * 저장이 거절되는 두 까닭 — 화면이 이 글로 알아보고 「새 저장본으로 저장」·「불러오기」 길을 연다(DraftControls).
+ * 저장소(store/survey-drafts)와 라우트가 이 글을 그대로 던진다.
+ */
+export const DRAFT_CONFLICT = '다른 창이나 기기에서 이 저장본을 먼저 저장했습니다 — 다시 불러오거나 새 저장본으로 저장해 주세요.';
+export const DRAFT_NOT_FOUND = '임시 저장본을 찾을 수 없습니다 — 지워졌거나 다른 계정의 것입니다.';
+
 /** 저장본의 사진 자리 — 그 계정·그 저장본의 폴더 안이어야 한다 */
 export const draftPrefix = (ownerId: string, draftId: string) => `${DRAFT_ROOT}/${ownerId}/${draftId}/`;
 

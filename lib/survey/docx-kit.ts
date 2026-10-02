@@ -8,7 +8,7 @@
  * DOMParser·XMLSerializer 만 쓴다 — 브라우저에서 돌고, 시험에서는 xmldom 을 꽂는다.
  */
 import type JSZip from 'jszip';
-import { crop, fits } from './fit';
+import { fillWindow } from './fit';
 import { parseXml, xmlSafe } from './xml-safe';
 import { packZip } from './pack';
 
@@ -69,11 +69,13 @@ function el(doc: Document, local: string): Element {
 }
 
 /**
- * 문단의 글자 모양 — 새 글줄(run)이 칸의 글자 크기를 따르게. 글자가 든 첫 글줄의 모양(서식이 보여 주던 글의
- * 꼴), 없으면 문단 표시의 모양을 베낀다.
+ * 문단의 글자 모양 — 새 글줄(run)이 칸의 글자 크기를 따르게. ★글이 가장 긴 글줄★의 모양(서식이 보여 주던 글의
+ * 꼴), 없으면 문단 표시의 모양을 베낀다. 첫 글줄을 베꼈더니 그것이 밑줄 친 빈칸(「   거점」의 번호 자리)이라
+ * 제목·대수 칸 글 전체에 밑줄이 그어졌다.
  */
 function paragraphRunProps(p: Element): Element | null {
-  const textRun = childrenNamed(p, 'r').find((r) => r.getElementsByTagNameNS(W_NS, 't').length > 0);
+  const len = (r: Element) => Array.from(r.getElementsByTagNameNS(W_NS, 't')).map((t) => t.textContent ?? '').join('').trim().length;
+  const textRun = childrenNamed(p, 'r').filter((r) => len(r) > 0).sort((a, b) => len(b) - len(a))[0];
   const runPr = textRun ? childrenNamed(textRun, 'rPr')[0] : undefined;
   if (runPr) return runPr.cloneNode(true) as Element;
   const pPr = childrenNamed(p, 'pPr')[0];
@@ -99,8 +101,15 @@ export function setParagraphText(p: Element, text: string): void {
   if (!text) return;
   const run = el(doc, 'r');
   if (rPr) {
-    // 서식의 안내 칸은 노란 형광이다(「여기에 적으세요」) — 값을 넣었으면 그 표시는 끝났다
+    /*
+     * 서식의 안내 칸은 노랗게 칠해져 있다(「여기에 적으세요」 — 형광 highlight 또는 글자 바탕 shd). 값을 넣었으면
+     * 그 표시는 끝났다 — 남기면 자동으로 들어간 전주번호·차단기 스펙이 노란 바탕으로 나갔다.
+     */
     for (const h of childrenNamed(rPr, 'highlight')) rPr.removeChild(h);
+    for (const sh of childrenNamed(rPr, 'shd')) {
+      const fill = (sh.getAttributeNS(W_NS, 'fill') || sh.getAttribute('w:fill') || '').toLowerCase();
+      if (fill && fill !== 'auto' && fill !== 'ffffff') rPr.removeChild(sh);
+    }
     run.appendChild(rPr);
   }
   xmlSafe(text).split('\n').forEach((line, i) => {
@@ -229,14 +238,13 @@ export function putImage(
   setCellText(tc, '');
   const p = childrenNamed(tc, 'p')[0];
   centerParagraph(p);
-  const w = crop(img.width / img.height, maxW / maxH, img.focus);
   // 표시가 자른 창에 다 안 들면 자르지 않고 칸 안에 들인다 — 사진에 구운 번호·경로가 잘려 나가지 않게
-  const fill = fits(w, img.focus);
-  const k = fill ? 1 : Math.min(maxW / img.width, maxH / img.height);
-  const cx = Math.round((fill ? maxW : img.width * k) * EMU_PER_TWIP);
-  const cy = Math.round((fill ? maxH : img.height * k) * EMU_PER_TWIP);
+  const w = fillWindow(img.width / img.height, maxW / maxH, img.focus);
+  const k = w ? 1 : Math.min(maxW / img.width, maxH / img.height);
+  const cx = Math.round((w ? maxW : img.width * k) * EMU_PER_TWIP);
+  const cy = Math.round((w ? maxH : img.height * k) * EMU_PER_TWIP);
   const pct = (v: number) => Math.round(v * 100000);
-  const srcRect = fill ? `<a:srcRect l="${pct(w.l)}" t="${pct(w.t)}" r="${pct(w.r)}" b="${pct(w.b)}"/>` : '';
+  const srcRect = w ? `<a:srcRect l="${pct(w.l)}" t="${pct(w.t)}" r="${pct(w.r)}" b="${pct(w.b)}"/>` : '';
   const { relId, docPrId, name } = reg.add(img);
 
   /*
@@ -274,11 +282,23 @@ export async function finishDocx(zip: JSZip, doc: Document, nodes: Element[], se
   return packZip(zip, 'docx');
 }
 
+/**
+ * 복제한 조각 — 문단의 w14:paraId·textId 는 문서 안에서 겹치면 안 된다(거점마다 복제하면 수백 개가 겹쳤다).
+ * 지워 두면 워드가 저장할 때 새로 매긴다.
+ */
+export function freshClone(e: Element): Element {
+  const c = e.cloneNode(true) as Element;
+  for (const p of [c, ...Array.from(c.getElementsByTagNameNS(W_NS, 'p'))]) {
+    for (const a of Array.from(p.attributes ?? [])) if (a.localName === 'paraId' || a.localName === 'textId') p.removeAttributeNode(a);
+  }
+  return c;
+}
+
 /** 서식의 문서 보호를 푼다 — 받은 사람이 고칠 수 있어야 한다(계약서 생성기와 같은 처리) */
 export async function unlockDocument(zip: JSZip): Promise<void> {
   const f = zip.file('word/settings.xml');
   if (!f) return;
-  const doc = new DOMParser().parseFromString(await f.async('string'), 'application/xml');
+  const doc = parseXml(await f.async('string'));
   const ps = doc.getElementsByTagNameNS(W_NS, 'documentProtection');
   if (ps.length === 0) return;
   for (let i = ps.length - 1; i >= 0; i--) ps[i].parentNode?.removeChild(ps[i]);

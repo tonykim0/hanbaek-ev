@@ -13,6 +13,7 @@
  * 비례하므로(annot) 그대로 두면 잘린 그림에서 원래보다 작아진다 → 크기(z)에 (원래 긴 변 / 자른 긴 변)을 곱한다.
  */
 import { annotBounds, boxOf, type Annot, type Pt } from './annot';
+export { markSig } from './annot';
 
 export interface CropRect { x: number; y: number; w: number; h: number }
 
@@ -86,7 +87,43 @@ export function autoCrops(marks: Annot[], W: number, H: number, aspect = ZOOM_AS
   return out;
 }
 
-/** 틀 안에 서는 표시만 — 자리를 틀 기준으로, 크기를 키워서 [순수] */
+/** 선분 p→q 를 틀 안으로 자른다(Liang–Barsky) — 틀 밖이면 null */
+function clipSegment(p: Pt, q: Pt, r: CropRect): [Pt, Pt] | null {
+  let t0 = 0; let t1 = 1;
+  const dx = q.x - p.x; const dy = q.y - p.y;
+  const edges: Array<[number, number]> = [[-dx, p.x - r.x], [dx, r.x + r.w - p.x], [-dy, p.y - r.y], [dy, r.y + r.h - p.y]];
+  for (const [pp, qq] of edges) {
+    if (pp === 0) { if (qq < 0) return null; continue; }
+    const t = qq / pp;
+    if (pp < 0) { if (t > t1) return null; if (t > t0) t0 = t; } else { if (t < t0) return null; if (t < t1) t1 = t; }
+  }
+  return [{ x: p.x + t0 * dx, y: p.y + t0 * dy }, { x: p.x + t1 * dx, y: p.y + t1 * dy }];
+}
+
+/** 꺾인 선을 틀 안으로 — 틀 밖으로 나갔다 들어오면 토막이 여럿이다 */
+function clipPolyline(pts: Pt[], r: CropRect): Pt[][] {
+  const out: Pt[][] = [];
+  let cur: Pt[] = [];
+  const same = (a: Pt, b: Pt) => Math.abs(a.x - b.x) < 1e-9 && Math.abs(a.y - b.y) < 1e-9;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const seg = clipSegment(pts[i], pts[i + 1], r);
+    if (!seg) { if (cur.length) out.push(cur); cur = []; continue; }
+    if (cur.length && same(cur[cur.length - 1], seg[0])) cur.push(seg[1]);
+    else { if (cur.length) out.push(cur); cur = [seg[0], seg[1]]; }
+    // 틀 밖에서 끝나면 그 토막도 거기서 끝난다
+    if (!same(seg[1], pts[i + 1])) { out.push(cur); cur = []; }
+  }
+  if (cur.length) out.push(cur);
+  return out;
+}
+
+/**
+ * 틀 안에 서는 표시만 — 자리를 틀 기준으로, 크기를 키워서 [순수]
+ *
+ * ★선·네모는 틀에서 자른다★ — 틀 밖의 점을 그대로 두면(멀리 있는 공용 분전반에서 오는 배선) 엑셀은 가운데가
+ * 틀 밖인 선을 버리거나 사진 밖으로 그렸고, 표시 창에서 그 선을 조금만 끌어도 튀었다. 화살표가 틀에서 잘려
+ * 끝나면 화살촉을 떼어(배선 경로) 틀 가장자리에 화살촉이 서지 않게 한다.
+ */
 export function cropMarks(marks: Annot[], r: CropRect, fullW: number, fullH: number): Annot[] {
   const grow = Math.max(fullW, fullH) / Math.max(r.w * fullW, r.h * fullH);
   const m = (p: Pt) => ({ x: (p.x - r.x) / r.w, y: (p.y - r.y) / r.h });
@@ -94,9 +131,17 @@ export function cropMarks(marks: Annot[], r: CropRect, fullW: number, fullH: num
   const out: Annot[] = [];
   for (const a of marks) {
     if (a.t === 'line') {
-      if (a.pts.some(inside)) out.push({ ...a, pts: a.pts.map(m) });
+      const last = a.pts[a.pts.length - 1];
+      for (const piece of clipPolyline(a.pts, r)) {
+        const end = piece[piece.length - 1];
+        const keepsHead = Math.abs(end.x - last.x) < 1e-9 && Math.abs(end.y - last.y) < 1e-9;
+        const k = a.k === 'arrow' && !keepsHead ? 'wire' : a.k;
+        out.push({ ...a, k, pts: piece.map(m) });
+      }
     } else if (a.t === 'oval' || a.t === 'box') {
-      if (inside({ x: (a.a.x + a.b.x) / 2, y: (a.a.y + a.b.y) / 2 })) out.push({ ...a, a: m(a.a), b: m(a.b) });
+      const x0 = Math.max(Math.min(a.a.x, a.b.x), r.x); const x1 = Math.min(Math.max(a.a.x, a.b.x), r.x + r.w);
+      const y0 = Math.max(Math.min(a.a.y, a.b.y), r.y); const y1 = Math.min(Math.max(a.a.y, a.b.y), r.y + r.h);
+      if (x1 > x0 && y1 > y0) out.push({ ...a, a: m({ x: x0, y: y0 }), b: m({ x: x1, y: y1 }) });
     } else if (inside(a)) {
       out.push({ ...a, ...m(a), z: (a.z ?? 1) * grow });
     }
@@ -104,17 +149,11 @@ export function cropMarks(marks: Annot[], r: CropRect, fullW: number, fullH: num
   return out;
 }
 
-/** 그림 크기 — 방향을 바로 한 뒤 [브라우저 전용] */
-export async function imageSize(file: File): Promise<{ w: number; h: number }> {
-  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
-  const out = { w: bmp.width, h: bmp.height };
-  bmp.close?.();
-  return out;
-}
+/** 도면 그림 — 방향을 바로 세워 한 번 읽는다. 거점마다 다시 읽지 않게 여기서 받아 cropImage 에 넘긴다 [브라우저 전용] */
+export const planBitmap = (file: File) => createImageBitmap(file, { imageOrientation: 'from-image' });
 
-/** 그림 자르기 — 방향을 바로 하고, 긴 변 2400px 안으로 [브라우저 전용] */
-export async function cropImage(file: File, r: CropRect, name: string): Promise<{ file: File; fullW: number; fullH: number }> {
-  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+/** 그림 자르기 — 긴 변 2400px 안으로 [브라우저 전용] */
+export async function cropImage(bmp: ImageBitmap, r: CropRect, name: string): Promise<File> {
   const sx = r.x * bmp.width; const sy = r.y * bmp.height;
   const sw = r.w * bmp.width; const sh = r.h * bmp.height;
   const k = Math.min(1, 2400 / Math.max(sw, sh));
@@ -124,9 +163,7 @@ export async function cropImage(file: File, r: CropRect, name: string): Promise<
   if (!ctx) throw new Error('그림을 자를 수 없습니다 — 다른 브라우저에서 다시 해주세요.');
   ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
   ctx.drawImage(bmp, sx, sy, sw, sh, 0, 0, c.width, c.height);
-  const out = { fullW: bmp.width, fullH: bmp.height };
-  bmp.close?.();
   const blob = await new Promise<Blob | null>((res) => c.toBlob(res, 'image/jpeg', 0.92));
   if (!blob) throw new Error('그림을 자르지 못했습니다.');
-  return { file: new File([blob], name, { type: 'image/jpeg' }), ...out };
+  return new File([blob], name, { type: 'image/jpeg' });
 }

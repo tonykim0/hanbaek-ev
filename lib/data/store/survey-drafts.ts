@@ -12,7 +12,7 @@ import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
 import { surveyDrafts } from '@/lib/db/schema';
 import {
-  MAX_DRAFTS, SURVEY_CPOS, photoRefsOf, type DraftCpo, type DraftFull, type DraftSummary, type PhotoRef,
+  DRAFT_CONFLICT, DRAFT_NOT_FOUND, MAX_DRAFTS, SURVEY_CPOS, photoRefsOf, type DraftCpo, type DraftFull, type DraftSummary, type PhotoRef,
 } from '@/lib/survey/draft-shape';
 import type { Actor, ProjectRepository } from '../repository';
 
@@ -28,7 +28,7 @@ const summary = (r: Row): DraftSummary => ({
   id: r.id, cpo: r.cpo as DraftCpo, title: r.title, photoCount: r.photoCount, updatedAt: r.updatedAt.toISOString(),
 });
 
-const NOT_FOUND = '임시 저장본을 찾을 수 없습니다 — 지워졌거나 다른 계정의 것입니다.';
+const NOT_FOUND = DRAFT_NOT_FOUND;
 
 async function own(id: string, actor: Actor): Promise<Row> {
   const [row] = await getDb().select().from(surveyDrafts).where(eq(surveyDrafts.id, id)).limit(1);
@@ -80,9 +80,7 @@ export const surveyDraftStore: Pick<
     return getDb().transaction(async (tx) => {
       const [row] = await tx.select().from(surveyDrafts).where(eq(surveyDrafts.id, id)).for('update');
       if (!row || row.ownerId !== actor.id) throw new Error(NOT_FOUND);
-      if (input.base && row.updatedAt.toISOString() !== input.base) {
-        throw new Error('다른 창이나 기기에서 이 저장본을 먼저 저장했습니다 — 저장본을 다시 불러온 뒤 저장해 주세요.');
-      }
+      if (input.base && row.updatedAt.toISOString() !== input.base) throw new Error(DRAFT_CONFLICT);
       const keep = new Set(photoRefsOf(input.data).map((r) => r.path));
       const removed = photoRefsOf(row.data).filter((r) => !keep.has(r.path));
       const updatedAt = new Date();

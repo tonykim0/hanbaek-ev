@@ -20,11 +20,12 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 /** 짧은 글자 몇 줄이라 빠른 쪽으로 — 그래도 번호 한 자리가 틀리면 다른 전주라 최신 모델을 쓴다 */
 const MODEL = 'claude-opus-5-5';
 /*
- * 시간 — 라우트는 60초에 끊긴다(maxDuration). 한 번 25초 · 다시 한 번까지(50초)로 그 안에서 끝낸다.
- * SDK 기본(60초 · 두 번 더)이면 Vercel 이 먼저 끊어 [survey-plate] 줄도 안 남았다.
+ * 시간 — 라우트는 60초에 끊긴다(maxDuration). 45초 한 번으로 그 안에서 끝낸다 — 다시 하지 않는다: SDK 는 혼잡(429·529)
+ * 때 서버가 말한 만큼(최대 60초) 기다렸다 다시 해 Vercel 이 먼저 끊고 [survey-plate] 줄도 안 남았다. 못 읽으면 칸은
+ * 사람이 적는다.
  */
-const CALL_TIMEOUT_MS = 25_000;
-const MAX_RETRIES = 1;
+const CALL_TIMEOUT_MS = 45_000;
+const MAX_RETRIES = 0;
 /** claude-opus-5-5 는 생각을 끌 수 없고 그것도 max_tokens 에 든다 — 답(몇 줄)보다 넉넉히 */
 const MAX_TOKENS = 8192;
 
@@ -71,7 +72,7 @@ export async function readPlate(image: { data: string; mediaType: 'image/jpeg' |
     return { panel: null, pole: null, breaker: null };
   }
   const text = message.content.filter((b): b is Anthropic.TextBlock => b.type === 'text').map((b) => b.text).join('').trim();
-  const raw = JSON.parse(text.replace(/^```(?:json)?\s*|\s*```$/g, '')) as Partial<PlateRead>;
+  const raw = JSON.parse(text) as Partial<PlateRead>; // json_schema 출력이라 JSON 그대로다
   const clean = (v: unknown) => (typeof v === 'string' && v.trim() && v.trim().length <= 60 ? v.trim().replace(/\s+/g, ' ') : null);
   return { panel: clean(raw.panel), pole: clean(raw.pole), breaker: clean(raw.breaker) };
 }

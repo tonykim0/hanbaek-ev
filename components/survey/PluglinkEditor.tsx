@@ -24,7 +24,7 @@ import {
   PL_ETC_PRESETS, PL_MAX_SPOTS, PL_PHOTO_SLOTS, newPlSpot, plModemAuto, plQtyOf, plSpotLabels, slotFiles,
   type PhotoSlot, type PlEtc, type PlForm, type PlSpot,
 } from '@/lib/survey/spec';
-import { autoCrops, cropImage, cropMarks, imageSize, type CropRect } from '@/lib/survey/plan-crop';
+import { autoCrops, cropImage, cropMarks, markSig, planBitmap, type CropRect } from '@/lib/survey/plan-crop';
 import { nextId, num, today } from '@/lib/survey/form-utils';
 import { PhotoBox, PhotoSlots } from './PhotoSlots';
 import PlanCrop from './PlanCrop';
@@ -146,7 +146,7 @@ export default function PluglinkEditor() {
       const fields: Array<'poleNo' | 'panelName' | 'mainBreaker'> =
         key === 'pole' ? ['poleNo'] : key === 'panelIn' ? ['poleNo', 'panelName', 'mainBreaker'] : ['poleNo', 'panelName'];
       const tag = (k: string) => `${s.id}:${k}`;
-      plate.read(tag(key), fields.map(tag), file, (r) => {
+      plate.read(tag(key), fields.map(tag), file, (r, canFill) => {
         const now = fRef.current.spots.find((x) => x.id === s.id);
         if (!now || now.photos[key] !== file) return null;
         const got = { poleNo: r.pole, panelName: r.panel, mainBreaker: r.breaker };
@@ -154,12 +154,12 @@ export default function PluglinkEditor() {
         const filled: Record<string, string> = {};
         for (const k of fields) {
           const v = got[k];
-          if (v && plate.canFill(tag(k), now[k] ?? '')) { fill[k] = v; filled[tag(k)] = v; }
+          if (v && canFill(tag(k), now[k] ?? '')) { fill[k] = v; filled[tag(k)] = v; }
         }
         if (Object.keys(fill).length === 0) return null;
         setF((x) => ({ ...x, spots: x.spots.map((y) => (y.id === s.id ? { ...y, ...fill } : y)) }));
         return filled;
-      });
+      }, ['pole', 'panelOut', 'panelIn'].indexOf(key));
     }
     // 도면 확대도를 손으로 바꾸거나 뺐으면 도면에서 잘라 넣은 것이 아니다 — 다시 자르기에서 빠진다
     const zoomCrop = p.photos.zoom === s.photos.zoom ? s.zoomCrop : undefined;
@@ -172,21 +172,30 @@ export default function PluglinkEditor() {
    *   자른 그림과 그 안의 표시를 그 거점의 도면 확대도로 넣는다. 손으로 넣은 확대도와, 넣은 뒤 표시를 고친
    *   확대도는 덮지 않는다(spec PlSpot.zoomCrop). 틀은 「범위 고치기」에서 사람이 다시 잡는다.
    */
-  const [zooming, setZooming] = useState(false);
+  const [zooming, setZooming] = useState(0);
   const [zoomErr, setZoomErr] = useState<string | null>(null);
   const [adjusting, setAdjusting] = useState(false);
-  /** 비어 있거나, 도면에서 잘라 넣고 표시를 그대로 둔 확대도 — 다시 잘라도 되는 자리 */
-  const untouched = (s: PlSpot) => !s.photos.zoom || (!!s.zoomCrop && JSON.stringify(s.marks.zoom ?? []) === s.zoomCrop.sig);
-  const zoomOf = async (plan: File, planMarks: Annot[], n: number, rect: CropRect, manual: boolean, lbls: typeof labels) => {
-    const { file, fullW, fullH } = await cropImage(plan, rect, `도면확대도-${n}거점.jpg`);
-    let marks = cropMarks(resolveLabels(planMarks, lbls), rect, fullW, fullH);
+  /** 비어 있거나, 도면에서 잘라 넣고 표시를 그대로 둔 확대도 — 다시 잘라도 되는 자리(plan-crop markSig) */
+  const untouched = (s: PlSpot) => !s.photos.zoom || (!!s.zoomCrop && markSig(s.marks.zoom) === s.zoomCrop.sig);
+  /*
+   * 차례 — 도면을 빠르게 두 번 고치거나 그사이 거점을 빼면 앞 차례의 결과는 버린다(뒤 것이 먼저 끝나 옛 틀로
+   * 덮이거나, 당겨진 거점에 남의 자리가 들어가던 것). 도면을 그대로 다시 닫았으면 다시 자르지 않는다 — 새 파일이
+   * 생겨 「바뀐 것 있음」이 되고 저장할 때 확대도를 다시 올렸다.
+   */
+  const zoomGen = useRef(0);
+  const lastZoomed = useRef<{ plan: File; sig: string } | null>(null);
+  const zoomOf = async (bmp: ImageBitmap, planMarks: Annot[], n: number, rect: CropRect, manual: boolean, lbls: typeof labels) => {
+    const file = await cropImage(bmp, rect, `도면확대도-${n}거점.jpg`);
+    let marks = cropMarks(resolveLabels(planMarks, lbls), rect, bmp.width, bmp.height);
     // 그 거점 라벨이 틀 밖이면(범위를 옮겼으면) 하나 얹는다 — 도면 확대도를 손으로 넣을 때와 같다
     if (!marks.some((a) => a.t === 'label' && a.spot === n)) marks = [...marks, zoomLabel(n, lbls)];
-    return { file, marks, crop: { rect, manual, sig: JSON.stringify(marks) } };
+    return { file, marks, crop: { rect, manual, sig: markSig(marks) } };
   };
-  const putZooms = (plan: File, made: Map<number, Awaited<ReturnType<typeof zoomOf>>>, added: PlSpot[], force = false) =>
+  type Zoom = Awaited<ReturnType<typeof zoomOf>>;
+  const putZooms = (gen: number, plan: File, planMarks: Annot[], made: Map<number, Zoom>, added: PlSpot[], force = false) =>
     setF((x) => {
-      if (x.plan !== plan) return x; // 그새 도면이 바뀌었다
+      // 그새 다음 차례가 시작됐거나 도면·도면 표시가 바뀌었다
+      if (gen !== zoomGen.current || x.plan !== plan || x.planMarks !== planMarks || made.size === 0) return x;
       const need = Math.max(0, ...made.keys());
       const list = x.spots.length < need ? [...x.spots, ...added.slice(0, need - x.spots.length)] : x.spots;
       return {
@@ -198,58 +207,77 @@ export default function PluglinkEditor() {
         }),
       };
     });
+  /** 도면 그림을 한 번 읽어 거점마다 자른다 */
+  async function cutZooms(gen: number, plan: File, jobs: (bmp: ImageBitmap) => Promise<Map<number, Zoom>>) {
+    setZooming((n) => n + 1);
+    setZoomErr(null);
+    try {
+      const bmp = await planBitmap(plan);
+      try {
+        return await jobs(bmp);
+      } finally {
+        bmp.close?.();
+      }
+    } catch (err) {
+      if (gen === zoomGen.current) setZoomErr((err as Error).message || '도면 확대도를 만들지 못했습니다.');
+      return null;
+    } finally {
+      setZooming((n) => n - 1);
+    }
+  }
   async function planToZooms(plan: File, planMarks: Annot[]) {
     const nums = [...new Set(planMarks.flatMap((a) => (a.t === 'label' && a.spot && a.spot <= PL_MAX_SPOTS ? [a.spot] : [])))];
     if (nums.length === 0) return;
-    setZooming(true);
-    setZoomErr(null);
-    try {
-      const cur = fRef.current.spots;
-      const need = Math.max(...nums);
-      const added = Array.from({ length: Math.max(0, need - cur.length) }, () => newPlSpot(nextId()));
-      const spots = [...cur, ...added];
-      const lbls = plSpotLabels(spots);
-      const { w, h } = await imageSize(plan);
-      const rects = autoCrops(resolveLabels(planMarks, lbls), w, h);
-      const made = new Map<number, Awaited<ReturnType<typeof zoomOf>>>();
+    const cur = fRef.current.spots;
+    const sig = markSig(planMarks);
+    if (lastZoomed.current?.plan === plan && lastZoomed.current.sig === sig && nums.every((n) => cur[n - 1]?.photos.zoom)) return;
+    const gen = ++zoomGen.current;
+    const need = Math.max(...nums);
+    const added = Array.from({ length: Math.max(0, need - cur.length) }, () => newPlSpot(nextId()));
+    const spots = [...cur, ...added];
+    const lbls = plSpotLabels(spots);
+    const made = await cutZooms(gen, plan, async (bmp) => {
+      const rects = autoCrops(resolveLabels(planMarks, lbls), bmp.width, bmp.height);
+      const out = new Map<number, Zoom>();
       for (const n of nums) {
+        if (gen !== zoomGen.current) break;
         const s = spots[n - 1];
         if (!untouched(s)) continue;
         const rect = s.zoomCrop?.manual ? s.zoomCrop.rect : rects.get(n);
-        if (rect) made.set(n, await zoomOf(plan, planMarks, n, rect, !!s.zoomCrop?.manual, lbls));
+        if (rect) out.set(n, await zoomOf(bmp, planMarks, n, rect, !!s.zoomCrop?.manual, lbls));
       }
-      putZooms(plan, made, added);
-    } catch (err) {
-      setZoomErr((err as Error).message || '도면 확대도를 만들지 못했습니다.');
-    } finally {
-      setZooming(false);
-    }
+      return out;
+    });
+    if (!made) return;
+    putZooms(gen, plan, planMarks, made, added);
+    lastZoomed.current = { plan, sig };
   }
   /**
    * 거점 빼기 — 라벨이 거점 번호에 묶여 있으니 도면·사진의 라벨 번호를 같이 당긴다(annot dropSpotLabels).
-   * 도면에서 잘라 넣고 손대지 않은 확대도는 당긴 뒤에도 「손대지 않음」으로 남게 sig 를 새로 잰다.
+   * 도면에서 잘라 넣고 손대지 않은 확대도는 당긴 뒤에도 「손대지 않음」으로 남게 sig 를 새로 잰다. 돌던 자르기는 버린다.
    */
-  const removeSpot = (i: number) => setF((x) => {
-    const n = i + 1;
-    const spots = x.spots.filter((_, k) => k !== i).map((s) => {
-      const was = !!s.zoomCrop && JSON.stringify(s.marks.zoom ?? []) === s.zoomCrop.sig;
-      const marks = Object.fromEntries(Object.entries(s.marks).map(([k, m]) => [k, dropSpotLabels(m, n)]));
-      const zoomCrop = s.zoomCrop && was ? { ...s.zoomCrop, sig: JSON.stringify(marks.zoom ?? []) } : s.zoomCrop;
-      return { ...s, marks, zoomCrop };
+  const removeSpot = (i: number) => {
+    zoomGen.current += 1;
+    setF((x) => {
+      const n = i + 1;
+      const spots = x.spots.filter((_, k) => k !== i).map((s) => {
+        const was = untouched(s) && !!s.zoomCrop;
+        const marks = Object.fromEntries(Object.entries(s.marks).map(([k, m]) => [k, dropSpotLabels(m, n)]));
+        const zoomCrop = s.zoomCrop && was ? { ...s.zoomCrop, sig: markSig(marks.zoom) } : s.zoomCrop;
+        return { ...s, marks, zoomCrop };
+      });
+      return { ...x, planMarks: dropSpotLabels(x.planMarks, n), spots };
     });
-    return { ...x, planMarks: dropSpotLabels(x.planMarks, n), spots };
-  });
+  };
 
   /** 범위 고치기 — 사람이 잡은 틀이라 손댄 확대도도 그 틀로 다시 자른다 */
   async function recrop(i: number, rect: CropRect) {
-    if (!f.plan) return;
-    try {
-      setZoomErr(null);
-      const made = new Map([[i + 1, await zoomOf(f.plan, f.planMarks, i + 1, rect, true, labels)]]);
-      putZooms(f.plan, made, [], true);
-    } catch (err) {
-      setZoomErr((err as Error).message || '도면 확대도를 만들지 못했습니다.');
-    }
+    const plan = f.plan;
+    if (!plan) return;
+    const planMarks = f.planMarks;
+    const gen = ++zoomGen.current;
+    const made = await cutZooms(gen, plan, async (bmp) => new Map([[i + 1, await zoomOf(bmp, planMarks, i + 1, rect, true, labels)]]));
+    if (made) putZooms(gen, plan, planMarks, made, [], true);
   }
 
   /* 확인할 것 — 가이드가 「필히 기입」이라 적은 것들. 막지는 않는다 */
@@ -340,17 +368,17 @@ export default function PluglinkEditor() {
               tools={{ legend: true, labels, line: 'wire', size: 0.7, large: true }}
             />
           </div>
-          {f.plan && (zooming || zoomErr || f.spots.some((s) => s.zoomCrop)) && (
+          {f.plan && (zooming > 0 || zoomErr || f.spots.some((s) => s.zoomCrop)) && (
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-gray-700">거점별 도면 확대도</span>
-              {zooming ? (
+              {zooming > 0 ? (
                 <span className="text-small font-bold text-brand-700">만드는 중…</span>
               ) : (
                 f.spots.map((s, i) => s.zoomCrop && (
                   <span key={s.id} className="rounded-tag bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-700">{i + 1}거점</span>
                 ))
               )}
-              <Btn size="sm" kind="quiet" disabled={zooming} onClick={() => setAdjusting(true)}>범위 고치기</Btn>
+              <Btn size="sm" kind="quiet" disabled={zooming > 0} onClick={() => setAdjusting(true)}>범위 고치기</Btn>
               <Err>{zoomErr}</Err>
             </div>
           )}
@@ -411,7 +439,12 @@ export default function PluglinkEditor() {
                     onChange={(v) => { plate.clear(`${s.id}:panelName`); setSpot(s.id, { panelName: v }); }}
                     placeholder="PM-305"
                   />
-                  <Text label="메인차단기" value={s.mainBreaker} onChange={(v) => setSpot(s.id, { mainBreaker: v })} placeholder="4P 225A" />
+                  <Text
+                    label={`메인차단기${plate.note(`${s.id}:mainBreaker`)}`}
+                    value={s.mainBreaker}
+                    onChange={(v) => { plate.clear(`${s.id}:mainBreaker`); setSpot(s.id, { mainBreaker: v }); }}
+                    placeholder="4P 225A"
+                  />
                   <Text label="사용 차단기" value={s.inletBreaker} onChange={(v) => setSpot(s.id, { inletBreaker: v })} placeholder="4P 75A" />
                   <span className="hidden lg:block" />
                 </>

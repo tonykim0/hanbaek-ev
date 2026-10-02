@@ -51,14 +51,16 @@ export async function readPlateOf(file: File): Promise<PlateRead | null> {
  *   fieldTag  「거점id:값칸」 — 칸 이름 옆에 「사진에서 읽는 중…」「사진에서 읽음」이 붙는다. 사진 둘이 한 칸을
  *             채우기도 한다(SK 전력인입점 사진 1·2 → 판넬 칸) — 둘 다 끝나야 「읽는 중」이 걷힌다.
  *
- * apply 는 결과로 상태를 고치고 ★채운 칸과 값★을 돌려준다. 채울지는 apply 가 최신 상태로 정한다 —
- * canFill(fieldTag, 지금 값): 칸이 비었거나, 전에 사진에서 읽어 넣은 값 그대로일 때만(사람이 적은 것은 덮지 않는다,
- * 사진을 바꿨으면 새 사진의 글자로 바꾼다).
+ * apply 는 결과로 상태를 고치고 ★채운 칸과 값★을 돌려준다. 채울지는 apply 가 최신 상태로 정한다 — 넘겨받는
+ * canFill(fieldTag, 지금 값): 칸이 비었을 때, 또는 전에 사진에서 읽어 넣은 값 그대로이고 그 값을 넣은 사진이 ★같은
+ * 자리(바꾼 사진)이거나 뒷순위★일 때만. 사람이 적은 것은 덮지 않는다. 사진 둘이 한 칸을 채우면(SK 전력인입점 1·2)
+ * 앞 사진(rank 가 작은 것)이 이긴다 — 늦게 돌아온 쪽이 이기던 것(응답 순서에 따라 값이 갈렸다).
  */
 export function usePlateReader() {
   const [state, setState] = useState<Record<string, { n: number; done: boolean }>>({});
   const token = useRef(new Map<string, number>());
-  const auto = useRef(new Map<string, string>());
+  /** 칸 → 사진에서 읽어 넣은 값과 그 사진(자리·순위) */
+  const auto = useRef(new Map<string, { value: string; photo: string; rank: number }>());
 
   const bump = (tags: string[], d: number, filled: string[] = []) => setState((s) => {
     const next = { ...s };
@@ -70,18 +72,26 @@ export function usePlateReader() {
     return next;
   });
 
-  const read = useCallback((photoTag: string, fieldTags: string[], file: File, apply: (r: PlateRead) => Record<string, string> | null) => {
+  const read = useCallback((
+    photoTag: string, fieldTags: string[], file: File,
+    apply: (r: PlateRead, canFill: (fieldTag: string, now: string | undefined) => boolean) => Record<string, string> | null,
+    rank = 0,
+  ) => {
     const mine = (token.current.get(photoTag) ?? 0) + 1;
     token.current.set(photoTag, mine);
     bump(fieldTags, +1);
+    const canFill = (t: string, now: string | undefined) => {
+      if (!now?.trim()) return true;
+      const a = auto.current.get(t);
+      return !!a && a.value === now && (a.photo === photoTag || a.rank > rank);
+    };
     void readPlateOf(file).then((r) => {
       const live = token.current.get(photoTag) === mine;
-      const filled = live && r ? apply(r) ?? {} : {};
-      for (const [t, v] of Object.entries(filled)) auto.current.set(t, v);
+      const filled = live && r ? apply(r, canFill) ?? {} : {};
+      for (const [t, value] of Object.entries(filled)) auto.current.set(t, { value, photo: photoTag, rank });
       bump(fieldTags, -1, Object.keys(filled));
     });
   }, []);
-  const canFill = useCallback((fieldTag: string, now: string | undefined) => !now?.trim() || auto.current.get(fieldTag) === now, []);
   /** 사람이 칸을 고치면 「사진에서 읽음」을 걷는다 — 그 값은 이제 사람 것이다 */
   const clear = useCallback((fieldTag: string) => {
     auto.current.delete(fieldTag);
@@ -93,7 +103,7 @@ export function usePlateReader() {
     });
   }, []);
   const note = (fieldTag: string) => (state[fieldTag]?.n ? ' · 사진에서 읽는 중…' : state[fieldTag]?.done ? ' · 사진에서 읽음' : '');
-  return { read, canFill, clear, note };
+  return { read, clear, note };
 }
 
 /** 새로 들어온 사진 — 칸 key 가 같은데 파일이 바뀐 것 */

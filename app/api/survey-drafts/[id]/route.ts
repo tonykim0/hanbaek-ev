@@ -11,7 +11,7 @@ import { getRepository } from '@/lib/data';
 import { actorOf, getSessionUser } from '@/lib/auth/session';
 import { BadRequest, SERVER_ERROR_MESSAGE, isUnexpectedError, sessionWrite } from '@/lib/api/write-route';
 import { dropDraftFolder, dropPhotos, vetPhotos } from '@/lib/survey/draft-blobs';
-import { MAX_DRAFT_JSON } from '@/lib/survey/draft-shape';
+import { DRAFT_CONFLICT, MAX_DRAFT_JSON } from '@/lib/survey/draft-shape';
 
 export const dynamic = 'force-dynamic';
 
@@ -34,10 +34,12 @@ export const PUT = sessionWrite<{ id: string }, { title?: unknown; data?: unknow
   if (JSON.stringify(body.data).length > MAX_DRAFT_JSON) throw new BadRequest('저장할 값이 너무 큽니다.');
   const repo = getRepository();
   const before = await repo.getSurveyDraft(params.id, actor);
+  const base = typeof body.base === 'string' ? body.base : undefined;
+  // 판이 벌써 다르면 사진 확인(사진마다 저장소에 묻는다) 전에 거절한다 — 잠근 뒤에 저장소가 한 번 더 본다
+  if (base && before.updatedAt !== base) throw new Error(DRAFT_CONFLICT);
   const data = await vetPhotos(body.data, before.data, actor.id, params.id);
   const { removed, updatedAt } = await repo.saveSurveyDraft(params.id, {
-    title: typeof body.title === 'string' ? body.title : '', data,
-    base: typeof body.base === 'string' ? body.base : undefined,
+    title: typeof body.title === 'string' ? body.title : '', data, base,
   }, actor);
   await dropPhotos(removed);
   return { savedAt: updatedAt };

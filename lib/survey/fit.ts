@@ -40,6 +40,15 @@ export function fits(w: { l: number; t: number; r: number; b: number }, focus?: 
   return focus.x0 >= w.l - e && focus.x1 <= 1 - w.r + e && focus.y0 >= w.t - e && focus.y1 <= 1 - w.b + e;
 }
 
+/**
+ * 칸에 사진을 놓는 법 — 자를 창(칸 비율로 꽉 채운다), 표시가 그 창에 다 안 들면 null(자르지 않고 칸 안에 들인다).
+ * 워드(docx-kit)·엑셀(xlsx-kit)·여러 장 바둑판(prepare-image)이 같은 판단을 쓴다.
+ */
+export function fillWindow(imgAspect: number, boxAspect: number, focus?: { x0: number; y0: number; x1: number; y1: number }) {
+  const w = crop(imgAspect, boxAspect, focus);
+  return fits(w, focus) ? w : null;
+}
+
 export interface Tile { x: number; y: number; w: number; h: number }
 
 /**

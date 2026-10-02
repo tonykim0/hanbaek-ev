@@ -9,9 +9,9 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { Err } from '@/components/ui';
 import { useFileDragging } from '@/components/DocFiles';
-import { resolveLabels, type LineKind, type NumStyle } from '@/lib/survey/annot';
+import { markSig, resolveLabels, type LineKind, type NumStyle, type SpotLabel } from '@/lib/survey/annot';
 import { slotFiles, subKey, type Mark, type PhotoSlot } from '@/lib/survey/spec';
-import MarkEditor, { AnnotCanvas, type SpotLabel } from './MarkEditor';
+import MarkEditor, { AnnotCanvas } from './MarkEditor';
 
 /** 표시 화면의 도구 — 플러그링크만 도면 기호·거점 라벨을 쓴다(MarkEditor) */
 export interface MarkTools { legend?: boolean; labels?: SpotLabel[]; labelPick?: string; line?: LineKind; size?: number; large?: boolean }
@@ -22,30 +22,38 @@ const isHeic = (f: File) => /hei[cf]/i.test(f.type) || /\.hei[cf]$/i.test(f.name
 /**
  * 사진 받기 — 고르기·끌어다 놓기 · 그림 파일만 넘긴다. ★이 브라우저가 못 여는 사진(크롬·파이어폭스의 아이폰
  * HEIC)은 받을 때 거른다★ — 받아 두면 칸에 깨진 그림이 서고, 판넬 읽기도 조용히 실패하고, 「만들기」에 가서야
- * 오류가 났다. 사파리는 HEIC 를 열므로 열어 보고 가린다.
+ * 오류가 났다. 사파리는 HEIC 를 열므로 열어 보고 가린다. 그림이 아닌 파일(PDF 도면 등)도 거르고 알린다.
+ *
+ * @param onReject 거른 까닭 — 주면 그쪽이 띄운다(칸 목록이 띄워야 칸이 묶음으로 바뀌어도 글이 남는다)
  */
-function useImageIntake(onFiles: (files: File[]) => void) {
+function useImageIntake(onFiles: (files: File[]) => void, onReject?: (msg: string | null) => void) {
   const dragging = useFileDragging();
   const [over, setOver] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [own, setOwn] = useState<string | null>(null);
+  const report = onReject ?? setOwn;
   const input = useRef<HTMLInputElement>(null);
 
   const take = async (list: File[]) => {
-    setErr(null);
+    report(null);
     const ok: File[] = [];
-    const bad: string[] = [];
+    const heic: string[] = [];
+    const other = list.filter((f) => !isImage(f)).map((f) => f.name);
     for (const f of list.filter(isImage)) {
       if (isHeic(f)) {
         try {
           (await createImageBitmap(f)).close?.();
         } catch {
-          bad.push(f.name);
+          heic.push(f.name);
           continue;
         }
       }
       ok.push(f);
     }
-    if (bad.length) setErr(`${bad.join(', ')} — 이 브라우저는 HEIC 사진을 못 엽니다. JPG 로 바꿔 넣어주세요(아이폰 설정 › 카메라 › 포맷 › 호환성 우선).`);
+    const why = [
+      heic.length ? `${heic.join(', ')} — 이 브라우저는 HEIC 사진을 못 엽니다. JPG 로 바꿔 넣어주세요(아이폰 설정 › 카메라 › 포맷 › 호환성 우선).` : '',
+      other.length ? `${other.join(', ')} — 사진(JPG·PNG)이 아니라 넣지 않았습니다.` : '',
+    ].filter(Boolean).join(' ');
+    if (why) report(why);
     if (ok.length) onFiles(ok);
   };
   const dropProps = {
@@ -64,7 +72,7 @@ function useImageIntake(onFiles: (files: File[]) => void) {
       onChange={(e) => { const picked = [...(e.target.files ?? [])]; e.target.value = ''; void take(picked); }}
     />
   );
-  return { dragging, over, err, dropProps, inputEl, pick: () => input.current?.click() };
+  return { dragging, over, err: own, dropProps, inputEl, pick: () => input.current?.click() };
 }
 
 /**
@@ -88,6 +96,8 @@ export function PhotoSlots({ slots, photos, marks, onChange, expected, style, to
   from?: number;
   to?: number;
 }) {
+  /** 거른 사진의 까닭 — 칸이 아니라 목록이 띄운다(빈 칸이 묶음으로 바뀌면 칸이 새로 서서 글이 사라졌다) */
+  const [rejected, setRejected] = useState<string | null>(null);
   /* 사진이 바뀐 자리의 표시는 걷는다 — 다른 사진 위의 자리는 뜻이 없다. 자리를 옮긴 사진은 표시도 같이 옮긴다 */
   const commit = (next: Record<string, File | null>, moved: Record<string, string> = {}) => {
     const m: Record<string, Mark[]> = {};
@@ -147,6 +157,7 @@ export function PhotoSlots({ slots, photos, marks, onChange, expected, style, to
             expected={expected}
             style={style}
             tools={tools}
+            onReject={setRejected}
           />
         );
         if (!sl.multi) {
@@ -169,7 +180,7 @@ export function PhotoSlots({ slots, photos, marks, onChange, expected, style, to
           return [
             <div key={sl.key} className="flex flex-col gap-2">
               {cells}
-              {k < max && <AddMore count={k} max={max} onFiles={(fs) => putMulti(sl, k, fs)} />}
+              {k < max && <AddMore count={k} max={max} onFiles={(fs) => putMulti(sl, k, fs)} onReject={setRejected} />}
             </div>,
           ];
         }
@@ -179,13 +190,16 @@ export function PhotoSlots({ slots, photos, marks, onChange, expected, style, to
         }
         return cells;
       })}
+      {rejected && <Err className="sm:col-span-2">{rejected}</Err>}
     </div>
   );
 }
 
 /** 한 칸에 모으는 묶음의 「한 장 더」 — 낮은 줄, 눌러 고르거나 끌어다 놓는다 */
-function AddMore({ count, max, onFiles }: { count: number; max: number; onFiles: (files: File[]) => void }) {
-  const { dragging, over, err, dropProps, inputEl, pick } = useImageIntake(onFiles);
+function AddMore({ count, max, onFiles, onReject }: {
+  count: number; max: number; onFiles: (files: File[]) => void; onReject?: (msg: string | null) => void;
+}) {
+  const { dragging, over, err, dropProps, inputEl, pick } = useImageIntake(onFiles, onReject);
   return (
     <div className="flex flex-col gap-1">
       <button
@@ -246,7 +260,7 @@ const NO_MARKS: Mark[] = [];
  * ★그린 것이 있는 사진을 바꾸면 묻는다★ — 바꾸면 그 표시가 걷힌다(다른 사진 위의 자리는 뜻이 없다). 끌어다 놓기는
  * 지나가다 떨어뜨리기 쉽고, 전체 도면이면 도면 위 표시가 통째로 사라진다.
  */
-export function PhotoBox({ slot, file, onFiles, onClear, marks = NO_MARKS, onMarks, expected, style = 'red', tools }: {
+export function PhotoBox({ slot, file, onFiles, onClear, marks = NO_MARKS, onMarks, expected, style = 'red', tools, onReject }: {
   slot: PhotoSlot;
   file: File | null;
   onFiles: (files: File[]) => void;
@@ -260,12 +274,14 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks = NO_MARKS, onMar
   style?: NumStyle;
   /** 표시 화면의 도구 — 플러그링크의 도면 기호·거점 라벨 */
   tools?: MarkTools;
+  /** 거른 사진의 까닭을 띄울 곳 — 없으면 칸 밑에 */
+  onReject?: (msg: string | null) => void;
 }) {
   const replace = (fs: File[]) => {
     if (file && marks.length && !window.confirm(`이 사진에 그린 표시 ${marks.length}개가 지워집니다. 사진을 바꿀까요?`)) return;
     onFiles(fs);
   };
-  const { dragging, over, err, dropProps, inputEl, pick } = useImageIntake(replace);
+  const { dragging, over, err, dropProps, inputEl, pick } = useImageIntake(replace, onReject);
   const [url, setUrl] = useState<string | null>(null);
   const [aspect, setAspect] = useState(4 / 3);
   const [marking, setMarking] = useState(false);
@@ -357,7 +373,8 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks = NO_MARKS, onMar
           start={startToolOf(slot.draw)}
           {...tools}
           onClose={() => setMarking(false)}
-          onDone={(m) => { onMarks(m); setMarking(false); }}
+          // 고친 것이 없으면 그대로 둔다 — 새 목록을 넣으면 「바뀐 것 있음」이 되고 도면이면 확대도를 다시 잘랐다
+          onDone={(m) => { if (markSig(m) !== markSig(marks)) onMarks(m); setMarking(false); }}
         />
       )}
     </div>

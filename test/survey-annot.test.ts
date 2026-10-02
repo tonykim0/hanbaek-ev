@@ -195,3 +195,32 @@ describe('거점을 빼면 라벨 번호가 따라 당겨진다', () => {
     expect(dropSpotLabels(same, 1)).toBe(same);
   });
 });
+
+describe('도면 확대도 — 틀 밖으로 나가는 선과 손대지 않음', () => {
+  it('틀을 넘는 배선은 틀에서 잘리고, 잘려 끝난 화살표는 화살촉을 뗀다', async () => {
+    const { cropMarks } = await import('@/lib/survey/plan-crop');
+    const r = { x: 0.2, y: 0.2, w: 0.4, h: 0.4 };
+    const wire = { t: 'line' as const, k: 'arrow' as const, pts: [{ x: 0.4, y: 0.4 }, { x: 0.9, y: 0.4 }] };
+    const [l] = cropMarks([wire], r, 1000, 1000);
+    if (l.t !== 'line') throw new Error('선이 아니다');
+    expect(l.k).toBe('wire');
+    for (const p of l.pts) { expect(p.x).toBeGreaterThanOrEqual(-1e-9); expect(p.x).toBeLessThanOrEqual(1 + 1e-9); }
+    expect(l.pts[1].x).toBeCloseTo(1, 9);
+    // 들어왔다 나갔다 다시 들어오면 토막 둘
+    const zig = { t: 'line' as const, k: 'wire' as const, pts: [{ x: 0.3, y: 0.3 }, { x: 0.9, y: 0.3 }, { x: 0.9, y: 0.5 }, { x: 0.3, y: 0.5 }] };
+    expect(cropMarks([zig], r, 1000, 1000).length).toBe(2);
+    // 틀 밖의 네모는 겹친 만큼만
+    const box = { t: 'box' as const, a: { x: 0.5, y: 0.5 }, b: { x: 0.9, y: 0.9 } };
+    const [b] = cropMarks([box], r, 1000, 1000);
+    if (b.t !== 'box') throw new Error('네모가 아니다');
+    expect(b.b.x).toBeCloseTo(1, 9); expect(b.b.y).toBeCloseTo(1, 9);
+  });
+
+  it('손대지 않음의 꼴은 열쇠 순서·거점 라벨 글이 달라도 같다(저장본을 다녀와도, 표시 창을 열고 닫아도)', async () => {
+    const { markSig } = await import('@/lib/survey/plan-crop');
+    const a = [{ t: 'label' as const, spot: 1, x: 0.2, y: 0.1, head: ['1거점'], body: [], z: 0.8 }, { t: 'sym' as const, k: 'charger' as const, x: 0.5, y: 0.5 }];
+    const b = [{ z: 0.8, y: 0.1, x: 0.2, spot: 1, body: ['CV 16sq 30m'], head: ['1거점 신규 2대'], t: 'label' as const }, { y: 0.5, x: 0.5, k: 'charger' as const, t: 'sym' as const }];
+    expect(markSig(b)).toBe(markSig(a));
+    expect(markSig([...a, { t: 'num' as const, x: 0.1, y: 0.1 }])).not.toBe(markSig(a));
+  });
+});

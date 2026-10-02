@@ -9,6 +9,8 @@ export const xmlSafe = (s: string): string => s.replace(/[\u0000-\u0008\u000B\u0
 /** XML 조각을 읽는다 — 못 읽으면 던진다(parsererror 조각이 파일에 섞여 들어가지 않게) */
 export function parseXml(xml: string): Document {
   const d = new DOMParser().parseFromString(xml, 'application/xml');
-  if (d.getElementsByTagName('parsererror').length) throw new Error('서식 조각을 만들지 못했습니다 — 넣은 글에 쓸 수 없는 글자가 있는지 봐 주세요.');
+  if (d.getElementsByTagName('parsererror').length) {
+    throw new Error('서식 XML 을 읽지 못했습니다 — 넣은 글에 쓸 수 없는 글자가 있거나 서식 파일이 깨졌습니다.');
+  }
   return d;
 }

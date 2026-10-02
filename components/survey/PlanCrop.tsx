@@ -101,6 +101,7 @@ export default function PlanCrop({ file, marks, spots, crops, onCrop, onClose }:
             onPointerDown={(e) => { if (e.button !== 0 || busy) return; frame.current?.setPointerCapture?.(e.pointerId); const p = at(e); setDrag({ a: p, b: p }); }}
             onPointerMove={(e) => { if (drag && e.buttons) setDrag({ ...drag, b: at(e) }); }}
             onPointerUp={() => void finish()}
+            onPointerCancel={() => setDrag(null)}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img

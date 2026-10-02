@@ -14,7 +14,7 @@ import { stamp, type useSurveyDraft } from '@/lib/survey/use-draft';
 type Draft = ReturnType<typeof useSurveyDraft<unknown>>;
 
 /** 내 임시 저장본 — 이 서식의 것, 최근이 위. 지금 여는 것에는 표시가 붙는다 */
-export function DraftList({ draft }: { draft: Pick<Draft, 'drafts' | 'id' | 'restore' | 'remove' | 'work' | 'dirty'> }) {
+export function DraftList({ draft }: { draft: Pick<Draft, 'drafts' | 'id' | 'restore' | 'remove' | 'work' | 'dirty' | 'stale'> }) {
   const [drop, setDrop] = useState<{ id: string; title: string } | null>(null);
   if (draft.drafts.length === 0) return null;
   return (
@@ -28,7 +28,8 @@ export function DraftList({ draft }: { draft: Pick<Draft, 'drafts' | 'id' | 'res
               <span className="ml-2 text-small text-slate-500">{stamp(d.updatedAt)} · 사진 {d.photoCount}장</span>
               {d.id === draft.id && <span className="ml-2 text-tiny font-bold text-brand-700">지금 쓰는 중</span>}
             </span>
-            {d.id !== draft.id && (
+            {/* 지금 쓰는 저장본도 다른 곳에서 먼저 저장했으면 불러올 수 있다 — 그쪽 판을 받는 길 */}
+            {(d.id !== draft.id || draft.stale) && (
               <Btn
                 size="sm"
                 kind="side"
@@ -59,7 +60,7 @@ export function DraftList({ draft }: { draft: Pick<Draft, 'drafts' | 'id' | 'res
 }
 
 export function SurveyActions({ draft, make, busy, canMake }: {
-  draft: Pick<Draft, 'save' | 'work' | 'savedAt' | 'dirty' | 'error' | 'canSave'>;
+  draft: Pick<Draft, 'save' | 'work' | 'savedAt' | 'dirty' | 'error' | 'canSave' | 'stale'>;
   make: () => void;
   busy: string | null;
   /** 만들 수 없으면 그 이유 — 단추 이름에 적는다(화면 규칙 3) */
@@ -76,6 +77,10 @@ export function SurveyActions({ draft, make, busy, canMake }: {
       {draft.savedAt && !draft.dirty && <Saved>임시 저장됨 · {stamp(draft.savedAt)}</Saved>}
       {draft.savedAt && draft.dirty && <span className="text-tiny font-bold text-amber-700">{stamp(draft.savedAt)} 저장 뒤 바뀐 것 있음</span>}
       <Err>{draft.error}</Err>
+      {/* 지금 저장본에 저장할 수 없을 때 — 지금 화면을 새 저장본으로 남긴다(다른 쪽 판은 그대로 둔다) */}
+      {draft.stale && draft.work === null && (
+        <Btn size="sm" kind="side" onClick={() => void draft.save(true)}>새 저장본으로 저장</Btn>
+      )}
     </div>
   );
 }

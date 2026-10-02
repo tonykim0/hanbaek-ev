@@ -17,10 +17,11 @@
 import JSZip from 'jszip';
 import { LEDGER_PHOTO_SLOTS, type SurveyForm, type SurveySpot } from './spec';
 import {
-  ImageRegistry, W_NS, cellWidth, cellsOf, finishDocx, pPrChild, photoCellsOf, putImage, rowsOf,
+  ImageRegistry, W_NS, cellWidth, cellsOf, finishDocx, freshClone, pPrChild, photoCellsOf, putImage, rowsOf,
   setCellText, setParagraphText, textOf, type PreparedImage,
 } from './docx-kit';
 import { surveyFileName } from './pack';
+import { parseXml } from './xml-safe';
 
 const PAD = 160;
 
@@ -31,7 +32,6 @@ function fillOne(
   [head, gap, table]: Element[], address: string, spot: SurveySpot, n: number,
   images: Record<string, PreparedImage | undefined>, reg: ImageRegistry
 ): Element[] {
-  if (!textOf(head).includes('사진 대장')) throw new Error('사진 대장 머리 글이 예상과 다릅니다.');
   setParagraphText(head, `사전 현장 컨설팅 사진 대장 - ${n}거점`);
   if (n > 1) breakBefore(head);
   const rows = rowsOf(table);
@@ -61,7 +61,7 @@ export async function fillLedgerSurvey(
 ): Promise<Blob | Uint8Array> {
   if (form.spots.length === 0) throw new Error('거점을 하나 이상 넣어주세요.');
   const zip = await JSZip.loadAsync(template);
-  const doc = new DOMParser().parseFromString(await zip.file('word/document.xml')!.async('string'), 'application/xml');
+  const doc = parseXml(await zip.file('word/document.xml')!.async('string'));
   const body = doc.getElementsByTagNameNS(W_NS, 'body')[0];
   const kids = Array.from(body.childNodes).filter((n): n is Element => n.nodeType === 1);
   const proto = kids.filter((k) => k.localName !== 'sectPr').slice(0, 3);
@@ -71,7 +71,7 @@ export async function fillLedgerSurvey(
   }
   const reg = new ImageRegistry(zip);
   const out = form.spots.flatMap((spot, i) =>
-    fillOne(proto.map((e) => e.cloneNode(true) as Element), form.address, spot, i + 1, images[spot.id] ?? {}, reg));
+    fillOne(proto.map(freshClone), form.address, spot, i + 1, images[spot.id] ?? {}, reg));
 
   return finishDocx(zip, doc, out, sectPr, reg);
 }
