@@ -35,12 +35,19 @@ import CheckMenu from '@/components/CheckMenu';
 import { Frame, SiteLink, Tile, won } from './parts';
 
 /** 거르는 축 — 상태는 「그 현장에 그런 차수가 하나라도 있나」로 본다 */
-type Flag = 'open' | 'unpaid' | 'done' | 'norule' | 'closemiss' | 'feeopen' | 'feemiss';
+type Flag = 'open' | 'unpaid' | 'done' | 'norule' | 'unpriced' | 'closemiss' | 'feeopen' | 'feemiss';
 const FLAGS: Array<{ key: Flag; label: string }> = [
   { key: 'open', label: '받을 수 있는 돈' },
   { key: 'unpaid', label: '미수금' },
   { key: 'done', label: '수금 완료' },
   { key: 'norule', label: '정산 규칙 미지정' },
+  /*
+   * ★정산 규칙이 있어도 라인에 단가가 없으면 금액이 안 선다★ (한백 지적 2026-10-02 「왜
+   * 운영사기성관리에는 안뜬거야」). 정산 현황은 「단가 미지정 N건」을 세는데 이 표는 규칙만
+   * 봐서, 사업구분을 바꾸는 중이던 현장(신정이펜하우스3단지)이 0원 줄로 말없이 서 있었다.
+   * 판정은 정산 현황과 같다 — unpricedLines > 0 (한 라인이라도 비면 그만큼 적다).
+   */
+  { key: 'unpriced', label: '단가 미지정' },
   /*
    * ★할 일인데 이 표에서 찾을 길이 없었다★ (한백 지적 2026-09-15 「이게 할일인지 아닌지
    * 운영사 기성관리에는 뜨지 않아」). 그 줄의 차수 칸은 「대기 · 준공마감」이라 무엇을
@@ -153,7 +160,8 @@ export default function ReceivableBoard({ rows, canEdit }: {
                 : f === 'feemiss' ? safetyFeeApplies(r.cpo) && r.safetyFee === null && safetyFeeDue(r.status)
                   /* 할 일 카드와 같은 함수를 본다 — 두 벌로 세면 배지와 표가 갈린다 */
                   : f === 'closemiss' ? closeDateNeeded(r.status, r.steps)
-                    : r.ruleName === null
+                    : f === 'unpriced' ? r.unpricedLines > 0
+                      : r.ruleName === null
       );
     };
     const by: Record<SortKey, (a: SettlementSummary, b: SettlementSummary) => number> = {
@@ -166,10 +174,12 @@ export default function ReceivableBoard({ rows, canEdit }: {
      * ★정산 규칙 미지정은 어떤 정렬에서도 맨 위다★ (한백 지시 2026-10-01). 규칙이 없으면 차수도
      * 금액도 없어 받을 돈·미수금이 0 으로 계산되고, 금액순 정렬에서는 늘 맨 아래로 가라앉았다 —
      * 가장 먼저 손대야 할 현장이 가장 안 보이는 자리에 있었다. 그 안끼리는 고른 정렬을 따른다.
+     * ★단가 미지정도 같은 자리다★ (2026-10-02) — 금액이 안 서거나 모자라는 까닭이 같다.
      */
-    const noRuleFirst = (a: SettlementSummary, b: SettlementSummary) =>
-      Number(a.ruleName !== null) - Number(b.ruleName !== null);
-    return rows.filter(passes).sort((a, b) => noRuleFirst(a, b) || by[sort](a, b));
+    const blocked = (r: SettlementSummary) => r.ruleName === null || r.unpricedLines > 0;
+    const blockedFirst = (a: SettlementSummary, b: SettlementSummary) =>
+      Number(!blocked(a)) - Number(!blocked(b));
+    return rows.filter(passes).sort((a, b) => blockedFirst(a, b) || by[sort](a, b));
   }, [rows, q, flags, cpos, sort]);
 
   /*
@@ -343,6 +353,7 @@ export default function ReceivableBoard({ rows, canEdit }: {
                   <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-tiny text-slate-400">
                     <span>{r.cpo} · {r.qty}대 · {r.status}</span>
                     {r.ruleName === null && <Tag tone="warn">정산 규칙 미지정</Tag>}
+                    {r.unpricedLines > 0 && <Tag tone="warn">단가 미지정</Tag>}
                     {/*
                       마지막 기성을 그 날짜 하나가 막고 있다 — 넣는 자리는 시공 탭 준공완료
                       구간이다(한백 지시 2026-09-15). 「정산 규칙 미지정」과 같은 꼴로 적는다.
