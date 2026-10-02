@@ -68,6 +68,7 @@ export function slotFiles<T>(photos: Record<string, T | null | undefined>, slot:
 }
 
 import type { Annot, NumStyle } from './annot';
+import type { CropRect } from './plan-crop';
 
 /** 번호 모양 — SK·나이스 사진 대장은 노란 원, 나머지는 빨간 원(lib/survey/annot 머리말) */
 export const markStyleOf = (cpo: SurveyCpo): NumStyle => (cpo === 'sk' || cpo === 'nice' ? 'yellow' : 'red');
@@ -228,6 +229,12 @@ export interface PlSpot {
   inlet: '한전인입' | '분전반';
   /** 한전인입일 때 — 인입 전주번호(「9638W781 초당간218L2」). 도면 라벨의 둘째 줄이 된다 */
   poleNo?: string;
+  /**
+   * 도면 확대도를 전체 도면에서 잘라 넣었을 때(lib/survey/plan-crop) — 그 틀(비율)과 잘라 넣은 표시(sig, JSON).
+   * 도면을 다시 고치면 틀을 다시 잡아 다시 자른다. ★사람이 손댄 확대도는 덮지 않는다★ — 사진을 바꿨으면 이 값이
+   * 걷히고, 표시를 고쳤으면 sig 가 달라진다. manual 은 「범위 고치기」로 사람이 잡은 틀이라 다시 잡지 않는다.
+   */
+  zoomCrop?: { rect: CropRect; manual?: boolean; sig: string };
   /** 분전반일 때만 — 이름 · 메인차단기 · 사용(인입점) 차단기, 「4P 100A」 꼴 */
   panelName: string;
   mainBreaker: string;
@@ -368,12 +375,16 @@ export function plSpotLabel(s: PlSpot, n: number): { name: string; head: string[
   return { name: `${n}거점`, head: head.filter(Boolean), body };
 }
 
+/** 플러그링크 거점은 여섯까지 — 실사개요의 거점 표(1안)가 여섯 줄이다(fill-pluglink) */
+export const PL_MAX_SPOTS = 6;
+
 /**
- * 라벨 고를 거리 — 넣은 거점은 그 값으로, 그 뒤로는 번호만(최소 10거점까지). 도면에는 아직 값을 안 넣은
+ * 라벨 고를 거리 — 넣은 거점은 그 값으로, 그 뒤로는 번호만(서식이 받는 PL_MAX_SPOTS 까지 — 그 너머 라벨은
+ * 찍어도 넣을 거점이 없다). 도면에는 아직 값을 안 넣은
  * 거점도 찍는다(한백 「거점 라벨이 왜 1거점밖에 — 2,3,4,5 등등」). 값을 넣으면 찍어 둔 라벨이 따라 채워진다.
  */
 export function plSpotLabels(spots: PlSpot[]): Array<{ name: string; head: string[]; body: string[] }> {
   const out = spots.map((s, i) => plSpotLabel(s, i + 1));
-  for (let n = spots.length + 1; n <= Math.max(10, spots.length); n++) out.push({ name: `${n}거점`, head: [`${n}거점`], body: [] });
+  for (let n = spots.length + 1; n <= Math.max(PL_MAX_SPOTS, spots.length); n++) out.push({ name: `${n}거점`, head: [`${n}거점`], body: [] });
   return out;
 }

@@ -13,7 +13,7 @@
 import JSZip from 'jszip';
 import { Workbook } from './xlsx-kit';
 import type { PreparedImage } from './docx-kit';
-import { PL_PHOTO_SLOTS, photoCaption, plFixture, plModemOf, plQtyOf, subKey, type PlForm, type PlSpot } from './spec';
+import { PL_MAX_SPOTS, PL_PHOTO_SLOTS, photoCaption, plFixture, plModemOf, plQtyOf, subKey, type PlForm, type PlSpot } from './spec';
 
 const S = {
   overview: '2. 실사개요',
@@ -40,7 +40,6 @@ const TEMPLATE_PAIRS = 6;
 /** 인쇄 영역은 적어도 넷째 짝까지 — 서식의 인쇄 영역이 그렇다 */
 const MIN_PAIRS = 4;
 const pairTop = (p: number) => FIRST_PAIR + PAIR_H * p;
-const MAX_SPOTS = 6;
 
 const amp = (s: string) => /(\d+)\s*A/i.exec(s)?.[1] ?? '';
 const n = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v));
@@ -53,8 +52,8 @@ export async function fillPluglinkSurvey(
   template: ArrayBuffer | Uint8Array
 ): Promise<PlResult> {
   if (form.spots.length === 0) throw new Error('거점을 하나 이상 넣어주세요.');
-  if (form.spots.length > MAX_SPOTS) {
-    throw new Error(`실사개요 거점 표는 ${MAX_SPOTS}거점까지입니다 — 나눠서 두 부로 만들어 주세요.`);
+  if (form.spots.length > PL_MAX_SPOTS) {
+    throw new Error(`실사개요 거점 표는 ${PL_MAX_SPOTS}거점까지입니다 — 나눠서 두 부로 만들어 주세요.`);
   }
   const warnings: string[] = [];
   const zip = await JSZip.loadAsync(template);
@@ -89,7 +88,7 @@ export async function fillPluglinkSurvey(
   await wb.set(ov, 'L5', `신규 (   ${totalNew || ' '}   )기, 교체 (   ${totalRepl || ' '}   )기`);
   await wb.set(ov, 'D6', form.address);
   await wb.set(ov, 'L6', form.existing.trim());
-  for (let i = 0; i < MAX_SPOTS; i++) {
+  for (let i = 0; i < PL_MAX_SPOTS; i++) {
     const r = 11 + i;
     const s = form.spots[i];
     if (!s) {

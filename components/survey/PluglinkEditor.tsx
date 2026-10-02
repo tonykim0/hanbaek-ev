@@ -11,24 +11,25 @@
  */
 import { useMemo, useRef, useState, type ReactNode } from 'react';
 import { Section, contractInputClass } from '@/components/contracts/FormControls';
-import { Alerts, Btn, Choice, Picks } from '@/components/ui';
+import { Alerts, Btn, Choice, Err, Picks } from '@/components/ui';
 import { downloadBlob } from '@/lib/download';
 import { useSurveyDraft } from '@/lib/survey/use-draft';
 import { newPhotos, usePlateReader } from '@/lib/survey/use-plate';
-import { resolveLabels, type Annot } from '@/lib/survey/annot';
+import { resolveLabels, type Annot, type SpotLabel } from '@/lib/survey/annot';
 import { DraftList, SurveyActions } from './DraftControls';
 import { prepareImage } from '@/lib/survey/prepare-image';
 import type { PreparedImage } from '@/lib/survey/docx-kit';
 import { fillPluglinkSurvey, plSurveyFileName } from '@/lib/survey/fill-pluglink';
 import {
-  PL_ETC_PRESETS, PL_PHOTO_SLOTS, newPlSpot, plModemAuto, plQtyOf, plSpotLabels, slotFiles,
+  PL_ETC_PRESETS, PL_MAX_SPOTS, PL_PHOTO_SLOTS, newPlSpot, plModemAuto, plQtyOf, plSpotLabels, slotFiles,
   type PhotoSlot, type PlEtc, type PlForm, type PlSpot,
 } from '@/lib/survey/spec';
+import { autoCrops, cropImage, cropMarks, imageSize, type CropRect } from '@/lib/survey/plan-crop';
 import { PhotoBox, PhotoSlots, nextId, num, today } from './SurveyEditor';
+import PlanCrop from './PlanCrop';
 
 const CABLE_SIZES = [6, 10, 16, 25, 35, 50, 70, 95, 120, 150];
 const PIPE_SIZES = [16, 22, 28, 36, 42, 54, 70, 82, 104];
-const MAX_SPOTS = 6;
 
 const OVERVIEW: PhotoSlot = { key: 'overview', label: '전경사진', hint: '로드뷰도 됨' };
 const PLAN: PhotoSlot = { key: 'plan', label: '도면(주차장 평면도)', hint: '설치위치 표기' };
@@ -71,6 +72,12 @@ function SizePick({ label, value, sizes, unit, onChange }: {
     </label>
   );
 }
+
+/** 도면 확대도에 얹는 그 거점 라벨 — 왼쪽 위, 조금 작게 */
+const zoomLabel = (n: number, labels: SpotLabel[]): Annot => {
+  const L = labels[n - 1] ?? { head: [`${n}거점`], body: [] };
+  return { t: 'label', spot: n, x: 0.22, y: 0.14, head: L.head, body: L.body, z: 0.8 };
+};
 
 const Grid = ({ children }: { children: ReactNode }) => <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">{children}</div>;
 
@@ -116,8 +123,7 @@ export default function PluglinkEditor() {
     let marks = p.marks;
     const n = f.spots.indexOf(s) + 1;
     if (p.photos.zoom && p.photos.zoom !== s.photos.zoom && !marks.zoom?.length) {
-      const L = labels[n - 1];
-      marks = { ...marks, zoom: [{ t: 'label', spot: n, x: 0.22, y: 0.14, head: L.head, body: L.body, z: 0.8 }] };
+      marks = { ...marks, zoom: [zoomLabel(n, labels)] };
     }
     for (const [key, file] of newPhotos(s.photos, p.photos, ['panelOut', 'panelIn', 'pole'])) {
       const field = key === 'pole' ? 'poleNo' : 'panelName';
@@ -134,8 +140,81 @@ export default function PluglinkEditor() {
         return true;
       });
     }
-    setSpot(s.id, { photos: p.photos, marks });
+    // 도면 확대도를 손으로 바꾸거나 뺐으면 도면에서 잘라 넣은 것이 아니다 — 다시 자르기에서 빠진다
+    const zoomCrop = p.photos.zoom === s.photos.zoom ? s.zoomCrop : undefined;
+    setSpot(s.id, { photos: p.photos, marks, zoomCrop });
   };
+
+  /*
+   * ③ 전체 도면 → 거점별 도면 확대도(lib/survey/plan-crop) — 도면 표시 창을 닫을 때마다(한백 2026-10-02):
+   *   도면에 붙인 거점 라벨 수만큼 거점을 늘리고(줄이지는 않는다 — 값이 든 거점일 수 있다), 라벨마다 틀을 잡아
+   *   자른 그림과 그 안의 표시를 그 거점의 도면 확대도로 넣는다. 손으로 넣은 확대도와, 넣은 뒤 표시를 고친
+   *   확대도는 덮지 않는다(spec PlSpot.zoomCrop). 틀은 「범위 고치기」에서 사람이 다시 잡는다.
+   */
+  const [zooming, setZooming] = useState(false);
+  const [zoomErr, setZoomErr] = useState<string | null>(null);
+  const [adjusting, setAdjusting] = useState(false);
+  /** 비어 있거나, 도면에서 잘라 넣고 표시를 그대로 둔 확대도 — 다시 잘라도 되는 자리 */
+  const untouched = (s: PlSpot) => !s.photos.zoom || (!!s.zoomCrop && JSON.stringify(s.marks.zoom ?? []) === s.zoomCrop.sig);
+  const zoomOf = async (plan: File, planMarks: Annot[], n: number, rect: CropRect, manual: boolean, lbls: typeof labels) => {
+    const { file, fullW, fullH } = await cropImage(plan, rect, `도면확대도-${n}거점.jpg`);
+    let marks = cropMarks(resolveLabels(planMarks, lbls), rect, fullW, fullH);
+    // 그 거점 라벨이 틀 밖이면(범위를 옮겼으면) 하나 얹는다 — 도면 확대도를 손으로 넣을 때와 같다
+    if (!marks.some((a) => a.t === 'label' && a.spot === n)) marks = [...marks, zoomLabel(n, lbls)];
+    return { file, marks, crop: { rect, manual, sig: JSON.stringify(marks) } };
+  };
+  const putZooms = (plan: File, made: Map<number, Awaited<ReturnType<typeof zoomOf>>>, added: PlSpot[], force = false) =>
+    setF((x) => {
+      if (x.plan !== plan) return x; // 그새 도면이 바뀌었다
+      const need = Math.max(0, ...made.keys());
+      const list = x.spots.length < need ? [...x.spots, ...added.slice(0, need - x.spots.length)] : x.spots;
+      return {
+        ...x,
+        spots: list.map((s, i) => {
+          const z = made.get(i + 1);
+          if (!z || (!force && !untouched(s))) return s;
+          return { ...s, photos: { ...s.photos, zoom: z.file }, marks: { ...s.marks, zoom: z.marks }, zoomCrop: z.crop };
+        }),
+      };
+    });
+  async function planToZooms(plan: File, planMarks: Annot[]) {
+    const nums = [...new Set(planMarks.flatMap((a) => (a.t === 'label' && a.spot && a.spot <= PL_MAX_SPOTS ? [a.spot] : [])))];
+    if (nums.length === 0) return;
+    setZooming(true);
+    setZoomErr(null);
+    try {
+      const cur = fRef.current.spots;
+      const need = Math.max(...nums);
+      const added = Array.from({ length: Math.max(0, need - cur.length) }, () => newPlSpot(nextId()));
+      const spots = [...cur, ...added];
+      const lbls = plSpotLabels(spots);
+      const { w, h } = await imageSize(plan);
+      const rects = autoCrops(resolveLabels(planMarks, lbls), w, h);
+      const made = new Map<number, Awaited<ReturnType<typeof zoomOf>>>();
+      for (const n of nums) {
+        const s = spots[n - 1];
+        if (!untouched(s)) continue;
+        const rect = s.zoomCrop?.manual ? s.zoomCrop.rect : rects.get(n);
+        if (rect) made.set(n, await zoomOf(plan, planMarks, n, rect, !!s.zoomCrop?.manual, lbls));
+      }
+      putZooms(plan, made, added);
+    } catch (err) {
+      setZoomErr((err as Error).message || '도면 확대도를 만들지 못했습니다.');
+    } finally {
+      setZooming(false);
+    }
+  }
+  /** 범위 고치기 — 사람이 잡은 틀이라 손댄 확대도도 그 틀로 다시 자른다 */
+  async function recrop(i: number, rect: CropRect) {
+    if (!f.plan) return;
+    try {
+      setZoomErr(null);
+      const made = new Map([[i + 1, await zoomOf(f.plan, f.planMarks, i + 1, rect, true, labels)]]);
+      putZooms(f.plan, made, [], true);
+    } catch (err) {
+      setZoomErr((err as Error).message || '도면 확대도를 만들지 못했습니다.');
+    }
+  }
 
   /* 확인할 것 — 가이드가 「필히 기입」이라 적은 것들. 막지는 않는다 */
   const review = useMemo(() => {
@@ -219,12 +298,36 @@ export default function PluglinkEditor() {
               onFiles={(fs) => set({ plan: fs[0], planMarks: [] })}
               onClear={() => set({ plan: null, planMarks: [] })}
               marks={f.planMarks}
-              onMarks={(m) => set({ planMarks: m })}
+              onMarks={(m) => { set({ planMarks: m }); if (f.plan) void planToZooms(f.plan, m); }}
               expected={f.spots.reduce((n, s) => n + plQtyOf(s), 0)}
               // 도면은 촘촘하다 — 작게로 열고, 선은 배선 경로부터(제출본 도면의 빨간 선은 화살표가 없다)
               tools={{ legend: true, labels, line: 'wire', size: 0.7, large: true }}
             />
           </div>
+          {f.plan && (zooming || zoomErr || f.spots.some((s) => s.zoomCrop)) && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-gray-700">거점별 도면 확대도</span>
+              {zooming ? (
+                <span className="text-small font-bold text-brand-700">만드는 중…</span>
+              ) : (
+                f.spots.map((s, i) => s.zoomCrop && (
+                  <span key={s.id} className="rounded-tag bg-brand-50 px-2 py-0.5 text-xs font-bold text-brand-700">{i + 1}거점</span>
+                ))
+              )}
+              <Btn size="sm" kind="quiet" disabled={zooming} onClick={() => setAdjusting(true)}>범위 고치기</Btn>
+              <Err>{zoomErr}</Err>
+            </div>
+          )}
+          {adjusting && f.plan && (
+            <PlanCrop
+              file={f.plan}
+              marks={resolveLabels(f.planMarks, labels)}
+              spots={f.spots.map((_, i) => `${i + 1}거점`)}
+              crops={f.spots.map((s) => s.zoomCrop?.rect)}
+              onCrop={recrop}
+              onClose={() => setAdjusting(false)}
+            />
+          )}
         </div>
       </Section>
 
@@ -298,8 +401,8 @@ export default function PluglinkEditor() {
       ))}
 
       <div>
-        <Btn kind="side" disabled={f.spots.length >= MAX_SPOTS} onClick={() => set({ spots: [...f.spots, newPlSpot(nextId())] })}>
-          {f.spots.length >= MAX_SPOTS ? `실사개요는 ${MAX_SPOTS}거점까지` : '거점 추가'}
+        <Btn kind="side" disabled={f.spots.length >= PL_MAX_SPOTS} onClick={() => set({ spots: [...f.spots, newPlSpot(nextId())] })}>
+          {f.spots.length >= PL_MAX_SPOTS ? `실사개요는 ${PL_MAX_SPOTS}거점까지` : '거점 추가'}
         </Btn>
       </div>
 

@@ -112,7 +112,7 @@ describe('거점 라벨은 거점 값에 묶인다', () => {
     expect(plSpotLabel(s, 1).body).toEqual(['CV 16sq-4C  35m', 'GV 16sq  35m', '배관 42C  30m']);
   });
 
-  it('찍어 둔 라벨은 거점 값을 고치면 따라 바뀐다 · 값 없는 거점도 번호로 고른다(10거점까지)', async () => {
+  it('찍어 둔 라벨은 거점 값을 고치면 따라 바뀐다 · 값 없는 거점도 번호로 고른다(서식이 받는 6거점까지)', async () => {
     const { resolveLabels } = await import('@/lib/survey/annot');
     const { plSpotLabels } = await import('@/lib/survey/spec');
     const s = { ...newPlSpot('a'), qty: 3, cableSize: 16, cableLen: 35 };
@@ -120,7 +120,7 @@ describe('거점 라벨은 거점 값에 묶인다', () => {
     const after = resolveLabels(placed, plSpotLabels([{ ...s, cableLen: 48 }]));
     expect(after[0].t === 'label' && after[0].body[0]).toBe('CV 16sq-4C  48m');
     const names = plSpotLabels([s]).map((l) => l.name);
-    expect(names.length).toBe(10);
+    expect(names.length).toBe(6);
     expect(names[4]).toBe('5거점');
   });
 
@@ -130,3 +130,55 @@ describe('거점 라벨은 거점 값에 묶인다', () => {
   });
 });
 
+
+describe('전체 도면 → 거점 도면', () => {
+  it('틀 안의 표시만 틀 기준 자리로 옮기고, 기호·라벨은 자른 만큼 커진다', async () => {
+    const { cropMarks } = await import('@/lib/survey/plan-crop');
+    const marks = [
+      { t: 'sym' as const, k: 'charger' as const, x: 0.3, y: 0.3, z: 0.7 },
+      { t: 'sym' as const, k: 'charger' as const, x: 0.8, y: 0.8, z: 0.7 }, // 틀 밖
+      { t: 'line' as const, k: 'wire' as const, pts: [{ x: 0.25, y: 0.3 }, { x: 0.9, y: 0.3 }] }, // 한 끝이 안
+    ];
+    const out = cropMarks(marks, { x: 0.2, y: 0.2, w: 0.4, h: 0.4 }, 1600, 1200);
+    expect(out.length).toBe(2);
+    const s = out[0];
+    if (s.t !== 'sym') throw new Error('기호가 아니다');
+    expect(s.x).toBeCloseTo(0.25, 6); expect(s.y).toBeCloseTo(0.25, 6);
+    expect(s.z).toBeCloseTo(0.7 * (1600 / 640), 6); // 원래 긴 변 1600 / 자른 긴 변 640
+  });
+
+  const W = 3000; const H = 2000;
+  const lab = (spot: number, x: number, y: number) => ({ t: 'label' as const, spot, x, y, head: [`${spot}거점`], body: [], z: 0.7 });
+  const ch = (x: number, y: number) => ({ t: 'sym' as const, k: 'charger' as const, x, y, z: 0.7 });
+  const inRect = (r: { x: number; y: number; w: number; h: number }, p: { x: number; y: number }) =>
+    p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+
+  it('거점 라벨마다 틀 하나 — 제 충전기는 들고 남의 충전기는 뺀다, 칸 모양 3:2, 그림 안', async () => {
+    const { autoCrops, ZOOM_ASPECT } = await import('@/lib/survey/plan-crop');
+    const marks = [lab(1, 0.15, 0.2), ch(0.12, 0.3), ch(0.18, 0.3), lab(2, 0.8, 0.75), ch(0.78, 0.85), ch(0.84, 0.85)];
+    const crops = autoCrops(marks, W, H);
+    expect([...crops.keys()].sort()).toEqual([1, 2]);
+    const r1 = crops.get(1)!; const r2 = crops.get(2)!;
+    expect(inRect(r1, { x: 0.12, y: 0.3 }) && inRect(r1, { x: 0.18, y: 0.3 })).toBe(true);
+    expect(inRect(r1, { x: 0.78, y: 0.85 })).toBe(false);
+    expect(inRect(r2, { x: 0.84, y: 0.85 })).toBe(true);
+    for (const r of [r1, r2]) {
+      expect((r.w * W) / (r.h * H)).toBeCloseTo(ZOOM_ASPECT, 6);
+      expect(r.x).toBeGreaterThanOrEqual(0); expect(r.y).toBeGreaterThanOrEqual(0);
+      expect(r.x + r.w).toBeLessThanOrEqual(1 + 1e-9); expect(r.y + r.h).toBeLessThanOrEqual(1 + 1e-9);
+    }
+  });
+
+  it('어느 라벨에서도 먼 표시(공용 기존 분전반)는 틀을 늘리지 않는다', async () => {
+    const { autoCrops } = await import('@/lib/survey/plan-crop');
+    const far = { t: 'sym' as const, k: 'panelOld' as const, x: 0.95, y: 0.05, z: 0.7 };
+    const r = autoCrops([lab(1, 0.2, 0.7), ch(0.2, 0.8), far], W, H).get(1)!;
+    expect(inRect(r, { x: 0.95, y: 0.05 })).toBe(false);
+    expect(r.w).toBeLessThan(0.5);
+  });
+
+  it('라벨이 없으면 틀도 없다', async () => {
+    const { autoCrops } = await import('@/lib/survey/plan-crop');
+    expect(autoCrops([ch(0.5, 0.5)], W, H).size).toBe(0);
+  });
+});
