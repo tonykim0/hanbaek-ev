@@ -8,6 +8,7 @@
  * DOMParser·XMLSerializer 만 쓴다 — 브라우저에서 돌고, 시험에서는 xmldom 을 꽂는다.
  */
 import type JSZip from 'jszip';
+import { crop } from './fit';
 
 export const W_NS = 'http://schemas.openxmlformats.org/wordprocessingml/2006/main';
 const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -190,7 +191,10 @@ export class ImageRegistry {
 }
 
 /**
- * 칸에 사진 한 장을 넣는다 — 칸 안에 들어가게 비율을 지켜 줄인다.
+ * 칸에 사진 한 장 — ★칸을 꽉 채운다★(한백 「사진 넣으면 그 박스 안에 맞춰서」 2026-10-02). 칸 비율로 자르고
+ * (늘리지 않는다), 사진 위 표시가 있으면 그 자리가 남게 창을 옮긴다(lib/survey/fit). 자르기는 워드의 「자르기」
+ * (srcRect)라 원본이 파일에 남고 받은 사람이 워드에서 다시 고를 수 있다 — 엑셀 쪽(xlsx-kit)과 같다.
+ * 예전에는 칸 안에 비율대로 들여서 위아래·양옆이 비었다(사진 대장 칸은 거의 정사각이라 4:3 사진이 떴다).
  * 칸의 글자(안내 괄호 말)는 지운다: 사진이 그 자리다.
  *
  * @param maxW·maxH 칸 안 쓸 수 있는 크기(트윕) — 칸 폭·줄 높이에서 여백을 뺀 값
@@ -205,9 +209,11 @@ export function putImage(
   setCellText(tc, '');
   const p = childrenNamed(tc, 'p')[0];
   centerParagraph(p);
-  const scale = Math.min(maxW / img.width, maxH / img.height);
-  const cx = Math.round(img.width * scale * EMU_PER_TWIP);
-  const cy = Math.round(img.height * scale * EMU_PER_TWIP);
+  const cx = Math.round(maxW * EMU_PER_TWIP);
+  const cy = Math.round(maxH * EMU_PER_TWIP);
+  const w = crop(img.width / img.height, maxW / maxH, img.focus);
+  const pct = (v: number) => Math.round(v * 100000);
+  const srcRect = `<a:srcRect l="${pct(w.l)}" t="${pct(w.t)}" r="${pct(w.r)}" b="${pct(w.b)}"/>`;
   const { relId, docPrId, name } = reg.add(img);
 
   /*
@@ -217,7 +223,7 @@ export function putImage(
   const xml = `<w:r xmlns:w="${W_NS}" xmlns:r="${R_NS}"
     xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
     xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
-    xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${docPrId}" name="${name}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${docPrId}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+    xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture"><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${cx}" cy="${cy}"/><wp:docPr id="${docPrId}" name="${name}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="${docPrId}" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${relId}"/>${srcRect}<a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${cx}" cy="${cy}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
   const frag = new DOMParser().parseFromString(xml, 'application/xml').documentElement;
   p.appendChild(tc.ownerDocument.importNode(frag, true));
 }

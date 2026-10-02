@@ -13,6 +13,7 @@
 import type JSZip from 'jszip';
 import type { PreparedImage } from './docx-kit';
 import { marksXml } from './xlsx-marks';
+import { crop } from './fit';
 
 const S_NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const R_NS = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -60,29 +61,8 @@ const elems = (d: Document | Element, ns: string, local: string) => Array.from(d
 
 interface SheetInfo { name: string; path: string; el: Element }
 
-/**
- * 칸 비율로 자를 창 — 잘라 낼 몫(왼·위·오른·아래, 0~1). 사진이 칸보다 납작하면 양옆을, 길쭉하면
- * 위아래를 자른다. 창은 가운데가 기본이고, 표시 범위(focus)가 있으면 그것이 들어오게 옮긴다 —
- * 창보다 넓으면 표시 범위의 가운데에 맞춘다. 사진 밖으로는 나가지 않는다.
- */
-export function crop(
-  imgAspect: number,
-  boxAspect: number,
-  focus?: { x0: number; y0: number; x1: number; y1: number }
-): { l: number; t: number; r: number; b: number } {
-  const winW = imgAspect > boxAspect ? boxAspect / imgAspect : 1;
-  const winH = imgAspect > boxAspect ? 1 : imgAspect / boxAspect;
-  const place = (win: number, f0?: number, f1?: number) => {
-    let start = (1 - win) / 2;
-    if (f0 !== undefined && f1 !== undefined) {
-      start = f1 - f0 <= win ? Math.min(Math.max(start, f1 - win), f0) : (f0 + f1) / 2 - win / 2;
-    }
-    return Math.min(Math.max(0, start), 1 - win);
-  };
-  const l = place(winW, focus?.x0, focus?.x1);
-  const t = place(winH, focus?.y0, focus?.y1);
-  return { l, t, r: Math.max(0, 1 - l - winW), b: Math.max(0, 1 - t - winH) };
-}
+/* 칸 비율로 자를 창은 lib/survey/fit 에 있다 — 워드(docx-kit)·바둑판(prepare-image)도 같은 것을 쓴다 */
+export { crop } from './fit';
 
 /**
  * 열린 통합 문서 — 시트 XML 을 들고 있다가 save 에 한꺼번에 쓴다.

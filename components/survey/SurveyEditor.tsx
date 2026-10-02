@@ -137,7 +137,7 @@ export default function SurveyEditor({ cpo, slots, variant, build, fileName }: S
           if (list.length === 0) continue;
           if (sl.collage) {
             // 서식 칸이 하나뿐인 자리 — 여러 장을 한 장으로 모아 그 칸에 넣는다
-            images[s.id][sl.key] = await prepareCollage(list.map(({ key, file }) => ({ file, marks: s.marks[key] ?? [] })), style);
+            images[s.id][sl.key] = await prepareCollage(list.map(({ key, file }) => ({ file, marks: s.marks[key] ?? [] })), style, sl.aspect);
             done += list.length;
           } else {
             for (const { key, file } of list) {
@@ -434,7 +434,7 @@ export function PhotoSlots({ slots, photos, marks, onChange, expected, style, to
         const box = (key: string, label: string, file: File | null, onFiles: (fs: File[]) => void, onClear: () => void, hint?: string) => (
           <PhotoBox
             key={key}
-            slot={{ key, label, hint }}
+            slot={{ key, label, hint, draw: sl.draw }}
             file={file}
             onFiles={onFiles}
             onClear={onClear}
@@ -463,7 +463,32 @@ export function PhotoSlots({ slots, photos, marks, onChange, expected, style, to
   );
 }
 
-/** 사진 칸 하나 — 누르면 고르고, 끌어다 놓아도 된다. 넣은 사진은 그 자리에서 보인다 */
+/** 펜 — 「사진 위에 그린다」를 말 없이 알리는 그림 */
+function PenIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden className="h-4 w-4" fill="currentColor">
+      <path d="M13.6 2.6a2 2 0 0 1 2.8 0l1 1a2 2 0 0 1 0 2.8l-9.3 9.3-4.1 1.1a.6.6 0 0 1-.7-.7l1.1-4.1 9.2-9.4Zm-1 2.9L5.3 12.8l-.6 2.1 2.1-.6 7.3-7.3-1.5-1.5Z" />
+    </svg>
+  );
+}
+
+/** 더하기 — 빈 칸 */
+function PlusIcon({ big = false }: { big?: boolean }) {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden className={big ? 'h-10 w-10' : 'h-4 w-4'} fill="none" stroke="currentColor" strokeWidth={big ? 1.5 : 2.2} strokeLinecap="round">
+      <path d="M10 4v12M4 10h12" />
+    </svg>
+  );
+}
+
+/**
+ * 사진 칸 하나 — 빈 칸은 누르거나 끌어다 놓아 사진을 넣는다.
+ *
+ * ★사진이 든 칸은 누르면 그 위에 그린다★ (한백 「표시하기라는 단어는 별로 · 텍스트라 잘 안 보이고 뭘 표시하라는
+ * 건지 알 수 없어 · 설명하지 않아도 이해할 수 있어야」 2026-10-02). 사진 밑에 펜 그림과 그 사진에서 할 일
+ * (「주차면 번호 찍기」·「경로 선 긋기」 — spec 의 slot.draw)을 단 띠 단추를 늘 두고, 사진 어디를 눌러도 그린다.
+ * 그린 것이 있으면 단추에 그 수가 붙는다. 사진을 바꾸는 것은 밑의 「바꾸기」 — 사진 누르기가 그리기라서다.
+ */
 export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expected, style = 'red', tools }: {
   slot: PhotoSlot;
   file: File | null;
@@ -484,6 +509,7 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expecte
   const [url, setUrl] = useState<string | null>(null);
   const [aspect, setAspect] = useState(4 / 3);
   const [marking, setMarking] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
   useEffect(() => {
     if (!file) { setUrl(null); return; }
     const u = URL.createObjectURL(file);
@@ -495,65 +521,93 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expecte
     const imgs = list.filter((f) => f.type.startsWith('image/') || /\.(jpe?g|png|heic|heif|webp)$/i.test(f.name));
     if (imgs.length) onFiles(imgs);
   };
+  const canDraw = !!(file && onMarks);
+  const drawLabel = slot.draw ?? '그려 넣기';
+  const count = marks?.length ?? 0;
+  const open = () => (canDraw ? setMarking(true) : input.current?.click());
+
+  const drop = {
+    onDragEnter: (e: React.DragEvent) => { e.preventDefault(); setOver(true); },
+    onDragOver: (e: React.DragEvent) => { e.preventDefault(); setOver(true); },
+    onDragLeave: (e: React.DragEvent) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false); },
+    onDrop: (e: React.DragEvent) => { e.preventDefault(); setOver(false); take([...e.dataTransfer.files]); },
+  };
 
   return (
     <div className="flex flex-col gap-1">
-      <label
-        onDragEnter={(e) => { e.preventDefault(); setOver(true); }}
-        onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false); }}
-        onDrop={(e) => { e.preventDefault(); setOver(false); take([...e.dataTransfer.files]); }}
-        className={`relative flex aspect-[4/3] cursor-pointer items-center justify-center overflow-hidden rounded-box border-2 border-dashed transition ${
-          over ? 'border-brand-500 bg-brand-50' : file ? 'border-brand-200 bg-white' : dragging ? 'border-slate-400 bg-white' : 'border-slate-200 bg-slate-50'
+      <div
+        {...drop}
+        className={`flex flex-col overflow-hidden rounded-box border-2 transition ${
+          over ? 'border-dashed border-brand-500 bg-brand-50' : file ? 'border-solid border-slate-200 bg-slate-900 hover:border-brand-400' : dragging ? 'border-dashed border-slate-400 bg-white' : 'border-dashed border-slate-200 bg-slate-50'
         }`}
       >
-        {url ? (
-          /* 번호는 사진 위 자리라 사진과 같은 틀(비율)에 얹는다 — object-contain 의 빈 띠에 뜨지 않게 */
-          <span
-            className="relative block"
-            // 칸은 4:3 이다 — 그보다 넓은 사진은 폭을, 좁은(세로) 사진은 높이를 채운다
-            style={aspect >= 4 / 3 ? { width: '100%', aspectRatio: String(aspect) } : { height: '100%', aspectRatio: String(aspect) }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={url}
-              alt={slot.label}
-              onLoad={(e) => setAspect(e.currentTarget.naturalWidth / (e.currentTarget.naturalHeight || 1))}
-              className="h-full w-full object-contain"
-            />
-            {marks && marks.length > 0 && <AnnotCanvas list={resolveLabels(marks, tools?.labels)} style={style} />}
-          </span>
-        ) : (
-          <span className="px-3 text-center text-sm font-bold text-slate-400">
-            {dragging ? '여기에 놓기' : '사진 고르기 · 끌어다 놓기'}
-          </span>
-        )}
+        <div
+          role="button"
+          tabIndex={0}
+          aria-label={canDraw ? `${slot.label} — ${drawLabel}` : `${slot.label} — 사진 고르기`}
+          onClick={open}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open(); } }}
+          className="flex aspect-[4/3] cursor-pointer items-center justify-center overflow-hidden"
+        >
+          {url ? (
+            /* 번호는 사진 위 자리라 사진과 같은 틀(비율)에 얹는다 — object-contain 의 빈 띠에 뜨지 않게 */
+            <span
+              className="relative block"
+              // 칸은 4:3 이다 — 그보다 넓은 사진은 폭을, 좁은(세로) 사진은 높이를 채운다
+              style={aspect >= 4 / 3 ? { width: '100%', aspectRatio: String(aspect) } : { height: '100%', aspectRatio: String(aspect) }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={url}
+                alt={slot.label}
+                onLoad={(e) => setAspect(e.currentTarget.naturalWidth / (e.currentTarget.naturalHeight || 1))}
+                className="h-full w-full object-contain"
+              />
+              {marks && marks.length > 0 && <AnnotCanvas list={resolveLabels(marks, tools?.labels)} style={style} />}
+            </span>
+          ) : (
+            <span className="px-3 text-center text-sm font-bold text-slate-400">
+              {dragging ? '여기에 놓기' : <PlusIcon big />}
+            </span>
+          )}
+        </div>
+        {/* 사진 밑의 띠 — 사진 위에 얹으면 아래쪽에 찍은 표시를 가린다. 빈 칸에도 같은 높이로 두어 줄이 맞는다 */}
+        <button
+          type="button"
+          onClick={canDraw ? () => setMarking(true) : () => input.current?.click()}
+          className={`flex items-center justify-center gap-1.5 px-3 py-2 text-small font-bold transition ${
+            canDraw ? 'bg-brand-600 text-white hover:bg-brand-700' : 'bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700'
+          }`}
+        >
+          {canDraw ? <PenIcon /> : <PlusIcon />}
+          {canDraw ? drawLabel : file ? '사진 바꾸기' : '사진 넣기'}
+          {count > 0 && <span className="rounded bg-white/25 px-1.5 tabular-nums">{count}</span>}
+        </button>
         <input
+          ref={input}
           type="file"
           accept="image/*"
           multiple
           className="hidden"
           onChange={(e) => { const picked = [...(e.target.files ?? [])]; e.target.value = ''; take(picked); }}
         />
-      </label>
+      </div>
       <div className="flex items-baseline gap-2">
         <span className="min-w-0 flex-1 text-sm font-bold text-gray-800">
           {slot.label}
           {slot.hint && <span className="ml-1 text-xs font-normal text-gray-400">{slot.hint}</span>}
         </span>
-        {file && onMarks && (
-          <button
-            type="button"
-            onClick={() => setMarking(true)}
-            className={`text-xs font-bold ${marks?.length ? 'text-[#e11d2a]' : 'text-brand-700'} hover:underline`}
-          >
-            {marks?.length ? `표시 ${marks.length}개` : '표시하기'}
-          </button>
-        )}
         {file && (
-          <button type="button" onClick={onClear} className="text-xs font-bold text-slate-400 hover:text-red-700">
-            빼기
-          </button>
+          <>
+            {canDraw && (
+              <button type="button" onClick={() => input.current?.click()} className="text-xs font-bold text-slate-500 hover:text-brand-700">
+                바꾸기
+              </button>
+            )}
+            <button type="button" onClick={onClear} className="text-xs font-bold text-slate-400 hover:text-red-700">
+              빼기
+            </button>
+          </>
         )}
       </div>
       {marking && file && onMarks && (
@@ -561,7 +615,7 @@ export function PhotoBox({ slot, file, onFiles, onClear, marks, onMarks, expecte
           file={file}
           marks={marks ?? []}
           expected={expected}
-          title={slot.label}
+          title={`${slot.label} — ${drawLabel}`}
           style={style}
           {...tools}
           onClose={() => setMarking(false)}

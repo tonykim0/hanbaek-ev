@@ -31,7 +31,21 @@ export interface PhotoSlot {
   multi?: number;
   /** 여러 장을 서식의 한 칸에 모아(바둑판) 넣는다 — 서식 칸이 하나뿐인 자리 */
   collage?: boolean;
+  /**
+   * 서식 칸의 가로/세로 — 모은 사진을 이 모양으로 짓는다(칸에 넣을 때 다시 잘리지 않게).
+   * 워드 서식에서 잰 값: 사진 대장 칸 ≈ 1.0(정사각) · 현대엔지니어링 별지 칸 ≈ 1.13.
+   */
+  aspect?: number;
+  /**
+   * 사진 위에 그리는 단추의 이름 — 이 사진에서 할 일을 말한다(한백 「표시하기라는 단어는 별로, 뭘 표시하라는
+   * 건지 알 수 없어 — 설명하지 않아도 이해할 수 있어야」). 없으면 「그려 넣기」.
+   */
+  draw?: string;
 }
+
+/** 워드 서식 사진 칸의 가로/세로 — fill-ledger·fill-hec 의 칸을 잰 값(칸 안 여백을 뺀 것) */
+const LEDGER_CELL = 1.0;
+const HEC_CELL = 1.13;
 
 /** 여러 장 칸의 i번째(0부터) 사진 자리 — 첫 장은 칸 key 그대로라 한 장짜리와 같다 */
 export const subKey = (key: string, i: number) => (i === 0 ? key : `${key}~${i + 1}`);
@@ -100,17 +114,18 @@ export interface SurveyForm {
  * (public/hec/template.docx 의 사진 줄을 위에서 아래, 왼쪽에서 오른쪽으로 읽은 순서).
  */
 export const HEC_PHOTO_SLOTS: PhotoSlot[] = [
-  { key: 'far', label: '책임분계점(원경)', hint: '인입전주 또는 분전반' },
-  { key: 'near', label: '책임분계점(근경)', hint: '인입전주 또는 분전반' },
-  { key: 'siteWide', label: '충전소 설치 위치(전경)' },
-  { key: 'siteClose', label: '충전소 설치 위치(근경)' },
-  { key: 'panel', label: '전기차 분전반 설치위치' },
+  { key: 'far', label: '책임분계점(원경)', hint: '인입전주 또는 분전반', draw: '전주·분전반 짚기' },
+  { key: 'near', label: '책임분계점(근경)', hint: '인입전주 또는 분전반', draw: '전주·분전반 짚기' },
+  /* 설치 예정 주차면은 한 장에 다 안 담길 때가 있다 — 세 장까지 한 칸에 모은다(한백 「2,3개 사진이 들어갈 수도」) */
+  { key: 'siteWide', label: '충전소 설치 위치(전경)', multi: 3, collage: true, aspect: HEC_CELL, draw: '주차면 번호 찍기' },
+  { key: 'siteClose', label: '충전소 설치 위치(근경)', multi: 3, collage: true, aspect: HEC_CELL, draw: '주차면 번호 찍기' },
+  { key: 'panel', label: '전기차 분전반 설치위치', draw: '설치 자리 짚기' },
   /*
    * 경로가 길면 사진 한 장에 안 담긴다 — 제출본들은 이 칸 하나에 4~6장을 바둑판으로 붙였다
    * (2026 별지 41건 중 여럿 · 부천 옥길데시앙은 여섯 장에 빨간 경로 선). 그래서 여러 장을 받아 한 칸에 모은다.
    */
-  { key: 'route', label: '선로 인입경로', hint: '책임분계점 ~ 전기차 분전반', multi: 6, collage: true },
-  { key: 'cctv', label: 'CCTV(실내) 또는 옥외 조명(실외)' },
+  { key: 'route', label: '선로 인입경로', hint: '책임분계점 ~ 전기차 분전반', multi: 6, collage: true, aspect: HEC_CELL, draw: '경로 선 긋기' },
+  { key: 'cctv', label: 'CCTV(실내) 또는 옥외 조명(실외)', draw: 'CCTV 짚기' },
 ];
 
 /**
@@ -150,10 +165,11 @@ export const HEC_CHECKS: Array<{ group: string; items: Array<{ key: string; labe
  * 순서가 곧 서식의 자리다(public/survey/ledger.docx 의 사진 줄 둘 × 칸 둘).
  */
 export const LEDGER_PHOTO_SLOTS: PhotoSlot[] = [
-  { key: 'inlet1', label: '전력인입점 사진 1', hint: '판넬 외부' },
-  { key: 'inlet2', label: '전력인입점 사진 2', hint: '판넬 내부·차단기' },
-  { key: 'front', label: '설치 예정 주차면 — 전면' },
-  { key: 'side', label: '설치 예정 주차면 — 측면' },
+  { key: 'inlet1', label: '전력인입점 사진 1', hint: '판넬 외부', draw: '판넬 짚기' },
+  { key: 'inlet2', label: '전력인입점 사진 2', hint: '판넬 내부·차단기', draw: '차단기 짚기' },
+  /* 설치 예정 주차면은 세 장까지 한 칸에 모은다(한백 「2,3개 사진이 들어갈 수도」) — 칸이 하나뿐인 서식이다 */
+  { key: 'front', label: '설치 예정 주차면 — 전면', multi: 3, collage: true, aspect: LEDGER_CELL, draw: '주차면 번호 찍기' },
+  { key: 'side', label: '설치 예정 주차면 — 측면', multi: 3, collage: true, aspect: LEDGER_CELL, draw: '주차면 번호 찍기' },
 ];
 
 export const HEC_CHECK_KEYS = HEC_CHECKS.flatMap((g) => g.items.map((i) => i.key));
@@ -255,20 +271,21 @@ export interface PlForm {
  * 칸 이름은 제출본들이 실제로 단 설명이다. 서식은 여섯 짝이고, 넘치면 시트를 늘린다.
  */
 export const PL_PHOTO_SLOTS: PhotoSlot[] = [
-  { key: 'zoom', label: '도면 확대도' },
-  { key: 'place', label: '설치예정 위치', hint: '주차면 정면 · 번호 표시' },
-  { key: 'placeBack', label: '설치예정 위치 후면' },
-  { key: 'panelOut', label: '1차측 분전반 외부', hint: '인입점' },
-  { key: 'panelIn', label: '1차측 분전반 내부' },
+  { key: 'zoom', label: '도면 확대도', draw: '도면에 그리기' },
+  /* 설치예정 위치는 세 장까지 — 플러그링크는 칸이 늘어나므로 장마다 제 칸이다 */
+  { key: 'place', label: '설치예정 위치', hint: '주차면 정면', multi: 3, draw: '주차면 번호 찍기' },
+  { key: 'placeBack', label: '설치예정 위치 후면', draw: '그려 넣기' },
+  { key: 'panelOut', label: '1차측 분전반 외부', hint: '인입점', draw: '분전반 짚기' },
+  { key: 'panelIn', label: '1차측 분전반 내부', draw: '차단기 짚기' },
   /*
    * ★인입라인은 장수가 정해져 있지 않다★ — 2026 제출본 사진대지 시트 하나에 0~18장, 6장·8장이 흔하다
    * (내 컴퓨터의 플러그링크 엑셀 84곳 실측). 네 칸으로 묶어 두었더니 모자랐다. 서식은 짝(두 장)마다
    * 25줄이라 넘치면 시트를 늘린다(fill-pluglink).
    */
-  { key: 'route', label: '전력간선 인입라인', multi: 20 },
-  { key: 'pole', label: '전주번호', hint: '한전인입일 때' },
-  { key: 'sub', label: '2차측 분전함', multi: 4 },
-  { key: 'cctv', label: 'CCTV(지하설치)', hint: '지하일 때', multi: 4 },
+  { key: 'route', label: '전력간선 인입라인', multi: 20, draw: '경로 선 긋기' },
+  { key: 'pole', label: '전주번호', hint: '한전인입일 때', draw: '전주 짚기' },
+  { key: 'sub', label: '2차측 분전함', multi: 4, draw: '분전함 짚기' },
+  { key: 'cctv', label: 'CCTV(지하설치)', hint: '지하일 때', multi: 4, draw: 'CCTV 짚기' },
 ];
 
 /** 사진대지 한 장의 설명 — 여러 장 칸은 두 장 이상이면 모두 번호를 단다(「전력간선 인입라인 - 1」, 제출본의 꼴) */

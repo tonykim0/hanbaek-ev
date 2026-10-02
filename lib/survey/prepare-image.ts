@@ -12,6 +12,7 @@
  */
 import type { PreparedImage } from './docx-kit';
 import { annotBounds, drawAnnots, type Annot, type NumStyle } from './annot';
+import { collageTiles, crop } from './fit';
 
 const LONG_EDGE = 1600;
 const QUALITY = 0.85;
@@ -61,39 +62,38 @@ export async function prepareImage(file: File, marks: Annot[] = [], style: NumSt
 }
 
 /**
- * 여러 장을 한 장으로 — 서식 칸이 하나뿐인데 사진이 여러 장인 자리(현대엔지니어링 「선로 인입경로」).
- * 제출본들이 워드 칸 하나에 사진을 바둑판으로 붙인 꼴 그대로다. 칸마다 4:3, 사진은 잘리지 않게
- * 가운데 넣고(표시가 가장자리에 있어도 남는다) 남는 자리는 흰색이다. 장마다 표시를 먼저 굽는다.
+ * 여러 장을 한 장으로 — 서식 칸이 하나뿐인데 사진이 여러 장인 자리(현대엔지니어링 선로 인입경로·설치 위치,
+ * SK·나이스 설치 예정 주차면). ★칸 모양(aspect) 그대로 짓는다★ — 칸에 넣을 때 다시 잘리지 않게. 칸을 장 수만큼
+ * 나누고(lib/survey/fit collageTiles), 장마다 그 조각 모양으로 자른다(표시가 남게 창을 옮긴다). 표시는 먼저 굽는다.
  */
-export async function prepareCollage(items: Array<{ file: File; marks: Annot[] }>, style: NumStyle = 'red'): Promise<PreparedImage> {
+export async function prepareCollage(items: Array<{ file: File; marks: Annot[] }>, style: NumStyle = 'red', aspect = 4 / 3): Promise<PreparedImage> {
   if (items.length === 1) return prepareImage(items[0].file, items[0].marks, style);
-  const cols = Math.ceil(Math.sqrt(items.length));
-  const rows = Math.ceil(items.length / cols);
-  const gap = 8;
-  const tw = Math.floor((LONG_EDGE - gap * (cols - 1)) / cols);
-  const th = Math.round((tw * 3) / 4);
+  const W = aspect >= 1 ? LONG_EDGE : Math.round(LONG_EDGE * aspect);
+  const H = aspect >= 1 ? Math.round(LONG_EDGE / aspect) : LONG_EDGE;
+  const tiles = collageTiles(items.length, W, H, 8);
   const canvas = document.createElement('canvas');
-  canvas.width = tw * cols + gap * (cols - 1);
-  canvas.height = th * rows + gap * (rows - 1);
+  canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('사진을 그릴 수 없습니다 — 다른 브라우저에서 다시 해주세요.');
   ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, W, H);
   for (const [i, it] of items.entries()) {
+    const t = tiles[i];
     const bmp = await bitmapOf(it.file);
-    const s = Math.min(tw / bmp.width, th / bmp.height);
-    const w = Math.round(bmp.width * s); const h = Math.round(bmp.height * s);
-    // 표시는 사진 크기 기준이라 사진만 한 판에 굽고 바둑판 칸에 옮긴다
+    // 표시는 사진 크기 기준이라 사진만 한 판에 굽고, 그 판을 조각 모양으로 잘라 옮긴다
+    const s = Math.min(1, LONG_EDGE / Math.max(bmp.width, bmp.height));
+    const pw = Math.round(bmp.width * s); const ph = Math.round(bmp.height * s);
     const tile = document.createElement('canvas');
-    tile.width = w; tile.height = h;
+    tile.width = pw; tile.height = ph;
     const tc = tile.getContext('2d');
     if (!tc) throw new Error('사진을 그릴 수 없습니다 — 다른 브라우저에서 다시 해주세요.');
-    tc.drawImage(bmp, 0, 0, w, h);
+    tc.drawImage(bmp, 0, 0, pw, ph);
     bmp.close?.();
-    if (it.marks.length) drawAnnots(tc, w, h, it.marks, style);
-    const x = (i % cols) * (tw + gap) + Math.round((tw - w) / 2);
-    const y = Math.floor(i / cols) * (th + gap) + Math.round((th - h) / 2);
-    ctx.drawImage(tile, x, y);
+    if (it.marks.length) drawAnnots(tc, pw, ph, it.marks, style);
+    const w = crop(pw / ph, t.w / t.h, annotBounds(it.marks, pw, ph) ?? undefined);
+    const sx = w.l * pw; const sy = w.t * ph;
+    const sw = pw * (1 - w.l - w.r); const sh = ph * (1 - w.t - w.b);
+    ctx.drawImage(tile, sx, sy, sw, sh, t.x, t.y, t.w, t.h);
   }
   return jpegOf(canvas, items[0].file.name);
 }
