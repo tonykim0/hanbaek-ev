@@ -28,6 +28,16 @@ import { turnkeyUnit } from '../lib/settlement';
 import type { Actor, Viewer } from '../lib/auth/types';
 
 const ACTOR: Actor = { id: 'script', name: '기성·단가 어긋남 점검', role: 'admin', org: null };
+
+/*
+ * ★한백이 보고 그대로 두기로 한 현장★ — 케이스의 받는 단가보다 적게 청구하기로 협의한 자리다.
+ * 「협의로 턴키단가와 다르게 받는 현장이 있다」는 것은 이 콘솔의 전제고(CLAUDE.md 3번),
+ * 그것을 적는 정식 자리는 수금의 ★실수금액★이다 — 다만 이 현장은 기성 규칙으로 표현돼 있다.
+ * 검사가 계속 울면 진짜 어긋남이 묻히므로 이유를 달아 둔다.
+ */
+const ALLOW = new Map<string, string>([
+  ['HB-2026-151', '광양 영신그린빌 — 원래대로 둔다(한백 2026-10-05)'],
+]);
 const HANBAEK: Viewer = { role: 'admin', org: null };
 const won = (n: number) => n.toLocaleString('ko-KR');
 
@@ -41,6 +51,7 @@ async function main() {
   const all = await pgRepository.listProjects(ACTOR);
   let checked = 0;
   const off: string[] = [];
+  const allowed: string[] = [];
   /** 고정 단계만으로 짜인 규칙 — 단가가 움직이면 따라오지 못하는 쪽이다 */
   const allFixed = new Set<string>();
 
@@ -61,7 +72,9 @@ async function main() {
     const plan = steps.reduce((n, st) => n + (st.planAmount ?? 0), 0);
     const basis = steps.map((st) => st.basisLabel);
     if (basis.every((b) => b === '고정')) allFixed.add(d.admin?.settlementRule?.name ?? '(이름 없음)');
-    if (plan !== priced) {
+    if (plan !== priced && ALLOW.has(d.project.id)) {
+      allowed.push(`   · ${d.project.name} — ${ALLOW.get(d.project.id)}`);
+    } else if (plan !== priced) {
       off.push(
         `   · ${d.project.name} · ${d.project.cpo}\n`
         + `     받는 단가 × 대수 ${won(priced)} · 기성 계획 합계 ${won(plan)}`
@@ -76,6 +89,10 @@ async function main() {
   else {
     console.log(`★어긋난 현장 ${off.length}건★`);
     for (const line of off) console.log(line);
+  }
+  if (allowed.length > 0) {
+    console.log(`\n(한백이 보고 그대로 두기로 한 현장 ${allowed.length}건)`);
+    for (const line of allowed) console.log(line);
   }
   if (allFixed.size > 0) {
     console.log(`\n참고 — 차수가 전부 「고정」인 정산 규칙 ${allFixed.size}개 (단가를 고치면 따라오지 못하는 쪽)`);
