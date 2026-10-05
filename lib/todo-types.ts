@@ -93,6 +93,8 @@ export function whatOf(column: BoardColumn, p: {
   rejectedDocs: number;
   rejectedEmptyDocs: number;
   docsFilled: boolean;
+  /** 다음 칸과 그 조건 — 보드 카드의 「다음: …」와 같은 값(ProjectSummary.nextStep) */
+  nextStep?: { ready: boolean; need: string | null } | null;
 }): string {
   /*
    * 「계약보완」은 두 가지를 담는다 — 낸 것을 돌려받은 칸과, 아직 안 낸 칸(「누락 서류
@@ -120,5 +122,13 @@ export function whatOf(column: BoardColumn, p: {
    */
   if (column === '계약완료') return '운영사에 계약서 제출'; // 한백의 일(COURT_AFTER_STATUS)
   if (column === '준공서류 접수/검토') return '준공서류 검수'; // 「접수/검토」는 칸 이름이지 일이 아니다
+  /*
+   * ★남은 조건이 있으면 그것이 할 일이다★ (2026-10-05 화면 검토). 할 일 화면은 카드를 칸
+   * 머리(「착공」) 밑에 세우므로 카드에 칸 이름을 또 적으면 같은 말을 두 번 하고(화면 규칙 5),
+   * 협력사는 무엇을 해야 다음 칸으로 가는지 모른다 — 시공 보드 카드에는 「다음: 착공일 ·
+   * 설치완료 사진 · 설치 완료 선언」이 적혀 있었다. 그 문구를 그대로 쓴다: 보드와 할 일이
+   * 같은 말을 해야 한다는 아래 원칙은 그대로다. 조건이 다 찼으면 칸 이름으로 돌아간다.
+   */
+  if (p.nextStep && !p.nextStep.ready && p.nextStep.need) return `다음: ${p.nextStep.need}`;
   return column;
 }

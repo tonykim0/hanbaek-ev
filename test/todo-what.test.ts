@@ -49,3 +49,19 @@ describe('칸 이름이 곧 시킬 일인 자리는 그대로 쓴다', () => {
     (column) => { expect(whatOf(column, none)).toBe(column); }
   );
 });
+
+describe('시공 칸은 남은 조건을 적는다 — 보드 카드의 「다음: …」와 같은 말 (2026-10-05)', () => {
+  it('조건이 남았으면 그것이 할 일이다 — 칸 이름은 머리에 이미 있다', () => {
+    expect(whatOf('착공', { ...none, nextStep: { ready: false, need: '착공일 · 설치완료 사진 · 설치 완료 선언' } }))
+      .toBe('다음: 착공일 · 설치완료 사진 · 설치 완료 선언');
+  });
+
+  it('조건이 다 찼으면 칸 이름으로 돌아간다', () => {
+    expect(whatOf('착공', { ...none, nextStep: { ready: true, need: null } })).toBe('착공');
+  });
+
+  it('계약 칸은 남은 조건보다 그 칸의 말이 앞선다', () => {
+    expect(whatOf('계약완료', { ...none, nextStep: { ready: false, need: '운영사 계약서 제출일' } }))
+      .toBe('운영사에 계약서 제출');
+  });
+});
