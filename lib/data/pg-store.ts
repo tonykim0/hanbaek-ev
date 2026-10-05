@@ -354,11 +354,11 @@ export const pgRepository: ProjectRepository = {
         scope,
       });
       /*
-       * ★상대방에게 알림★ (한백 지시 2026-10-05) — 한백이 쓰면 그 일을 맡은 협력사, 협력사가 쓰면 한백 관리자.
-       * 누구에게 갈지는 lib/notify.ts 한 곳이다. 글과 같은 트랜잭션이다 — 알림만 남거나 글만 남지 않는다.
+       * ★그 현장의 기록을 같이 쓰는 사람 모두에게 알림★ (한백 지시 2026-10-05) — 한백 관리자와 그 현장의 협력사,
+       * 쓴 사람만 뺀다. 누구에게 갈지는 lib/notify.ts 한 곳이다. 글과 같은 트랜잭션이다 — 알림만 남거나 글만 남지 않는다.
        */
       await fanOutNote(tx, {
-        noteId, projectId: input.projectId, scope, byHanbaek: actor.role === 'admin', actorId: actor.id,
+        noteId, projectId: input.projectId, scope, actorId: actor.id,
         salesOrg: project.salesOrg, gcOrg: project.gcOrg,
       });
 

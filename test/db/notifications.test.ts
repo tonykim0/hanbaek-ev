@@ -1,5 +1,5 @@
 /**
- * 진행현황 글이 상대방에게 알림으로 간다 (한백 지시 2026-10-05 · lib/notify.ts).
+ * 진행현황 글이 그 현장의 기록을 같이 쓰는 사람 모두에게 알림으로 간다(쓴 사람만 빼고 — 한백 지시 2026-10-05 · lib/notify.ts).
  * 시험 현장: 영업사 네이비인프라(navy) · 시공사 에코일렉(ecoelec). ★받는 사람은 DB 의 users 에서 찾는다★ —
  * 개발 DB 에는 대상전력(daesang) 줄이 없어(파일 계정으로만 로그인된다) 그 회사를 시공사로 두면 받을 계정이 없다.
  */
@@ -18,14 +18,14 @@ const unread = async (u: (typeof USERS)[keyof typeof USERS], projectId: string) 
   (await repo.listNotifications(me(u))).filter((n) => n.projectId === projectId && !n.read);
 
 describe('진행현황 알림', () => {
-  it('협력사가 남기면 한백 관리자에게 — 열람 전용·다른 협력사·쓴 사람은 받지 않는다', () => withProject(async (id) => {
+  it('협력사가 남기면 한백 관리자와 그 현장의 다른 협력사에게 — 열람 전용·쓴 사람은 받지 않는다', () => withProject(async (id) => {
     await signIn(USERS.ecoelec);
     expect((await call(notePOST, { params: { id }, body: { body: '관리사무소 요청으로 착공 연기', scope: '시공' } })).status).toBe(200);
     const got = await unread(USERS.admin, id);
     expect(got).toHaveLength(1);
     expect(got[0]).toMatchObject({ author: '에코일렉', scope: '시공', body: '관리사무소 요청으로 착공 연기' });
     expect(await unread(USERS.viewer, id)).toHaveLength(0);
-    expect(await unread(USERS.navy, id)).toHaveLength(0);
+    expect((await unread(USERS.navy, id)).map((x) => x.body)).toEqual(['관리사무소 요청으로 착공 연기']);
     expect(await unread(USERS.ecoelec, id)).toHaveLength(0);
     // 라우트 — 수·목록이 같은 것을 센다
     await signIn(USERS.admin);
@@ -35,14 +35,14 @@ describe('진행현황 알림', () => {
     expect((list.json?.items as Array<{ projectId: string }>).some((x) => x.projectId === id)).toBe(true);
   }, site));
 
-  it('한백이 남기면 그 일을 맡은 협력사에게 — 계약은 영업사, 시공은 시공사, 기성은 아무에게도', () => withProject(async (id) => {
+  it('한백이 남기면 그 현장의 협력사 모두에게 — 기성 탭 글은 협력사에게 안 간다', () => withProject(async (id) => {
     await signIn(USERS.admin);
     for (const [scope, body] of [['계약', '계약서 날인면 보완'], ['시공', '착공계 보완'], ['기성', '운영사 기성 지연']] as const) {
       expect((await call(notePOST, { params: { id }, body: { body, scope } })).status).toBe(200);
     }
-    expect((await unread(USERS.navy, id)).map((x) => x.body)).toEqual(['계약서 날인면 보완']);
-    expect((await unread(USERS.ecoelec, id)).map((x) => x.body)).toEqual(['착공계 보완']);
-    expect(await unread(USERS.admin, id)).toHaveLength(0);
+    expect((await unread(USERS.navy, id)).map((x) => x.body).sort()).toEqual(['계약서 날인면 보완', '착공계 보완']);
+    expect((await unread(USERS.ecoelec, id)).map((x) => x.body).sort()).toEqual(['계약서 날인면 보완', '착공계 보완']);
+    expect(await unread(USERS.admin, id), '쓴 사람은 받지 않는다').toHaveLength(0);
   }, site));
 
   it('읽음 — 현장·갈래 하나만 찍힌다 · 대행 중에는 안 찍힌다 · 「모두 읽음」', () => withProject(async (id) => {

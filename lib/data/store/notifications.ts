@@ -25,18 +25,19 @@ const accessible = (me: Recipient): SQL | undefined =>
 
 /**
  * 글 하나를 받는 사람마다 펼친다 — addNote 의 트랜잭션 안에서 부른다(글과 알림이 같이 남거나 같이 안 남는다).
- * 쓴 사람(actorId)은 빼고, 멈춘 계정은 받지 않는다.
+ * 쓴 사람(actorId)은 빼고, 멈춘 계정은 받지 않는다. 열람 전용은 구분이 admin 도 아니고 소속도 없어 저절로 빠진다.
  */
 export async function fanOutNote(tx: TxLike, input: {
-  noteId: string; projectId: string; scope: NoteScope; byHanbaek: boolean; actorId: string;
+  noteId: string; projectId: string; scope: NoteScope; actorId: string;
   salesOrg: string | null; gcOrg: string | null;
 }): Promise<number> {
   const to = noteAudience(input);
-  if (!to) return 0;
-  const who = to.kind === 'hanbaek'
-    ? and(eq(users.role, 'admin'), eq(users.active, true), ne(users.id, input.actorId))
-    : and(eq(users.org, to.org), eq(users.active, true), ne(users.id, input.actorId));
-  const rows = await tx.select({ id: users.id }).from(users).where(who);
+  const sides: SQL[] = [];
+  if (to.hanbaek) sides.push(eq(users.role, 'admin'));
+  if (to.orgs.length) sides.push(inArray(users.org, to.orgs));
+  if (sides.length === 0) return 0;
+  const rows = await tx.select({ id: users.id }).from(users)
+    .where(and(or(...sides), eq(users.active, true), ne(users.id, input.actorId)));
   if (rows.length === 0) return 0;
   await tx.insert(notifications).values(rows.map((u) => ({
     id: crypto.randomUUID(), userId: u.id, projectId: input.projectId, noteId: input.noteId,
