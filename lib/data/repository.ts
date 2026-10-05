@@ -17,9 +17,14 @@ import type {
   ChargerModel, RecvPreset,
   PayoutPlanRow, ProcessInfo, ProcessStatus, ProjectDetail, ProjectSummary, Settlement, SettlementRule, SettlementSummary, BatchFinal, TaxInvoice,
   Notice, NoticeFile, ReviewEvent, ProjectFactsPatch, LineFactsPatch, ProjectAxesPatch, NewContractLine,
+  NoteNotification,
 } from '@/types/project';
 import type { Actor, Viewer } from '@/lib/auth/types';
 import type { DraftFull, DraftSummary, PhotoRef } from '@/lib/survey/draft-shape';
+import type { Role } from '@/lib/roles';
+
+/** 알림을 받는 사람 — 세고 읽는 쪽(세션의 id·구분·소속) */
+export interface Recipient { id: string; role: Role; org: string | null }
 
 export type { Actor };
 
@@ -460,6 +465,18 @@ export interface ProjectRepository {
   saveSurveyDraft(id: string, input: { title: string; data: unknown; base?: string }, actor: Actor): Promise<{ removed: PhotoRef[]; updatedAt: string }>;
   /** 저장본 지우기 — 사진은 라우트가 폴더째 지운다 [본인] */
   deleteSurveyDraft(id: string, actor: Actor): Promise<void>;
+
+  /** 내 알림 — 진행현황 글이 나에게 온 것, 최신이 위. 협력사는 지금 볼 수 있는 현장의 것만 */
+  listNotifications(me: Recipient, limit?: number): Promise<NoteNotification[]>;
+  /** 내가 안 읽은 알림 수 — 사이드바 배지 */
+  countUnreadNotifications(me: Recipient): Promise<number>;
+  /**
+   * 알림을 읽었다고 찍는다 — 범위: 알림 하나 · 현장 하나(갈래까지) · 없으면 전부. 찍은 수를 돌려준다.
+   * ★열람 전용도 부른다★ — 제 읽음 표시다(공지와 같다). 대행 중에는 라우트가 부르지 않는다.
+   */
+  markNotificationsRead(userId: string, where?: { id?: string; projectId?: string; scope?: NoteScope }): Promise<number>;
+  /** 이 현장에서 내가 안 읽은 글 id — 현장 상세의 「새 글」 */
+  unreadNoteIds(userId: string, projectId: string): Promise<string[]>;
 
   /** 공지 목록 — 최신이 위. 로그인한 누구나 본다(열람 전용 포함) */
   listNotices(): Promise<Notice[]>;

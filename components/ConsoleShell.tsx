@@ -24,6 +24,7 @@ import { usePathname } from 'next/navigation';
 import type { Role } from '@/lib/roles';
 import { canWrite, isHanbaek, ROLE_LABEL } from '@/lib/roles';
 import { TODO_GROUPS, type TodoGroup } from '@/lib/todo-types';
+import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
 import TopBar from '@/components/TopBar';
 
 const COLLAPSE_KEY = 'hb-console-sidebar-collapsed';
@@ -313,6 +314,36 @@ export default function ConsoleShell({
     };
   }, [pathname]);
 
+  /*
+   * 안 읽은 알림 수 — 진행현황에 상대방이 남긴 글(lib/notify.ts · 한백 지시 2026-10-05). 공지 바로 밑에 선다.
+   * 화면을 옮길 때 · 1분마다(한 화면에 오래 머무는 사이에 온 글) · 읽음을 찍었다는 신호가 올 때 다시 센다.
+   */
+  const [alerts, setAlerts] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      if (document.visibilityState === 'hidden') return;
+      void fetch('/api/notifications/unread')
+        .then((r) => (r.ok ? (r.json() as Promise<{ count: number }>) : null))
+        .then((d) => {
+          if (alive && d) setAlerts(d.count);
+        })
+        .catch(() => {
+          /* 배지가 안 뜰 뿐 — 사이드바가 화면을 막으면 안 된다 */
+        });
+    };
+    load();
+    const timer = window.setInterval(load, 60_000);
+    window.addEventListener(NOTIFICATIONS_CHANGED, load);
+    document.addEventListener('visibilitychange', load);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      window.removeEventListener(NOTIFICATIONS_CHANGED, load);
+      document.removeEventListener('visibilitychange', load);
+    };
+  }, [pathname]);
+
   useEffect(() => {
     if (ready) localStorage.setItem(COLLAPSE_KEY, open ? '0' : '1');
   }, [open, ready]);
@@ -366,39 +397,9 @@ export default function ConsoleShell({
             세우고 아래 묶음들과 얇은 선으로 가른다(상자를 겹치지 않는다 — 화면 규칙 1).
           */}
           <div className="mb-3 border-b border-slate-100 pb-3">
-            <Link
-              href="/notices"
-              title={expanded ? undefined : `공지${unread > 0 ? ` — 안 읽음 ${unread}` : ''}`}
-              className={`flex items-center rounded-ctl font-semibold transition ${
-                expanded ? 'gap-2 px-2 py-1.5' : 'justify-center py-2'
-              } ${
-                pathname.startsWith('/notices')
-                  ? 'bg-brand-50 text-brand-800'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-              }`}
-            >
-              {expanded ? (
-                <>
-                  <span className="truncate">공지</span>
-                  {/* 안 읽은 것만 배지를 단다 — 0 을 적으면 할 일 배지(늘 서 있다)와 헷갈린다 */}
-                  {unread > 0 && (
-                    <span className="ml-auto rounded-tag bg-amber-500 px-1.5 py-0.5 text-tiny font-bold tabular-nums text-white">
-                      {unread}
-                    </span>
-                  )}
-                </>
-              ) : (
-                <span className="relative text-tiny font-bold">
-                  공지
-                  {unread > 0 && (
-                    <span
-                      aria-hidden
-                      className="absolute -right-2 -top-1 h-1.5 w-1.5 rounded-full bg-amber-500"
-                    />
-                  )}
-                </span>
-              )}
-            </Link>
+            <TopItem href="/notices" label="공지" count={unread} expanded={expanded} active={pathname.startsWith('/notices')} />
+            {/* 알림 — 진행현황에 상대방이 남긴 글(lib/notify.ts). 공지와 같은 꼴, 공지 바로 밑 */}
+            <TopItem href="/notifications" label="알림" count={alerts} expanded={expanded} active={pathname.startsWith('/notifications')} />
           </div>
 
           {groups.map((g) => (
@@ -565,5 +566,41 @@ function ActAsExit() {
     >
       {busy ? '돌아가는 중…' : '관리자로 돌아가기'}
     </button>
+  );
+}
+
+/**
+ * 사이드바 맨 위 한 줄(공지·알림) — 업무 묶음 밖에서 먼저 읽을 것. 안 읽은 것이 있을 때만 배지를 단다 —
+ * 0 을 적으면 할 일 배지(늘 서 있다)와 헷갈린다. 접힌 사이드바에서는 점 하나.
+ */
+function TopItem({ href, label, count, expanded, active }: {
+  href: string; label: string; count: number; expanded: boolean; active: boolean;
+}) {
+  return (
+    <Link
+      href={href}
+      title={expanded ? undefined : `${label}${count > 0 ? ` — 안 읽음 ${count}` : ''}`}
+      className={`flex items-center rounded-ctl font-semibold transition ${
+        expanded ? 'gap-2 px-2 py-1.5' : 'justify-center py-2'
+      } ${
+        active ? 'bg-brand-50 text-brand-800' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+      }`}
+    >
+      {expanded ? (
+        <>
+          <span className="truncate">{label}</span>
+          {count > 0 && (
+            <span className="ml-auto rounded-tag bg-amber-500 px-1.5 py-0.5 text-tiny font-bold tabular-nums text-white">
+              {count}
+            </span>
+          )}
+        </>
+      ) : (
+        <span className="relative text-tiny font-bold">
+          {label}
+          {count > 0 && <span aria-hidden className="absolute -right-2 -top-1 h-1.5 w-1.5 rounded-full bg-amber-500" />}
+        </span>
+      )}
+    </Link>
   );
 }

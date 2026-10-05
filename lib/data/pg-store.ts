@@ -54,6 +54,7 @@ import { pricingStore } from './store/pricing';
 import { recvPresetStore } from './store/recv-presets';
 import { surveyDraftStore } from './store/survey-drafts';
 import { noticeStore } from './store/notices';
+import { fanOutNote, notificationStore } from './store/notifications';
 import {
   accessWhere, assertAdmin, assertHanbaek, mergeDocs, PROCESS_DOC_KEYS, recordsOf,
   resolveSettlementRule, ruleMap, rowToRule, rowToSettle, settleMap, toCollected, toLine,
@@ -188,6 +189,8 @@ export const pgRepository: ProjectRepository = {
   ...recvPresetStore,
   // 실사보고서 임시 저장본은 store/survey-drafts.ts 에 있다
   ...surveyDraftStore,
+  // 알림(진행현황 글이 상대방에게 간 것)은 store/notifications.ts 에 있다
+  ...notificationStore,
 
   async listProjects(viewer: Viewer): Promise<ProjectSummary[]> {
     if (!isHanbaek(viewer.role) && !viewer.org) return [];
@@ -339,14 +342,24 @@ export const pgRepository: ProjectRepository = {
         throw new Error('기성 진행현황은 한백만 남길 수 있습니다.');
       }
 
+      const noteId = crypto.randomUUID();
+      const scope = isNoteScope(input.scope) ? input.scope : '시공';
       await tx.insert(projectNotes).values({
-        id: crypto.randomUUID(),
+        id: noteId,
         projectId: input.projectId,
         // 사람 이름이 아니라 소속을 남긴다 — 회사마다 계정이 하나라 이름이 늘 같다
         author: actor.role === 'admin' ? '한백' : actor.org ?? '협력사',
         body,
         /* 어느 탭에서 남겼나 — 라우트가 이미 본 값이지만 저장 직전에 한 번 더 본다 */
-        scope: isNoteScope(input.scope) ? input.scope : '시공',
+        scope,
+      });
+      /*
+       * ★상대방에게 알림★ (한백 지시 2026-10-05) — 한백이 쓰면 그 일을 맡은 협력사, 협력사가 쓰면 한백 관리자.
+       * 누구에게 갈지는 lib/notify.ts 한 곳이다. 글과 같은 트랜잭션이다 — 알림만 남거나 글만 남지 않는다.
+       */
+      await fanOutNote(tx, {
+        noteId, projectId: input.projectId, scope, byHanbaek: actor.role === 'admin', actorId: actor.id,
+        salesOrg: project.salesOrg, gcOrg: project.gcOrg,
       });
 
       /*

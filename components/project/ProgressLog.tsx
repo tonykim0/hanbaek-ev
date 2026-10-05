@@ -6,10 +6,11 @@
  * ★어느 칸에도 안 들어가는 사정이 여기 온다.★ 관리사무소가 공사를 미뤘다, 한전 불입이
  * 지연됐다 — 날짜 칸이나 서류 칸으로는 적을 수 없고, 전화로만 오가면 다음 사람이 모른다.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { NoteScope, ProjectNote } from '@/types/project';
 import { useAction } from '@/lib/use-action';
 import { Btn, Err, FIELD } from '@/components/ui';
+import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
 
 /**
  * 진행현황 — 한백과 협력사가 이 현장의 특이사항을 남기는 자리.
@@ -28,7 +29,7 @@ import { Btn, Err, FIELD } from '@/components/ui';
  * 사람 이름은 안 적는다 — 회사마다 계정이 하나라 이름이 늘 같다. 대신 어느 쪽이 썼는지 남긴다.
  */
 export function ProgressLog({
-  projectId, notes, author, scope, canPost,
+  projectId, notes, author, scope, canPost, fresh = [],
 }: {
   projectId: string;
   /** ★이 갈래의 글만 넘긴다★ — 거르는 것은 부르는 쪽(탭)이 한다 */
@@ -46,10 +47,28 @@ export function ProgressLog({
    * (화면 규칙: 눌리는 단추는 되는 일이어야 한다). 목록은 그대로 읽는다.
    */
   canPost: boolean;
+  /**
+   * 내가 아직 안 읽은 글 — 상대방이 남겨 알림이 온 것(lib/notify.ts · 2026-10-05). 「새 글」로 보인다.
+   * ★이 탭을 열면 이 갈래의 알림을 읽음으로 찍는다★ — 표시는 이 화면에 있는 동안 남는다(무엇이 새것이었는지
+   * 읽는 중에 사라지면 못 찾는다).
+   */
+  fresh?: string[];
 }) {
   const { busy, error, run } = useAction();
   const [body, setBody] = useState('');
   const isHanbaek = author === '한백';
+  /* 처음 연 때의 새 글 — 읽음을 찍은 뒤에도 이 화면에서는 표시를 지킨다 */
+  const [freshHere] = useState(() => new Set(fresh.filter((id) => notes.some((n) => n.id === id))));
+  useEffect(() => {
+    if (freshHere.size === 0) return;
+    void fetch('/api/notifications/read', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, scope }),
+    })
+      .then(() => window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED)))
+      .catch(() => {
+        /* 못 찍으면 알림이 남을 뿐 — 다음에 열 때 다시 찍는다 */
+      });
+  }, [freshHere, projectId, scope]);
 
   async function save() {
     if (!body.trim()) return;
@@ -121,7 +140,7 @@ export function ProgressLog({
       {notes.length > 0 && (
         <ol className="mt-3 max-h-[340px] divide-y divide-slate-100 overflow-y-auto">
           {notes.map((n) => (
-            <NoteItem key={n.id} projectId={projectId} note={n} author={author} />
+            <NoteItem key={n.id} projectId={projectId} note={n} author={author} fresh={freshHere.has(n.id)} />
           ))}
         </ol>
       )}
@@ -139,12 +158,14 @@ export function ProgressLog({
  * 사람이 무엇이 맞는지 알 수 없다.
  */
 function NoteItem({
-  projectId, note, author,
+  projectId, note, author, fresh,
 }: {
   projectId: string;
   note: ProjectNote;
   /** 보고 있는 쪽의 이름 — 이것과 같으면 자기 글이다 */
   author: string;
+  /** 알림으로 온, 아직 안 읽었던 글 */
+  fresh: boolean;
 }) {
   const { busy, busyKey, error, setError, run } = useAction();
   const [editing, setEditing] = useState(false);
@@ -181,7 +202,7 @@ function NoteItem({
     <li
       className={`border-l-[3px] py-2 pl-3 ${
         byHanbaek ? 'border-l-slate-800' : 'border-l-brand-500'
-      }`}
+      } ${fresh ? 'bg-amber-50' : ''}`}
     >
       {/*
         * ★한 줄로 못 박는다★ (한백 지적 2026-08-30 「메모가 남겨지면 UI 도 너무 구려」).
@@ -200,6 +221,7 @@ function NoteItem({
             {note.author}
           </span>
           <span className="shrink-0 text-tiny tabular-nums text-slate-400">{note.at}</span>
+          {fresh && <span className="shrink-0 rounded-tag bg-amber-500 px-1.5 py-0.5 text-micro font-black text-white">새 글</span>}
           {note.editedAt && (
             <span className="shrink-0 text-tiny text-slate-400" title={`${note.editedAt} 에 고침`}>
               수정됨

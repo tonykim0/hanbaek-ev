@@ -54,6 +54,7 @@ export default function ProjectDetailView({
   canReview,
   canSeeReceivable,
   noteAuthor,
+  freshNoteIds = [],
   knownOrgs,
   ruleOptions,
   settlementRuleChoices,
@@ -73,6 +74,8 @@ export default function ProjectDetailView({
   canSeeReceivable: boolean;
   /** 진행현황을 남길 때 붙는 이름 (한백 · 협력사 이름) */
   noteAuthor: string;
+  /** 내가 아직 안 읽은 진행현황 글(알림이 온 것) — 「새 글」로 보이고 그 탭을 열면 읽음으로 찍힌다 */
+  freshNoteIds?: string[];
   /** 이미 쓰이고 있는 업체 이름 — 영업사·시공사를 고칠 때 골라 넣는다 */
   knownOrgs: string[];
   /**
@@ -330,10 +333,13 @@ export default function ProjectDetailView({
           {(tab === 'intake' || tab === 'construction' || tab === 'receivable') && (
             <div className="mb-6 min-w-0 border-b border-slate-100 pb-5">
               <ProgressLog
+                // 탭마다 새로 선다 — 그 갈래의 「새 글」을 처음 연 때 기준으로 잡는다
+                key={tab}
                 projectId={project.id}
                 notes={detail.notes.filter((n) => n.scope === NOTE_SCOPE_OF_TAB[tab])}
                 author={noteAuthor}
                 scope={NOTE_SCOPE_OF_TAB[tab]}
+                fresh={freshNoteIds}
                 /*
                  * 계약서 접수와 같은 잣대다 — 쓰는 사람인가(열람 전용 제외).
                  * 기성 갈래는 그 위에 한백만이라는 문이 하나 더 있다(api notes · addNote).

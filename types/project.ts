@@ -1394,6 +1394,21 @@ export function isNoteScope(v: unknown): v is NoteScope {
   return typeof v === 'string' && (NOTE_SCOPES as readonly string[]).includes(v);
 }
 
+/** 알림 한 줄 — 진행현황 글이 상대방에게 간 것(lib/notify.ts). 글이 정본이라 본문·쓴 쪽은 글에서 읽는다 */
+export interface NoteNotification {
+  id: string;
+  projectId: string;
+  projectName: string;
+  noteId: string;
+  scope: NoteScope;
+  /** 글을 쓴 쪽 — 「한백」 또는 협력사 이름 */
+  author: string;
+  body: string;
+  /** 알림이 온 시각 (YYYY-MM-DD HH:mm) */
+  at: string;
+  read: boolean;
+}
+
 export interface ProjectNote {
   id: string;
   author: string;

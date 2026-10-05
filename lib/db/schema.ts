@@ -416,6 +416,21 @@ export const projectNotes = pgTable('project_notes', {
   byProject: index('project_notes_project_idx').on(t.projectId, t.at),
 }));
 
+/**
+ * 알림 — 진행현황 글이 상대방에게 간다 (migrations/0090 · lib/notify.ts).
+ * 받는 사람마다 한 줄이다. 읽음은 read_at. 글을 지우면 같이 지워진다(note_id cascade).
+ */
+export const notifications = pgTable('notifications', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  noteId: text('note_id').notNull().references(() => projectNotes.id, { onDelete: 'cascade' }),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  readAt: timestamp('read_at', { withTimezone: true }),
+}, (t) => ({
+  byUser: index('notifications_user_idx').on(t.userId, t.createdAt),
+}));
+
 // ── 정산 ────────────────────────────────────────────────────────
 export const settlements = pgTable('settlements', {
   projectId: text('project_id').primaryKey().references(() => projects.id, { onDelete: 'cascade' }),

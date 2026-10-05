@@ -21,6 +21,7 @@ const UNGATED_BY_DESIGN: Record<string, string> = {
   'app/api/auth/logout/route.ts': '로그아웃 — 세션을 지우는 일이라 누구나',
   'app/api/intake/route.ts': '포털 접수 — 2026-08-26 닫혔다(lib/portal-intake.ts). 세션 없는 입구라 문이 아니라 폐쇄 안내를 준다',
   'app/api/notices/read/route.ts': '자기 읽음 표시 — 쓰기 권한과 무관, 로그인만 본다',
+  'app/api/notifications/read/route.ts': '자기 알림 읽음 표시 — 공지 읽음과 같다. 대행 중에는 찍지 않는다',
   'app/api/upload/route.ts': '서류 도구의 임시 올리기 토큰 — DB 에 안 쓴다. 열람 전용도 쓴다(한백 지시 2026-08-31)',
   'app/api/import-form/route.ts': '재발행 판독 — DB 에 안 쓴다. 열람 전용도 쓴다(2026-08-31). 파일 임자는 stagedPathnameOf 가 본다',
   'app/api/admin/partner-details/read/route.ts': 'POST 로 받는 조회 — 권한은 getPartnerDetails 가 actor 로 본다',

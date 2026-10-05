@@ -15,6 +15,7 @@ export const CONSOLE_PATHS = [
    * matcher 가 점 붙은 경로(정적 파일)를 빼므로 포털 주소에서도 그대로 열린다.
    */
   '/notices',
+  '/notifications', // 알림 — 진행현황 글이 상대방에게 간 것 (2026-10-05)
   '/dashboard',
   '/projects',
   '/construction',
