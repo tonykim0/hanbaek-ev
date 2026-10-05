@@ -8,7 +8,7 @@
  */
 import { useState } from 'react';
 import { reviewKindLabel } from '@/lib/review-labels';
-import type { ContractState, ProcessStatus, ProjectDetail, ProjectDocument } from '@/types/project';
+import type { ContractState, InstallLoc, ProcessStatus, ProjectDetail, ProjectDocument } from '@/types/project';
 import { BUILDING_TYPES, CONTRACT_PARTIES, replLabel, TERM_YEARS } from '@/types/project';
 import { contractDocsLockedWhy, gateContextOf, nextStatusOf, prevStatusOf } from '@/lib/process';
 import { HANDOFF_STATUS } from '@/lib/board';
@@ -969,12 +969,20 @@ export function IntakeTab({
  *
  * 화면이 아니라 ★붙여 넣을 글★이라 규칙이 다르다:
  *   · 빈 값에 「미지정」을 적지 않는다 — 그대로 복사돼 나간다. 비워 두고 사람이 채운다.
- *   · 콘솔에 없는 값은 둘이다: ★설치위치(옥내/옥외)★ 와 ★기타★. 받는 자리를 새로
- *     만들지 않았다 — 현장마다 한 번 적고 마는 값이라 여기서 손으로 채우는 편이 짧다.
+ *   · ★설치위치는 현장 머리말의 값이다★ (2026-09-30 칸이 생겼다 — 그전에는 「옥내/옥외」를
+ *     박아 두고 손으로 지우게 했다). 우리 말(실내·실외)을 나이스 말(옥내·옥외)로 옮긴다.
+ *     콘솔에 없는 값은 ★기타★ 하나다 — 현장마다 한 번 적고 마는 값이라 여기서 손으로 채운다.
  *   · 설치유형은 우리 낱말(환경부·자체투자)이 아니라 ★나이스가 쓰는 말(보조·투자)★로 적는다.
  *
  * 나이스 현장에서만 선다. 다른 운영사는 이 양식을 안 받는다.
  */
+/** 설치위치를 나이스가 쓰는 말로 — 결과서와 같은 낱말이다 */
+const NICE_LOC: Record<InstallLoc, string> = {
+  실내: '옥내',
+  실외: '옥외',
+  '실내·실외': '옥내/옥외',
+};
+
 function NiceSubmitInfo({
   project, lines,
 }: {
@@ -986,13 +994,14 @@ function NiceSubmitInfo({
   const bizLabel = project.bizType === '자체투자' ? '투자' : project.bizType === '환경부' ? '보조' : '';
   /* 기설치는 「있음」일 때만 내용이 있다 — 조사해서 없는 것은 「없음」이 답이다 */
   const pre = project.preInstall === '있음' ? (project.preNote ?? '') : '없음';
+  const loc = project.installLoc === null ? '' : NICE_LOC[project.installLoc];
 
   const text = [
     `1. 장소명 : ${project.name}`,
     `2. 주소 : ${project.addr ?? ''}`,
     `3. 주차면수 : ${project.parkTotal ? `${project.parkTotal}면` : ''}`,
     `4. 설치기수 : ${qty > 0 ? `${qty}기` : ''}`,
-    '5. 설치위치 : 옥내/옥외',
+    `5. 설치위치 : ${loc}`,
     `6. 설치유형 : ${bizLabel}`,
     `7. 기설치 현황 : ${pre}`,
     '8. 기타 : ',
@@ -1024,7 +1033,7 @@ function NiceSubmitInfo({
       </pre>
       {/* 비어 있는 줄은 여기서 말한다 — 글 안에 「미지정」을 적으면 그대로 나간다 */}
       <p className="mt-1.5 text-tiny text-slate-400">
-        5번(옥내/옥외)과 8번(기타)은 콘솔에 없는 값입니다 — 복사한 뒤 채워 보내세요.
+        {loc ? '8번(기타)은' : '5번(설치위치 — 머리말에서 입력)과 8번(기타)은'} 비어 있습니다 — 복사한 뒤 채워 보내세요.
       </p>
     </section>
   );
