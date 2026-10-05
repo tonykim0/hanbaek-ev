@@ -14,7 +14,7 @@ import { Fragment, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import type {
   BatchFinal, CpoName, DocFile, DocStatus, PayoutCategory, PayoutEntry, PayoutKind, ProjectDetail, SettlementRule,
-  SettlementRuleChoice, SettlementStep,
+  SettlementRuleChoice, SettlementStep, StepState,
 } from '@/types/project';
 import { PAYOUT_CATEGORIES, replLabel } from '@/types/project';
 import {
@@ -137,7 +137,16 @@ export function ReceivableTab({
    * 없을 수 있다는 것을 타입이 말하므로 빈 값으로 받아 둔다. 협력사 응답에는 이 키가 없다.
    */
   const admin = detail.admin;
-  const steps = admin?.steps ?? [];
+  /*
+   * ★규칙에 없는 차수는 줄을 세우지 않는다★ (2026-10-05 화면 검토). 2단계 규칙의 3차가
+   * 「해당없음 · 해당 차수 없음 · 해당없음 · —」로 한 줄에서 같은 말을 네 번 했다(화면 규칙 5).
+   * 규칙이 아예 없는 현장도 마찬가지다 — 그때는 차수 셋이 다 「해당없음」으로 서서 기성이 원래
+   * 없는 현장처럼 읽혔는데, 그 자리의 말은 위 정산 규칙 칸의 「미지정」이 한다.
+   * 표(운영사 기성관리)는 열을 맞춰야 해서 「해당없음」 칸을 그대로 둔다 — 여기는 줄 목록이다.
+   */
+  const steps = (admin?.steps ?? []).filter(
+    (s): s is SettlementStep & { state: Exclude<StepState, 'na'> } => s.state !== 'na'
+  );
   /* 수금률은 ★차수만★ 센다 (한백 2026-09-06) — 수수료는 차수 밖의 마지막 한 건이다 */
   const rate = collectionRate(steps);
 
@@ -168,19 +177,10 @@ export function ReceivableTab({
           >
             <span className="w-10 shrink-0 text-tiny font-bold text-slate-400">{s.no}차</span>
             <div className="min-w-0 flex-1">
-              <p className="text-lead font-bold text-slate-800">
-                {s.trigger === '해당없음' ? '해당없음' : `${s.trigger} · ${s.basisLabel}`}
-              </p>
-              <p className="text-tiny text-slate-500">
-                {s.state === 'na' ? '해당 차수 없음' : triggerSource(s.trigger)}
-              </p>
+              <p className="text-lead font-bold text-slate-800">{`${s.trigger} · ${s.basisLabel}`}</p>
+              <p className="text-tiny text-slate-500">{triggerSource(s.trigger)}</p>
             </div>
-            {/* 규칙상 없는 차수는 배지가 아니라 빈 값이다(화면 규칙 10) */}
-            {s.state === 'na' ? (
-              <Empty kind="na" />
-            ) : (
-              <Badge tone={STEP_TONE[s.state]}>{STEP_LABEL[s.state]}</Badge>
-            )}
+            <Badge tone={STEP_TONE[s.state]}>{STEP_LABEL[s.state]}</Badge>
             <span className="w-28 shrink-0 text-right text-lead font-black tabular-nums text-slate-800">
               {s.planAmount === null ? <span className="text-slate-300">—</span> : won(s.planAmount)}
             </span>

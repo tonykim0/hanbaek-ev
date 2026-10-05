@@ -362,7 +362,7 @@ export default function ReceivableBoard({ rows, canEdit }: {
                   </p>
                 </Td>
                 {([1, 2, 3] as const).map((no) => (
-                  <StepCell key={no} step={r.steps.find((x) => x.no === no) ?? null} />
+                  <StepCell key={no} step={r.steps.find((x) => x.no === no) ?? null} noRule={r.ruleName === null} />
                 ))}
                 <FeeCell row={r} canEdit={canEdit} />
                 <Td money className="font-bold text-slate-800">
@@ -559,9 +559,24 @@ function FeeEdit({ row, onDone }: { row: SettlementSummary; onDone: () => void }
  */
 function StepCell({
   step,
+  noRule,
 }: {
   step: Pick<SettlementSummary['steps'][number], 'state' | 'planAmount' | 'trigger' | 'collectedAt' | 'collectedAmount'> | null;
+  /** 정산 규칙이 아직 없는 현장 — 차수가 없는 게 아니라 정하지 않은 것이다 */
+  noRule: boolean;
 }) {
+  /*
+   * ★규칙이 없으면 「해당없음」이 아니라 「미지정」이다★ (2026-10-05 화면 검토). 둘은 다른 말이다
+   * (화면 규칙 10) — 「해당없음」은 규칙상 그 차수가 없는 것(2단계 규칙의 3차)이고, 규칙 자체가
+   * 없는 현장은 넣어야 하는데 안 넣은 것이다. 같은 글자로 두면 기성이 원래 없는 현장처럼 읽혔다.
+   */
+  if (noRule) {
+    return (
+      <Td>
+        <Empty kind="miss" />
+      </Td>
+    );
+  }
   // 규칙상 없는 차수는 배지가 아니라 빈 값이다(화면 규칙 10번)
   if (!step || step.state === 'na') {
     return (
