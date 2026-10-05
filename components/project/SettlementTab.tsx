@@ -1513,7 +1513,9 @@ function Cell({
  *
  * 별도 테이블 없이 비고(payNote)에 날짜 스탬프 줄로 쌓는다 — 한 줄이 한 건이고,
  * 고치기·지우기는 그 줄만 갈아 끼우거나 걷어낸다. 전용 기능(원장)은 쓰면서 다시 정하기로 했다.
- * 협력사는 읽기만 한다.
+ * ★한백만 본다★(한백 지시 2026-09-18 「우리만 보게 해줘」) — 협력사 응답에서는 서버가 지운다(redactForViewer).
+ * 쓰기는 관리자, 열람 전용은 읽기만. 머리에 「한백만 봄」을 단다(2026-10-05) — 다른 탭의 진행현황은 협력사와 같이
+ * 쓰고 알림까지 가는 자리라, 같은 이름의 이 칸이 어느 쪽인지 보여야 한다.
  *
  * ★고치는 자리를 같이 만든다 (한백 2026-08-30, 화면 규칙 7).★ 그전에는 남기기와 삭제만
  * 있어서, 오타 한 자를 고치려면 지우고 다시 적어야 했다 — 그러면 날짜가 오늘로 바뀌어
@@ -1587,6 +1589,7 @@ function PayNoteBox({
       <div className="mb-2 flex items-baseline gap-2">
         <h3 className="text-base font-black text-slate-900">진행현황 및 메모</h3>
         <span className="text-tiny text-slate-400">{entries.length}건</span>
+        <span className="self-center"><Badge tone="hold">한백만 봄</Badge></span>
       </div>
 
       {canReview && (
@@ -1601,7 +1604,8 @@ function PayNoteBox({
             }}
             className={FIELD}
           />
-          <Btn size="sm" busy={busy} busyLabel="저장 중…" disabled={!draft.trim()} onClick={() => void add()}>
+          {/* 줄지 않게 — 입력칸 옆에서 「남기 / 기」 두 줄로 접혔다 */}
+          <Btn size="sm" className="shrink-0" busy={busy} busyLabel="저장 중…" disabled={!draft.trim()} onClick={() => void add()}>
             남기기
           </Btn>
         </div>
