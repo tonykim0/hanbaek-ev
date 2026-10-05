@@ -132,8 +132,18 @@ async function main() {
   for (const s of sumOff) console.log(s);
   bad += sumOff.length;
 
+  /*
+   * ★기본 규칙이 없다고 다 문제는 아니다★ — 사업 자체가 없으면 붙일 일도 없다.
+   * 에버온 자체투자가 그렇다(한백 2026-09-18 「에버온은 자체투자가 지금 없어」). 케이스는
+   * 2026-07-01 정책의 기록이라 지우지 않는다 — 다만 그 사업이 생기면 ★정산 규칙을 먼저★
+   * 붙여야 한다. 안 그러면 그 현장은 기성 차수가 하나도 안 선다.
+   */
   console.log(`\n② 기본 정산 규칙이 없는 케이스 — ${noRule.length}건`);
   for (const s of noRule) console.log(s);
+  if (noRule.length > 0) {
+    console.log('   ※ 에버온 자체투자는 사업이 없어 참조 0건이다(한백 2026-09-18) —');
+    console.log('     그 사업이 생기면 케이스를 붙이기 전에 정산 규칙부터 정한다.');
+  }
 
   // ③ 이름 ↔ 축
   const nameOff: string[] = [];
