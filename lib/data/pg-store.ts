@@ -55,6 +55,7 @@ import { recvPresetStore } from './store/recv-presets';
 import { surveyDraftStore } from './store/survey-drafts';
 import { noticeStore } from './store/notices';
 import { fanOutNote, notificationStore } from './store/notifications';
+import { loadPreInstallCheck, preinstallCheckStore } from './store/preinstall-check';
 import {
   accessWhere, assertAdmin, assertHanbaek, mergeDocs, PROCESS_DOC_KEYS, recordsOf,
   resolveSettlementRule, ruleMap, rowToRule, rowToSettle, settleMap, toCollected, toLine,
@@ -191,6 +192,8 @@ export const pgRepository: ProjectRepository = {
   ...surveyDraftStore,
   // 알림(진행현황 글이 상대방에게 간 것)은 store/notifications.ts 에 있다
   ...notificationStore,
+  // 기설치 엑셀 ↔ 증빙 대조 결과는 store/preinstall-check.ts 에 있다
+  ...preinstallCheckStore,
 
   async listProjects(viewer: Viewer): Promise<ProjectSummary[]> {
     if (!isHanbaek(viewer.role) && !viewer.org) return [];
@@ -247,11 +250,17 @@ export const pgRepository: ProjectRepository = {
     }));
 
     // 금액을 브라우저로 보내기 전에 지운다 — 화면에서 가리는 것만으로는 소스에 남는다
-    const [rules, settles] = await allSlots([() => ruleMap(), () => settleMap()] as const);
-    return redactForViewer(
-      toDetail(record, rules, settles),
-      effectiveVisibility(viewer.role, viewer.org, row)
+    const [rules, settles, preinstallCheck] = await allSlots(
+      [() => ruleMap(), () => settleMap(), () => loadPreInstallCheck(id)] as const
     );
+    return {
+      ...redactForViewer(
+        toDetail(record, rules, settles),
+        effectiveVisibility(viewer.role, viewer.org, row)
+      ),
+      // 금액이 없는 값이라 가리지 않는다 — 협력사가 어긋난 곳을 보고 고친다
+      preinstallCheck,
+    };
   },
 
 

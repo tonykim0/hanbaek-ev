@@ -392,8 +392,10 @@ function FactGroup(
 
 export function IntakeTab({
   project, evaluated, byKind, contract, projectId, siteName, canReview, canSubmit, canEditDocs,
-  canFillEmpty = false, knownOrgs, status, lines,
+  canFillEmpty = false, knownOrgs, status, lines, preinstallCheck = null,
 }: {
+  /** 기설치 이력 엑셀 ↔ 증빙의 마지막 대조 — 기설치 조사 구역이 그린다 */
+  preinstallCheck?: ProjectDetail['preinstallCheck'];
   knownOrgs: string[];
   project: ProjectDetail['project'];
   evaluated: ReturnType<typeof evaluateDocs>;
@@ -568,6 +570,7 @@ export function IntakeTab({
         canEditDocs={canEditDocs}
         canFillEmpty={canFillEmpty}
         surveyText={surveyText}
+        check={preinstallCheck}
       />
 
       <section>

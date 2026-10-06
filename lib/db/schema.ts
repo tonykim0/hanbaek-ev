@@ -308,6 +308,14 @@ export const surveyDrafts = pgTable('survey_drafts', {
   ownerIdx: index('survey_drafts_owner_idx').on(t.ownerId, t.cpo, t.updatedAt),
 }));
 
+/** 기설치 이력 엑셀 ↔ 증빙 대조 — 현장마다 마지막 하나 (migrations/0093, lib/preinstall-check) */
+export const preinstallChecks = pgTable('preinstall_checks', {
+  projectId: text('project_id').primaryKey().references(() => projects.id, { onDelete: 'cascade' }),
+  result: jsonb('result').notNull(),
+  checkedBy: text('checked_by'),
+  checkedAt: timestamp('checked_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const chargerModels = pgTable('charger_models', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),

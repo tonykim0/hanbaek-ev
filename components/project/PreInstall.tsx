@@ -18,6 +18,8 @@ import { DocDelete, DocFileActions, DocUpload, DownloadAll } from '@/components/
 import { useAction } from '@/lib/use-action';
 import { Badge, Btn, Choice, Empty, Err, FIELD, Tag } from '@/components/ui';
 import { DocReview } from './DocReview';
+import { PreInstallCheckBlock } from './PreInstallCheck';
+import type { PreInstallCheck } from '@/lib/preinstall-check';
 import { docCardTone, docState, RejectReason } from './parts';
 import { LookupResults, useShardLoader } from '@/components/ChargerHistoryLookup';
 import {
@@ -31,8 +33,10 @@ import subsidyMeta from '@/public/data/subsidy-history/meta.json';
 
 export function PreInstall({
   project, docs, byKind, siteName, canReview, canRemove = false,
-  canEditDocs = false, canFillEmpty = false, surveyText,
+  canEditDocs = false, canFillEmpty = false, surveyText, check = null,
 }: {
+  /** 설치이력 엑셀 ↔ 증빙의 마지막 대조 (lib/preinstall-check) */
+  check?: PreInstallCheck | null;
   project: ProjectDetail['project'];
   docs: ReturnType<typeof evaluateDocs>;
   byKind: Map<string, ProjectDocument>;
@@ -160,6 +164,18 @@ export function PreInstall({
           />
         ))}
       </div>
+
+      {/*
+        * 두 칸 아래에 둔다 — 견주는 것이 이 두 칸이다. 돌리는 것은 한백(검수와 같은 손, canReview),
+        * 결과는 협력사도 본다.
+        */}
+      <PreInstallCheckBlock
+        projectId={project.id}
+        check={check}
+        currentFiles={['legacylog', 'legacyev'].flatMap((k) => byKind.get(k)?.files.map((f) => f.url) ?? [])}
+        canRun={canReview}
+        hasSheet={(byKind.get('legacylog')?.files.length ?? 0) > 0}
+      />
     </section>
   );
 }

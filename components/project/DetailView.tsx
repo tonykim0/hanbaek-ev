@@ -368,6 +368,7 @@ export default function ProjectDetailView({
               canFillEmpty={canFillEmpty}
               status={process.status}
               lines={lines}
+              preinstallCheck={detail.preinstallCheck ?? null}
             />
           )}
           {tab === 'construction' && <ConstructionTab detail={detail} edit={processEdit} />}

@@ -123,6 +123,18 @@ async function extractPDFsFromZip(buffer: Buffer): Promise<NormalizedFile[]> {
  * HEIC/HEIF → PNG 변환. heic-convert(libheif wasm)를 필요할 때만 동적 로드.
  * (JPEG 출력은 pdf-lib embedJpg가 거부하는 경우가 있어 PNG로 변환)
  */
+/**
+ * 사진 한 장을 PDF 로 — 판독은 PDF 로 보낸다(접수 ZIP 과 같은 변환). 사진이 아니면 null.
+ * 기설치 증빙 대조(lib/legacy-evidence)가 칸에 올라온 사진을 읽을 때 쓴다.
+ */
+export async function imageFileToPdf(name: string, buffer: Buffer): Promise<NormalizedFile | null> {
+  const lower = name.toLowerCase();
+  const kind = /\.png$/.test(lower) ? 'png' : /\.jpe?g$/.test(lower) ? 'jpg' : /\.hei[cf]$/.test(lower) ? 'heic' : null;
+  if (!kind) return null;
+  const pdf = kind === 'heic' ? await imageToPdf(await heicToPng(buffer), 'png') : await imageToPdf(buffer, kind);
+  return { name, buffer: pdf, hash: sha256(pdf), mimeType: 'application/pdf' };
+}
+
 async function heicToPng(heicBuffer: Buffer): Promise<Buffer> {
   const convert = (await import('heic-convert')).default;
   const out = await convert({ buffer: heicBuffer, format: 'PNG' });

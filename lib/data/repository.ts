@@ -21,6 +21,7 @@ import type {
 } from '@/types/project';
 import type { Actor, Viewer } from '@/lib/auth/types';
 import type { DraftFull, DraftSummary, PhotoRef } from '@/lib/survey/draft-shape';
+import type { PreInstallCheck } from '@/lib/preinstall-check';
 import type { Role } from '@/lib/roles';
 
 /** 알림을 받는 사람 — 세고 읽는 쪽(세션의 id·구분·소속) */
@@ -205,6 +206,14 @@ export interface ProjectRepository {
     },
     actor: Actor
   ): Promise<void>;
+
+  /**
+   * 기설치 이력 엑셀 ↔ 증빙 대조 결과를 남긴다. [한백 전용]
+   *
+   * 현장마다 마지막 하나 — 다시 대조하면 덮는다. 대조 자체(엑셀 읽기·증빙 판독·판정)는
+   * 라우트가 하고 여기는 저장만 한다. 결과는 getProject 의 preinstallCheck 로 읽힌다.
+   */
+  savePreInstallCheck(projectId: string, check: PreInstallCheck, actor: Actor): Promise<void>;
 
   /**
    * 영업사·시공사를 고친다. [한백 전용]

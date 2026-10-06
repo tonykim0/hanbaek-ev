@@ -9,6 +9,7 @@
  *  - 단가 지정 = 스냅샷. 매트릭스를 나중에 고쳐도 지정된 라인 금액은 안 바뀐다.
  *  - 서류는 번호가 아니라 종류(kind)로 다룬다.
  */
+import type { PreInstallCheck } from '@/lib/preinstall-check';
 
 export type CpoName =
   | '플러그링크'
@@ -1698,6 +1699,11 @@ export interface ProjectDetail {
    * 협력사에게는 자기 쪽(영업비/시공비)만 실려 간다(redactForViewer).
    */
   payoutEntries: PayoutEntry[];
+  /**
+   * 기설치 이력 엑셀 ↔ 증빙의 마지막 대조 — 상세를 열 때만 읽는다(목록은 안 쓴다).
+   * 협력사도 본다: 어긋난 곳을 고쳐 다시 내는 것이 협력사의 일이다. 금액이 없다.
+   */
+  preinstallCheck?: PreInstallCheck | null;
 }
 
 // ── 접수 입력 ────────────────────────────────────────────────────
