@@ -14,6 +14,22 @@ const anthropic = new Anthropic({
 });
 
 const MODEL = 'claude-sonnet-4-6';
+/**
+ * ★거절(stop_reason: refusal)이면 이 모델로 다시 읽는다★ (2026-10-06, 일곡금호.zip).
+ *
+ * 거꾸로 스캔된 계약서 8쪽을 회전 정규화(lib/pdf-orient)로 바로 세워 보냈더니 MODEL 이
+ * ★매번 거절★했다 — 출력 0 토큰, 블록 없음. 계약서 본문에 문제될 것이 없는 오판이다.
+ * 실측: 바로 선 PDF × MODEL = 거절 3/3 · 거꾸로 된 원본 × MODEL = 정상 · 바로 선 PDF ×
+ * 이 모델 = 정상(현장명·주소·대수 그대로). 그전에는 거절을 「JSON 을 못 찾음」으로 읽고
+ * 같은 요청을 세 번 되풀이한 뒤 「자동 분류 실패」로 떨어졌다 — 거절은 출력 전에 나므로
+ * 재시도 문구를 바꿔도 소용없다. 모델을 바꿔야 한다.
+ *
+ * ★거절일 때만 넘어간다★ — 판독 품질은 모델마다 다르고(반복 검증 없이 기본 모델을 바꾸지
+ * 않는다), 지금 거절되는 문서는 어차피 통째로 실패하던 것이라 이 길이 무엇도 나쁘게 만들지
+ * 않는다. 원본(거꾸로)으로 되돌려 읽는 길도 됐지만 고르지 않았다 — 판독 모델에게 눕거나
+ * 뒤집힌 쪽을 보내지 않으려고 회전 정규화를 둔 것이다(90°·270° 는 방향을 반대로 읽었다).
+ */
+const REFUSAL_FALLBACK_MODEL = 'claude-sonnet-5';
 /** 개별 Claude 호출 타임아웃 */
 const CALL_TIMEOUT_MS = 50_000;
 /** 최대 시도 횟수 */
@@ -57,6 +73,11 @@ export async function classifyAndExtract(
 
   const startedAt = Date.now();
   let lastError: unknown;
+  /** 거절을 받으면 바뀐다 — 그 뒤 시도는 REFUSAL_FALLBACK_MODEL 로 간다 */
+  let model: string = MODEL;
+  const sent = () =>
+    `PDF ${pdfOnly.length}개 ${mb(pdfOnly.reduce((n, p) => n + p.buffer.length, 0))}MB `
+    + `[${pdfOnly.map((p) => `${p.name} ${mb(p.buffer.length)}MB`).join(' · ')}]`;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
@@ -68,13 +89,24 @@ export async function classifyAndExtract(
       const ask = attempt === 1 ? content : [...content, { type: 'text' as const, text: RETRY_NUDGE }];
       const message = await anthropic.messages.create(
         {
-          model: MODEL,
+          model,
           // 파일이 많은 통합 PDF는 files 배열이 커서 4096으로는 JSON이 잘릴 수 있음
           max_tokens: 8192,
           messages: [{ role: 'user', content: ask }],
         },
         { timeout: CALL_TIMEOUT_MS }
       );
+      if (message.stop_reason === 'refusal') {
+        lastError = new Error(`${model} 이 판독을 거절했습니다(stop_reason: refusal).`);
+        if (model !== REFUSAL_FALLBACK_MODEL) {
+          // 기다릴 이유가 없다 — 같은 모델에 다시 보내면 또 거절한다(실측 3/3)
+          console.warn(`[claude] ${model} 이 판독을 거절 — ${REFUSAL_FALLBACK_MODEL} 로 다시 읽는다 · 보낸 것: ${sent()}`);
+          model = REFUSAL_FALLBACK_MODEL;
+          continue;
+        }
+        console.warn(`[claude] ${model} 도 거절 · 보낸 것: ${sent()}`);
+        break;
+      }
       return parseMetadata(message);
     } catch (err) {
       lastError = err;
@@ -84,12 +116,7 @@ export async function classifyAndExtract(
        * 왜 비었는지 알 길이 없었다. 모델·프롬프트·PDF 한 장짜리 호출은 전부 멀쩡했으므로
        * 범인은 ★그 묶음의 규모나 내용★이다 — 그렇다면 그 규모가 로그에 있어야 한다.
        */
-      console.warn(
-        `[claude] 추출 시도 ${attempt}/${MAX_ATTEMPTS} 실패 · 보낸 것: PDF ${pdfOnly.length}개 `
-        + `${mb(pdfOnly.reduce((n, p) => n + p.buffer.length, 0))}MB `
-        + `[${pdfOnly.map((p) => `${p.name} ${mb(p.buffer.length)}MB`).join(' · ')}]`,
-        err
-      );
+      console.warn(`[claude] 추출 시도 ${attempt}/${MAX_ATTEMPTS} 실패 (${model}) · 보낸 것: ${sent()}`, err);
       // 남은 시간이 부족하면 재시도하지 않는다 (라우트 maxDuration 보호)
       if (attempt >= MAX_ATTEMPTS || Date.now() - startedAt > RETRY_ELAPSED_BUDGET_MS) break;
       await sleep(800 * attempt);
