@@ -66,12 +66,36 @@ export function PreInstall({
    * 구역을 없애지 않는다 — 「안 올림」과 「해당없음」은 다른 것이다.
    */
   if (!needsPreInstallCheck(project.bizType)) {
+    /*
+     * ★조사는 해당없음이어도 온 파일은 보인다★ (2026-10-06). 접수 판독이 행위신고증명서·
+     * 필증·예전 계약서를 기설치 증빙 칸에 넣는데(doc-category-map), 자체투자 현장에서는
+     * 이 구역이 배지 하나뿐이라 그 파일이 화면 어디에도 없었다. 파일이 있는 칸만 그리고,
+     * 조사·올리기·반려는 그대로 없다 — 빼기만 둔다(잘못 온 장을 걷어낼 길).
+     */
+    const filed = docs.filter((d) => (byKind.get(d.key)?.files.length ?? 0) > 0);
     return (
       <section>
         <div className="flex flex-wrap items-baseline gap-x-2">
           <h2 className="text-h3 font-black text-slate-900">기설치 조사</h2>
           <Badge>해당없음</Badge>
         </div>
+        {filed.length > 0 && (
+          <div className="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {filed.map((d) => (
+              <PreDocCard
+                key={d.key}
+                d={d}
+                doc={byKind.get(d.key)}
+                projectId={project.id}
+                siteName={siteName}
+                canReview={false}
+                canRemove={canRemove}
+                canEditDocs={false}
+                canFillEmpty={false}
+              />
+            ))}
+          </div>
+        )}
       </section>
     );
   }
@@ -122,95 +146,120 @@ export function PreInstall({
         오른쪽 빈 자리는 그 값을 치른 것이다.
       */}
       <div className="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {docs.map((d) => {
-          const doc = byKind.get(d.key);
-          const st = docState(doc, d.req);
-          return (
-            /*
-              relative — 끌어다 놓는 덮개가 이 칸을 덮는다(DocFiles 의 DocUpload).
-              바탕은 서류 카드와 같은 규칙이다(docCardTone) — 그전에는 이 카드만 늘
-              흰 바탕이라, 같은 반려가 계약 서류에서는 주황이고 여기서는 색이 없었다.
-            */
-            <div key={d.key} className={`relative flex flex-col rounded-box border p-2.5 ${docCardTone(doc, d.req)}`}>
-              <div className="flex items-start justify-between gap-2">
-                <p className="break-keep text-small font-bold leading-snug text-slate-800">
-                  {d.label}
-                  {d.ext && <span className="ml-1.5 text-micro font-bold text-slate-400">{d.ext}</span>}
-                </p>
-                <span className={`shrink-0 text-micro font-black ${st.tone}`}>{st.label}</span>
-              </div>
-              {doc?.uploadedAt && <p className="mt-1 text-tiny text-slate-400">{doc.uploadedAt}</p>}
-              {doc?.rejectReason && <RejectReason>{doc.rejectReason}</RejectReason>}
-
-              {/*
-                * 서류 칸과 같은 세 구역이다 — 사실 · 파일 목록 · 조작 (IntakeTab 의 카드 주석 참조).
-                * 같은 서류를 두 구역에서 다른 모양으로 보여주면 어느 쪽이 맞는지 물어야 한다.
-                */}
-              {doc && doc.files.length > 0 && (
-                <div className="mt-2 border-t border-slate-900/[0.07] pt-2">
-                  <DocFileActions
-                    doc={doc}
-                    siteName={siteName}
-                    label={d.label}
-                    projectId={project.id}
-                    canRemove={canRemove}
-                  />
-                </div>
-              )}
-
-              {/*
-                * 조작 줄은 담을 것이 있을 때만 — 서류 구역(IntakeTab)과 같은 조건이다.
-                * 올리기는 잠금 판정을 따른다(canEditDocs, 빈 칸이면 canFillEmpty) — 서버가
-                * 거절할 단추를 세우지 않는다(화면 규칙 3).
-                */}
-              {(canEditDocs || (canFillEmpty && (!doc || doc.files.length === 0)) || canReview) && (
-              <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-slate-900/[0.07] pt-2">
-                {(canEditDocs || (canFillEmpty && (!doc || doc.files.length === 0))) && (
-                  <DocUpload
-                    projectId={project.id}
-                    kind={d.key}
-                    rejected={doc?.status === 'rejected'}
-                    fileCount={doc?.files.length ?? 0}
-                    single={!canEditDocs && canFillEmpty && (!doc || doc.files.length === 0)}
-                  />
-                )}
-                <span className="flex-1" />
-                {/*
-                  * ★안 낸 칸도 반려한다★ — 계약 서류 격자와 같은 규칙이다
-                  * (한백 지시 2026-09-03). 그 변경이 서류 구역(IntakeTab)에만 오고
-                  * 이 격자는 `doc && doc.status !== 'none'` 으로 남아 있었다 — 칸에
-                  * 행이 아예 없으면(아직 아무도 안 올림) 반려 단추가 서지 않아,
-                  * 기설치 이력을 안 낸 현장을 짚어 돌려보낼 길이 없었다
-                  * (한백 지적 2026-09-06, 경남 양산 대우마리나 아파트).
-                  *
-                  * 저장소는 처음부터 받아 준다 — checkReviewable 이 「행이 없어도
-                  * 반려는 선다」이고 setDocumentStatus 가 행을 만든다. 화면만 막고
-                  * 있었으니, 서버가 허락하는 일을 단추가 없어서 못 하던 자리다.
-                  */}
-                {canReview && (
-                  <DocReview
-                    projectId={project.id}
-                    kind={d.key}
-                    status={doc?.status ?? 'none'}
-                    hasFile={(doc?.files.length ?? 0) > 0}
-                  />
-                )}
-                {canReview && doc && doc.status !== 'none' && (
-                  <DocDelete
-                    projectId={project.id}
-                    kind={d.key}
-                    label={d.label}
-                    filename={doc.filename}
-                    count={doc.files.length}
-                  />
-                )}
-              </div>
-              )}
-            </div>
-          );
-        })}
+        {docs.map((d) => (
+          <PreDocCard
+            key={d.key}
+            d={d}
+            doc={byKind.get(d.key)}
+            projectId={project.id}
+            siteName={siteName}
+            canReview={canReview}
+            canRemove={canRemove}
+            canEditDocs={canEditDocs}
+            canFillEmpty={canFillEmpty}
+          />
+        ))}
       </div>
     </section>
+  );
+}
+
+/** 기설치 서류 한 칸 — 조사 구역과 「해당없음」 구역(자체투자인데 파일이 온 칸)이 같이 쓴다 */
+function PreDocCard({
+  d, doc, projectId, siteName, canReview, canRemove, canEditDocs, canFillEmpty,
+}: {
+  d: ReturnType<typeof evaluateDocs>[number];
+  doc: ProjectDocument | undefined;
+  projectId: string;
+  siteName: string;
+  canReview: boolean;
+  canRemove: boolean;
+  canEditDocs: boolean;
+  canFillEmpty: boolean;
+}) {
+  const st = docState(doc, d.req);
+  return (
+    /*
+      relative — 끌어다 놓는 덮개가 이 칸을 덮는다(DocFiles 의 DocUpload).
+      바탕은 서류 카드와 같은 규칙이다(docCardTone) — 그전에는 이 카드만 늘
+      흰 바탕이라, 같은 반려가 계약 서류에서는 주황이고 여기서는 색이 없었다.
+    */
+    <div className={`relative flex flex-col rounded-box border p-2.5 ${docCardTone(doc, d.req)}`}>
+      <div className="flex items-start justify-between gap-2">
+        <p className="break-keep text-small font-bold leading-snug text-slate-800">
+          {d.label}
+          {d.ext && <span className="ml-1.5 text-micro font-bold text-slate-400">{d.ext}</span>}
+        </p>
+        <span className={`shrink-0 text-micro font-black ${st.tone}`}>{st.label}</span>
+      </div>
+      {doc?.uploadedAt && <p className="mt-1 text-tiny text-slate-400">{doc.uploadedAt}</p>}
+      {doc?.rejectReason && <RejectReason>{doc.rejectReason}</RejectReason>}
+
+      {/*
+        * 서류 칸과 같은 세 구역이다 — 사실 · 파일 목록 · 조작 (IntakeTab 의 카드 주석 참조).
+        * 같은 서류를 두 구역에서 다른 모양으로 보여주면 어느 쪽이 맞는지 물어야 한다.
+        */}
+      {doc && doc.files.length > 0 && (
+        <div className="mt-2 border-t border-slate-900/[0.07] pt-2">
+          <DocFileActions
+            doc={doc}
+            siteName={siteName}
+            label={d.label}
+            projectId={projectId}
+            canRemove={canRemove}
+          />
+        </div>
+      )}
+
+      {/*
+        * 조작 줄은 담을 것이 있을 때만 — 서류 구역(IntakeTab)과 같은 조건이다.
+        * 올리기는 잠금 판정을 따른다(canEditDocs, 빈 칸이면 canFillEmpty) — 서버가
+        * 거절할 단추를 세우지 않는다(화면 규칙 3).
+        */}
+      {(canEditDocs || (canFillEmpty && (!doc || doc.files.length === 0)) || canReview) && (
+      <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-slate-900/[0.07] pt-2">
+        {(canEditDocs || (canFillEmpty && (!doc || doc.files.length === 0))) && (
+          <DocUpload
+            projectId={projectId}
+            kind={d.key}
+            rejected={doc?.status === 'rejected'}
+            fileCount={doc?.files.length ?? 0}
+            single={!canEditDocs && canFillEmpty && (!doc || doc.files.length === 0)}
+          />
+        )}
+        <span className="flex-1" />
+        {/*
+          * ★안 낸 칸도 반려한다★ — 계약 서류 격자와 같은 규칙이다
+          * (한백 지시 2026-09-03). 그 변경이 서류 구역(IntakeTab)에만 오고
+          * 이 격자는 `doc && doc.status !== 'none'` 으로 남아 있었다 — 칸에
+          * 행이 아예 없으면(아직 아무도 안 올림) 반려 단추가 서지 않아,
+          * 기설치 이력을 안 낸 현장을 짚어 돌려보낼 길이 없었다
+          * (한백 지적 2026-09-06, 경남 양산 대우마리나 아파트).
+          *
+          * 저장소는 처음부터 받아 준다 — checkReviewable 이 「행이 없어도
+          * 반려는 선다」이고 setDocumentStatus 가 행을 만든다. 화면만 막고
+          * 있었으니, 서버가 허락하는 일을 단추가 없어서 못 하던 자리다.
+          */}
+        {canReview && (
+          <DocReview
+            projectId={projectId}
+            kind={d.key}
+            status={doc?.status ?? 'none'}
+            hasFile={(doc?.files.length ?? 0) > 0}
+          />
+        )}
+        {canReview && doc && doc.status !== 'none' && (
+          <DocDelete
+            projectId={projectId}
+            kind={d.key}
+            label={d.label}
+            filename={doc.filename}
+            count={doc.files.length}
+          />
+        )}
+      </div>
+      )}
+    </div>
   );
 }
 
