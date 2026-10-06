@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import type { BatchFinal, ContractState, ProjectDetail, SettlementRuleChoice } from '@/types/project';
+import type { BatchFinal, ContractState, NoteScope, ProjectDetail, SettlementRuleChoice } from '@/types/project';
 import {
   BIZ_TYPES, CPO_NAMES, INSTALL_LOCS, POWER_TYPES, subsidized, TERM_YEARS,
 } from '@/types/project';
@@ -54,7 +54,7 @@ export default function ProjectDetailView({
   canReview,
   canSeeReceivable,
   noteAuthor,
-  freshNoteIds = [],
+  unread = { noteIds: [], scopes: [] },
   knownOrgs,
   ruleOptions,
   settlementRuleChoices,
@@ -74,8 +74,11 @@ export default function ProjectDetailView({
   canSeeReceivable: boolean;
   /** 진행현황을 남길 때 붙는 이름 (한백 · 협력사 이름) */
   noteAuthor: string;
-  /** 내가 아직 안 읽은 진행현황 글(알림이 온 것) — 「새 글」로 보이고 그 탭을 열면 읽음으로 찍힌다 */
-  freshNoteIds?: string[];
+  /**
+   * 내가 아직 안 읽은 것 — 진행현황 글(「새 글」로 보인다)과 알림이 남은 갈래(반려·보완요청 포함). 그 탭을 열면
+   * 그 갈래의 알림이 읽음으로 찍힌다.
+   */
+  unread?: { noteIds: string[]; scopes: NoteScope[] };
   /** 이미 쓰이고 있는 업체 이름 — 영업사·시공사를 고칠 때 골라 넣는다 */
   knownOrgs: string[];
   /**
@@ -339,7 +342,8 @@ export default function ProjectDetailView({
                 notes={detail.notes.filter((n) => n.scope === NOTE_SCOPE_OF_TAB[tab])}
                 author={noteAuthor}
                 scope={NOTE_SCOPE_OF_TAB[tab]}
-                fresh={freshNoteIds}
+                fresh={unread.noteIds}
+                unread={unread.scopes.includes(NOTE_SCOPE_OF_TAB[tab])}
                 /*
                  * 계약서 접수와 같은 잣대다 — 쓰는 사람인가(열람 전용 제외).
                  * 기성 갈래는 그 위에 한백만이라는 문이 하나 더 있다(api notes · addNote).

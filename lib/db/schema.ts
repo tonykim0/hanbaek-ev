@@ -417,14 +417,24 @@ export const projectNotes = pgTable('project_notes', {
 }));
 
 /**
- * 알림 — 진행현황 글이 상대방에게 간다 (migrations/0090 · lib/notify.ts).
+ * 알림 — 진행현황 글·서류 반려·누락 서류 보완요청이 그 현장의 사람들에게 간다 (migrations/0090·0092 · lib/notify.ts).
  * 받는 사람마다 한 줄이다. 읽음은 read_at. 글을 지우면 같이 지워진다(note_id cascade).
  */
 export const notifications = pgTable('notifications', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
   projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
-  noteId: text('note_id').notNull().references(() => projectNotes.id, { onDelete: 'cascade' }),
+  /** 진행현황 글 알림이면 그 글 — 반려·보완요청 알림은 비어 있다(migrations/0092) */
+  noteId: text('note_id').references(() => projectNotes.id, { onDelete: 'cascade' }),
+  /** note(진행현황 글) · reject(서류 반려) · ask(누락 서류 보완요청) */
+  kind: text('kind').notNull().default('note'),
+  /** 그 알림이 서는 탭의 갈래 — 계약·시공·기성. 그 탭을 열면 읽힌다 */
+  scope: text('scope'),
+  /** 반려한 서류 종류 — 반려를 풀면 이 서류의 안 읽은 알림을 거둔다 */
+  docKind: text('doc_kind'),
+  /** 반려·보완요청의 머리(「반려 — 계약서」)와 한백의 메시지(반려 사유). 글 알림은 글에서 읽는다 */
+  title: text('title'),
+  body: text('body'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   readAt: timestamp('read_at', { withTimezone: true }),
 }, (t) => ({

@@ -1,8 +1,13 @@
 /**
- * 알림 — 진행현황 글이 상대방에게 간다 (한백 지시 2026-10-05). 누구에게 갈지는 lib/notify.ts 가 정한다.
+ * 알림 — 진행현황 글 · 서류 반려 · 누락 서류 보완요청이 그 현장의 사람들에게 간다 (한백 지시 2026-10-05·06).
+ * 누구에게 갈지는 lib/notify.ts 가 정한다(그 현장의 기록을 같이 쓰는 사람 모두, 쓴 사람만 빼고).
  *
- * ★남길 때 받는 사람마다 한 줄을 펼쳐 넣는다★(fanOutNote — addNote 의 트랜잭션 안에서). 읽음은 그 줄의 read_at.
- * 화면 셋이 읽는다: 사이드바의 안 읽은 수 · 알림 목록(/notifications) · 현장 상세의 「새 글」 표시.
+ * ★남길 때 받는 사람마다 한 줄을 펼쳐 넣는다★ — 글은 addNote, 반려는 setDocumentStatus, 보완요청은 askMissingDocs 의
+ * 트랜잭션 안에서(일과 알림이 같이 남거나 같이 안 남는다). 읽음은 그 줄의 read_at.
+ * 화면 셋이 읽는다: 사이드바의 안 읽은 수 · 알림 목록(/notifications) · 현장 상세(「새 글」과 그 탭의 읽음).
+ *
+ * ★반려를 풀면 아직 안 읽은 반려 알림을 거둔다★ — 반려 취소·해제·다시 올리기. 풀린 반려를 알리면 거짓말이다.
+ * 읽은 것은 둔다(이미 본 기록이다). 보완요청 취소도 같다.
  *
  * ★협력사는 지금 볼 수 있는 현장의 알림만 센다★ — 현장의 영업사·시공사가 바뀌면 옛 알림이 갈 데 없는 링크가
  * 된다. 한백(관리자)은 전 현장을 본다.
@@ -15,64 +20,118 @@ import { notifications, projectNotes, projects, users } from '@/lib/db/schema';
 import { stampOf } from '@/lib/date';
 import { isHanbaek } from '@/lib/roles';
 import { noteAudience } from '@/lib/notify';
-import { isNoteScope, type NoteNotification, type NoteScope } from '@/types/project';
-import type { ProjectRepository, Recipient } from '../repository';
+import { isNoteScope, type NoteNotification, type NoteScope, type NotificationKind } from '@/types/project';
+import type { ProjectRepository } from '../repository';
 import type { TxLike } from './shared';
 
 /** 협력사는 지금 볼 수 있는 현장만 — 한백은 전부 */
-const accessible = (me: Recipient): SQL | undefined =>
+const accessible = (me: { role: Parameters<typeof isHanbaek>[0]; org: string | null }): SQL | undefined =>
   isHanbaek(me.role) ? undefined : or(eq(projects.salesOrg, me.org ?? ''), eq(projects.gcOrg, me.org ?? ''));
 
-/**
- * 글 하나를 받는 사람마다 펼친다 — addNote 의 트랜잭션 안에서 부른다(글과 알림이 같이 남거나 같이 안 남는다).
- * 쓴 사람(actorId)은 빼고, 멈춘 계정은 받지 않는다. 열람 전용은 구분이 admin 도 아니고 소속도 없어 저절로 빠진다.
- */
-export async function fanOutNote(tx: TxLike, input: {
-  noteId: string; projectId: string; scope: NoteScope; actorId: string;
-  salesOrg: string | null; gcOrg: string | null;
-}): Promise<number> {
+/** 받는 사람 — 그 갈래의 기록을 같이 쓰는 계정 모두, 쓴 사람(actorId)·멈춘 계정은 빼고 */
+async function recipientsOf(tx: TxLike, input: {
+  scope: NoteScope; actorId: string; salesOrg: string | null; gcOrg: string | null;
+}): Promise<string[]> {
   const to = noteAudience(input);
   const sides: SQL[] = [];
   if (to.hanbaek) sides.push(eq(users.role, 'admin'));
   if (to.orgs.length) sides.push(inArray(users.org, to.orgs));
-  if (sides.length === 0) return 0;
+  if (sides.length === 0) return [];
   const rows = await tx.select({ id: users.id }).from(users)
     .where(and(or(...sides), eq(users.active, true), ne(users.id, input.actorId)));
-  if (rows.length === 0) return 0;
-  await tx.insert(notifications).values(rows.map((u) => ({
-    id: crypto.randomUUID(), userId: u.id, projectId: input.projectId, noteId: input.noteId,
-  })));
-  return rows.length;
+  return rows.map((r) => r.id);
 }
+
+async function insertFor(tx: TxLike, userIds: string[], row: {
+  projectId: string; kind: NotificationKind; scope: NoteScope;
+  noteId?: string; docKind?: string | null; title?: string | null; body?: string | null;
+}): Promise<number> {
+  if (userIds.length === 0) return 0;
+  await tx.insert(notifications).values(userIds.map((userId) => ({
+    id: crypto.randomUUID(), userId, ...row,
+  })));
+  return userIds.length;
+}
+
+/** 진행현황 글 하나를 펼친다 — addNote 의 트랜잭션 안에서 */
+export async function fanOutNote(tx: TxLike, input: {
+  noteId: string; projectId: string; scope: NoteScope; actorId: string;
+  salesOrg: string | null; gcOrg: string | null;
+}): Promise<number> {
+  return insertFor(tx, await recipientsOf(tx, input), {
+    projectId: input.projectId, kind: 'note', scope: input.scope, noteId: input.noteId,
+  });
+}
+
+/**
+ * 반려·보완요청을 펼친다 — 그 일의 트랜잭션 안에서. 같은 서류의 안 읽은 반려 알림은 먼저 거둔다(사유를 고쳐
+ * 다시 반려하면 알림이 둘 서지 않게 — 새 사유 하나만).
+ */
+export async function notifyReview(tx: TxLike, input: {
+  projectId: string; kind: 'reject' | 'ask'; scope: NoteScope; actorId: string;
+  docKind: string | null; title: string; body: string;
+}): Promise<number> {
+  await retractReview(tx, { projectId: input.projectId, kind: input.kind, docKind: input.docKind });
+  const [p] = await tx.select({ salesOrg: projects.salesOrg, gcOrg: projects.gcOrg })
+    .from(projects).where(eq(projects.id, input.projectId)).limit(1);
+  if (!p) return 0;
+  const to = await recipientsOf(tx, { scope: input.scope, actorId: input.actorId, salesOrg: p.salesOrg, gcOrg: p.gcOrg });
+  return insertFor(tx, to, {
+    projectId: input.projectId, kind: input.kind, scope: input.scope,
+    docKind: input.docKind, title: input.title, body: input.body,
+  });
+}
+
+/** 풀린 반려·취소된 보완요청의 안 읽은 알림을 거둔다 — docKind 를 주면 그 서류 것만 */
+export async function retractReview(tx: TxLike, input: {
+  projectId: string; kind: 'reject' | 'ask'; docKind?: string | null;
+}): Promise<void> {
+  const conds: SQL[] = [
+    eq(notifications.projectId, input.projectId), eq(notifications.kind, input.kind), isNull(notifications.readAt),
+  ];
+  if (input.docKind) conds.push(eq(notifications.docKind, input.docKind));
+  await tx.delete(notifications).where(and(...conds));
+}
+
+const KINDS: NotificationKind[] = ['note', 'reject', 'ask'];
 
 export const notificationStore: Pick<
   ProjectRepository,
-  'listNotifications' | 'countUnreadNotifications' | 'markNotificationsRead' | 'unreadNoteIds'
+  'listNotifications' | 'countUnreadNotifications' | 'markNotificationsRead' | 'unreadOnProject'
 > = {
   async listNotifications(me, limit = 100): Promise<NoteNotification[]> {
     const rows = await getDb()
       .select({
-        id: notifications.id, projectId: notifications.projectId, noteId: notifications.noteId,
+        id: notifications.id, kind: notifications.kind, projectId: notifications.projectId, noteId: notifications.noteId,
+        scope: notifications.scope, title: notifications.title, ownBody: notifications.body,
         createdAt: notifications.createdAt, readAt: notifications.readAt,
-        projectName: projects.name, author: projectNotes.author, body: projectNotes.body, scope: projectNotes.scope,
+        projectName: projects.name,
+        noteAuthor: projectNotes.author, noteBody: projectNotes.body, noteScope: projectNotes.scope,
       })
       .from(notifications)
-      .innerJoin(projectNotes, eq(projectNotes.id, notifications.noteId))
       .innerJoin(projects, eq(projects.id, notifications.projectId))
+      .leftJoin(projectNotes, eq(projectNotes.id, notifications.noteId))
       .where(and(eq(notifications.userId, me.id), accessible(me)))
       .orderBy(desc(notifications.createdAt))
       .limit(limit);
-    return rows.map((r) => ({
-      id: r.id,
-      projectId: r.projectId,
-      projectName: r.projectName,
-      noteId: r.noteId,
-      scope: isNoteScope(r.scope) ? r.scope : '시공',
-      author: r.author,
-      body: r.body,
-      at: stampOf(r.createdAt),
-      read: r.readAt !== null,
-    }));
+    return rows.map((r) => {
+      const kind = (KINDS as string[]).includes(r.kind) ? (r.kind as NotificationKind) : 'note';
+      const scope = r.scope ?? r.noteScope;
+      return {
+        id: r.id,
+        kind,
+        projectId: r.projectId,
+        projectName: r.projectName,
+        noteId: r.noteId,
+        title: r.title,
+        scope: isNoteScope(scope) ? scope : '시공',
+        // 반려·보완요청은 한백만 한다
+        author: kind === 'note' ? r.noteAuthor ?? '' : '한백',
+        body: (kind === 'note' ? r.noteBody : r.ownBody) ?? '',
+        at: stampOf(r.createdAt),
+        read: r.readAt !== null,
+      };
+    });
   },
 
   async countUnreadNotifications(me): Promise<number> {
@@ -89,25 +148,24 @@ export const notificationStore: Pick<
    * 알림 하나. 범위가 없으면 내 것 전부(「모두 읽음」).
    */
   async markNotificationsRead(userId, where = {}): Promise<number> {
-    const db = getDb();
     const conds: SQL[] = [eq(notifications.userId, userId), isNull(notifications.readAt)];
     if (where.id) conds.push(eq(notifications.id, where.id));
     if (where.projectId) conds.push(eq(notifications.projectId, where.projectId));
-    if (where.scope) {
-      conds.push(inArray(notifications.noteId,
-        db.select({ id: projectNotes.id }).from(projectNotes).where(eq(projectNotes.scope, where.scope))));
-    }
-    const done = await db.update(notifications).set({ readAt: new Date() }).where(and(...conds))
+    if (where.scope) conds.push(eq(notifications.scope, where.scope));
+    const done = await getDb().update(notifications).set({ readAt: new Date() }).where(and(...conds))
       .returning({ id: notifications.id });
     return done.length;
   },
 
-  /** 이 현장에서 내가 아직 안 읽은 글 — 현장 상세가 「새 글」로 표시한다 */
-  async unreadNoteIds(userId, projectId): Promise<string[]> {
+  /** 이 현장에서 내가 아직 안 읽은 것 — 글(「새 글」 표시)과 알림이 남은 갈래(그 탭을 열면 읽음) */
+  async unreadOnProject(userId, projectId): Promise<{ noteIds: string[]; scopes: NoteScope[] }> {
     const rows = await getDb()
-      .select({ noteId: notifications.noteId })
+      .select({ noteId: notifications.noteId, scope: notifications.scope })
       .from(notifications)
       .where(and(eq(notifications.userId, userId), eq(notifications.projectId, projectId), isNull(notifications.readAt)));
-    return [...new Set(rows.map((r) => r.noteId))];
+    return {
+      noteIds: [...new Set(rows.flatMap((r) => (r.noteId ? [r.noteId] : [])))],
+      scopes: [...new Set(rows.flatMap((r) => (isNoteScope(r.scope) ? [r.scope] : [])))],
+    };
   },
 };

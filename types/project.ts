@@ -1394,12 +1394,21 @@ export function isNoteScope(v: unknown): v is NoteScope {
   return typeof v === 'string' && (NOTE_SCOPES as readonly string[]).includes(v);
 }
 
-/** 알림 한 줄 — 진행현황 글이 상대방에게 간 것(lib/notify.ts). 글이 정본이라 본문·쓴 쪽은 글에서 읽는다 */
+/**
+ * 알림 한 줄 — 진행현황 글 · 서류 반려 · 누락 서류 보완요청(lib/notify.ts).
+ * 글 알림은 글이 정본이라 본문·쓴 쪽을 글에서 읽는다. 반려·보완요청은 알림 줄이 제 머리(title)와 한백의 메시지(body)를 갖는다.
+ */
+export type NotificationKind = 'note' | 'reject' | 'ask';
+
 export interface NoteNotification {
   id: string;
+  kind: NotificationKind;
   projectId: string;
   projectName: string;
-  noteId: string;
+  /** 진행현황 글 알림일 때만 */
+  noteId: string | null;
+  /** 반려·보완요청의 머리 — 「반려 — 계약서」 · 「누락 서류 보완요청 3건」 */
+  title: string | null;
   scope: NoteScope;
   /** 글을 쓴 쪽 — 「한백」 또는 협력사 이름 */
   author: string;

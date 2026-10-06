@@ -21,6 +21,8 @@ import type { PreInstall, Project } from '@/types/project';
 import type { Actor, ProjectRepository } from '../repository';
 import { assertAdmin, recordsOf } from './shared';
 import type { TxLike } from './shared';
+import { reviewKindLabel } from '@/lib/review-labels';
+import { notifyReview, retractReview } from './notifications';
 
 /** pgRepository 가 펼쳐 담는 조각 — 이름과 시그니처는 인터페이스가 정한다 */
 export const contractStore: Pick<
@@ -214,6 +216,19 @@ export const contractStore: Pick<
     await db.transaction(async (tx) => {
       for (const kind of kinds) await markMissing(tx, projectId, kind, ask, why, day);
       await applyAskSideEffects(tx, projectId, ask, day);
+      /*
+       * 보완요청도 알림으로 간다 — 무엇이 빠졌는지와 한백의 메시지(사유)가 같이 (한백 지시 2026-10-06).
+       * 취소하면 아직 안 읽은 보완요청 알림을 거둔다.
+       */
+      if (ask) {
+        await notifyReview(tx, {
+          projectId, kind: 'ask', scope: '계약', actorId: actor.id, docKind: null,
+          title: `누락 서류 보완요청 ${kinds.length}건`,
+          body: `${kinds.map(reviewKindLabel).join(', ')} — ${why}`,
+        });
+      } else {
+        await retractReview(tx, { projectId, kind: 'ask' });
+      }
 
       await writeAudit(tx, {
         projectId, actor,

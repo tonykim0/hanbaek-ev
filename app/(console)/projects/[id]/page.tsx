@@ -123,7 +123,7 @@ export default async function ProjectPage({
        * 화면이 「한백으로 남깁니다」라고 하고 서버가 다른 이름을 적으면 기록을 믿을 수 없다.
        */
       noteAuthor={canEdit ? '한백' : session.org ?? '협력사'}
-      freshNoteIds={await getRepository().unreadNoteIds(session.id, detail.project.id)}
+      unread={await getRepository().unreadOnProject(session.id, detail.project.id)}
       knownOrgs={orgs}
       ruleOptions={ruleOptions}
       settlementRuleChoices={settlementRuleChoices}

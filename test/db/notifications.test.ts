@@ -9,7 +9,7 @@ import { GET as listGET } from '@/app/api/notifications/route';
 import { GET as unreadGET } from '@/app/api/notifications/unread/route';
 import { POST as readPOST } from '@/app/api/notifications/read/route';
 import { getRepository } from '@/lib/data';
-import { USERS, call, signIn, signInAs, withProject } from './kit';
+import { RUN, USERS, actorOf, call, signIn, signInAs, withProject } from './kit';
 
 const repo = getRepository();
 const site = { salesOrg: USERS.navy.org, gcOrg: USERS.ecoelec.org };
@@ -58,7 +58,7 @@ describe('진행현황 알림', () => {
     await signIn(USERS.admin);
     expect(Number((await call(readPOST, { method: 'POST', body: { projectId: id, scope: '계약' } })).json?.marked)).toBe(1);
     expect((await unread(USERS.admin, id)).map((x) => x.body)).toEqual(['시공 쪽 이야기']);
-    expect(await repo.unreadNoteIds(USERS.admin.id, id)).toHaveLength(1);
+    expect((await repo.unreadOnProject(USERS.admin.id, id)).noteIds).toHaveLength(1);
     // 열람 전용도 제 것을 찍는다(받은 것이 없어 0)
     await signIn(USERS.viewer);
     expect((await call(readPOST, { method: 'POST', body: {} })).status).toBe(200);
@@ -75,5 +75,38 @@ describe('진행현황 알림', () => {
     expect(n).toBeDefined();
     expect((await call(noteDELETE, { method: 'DELETE', params: { id }, body: { noteId: n.noteId } })).status).toBe(200);
     expect((await repo.listNotifications(me(USERS.admin))).some((x) => x.noteId === n.noteId)).toBe(false);
+  }, site));
+
+  it('반려는 그 사유와 함께 알림으로 간다 — 다시 반려하면 새 사유 하나 · 반려를 풀면 안 읽은 반려 알림을 거둔다', () => withProject(async (id) => {
+    const admin = actorOf(USERS.admin);
+    await repo.uploadDocument({ projectId: id, kind: 'contract', filename: 'contract.pdf', blobUrl: `https://test.local/${RUN}/${id}/contract.pdf` }, admin);
+    await repo.setDocumentStatus({ projectId: id, kind: 'contract', status: 'rejected', reason: '날인 누락' }, admin);
+    let got = (await repo.listNotifications(me(USERS.navy))).filter((x) => x.projectId === id);
+    expect(got).toHaveLength(1);
+    expect(got[0]).toMatchObject({ kind: 'reject', scope: '계약', author: '한백', title: '반려 — 계약서', body: '날인 누락', noteId: null, read: false });
+    expect((await repo.listNotifications(me(USERS.ecoelec))).filter((x) => x.projectId === id && x.kind === 'reject')).toHaveLength(1);
+    expect(await unread(USERS.admin, id), '반려한 사람은 받지 않는다').toHaveLength(0);
+    // 사유를 고쳐 다시 반려 — 알림은 새 사유 하나
+    await repo.setDocumentStatus({ projectId: id, kind: 'contract', status: 'rejected', reason: '날인 누락 · 2쪽 빠짐' }, admin);
+    got = (await repo.listNotifications(me(USERS.navy))).filter((x) => x.projectId === id);
+    expect(got.map((x) => x.body)).toEqual(['날인 누락 · 2쪽 빠짐']);
+    // 그 탭을 열면 읽힌다(반려는 글이 아니어도 갈래로 읽힌다)
+    expect((await repo.unreadOnProject(USERS.navy.id, id)).scopes).toEqual(['계약']);
+    // 반려를 풀면 아직 안 읽은 반려 알림은 거둔다
+    await repo.setDocumentStatus({ projectId: id, kind: 'contract', status: 'uploaded' }, admin);
+    expect((await repo.listNotifications(me(USERS.navy))).filter((x) => x.projectId === id)).toHaveLength(0);
+  }, site));
+
+  it('누락 서류 보완요청도 무엇이 빠졌는지와 메시지가 같이 간다 · 취소하면 거둔다', () => withProject(async (id) => {
+    const admin = actorOf(USERS.admin);
+    await repo.uploadDocument({ projectId: id, kind: 'contract', filename: 'contract.pdf', blobUrl: `https://test.local/${RUN}/${id}/contract.pdf` }, admin);
+    await repo.setDocumentStatus({ projectId: id, kind: 'contract', status: 'rejected', reason: '흐림' }, admin);
+    const { kinds } = await repo.askMissingDocs(id, true, '이번 주 안에 올려주세요', admin);
+    const ask = (await repo.listNotifications(me(USERS.navy))).filter((x) => x.projectId === id && x.kind === 'ask');
+    expect(ask).toHaveLength(1);
+    expect(ask[0].title).toBe(`누락 서류 보완요청 ${kinds.length}건`);
+    expect(ask[0].body.endsWith('— 이번 주 안에 올려주세요')).toBe(true);
+    await repo.askMissingDocs(id, false, null, admin);
+    expect((await repo.listNotifications(me(USERS.navy))).filter((x) => x.projectId === id && x.kind === 'ask')).toHaveLength(0);
   }, site));
 });

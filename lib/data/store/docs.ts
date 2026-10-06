@@ -19,6 +19,8 @@ import {
   COURT_AFTER_STATUS, statusIndex,
 } from '@/lib/process';
 import { isProcessDocKind } from '../assemble';
+import { reviewKindLabel } from '@/lib/review-labels';
+import { notifyReview, retractReview } from './notifications';
 import { PROCESS_DOCS } from '@/lib/doc-rules';
 import type { DocFile, DocStatus, ProjectDocument, ReviewEvent } from '@/types/project';
 import type { Actor, ProjectRepository } from '../repository';
@@ -169,6 +171,21 @@ export const docStore: Pick<
        */
       if (!isProcessDocKind(input.kind)) {
         await applyReviewSideEffects(tx, input.projectId, input.status === 'rejected');
+      }
+
+      /*
+       * ★반려는 알림으로 간다 — 반려 사유가 한백의 메시지다★ (한백 지시 2026-10-06 「반려를 하면 그것도 알림에, 나의
+       * 메시지와 함께」). 받는 사람은 진행현황 글과 같다(lib/notify.ts — 그 현장의 협력사와 다른 한백 관리자).
+       * 계약 서류는 계약 탭, 공정 서류는 시공 탭에 선다. 반려를 풀면(취소·해제) 아직 안 읽은 반려 알림을 거둔다.
+       */
+      const scope = isProcessDocKind(input.kind) ? '시공' : '계약';
+      if (input.status === 'rejected') {
+        await notifyReview(tx, {
+          projectId: input.projectId, kind: 'reject', scope, actorId: actor.id, docKind: input.kind,
+          title: `반려 — ${reviewKindLabel(input.kind)}`, body: input.reason!.trim(),
+        });
+      } else if (row?.status === 'rejected') {
+        await retractReview(tx, { projectId: input.projectId, kind: 'reject', docKind: input.kind });
       }
 
       await writeAudit(tx, {
@@ -465,6 +482,8 @@ async function putProcessDoc(
           target: [processDocuments.projectId, processDocuments.kind],
           set: row,
         });
+      // 다시 올렸으니 반려가 풀렸다 — 아직 안 읽은 반려 알림을 거둔다(store/notifications)
+      if (before?.status === 'rejected') await retractReview(tx, { projectId: input.projectId, kind: 'reject', docKind: input.kind });
 
       /*
        * 행위신고 파일을 올리면 행위신고일이 그 날로 들어간다 — 비어 있을 때만.
@@ -593,6 +612,8 @@ async function putContractDoc(
       .insert(documents)
       .values(row)
       .onConflictDoUpdate({ target: [documents.projectId, documents.kind], set: row });
+    // 다시 올렸으니 반려가 풀렸다 — 아직 안 읽은 반려 알림을 거둔다(store/notifications)
+    if (before?.status === 'rejected') await retractReview(tx, { projectId: input.projectId, kind: 'reject', docKind: input.kind });
 
     /*
      * 서류가 올라오면 담당이 한백으로 넘어간다 (검수 차례).

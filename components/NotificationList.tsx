@@ -1,16 +1,17 @@
 'use client';
 
 /**
- * 알림 목록 — 진행현황에 상대방이 남긴 글 (app/(console)/notifications).
+ * 알림 목록 — 진행현황 글 · 서류 반려 · 누락 서류 보완요청 (app/(console)/notifications).
  *
- * 한 줄 = 글 하나: 현장 · 탭(계약·시공) · 누가 · 언제, 그 밑에 본문 두 줄. 안 읽은 줄은 굵고 왼쪽에 점이 선다.
- * 줄을 누르면 그 현장의 그 탭으로 간다 — 그 탭이 그 글을 「새 글」로 보이고 읽음으로 찍는다(ProgressLog).
+ * 한 줄 = 알림 하나: 현장 · 탭(계약·시공) · 누가 · 언제, 그 밑에 본문 두 줄. 반려·보완요청은 본문 앞에 붉은
+ * 꼬리표(「반려 — 계약서」)가 서고 본문이 한백의 메시지(반려 사유)다. 안 읽은 줄은 굵고 왼쪽에 점이 선다.
+ * 줄을 누르면 그 현장의 그 탭으로 간다 — 그 탭을 열면 그 갈래의 알림이 읽힌다(ProgressLog).
  */
 import Link from 'next/link';
 import { useState } from 'react';
 import type { NoteNotification } from '@/types/project';
 import { TAB_OF_SCOPE } from '@/lib/notify';
-import { Btn, Err } from '@/components/ui';
+import { Btn, Err, Tag } from '@/components/ui';
 import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
 
 export default function NotificationList({ items, viewingAs }: {
@@ -79,6 +80,7 @@ export default function NotificationList({ items, viewingAs }: {
                     <span className="ml-auto shrink-0 text-tiny tabular-nums text-slate-400">{n.at}</span>
                   </span>
                   <span className={`mt-1 line-clamp-2 whitespace-pre-wrap break-keep text-base leading-relaxed ${n.read ? 'text-slate-500' : 'text-slate-800'}`}>
+                    {n.title && <span className="mr-1.5"><Tag tone="stop">{n.title}</Tag></span>}
                     {n.body}
                   </span>
                 </span>

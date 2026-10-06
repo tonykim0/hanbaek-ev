@@ -29,7 +29,7 @@ import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
  * 사람 이름은 안 적는다 — 회사마다 계정이 하나라 이름이 늘 같다. 대신 어느 쪽이 썼는지 남긴다.
  */
 export function ProgressLog({
-  projectId, notes, author, scope, canPost, fresh = [],
+  projectId, notes, author, scope, canPost, fresh = [], unread = false,
 }: {
   projectId: string;
   /** ★이 갈래의 글만 넘긴다★ — 거르는 것은 부르는 쪽(탭)이 한다 */
@@ -53,6 +53,8 @@ export function ProgressLog({
    * 읽는 중에 사라지면 못 찾는다).
    */
   fresh?: string[];
+  /** 이 갈래에 안 읽은 알림이 있다 — 글이 아닌 것(반려·보완요청)까지. 이 탭을 열면 읽음으로 찍는다 */
+  unread?: boolean;
 }) {
   const { busy, error, run } = useAction();
   const [body, setBody] = useState('');
@@ -60,7 +62,7 @@ export function ProgressLog({
   /* 처음 연 때의 새 글 — 읽음을 찍은 뒤에도 이 화면에서는 표시를 지킨다 */
   const [freshHere] = useState(() => new Set(fresh.filter((id) => notes.some((n) => n.id === id))));
   useEffect(() => {
-    if (freshHere.size === 0) return;
+    if (freshHere.size === 0 && !unread) return;
     void fetch('/api/notifications/read', {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ projectId, scope }),
     })
@@ -68,7 +70,7 @@ export function ProgressLog({
       .catch(() => {
         /* 못 찍으면 알림이 남을 뿐 — 다음에 열 때 다시 찍는다 */
       });
-  }, [freshHere, projectId, scope]);
+  }, [freshHere, unread, projectId, scope]);
 
   async function save() {
     if (!body.trim()) return;
