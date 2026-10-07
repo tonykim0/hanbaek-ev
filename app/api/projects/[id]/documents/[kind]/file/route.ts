@@ -22,6 +22,7 @@ import { getRepository } from '@/lib/data';
 import { canAccessProject, canWrite } from '@/lib/roles';
 import { isKnownDocKind } from '@/lib/data/assemble';
 import { attachDocument } from '@/lib/attach-doc';
+import { schedulePreInstallCheck } from '@/lib/preinstall-run';
 
 /*
  * 붙이기 전에 PDF 방향을 본다(lib/attach-doc) — 페이지마다 판정을 불러 수십 초가 걸릴 수
@@ -119,6 +120,8 @@ export async function POST(
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status });
   }
+  // 설치이력·증빙이면 기설치 대조를 저절로 — 응답 뒤에 돈다(lib/preinstall-run)
+  if (!result.already) schedulePreInstallCheck(params.id, params.kind);
   return NextResponse.json({ ok: true, already: result.already });
 }
 
@@ -175,5 +178,7 @@ export async function DELETE(
   if (blobUrl && (pathnameOfBlobUrl(blobUrl) ?? '').startsWith(`projects/${params.id}/`)) {
     await dropBlob(blobUrl);
   }
+  // 설치이력·증빙에서 한 장이 빠졌으면 남은 것으로 다시 대조한다(lib/preinstall-run)
+  schedulePreInstallCheck(params.id, params.kind);
   return NextResponse.json({ ok: true });
 }

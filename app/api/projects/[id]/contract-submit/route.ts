@@ -10,10 +10,19 @@
  */
 import { getRepository } from '@/lib/data';
 import { sessionWrite, BadRequest } from '@/lib/api/write-route';
+import { schedulePreInstallCheck } from '@/lib/preinstall-run';
+
+/** 접수하면 기설치 대조가 응답 뒤에 돈다 — 판독까지 가는 길이라 예산을 넉넉히 */
+export const maxDuration = 300;
 
 export const POST = sessionWrite<{ id: string }, { submitted?: unknown }>(
   async ({ body, params, actor }) => {
     if (typeof body.submitted !== 'boolean') throw new BadRequest('submitted 가 필요합니다.');
     await getRepository().submitContract(params.id, body.submitted, actor);
+    /*
+     * ★접수 단계에서 기설치 대조를 저절로★ (한백 지시 2026-10-07) — 서류는 이미 올라와 있다(이 기능 전에 올린
+     * 것까지). 이미 이 서류로 대조했으면 다시 돌지 않는다.
+     */
+    if (body.submitted) schedulePreInstallCheck(params.id);
   }
 );

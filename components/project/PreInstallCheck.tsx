@@ -3,15 +3,16 @@
 /**
  * 기설치 이력 엑셀 ↔ 증빙 대조 (한백 지시 2026-10-06) — 기설치 조사 구역 안의 한 덩이.
  *
- * 한백이 눌러 돌리고(판독 20~40초), 결과는 저장돼 협력사도 본다 — 어긋난 줄을 고쳐 다시 내는
- * 것이 협력사의 일이다. 판정은 lib/preinstall-check 가 하고 여기는 그린다.
+ * ★접수 단계에서 저절로 돈다★(한백 지시 2026-10-07 — 설치이력·증빙이 들고 날 때와 계약서 접수 때, 응답 뒤에
+ * lib/preinstall-run). 한백은 여기서 손으로 다시 돌릴 수도 있다(판독 20~40초). 결과는 저장돼 협력사도 본다 —
+ * 어긋난 줄을 고쳐 다시 내는 것이 협력사의 일이다. 판정은 lib/preinstall-check 가 하고 여기는 그린다.
  *
  * ★칸의 파일이 바뀌면 지난 결과를 믿지 않는다★ — 결과에 대조에 쓴 파일 주소가 남아 있어,
  * 지금 칸의 파일과 다르면 「서류가 바뀜」을 단다(결과는 그대로 보여준다 — 무엇이 틀렸었는지도 정보다).
  *
  * ★필수다★ (한백 지시 2026-10-07 「검증 필수」) — 보조사업 현장은 대조가 맞음이거나 한백이 결과를 보고
  * 「확인하고 넘기기」를 눌러야 계약 확인이 열린다(lib/preinstall-check preCheckBlocker). 그래서 자리를
- * 이력 조회 바로 밑으로 올렸고(조사의 두 번째 걸음), 안 했으면 협력사에게도 「한백 대조 전」으로 선다.
+ * 이력 조회 바로 밑으로 올렸고(조사의 두 번째 걸음), 아직 결과가 없으면 「대조 전」으로 선다.
  */
 import { useAction } from '@/lib/use-action';
 import { stampOf } from '@/lib/date';
@@ -92,8 +93,8 @@ export function PreInstallCheckBlock({
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <span className="text-tiny font-bold tracking-[0.04em] text-slate-500">엑셀 ↔ 증빙 대조</span>
         {!check
-          /* 협력사는 돌릴 수 없다 — 누구를 기다리는지 적는다. 한백에게는 할 일이다 */
-          ? <Tag tone={canRun ? 'warn' : 'mute'}>{canRun ? '대조 전' : '한백 대조 전'}</Tag>
+          /* 저절로 도는 것이라 누구를 기다린다고 적지 않는다(2026-10-07) — 한백에게는 손으로 돌릴 단추가 곁에 선다 */
+          ? <Tag tone={canRun ? 'warn' : 'mute'}>대조 전</Tag>
           : stale ? <Tag tone="warn">서류가 바뀜 — 다시 대조</Tag>
           : n === 0 && m === 0 ? <Tag tone="ok">맞음</Tag>
           : (

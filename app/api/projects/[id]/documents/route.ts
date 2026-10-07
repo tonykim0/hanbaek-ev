@@ -21,6 +21,8 @@ import { getSessionUser, viewerOf } from '@/lib/auth/session';
 import { getRepository } from '@/lib/data';
 import { canAccessProject, canWrite } from '@/lib/roles';
 import { attachDocument } from '@/lib/attach-doc';
+import { schedulePreInstallCheck } from '@/lib/preinstall-run';
+import { CHECKED_KINDS } from '@/lib/preinstall-check';
 
 /*
  * 붙이기 전에 PDF 방향을 본다(lib/attach-doc) — 페이지마다 판정을 불러 수십 초가 걸릴 수
@@ -125,6 +127,9 @@ export async function POST(
       else failed.push({ kind, error: result.error });
     }
   }
+
+  /* 설치이력·증빙이 들어왔으면 기설치 대조를 저절로 돌린다 — 응답 뒤에(lib/preinstall-run) */
+  if (attached > 0 && CHECKED_KINDS.some((k) => byKind.has(k))) schedulePreInstallCheck(params.id);
 
   /*
    * 한 칸이 실패해도 나머지는 붙인다. 접수를 통째로 되돌리면 사람이 처음부터 다시 해야 하는데,
