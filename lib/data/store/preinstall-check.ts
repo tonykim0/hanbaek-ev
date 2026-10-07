@@ -8,7 +8,7 @@ import { eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
 import { preinstallChecks, projects } from '@/lib/db/schema';
-import { issueCount, type PreInstallCheck } from '@/lib/preinstall-check';
+import { issueCount, reviewCount, type PreInstallCheck } from '@/lib/preinstall-check';
 import type { ProjectRepository } from '../repository';
 import { assertAdmin } from './shared';
 
@@ -34,12 +34,14 @@ export const preinstallCheckStore: Pick<ProjectRepository, 'savePreInstallCheck'
           set: { result: check, checkedBy: actor.name, checkedAt: at },
         });
       const n = issueCount(check);
+      const m = reviewCount(check);
+      const said = [n > 0 ? `짚은 것 ${n}건` : null, m > 0 ? `개별 검토 ${m}건` : null].filter(Boolean).join(' · ');
       await writeAudit(tx, {
         projectId, actor,
         action: '기설치 대조',
         field: 'preinstallCheck',
         oldValue: null,
-        newValue: check.problem ?? (n === 0 ? '맞음' : `짚은 것 ${n}건`),
+        newValue: check.problem ?? (said || '맞음'),
       });
     });
   },

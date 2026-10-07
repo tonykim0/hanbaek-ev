@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { LegacyRow, LegacySheet } from '@/lib/legacy-sheet';
-import { compareLegacy, issueCount, type EvidenceAct, type PreInstallCheck } from '@/lib/preinstall-check';
+import { compareLegacy, issueCount, reviewCount, type EvidenceAct, type PreInstallCheck } from '@/lib/preinstall-check';
 
 const row = (r: number, date: string, d: number, kind = '신규 설치', evidence: string | null = null, note: string | null = null): LegacyRow =>
   ({ row: r, date, kind, d, e: null, f: null, g: null, evidence, note });
@@ -71,6 +71,31 @@ describe('엑셀 줄 ↔ 증빙', () => {
     const r = compareLegacy(금천효성, acts, ctx);
     expect(r.lines.at(-1)?.verdict).toBe('current');
     expect(r.standing).toMatchObject({ evidence: 16, from: '2026-09-20 신고의 행위 전', verdict: 'ok' });
+  });
+
+  it('★설계도면이 증빙인 줄은 「개별 검토 필요」★ — 증빙 없음으로 짚지 않고 따로 센다 (한백 2026-10-06)', () => {
+    // 경기 수원 장안구 우성테크노파크의 실제 줄 — 준공 때 설치, 날짜는 사용승인일이라 도면과 짝이 안 맞는다
+    const s = sheetOf([
+      row(8, '2009-06-30', 2, '신규 설치', '준공 도면 (준공 시 설치했던 위치)'),
+      row(9, '2012-01-01', 50, '신규 설치', '1. 신규 설치_설계도면'),
+      row(10, '2015-01-01', 3, '신규 설치', null, '준공 당시 건설사 설치'),
+    ], 55);
+    const drawing = act('2008-11-02', null, null, { doc: '도면', file: '설계도면.pdf', title: '지하주차장 평면도', kind: null });
+    const r = compareLegacy(s, [drawing], { ...ctx, survey: { state: '있음', checked: true } });
+    expect(r.lines.map((l) => [l.row?.row, l.verdict, l.act?.file ?? null])).toEqual([
+      [8, 'review', '설계도면.pdf'],   // 증빙 칸의 도면을 그 줄에 붙인다
+      [9, 'review', null],             // 도면은 하나뿐 — 두 번째 줄에는 「도면을 찾지 못함」
+      [10, 'review', null],
+    ]);
+    expect(r.lines[1].why).toMatch(/도면을 찾지 못함/);
+    const c = whole(r);
+    expect(issueCount(c)).toBe(0);
+    expect(reviewCount(c)).toBe(3);
+  });
+
+  it('도면 줄이 아닌데 증빙이 없으면 여전히 「증빙 없음」 — 「준공 이후」는 준공 시 설치가 아니다', () => {
+    const s = sheetOf([row(8, '2020-03-01', 4, '신규 설치', '준공 이후 추가 설치')], 4);
+    expect(compareLegacy(s, [], ctx).lines[0].verdict).toBe('no-evidence');
   });
 
   it('기수를 못 읽은 증빙은 「못 읽음」 — 맞다고 하지 않는다', () => {

@@ -11,7 +11,7 @@
  */
 import { useAction } from '@/lib/use-action';
 import { stampOf } from '@/lib/date';
-import { issueCount, type CheckLine, type LineVerdict, type PreInstallCheck } from '@/lib/preinstall-check';
+import { issueCount, reviewCount, type CheckLine, type LineVerdict, type PreInstallCheck } from '@/lib/preinstall-check';
 import { Btn, Err, Tag, Td, Th } from '@/components/ui';
 
 const VERDICT: Record<LineVerdict, { label: string; tone: string }> = {
@@ -20,6 +20,7 @@ const VERDICT: Record<LineVerdict, { label: string; tone: string }> = {
   'no-evidence': { label: '증빙 없음', tone: 'text-amber-700' },
   'no-count': { label: '기수 못 읽음', tone: 'text-amber-700' },
   'no-row': { label: '엑셀에 없음', tone: 'text-red-700' },
+  review: { label: '개별 검토 필요', tone: 'text-amber-700' },
   exempt: { label: '보조사업 · 증빙 면제', tone: 'text-slate-400' },
   current: { label: '이번 설치 건', tone: 'text-slate-400' },
   extra: { label: '받침 자료', tone: 'text-slate-400' },
@@ -70,6 +71,7 @@ export function PreInstallCheckBlock({
 
   const stale = !!check && !same(check.files, currentFiles);
   const n = check ? issueCount(check) : 0;
+  const m = check ? reviewCount(check) : 0;
 
   return (
     <div className="mt-4 border-t border-slate-100 pt-3">
@@ -77,7 +79,14 @@ export function PreInstallCheckBlock({
         <h3 className="text-small font-black text-slate-800">엑셀 ↔ 증빙 대조</h3>
         {check && (stale
           ? <Tag tone="warn">서류가 바뀜 — 다시 대조</Tag>
-          : n > 0 ? <Tag tone="warn">짚을 것 {n}</Tag> : <Tag tone="ok">맞음</Tag>)}
+          : n === 0 && m === 0 ? <Tag tone="ok">맞음</Tag>
+          : (
+            <>
+              {n > 0 && <Tag tone="warn">짚을 것 {n}</Tag>}
+              {/* 어긋남이 아니라 코드가 판정 못 하는 줄(설계도면 증빙) — 따로 센다 */}
+              {m > 0 && <Tag tone="warn">개별 검토 {m}</Tag>}
+            </>
+          ))}
         {check && <span className="text-tiny tabular-nums text-slate-400">{stampOf(new Date(check.checkedAt))} 대조</span>}
         {canRun && (
           <span className="self-center">

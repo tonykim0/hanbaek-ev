@@ -42,6 +42,7 @@ export type LineVerdict =
   | 'diff'         // 어긋남
   | 'no-evidence'  // 엑셀 줄에 짝 증빙이 없다
   | 'exempt'       // 보조사업 설치분 — 설치 증빙 면제(안내문 유형 2)
+  | 'review'       // 설계도면이 증빙인 줄(준공 시 설치) — 날짜로 짝지을 수 없어 사람이 본다
   | 'no-count'     // 짝은 있는데 증빙에서 기수를 못 읽었다
   | 'no-row'       // 행위신고가 있는데 엑셀에 그 줄이 없다
   | 'current'      // 이번 설치 건으로 낸 신고 — 이력이 아니다
@@ -72,6 +73,14 @@ export interface PreInstallCheck {
   unread: string[];
   /** 대조 자체를 못 한 이유 — 엑셀이 없다 등 */
   problem: string | null;
+}
+
+/**
+ * 사람이 따로 봐야 하는 줄의 수 — 어긋남이 아니라 코드가 판정할 수 없는 줄이다(설계도면 증빙).
+ * 짚을 것(issueCount)에 섞지 않는다: 섞으면 준공 때 설치한 현장은 늘 「어긋남」으로 보인다.
+ */
+export function reviewCount(c: PreInstallCheck): number {
+  return c.problem ? 0 : c.lines.filter((l) => l.verdict === 'review').length;
 }
 
 /** 짚을 것의 수 — 화면 꼬리표와 할 일이 같은 수를 센다 */
@@ -127,10 +136,29 @@ export function compareLegacy(
 
     if (!act) {
       // 양식은 비고(K)에 적으라지만 실제 엑셀은 증빙 자료명(J)에 「사업연도 2025 대기번호 1829」로 적는 일이 많다
-      const exempt = /보조사업|대기번호|\d{4}년\s*\d+번/.test(`${row.evidence ?? ''} ${row.note ?? ''}`);
+      if (/보조사업|대기번호|\d{4}년\s*\d+번/.test(`${row.evidence ?? ''} ${row.note ?? ''}`)) {
+        lines.push({ verdict: 'exempt', row, act: null, actCount: null, why: null });
+        continue;
+      }
+      /*
+       * ★설계도면이 증빙인 줄은 「개별 검토 필요」다★ (한백 지시 2026-10-06).
+       * 준공 때 건설사가 설치한 충전기는 행위신고가 없어 도면으로 센다(안내문 유형 6) — 행위 일자는
+       * 사용승인일이라 도면에 찍힌 날짜와 짝이 안 맞고, 기수도 도면의 기호를 세어야 한다.
+       * 코드가 맞다 틀리다 할 수 없으니 「증빙 없음」으로 짚지 않고 사람에게 넘긴다.
+       * 증빙 칸에 도면이 있으면 그 줄에 붙여 어느 파일을 보면 되는지 보이게 한다.
+       */
+      if (/도면|준공시|준공당시/.test(text)) {
+        const drawing = free.find((a) => a.doc === '도면');
+        if (drawing) used.add(drawing);
+        lines.push({
+          verdict: 'review', row, act: drawing ?? null, actCount: drawing ? countOf(drawing) : null,
+          why: drawing ? '설계도면 증빙' : '설계도면 증빙 — 증빙 칸에서 도면을 찾지 못함',
+        });
+        continue;
+      }
       lines.push({
-        verdict: exempt ? 'exempt' : 'no-evidence', row, act: null, actCount: null,
-        why: exempt ? null : `${row.date ?? '날짜 없음'} 행위의 증빙을 찾지 못함`,
+        verdict: 'no-evidence', row, act: null, actCount: null,
+        why: `${row.date ?? '날짜 없음'} 행위의 증빙을 찾지 못함`,
       });
       continue;
     }
