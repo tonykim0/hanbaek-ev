@@ -42,6 +42,61 @@ const NOTE: Record<Tone, string> = {
   hold: 'border-slate-800 bg-slate-100 text-slate-800',
 };
 
+/* ── 글자 역할 ──────────────────────────────────────────────────────────────
+ * ★크기·굵기·색을 역할로 한 벌씩 묶는다★ (한백 지적 2026-10-07 「필수·조건부·선택·이력 조회·엑셀 ↔ 증빙 대조
+ * 같은 글자가 회색이라 잘 안 보인다 · 텍스트 디자인 시스템 없니?」).
+ *
+ * 크기 단계(tailwind fontSize 여덟)는 있었지만 굵기·색은 자리마다 손으로 골랐다 — 세어 보니 글자 조합이 148가지,
+ * 「작은 회색 라벨」만 27가지(256자리)였고 대부분 11px · slate-400 이었다. slate-400 은 흰 바탕 대비 2.6:1 이라
+ * 11px 에서 안 읽힌다. 그래서:
+ *   ★가장 옅은 글자는 slate-500 이다★ — 그보다 옅은 회색은 글자에 쓰지 않는다(빈 값 「—」 같은 자리 표시만).
+ *   ★묶음 제목은 12px · 굵게 · slate-700★ — 구역 안의 갈래가 본문보다 먼저 눈에 걸려야 한다.
+ *
+ * 자리에서 text-·font-·text-slate- 를 조합하지 말고 이 역할을 쓴다. 없는 역할이 필요하면 여기 더한다.
+ * 그려 보는 자리는 /design 의 「글자 역할」이다.
+ */
+export const TEXT = {
+  /** 구역 제목 — 「서류」·「기설치 조사」·「진행현황 및 메모」 */
+  section: 'text-h3 font-black text-slate-900',
+  /** 묶음 제목 — 구역 안의 갈래: 「필수」·「조건부」·「1 이력 조회」·「2 서류 · 대조」 */
+  group: 'text-small font-black text-slate-700',
+  /** 칸 이름 — 값 앞에 붙는 이름(dt) */
+  label: 'text-small font-bold text-slate-600',
+  /** 본문·값 */
+  body: 'text-base text-slate-800',
+  /** 곁글 — 건수·시각·단위·출처·묶음의 한마디. 가장 옅은 글자 */
+  meta: 'text-tiny font-semibold text-slate-500',
+} as const;
+
+/**
+ * 묶음 머리 — 묶음 제목 + 곁글(건수·한마디) + 그 묶음의 상태·단추.
+ * 「필수 · 조건부 · 선택」과 기설치 조사의 걸음이 같은 모양을 쓴다 — 두 화면에서 같은 층이 다르게 보이지 않게.
+ */
+export function GroupHead({ step, title, meta, children }: {
+  /** 걸음 번호 — 순서가 있는 묶음(기설치 조사의 1·2·3) */
+  step?: number;
+  title: ReactNode;
+  /** 곁글 — 「2/5」·「해당되는 현장만」 */
+  meta?: ReactNode;
+  /** 머리 줄에 같이 서는 상태 꼬리표·단추 */
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <h3 className={TEXT.group}>
+        {step !== undefined && (
+          <span className="mr-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-slate-800 px-1 align-[1px] text-micro font-black tabular-nums text-white">
+            {step}
+          </span>
+        )}
+        {title}
+      </h3>
+      {meta !== undefined && meta !== null && <span className={`${TEXT.meta} tabular-nums`}>{meta}</span>}
+      {children}
+    </div>
+  );
+}
+
 /* ── 단추 ──────────────────────────────────────────────────────────────────
  * 네 가지다. 더 만들지 않는다.
  *   do    그 화면에서 하는 일. 한 상자에 하나만 둔다.

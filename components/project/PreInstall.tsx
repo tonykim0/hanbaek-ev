@@ -10,16 +10,18 @@
  * 서류 목록에서 빼내 자기 구역에 두는 것은 유지한다 — 현장마다 해야 하는 일이라
  * 증빙이 서류 열여섯 칸 사이에 섞여 있으면 조사가 됐는지 보이지 않는다.
  */
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import { reviewKindLabel } from '@/lib/review-labels';
 import type { PreInstall as PreInstallState, ProjectDetail, ProjectDocument } from '@/types/project';
 import { evaluateDocs, needsPreInstallCheck } from '@/lib/doc-rules';
 import { DocDelete, DocFileActions, DocUpload, DownloadAll } from '@/components/DocFiles';
 import { useAction } from '@/lib/use-action';
-import { Badge, Btn, Choice, Empty, Err, FIELD, Tag } from '@/components/ui';
+import { Badge, Btn, Choice, Empty, Err, FIELD, GroupHead, Tag, TEXT } from '@/components/ui';
 import { DocReview } from './DocReview';
 import { PreInstallCheckBlock } from './PreInstallCheck';
-import { checkedFilesOf, type PreInstallCheck } from '@/lib/preinstall-check';
+import {
+  checkedFilesOf, missingSeals, sameFiles, sealFixReason, type PreInstallCheck,
+} from '@/lib/preinstall-check';
 import { docCardTone, docState, RejectReason } from './parts';
 import { LookupResults, useShardLoader } from '@/components/ChargerHistoryLookup';
 import {
@@ -80,7 +82,7 @@ export function PreInstall({
     return (
       <section>
         <div className="flex flex-wrap items-baseline gap-x-2">
-          <h2 className="text-h3 font-black text-slate-900">기설치 조사</h2>
+          <h2 className={TEXT.section}>기설치 조사</h2>
           <Badge>해당없음</Badge>
         </div>
         {filed.length > 0 && (
@@ -104,21 +106,33 @@ export function PreInstall({
     );
   }
 
+  /*
+   * ★직인이 없으면 설치이력 칸의 반려가 그 까닭을 들고 연다★ — 반려하는 문은 칸의 「반려」 하나다(UI 리뷰
+   * 2026-10-07: 대조 결과에 따로 둔 「보완요청 — 직인 없음」과 칸의 「반려」가 같은 칸을 돌려보내는 두 길이었다).
+   * 서류가 바뀐 지난 결과로는 제안하지 않는다 — 고쳐 올린 것을 다시 돌려보내게 된다.
+   */
+  const current = checkedFilesOf([...byKind.values()]);
+  const sealGap = check?.seal && sameFiles(check.files, current) && missingSeals(check.seal).length > 0
+    ? check.seal : null;
+  const suggestFor = (kind: string) =>
+    kind === 'legacylog' && sealGap ? { label: '직인 없음', reason: sealFixReason(sealGap) } : null;
+
   return (
-    <section>
+    /*
+     * ★걸음 셋으로 선다★ (UI 리뷰 2026-10-07 「뒤죽박죽에 보기 쉽지 않다」) — 이력 조회(공공 자료) → 서류·대조
+     * (낸 서류끼리) → 현장 확인 결과. 걸음마다 번호 붙은 머리(ui GroupHead)이고 사이는 얇은 선 하나다(규칙 1).
+     * 대조가 이력 조회 바로 밑인 것은 그대로다(한백 지시 2026-10-07 「이력 조회 밑에 넣어주고 검증 필수」) —
+     * 서류 두 칸을 그 걸음 안으로 올렸다: 대조가 판정하는 것이 그 두 칸이다.
+     * 기설치 있음/없음은 3 걸음 한 곳에만 둔다 — 제목 배지·대조의 「조사 결과」 줄과 세 번 있었다(규칙 5).
+     */
+    <section className="flex flex-col gap-4">
       {/*
-        ★받는 단추는 제목 옆이다★ (한백 지시 2026-08-31) — 오른쪽 끝으로 밀면 넓은 화면에서
-        제목과 떨어져 무엇을 받는 것인지 눈이 가로질러 이어야 한다. 서류 구역과 같은 꼴이다.
-        계약 서류의 「전체 다운로드」에도 기설치 파일이 들어가지만, 그것은 열여섯 칸을
-        통째로 받는 자리다. 기설치만 따로 받을 일이 따로 있다(운영사 제출·조사 재확인).
+        ★받는 단추는 제목 옆이다★ (한백 지시 2026-08-31) — 서류 구역과 같은 꼴이다. 계약 서류의 「전체 다운로드」에도
+        기설치 파일이 들어가지만, 기설치만 따로 받을 일이 따로 있다(운영사 제출·조사 재확인).
       */}
-      <div className="mb-3 flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5">
-        <h2 className="text-h3 font-black text-slate-900">기설치 조사</h2>
-        {project.preChecked ? (
-          <Badge tone="ok">기설치 {project.preInstall}</Badge>
-        ) : (
-          <Tag tone="warn">조사 필요</Tag>
-        )}
+      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5">
+        <h2 className={TEXT.section}>기설치 조사</h2>
+        {!project.preChecked && <Tag tone="warn">조사 필요</Tag>}
         {/* 테두리 있는 단추는 baseline 에서 조금 내려앉는다 — 글자 줄이 아니라 가운데에 맞춘다 */}
         <span className="self-center">
           <DownloadAll
@@ -130,57 +144,46 @@ export function PreInstall({
         </span>
       </div>
 
-      {/*
-        ★엑셀 ↔ 증빙 대조는 이력 조회 바로 밑이다★ (한백 지시 2026-10-07 「이력 조회 밑에 넣어주고 검증 필수」).
-        조사는 이력 조회(공공 자료) → 대조(낸 서류끼리) → 현장 확인 결과 순으로 간다. 대조는 계약 확인의
-        조건이라(preCheckBlocker) 맨 아래 서류 칸 뒤에 두면 안 한 것이 안 보였다.
-        돌리는 것은 한백(검수와 같은 손, canReview), 결과는 협력사도 본다.
-      */}
-      <Survey
-        project={project}
-        check={
-          <PreInstallCheckBlock
-            projectId={project.id}
-            check={check}
-            currentFiles={checkedFilesOf([...byKind.values()])}
-            canRun={canReview}
-            hasSheet={(byKind.get('legacylog')?.files.length ?? 0) > 0}
-            logRejected={byKind.get('legacylog')?.status === 'rejected'}
-          />
-        }
-      />
+      <Lookup project={project} />
 
-      {/*
-        ★조사 반려는 없다★ (한백 승인 2026-09-03). 기설치 두 칸을 돌려보내는 문이
-        셋이었는데 결과가 하나였다 — stage 가 반려 한 건으로 같이 세고(lib/stage.ts),
-        board 가 같은 칸(계약보완)으로 보냈다. 기본 사유부터 「기설치 이력엑셀 파일/
-        증빙자료 필요」였고, 푸는 조건도 설치이력 파일이었다(lib/data/store/docs.ts) —
-        서류로 풀리는 반려는 서류 반려다.
+      <div className="border-t border-slate-100 pt-3">
+        <PreInstallCheckBlock
+          projectId={project.id}
+          check={check}
+          currentFiles={current}
+          canRun={canReview}
+          hasSheet={(byKind.get('legacylog')?.files.length ?? 0) > 0}
+          logRejected={byKind.get('legacylog')?.status === 'rejected'}
+          docs={
+            /*
+              격자는 서류 구역과 같다 (한백 지시 2026-09-03 「서류 컴포넌트랑 맞춰줘. 너무 넓어」) — 칸이 둘뿐이라고
+              2열로 넓히면 같은 서류 카드가 두 구역에서 다른 폭이 된다.
 
-        이제 문은 둘이다: ★파일이 있으면 그 칸의 「반려」, 없으면 계약 탭의
-        「누락 서류 N건 보완요청」★ (missingRequiredDocs 가 이 두 칸도 겨냥한다 —
-        preinstall 을 거르지 않는다). 조사 내역만 부실한 경우는 이력 조회와 대조해
-        판단한다(한백). 옮긴 자국은 migrations/0050 에 있다.
-      */}
-      {/*
-        격자는 서류 구역과 같다 (한백 지시 2026-09-03 「서류 컴포넌트랑 맞춰줘. 너무 넓어」) —
-        칸이 둘뿐이라고 2열로 넓히면 같은 서류 카드가 두 구역에서 다른 폭이 된다.
-        오른쪽 빈 자리는 그 값을 치른 것이다.
-      */}
-      <div className="mt-3 grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {docs.map((d) => (
-          <PreDocCard
-            key={d.key}
-            d={d}
-            doc={byKind.get(d.key)}
-            projectId={project.id}
-            siteName={siteName}
-            canReview={canReview}
-            canRemove={canRemove}
-            canEditDocs={canEditDocs}
-            canFillEmpty={canFillEmpty}
-          />
-        ))}
+              ★조사 반려는 없다★ (2026-09-03, migrations/0050) — 돌려보내는 문은 칸의 「반려」(파일이 있으면)와
+              계약 탭의 「누락 서류 N건 보완요청」(없으면) 둘이다.
+            */
+            <div className="grid gap-1.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+              {docs.map((d) => (
+                <PreDocCard
+                  key={d.key}
+                  d={d}
+                  doc={byKind.get(d.key)}
+                  projectId={project.id}
+                  siteName={siteName}
+                  canReview={canReview}
+                  canRemove={canRemove}
+                  canEditDocs={canEditDocs}
+                  canFillEmpty={canFillEmpty}
+                  suggest={suggestFor(d.key)}
+                />
+              ))}
+            </div>
+          }
+        />
+      </div>
+
+      <div className="border-t border-slate-100 pt-3">
+        <SurveyResult project={project} />
       </div>
     </section>
   );
@@ -188,8 +191,10 @@ export function PreInstall({
 
 /** 기설치 서류 한 칸 — 조사 구역과 「해당없음」 구역(자체투자인데 파일이 온 칸)이 같이 쓴다 */
 function PreDocCard({
-  d, doc, projectId, siteName, canReview, canRemove, canEditDocs, canFillEmpty,
+  d, doc, projectId, siteName, canReview, canRemove, canEditDocs, canFillEmpty, suggest = null,
 }: {
+  /** 반려할 까닭을 이미 안다 — 대조가 짚은 직인 없음(설치이력 칸). 반려 단추가 그 말을 들고 연다 */
+  suggest?: { label: string; reason: string } | null;
   d: ReturnType<typeof evaluateDocs>[number];
   doc: ProjectDocument | undefined;
   projectId: string;
@@ -268,6 +273,7 @@ function PreDocCard({
             kind={d.key}
             status={doc?.status ?? 'none'}
             hasFile={(doc?.files.length ?? 0) > 0}
+            suggest={suggest}
           />
         )}
         {canReview && doc && doc.status !== 'none' && (
@@ -287,36 +293,17 @@ function PreDocCard({
 
 
 /*
- * 조사 결과 — 있음/없음과 조사 내역(대수·kW·운영사·보조금 이력 등).
- * 평소엔 글자로 굳히고 「수정」을 눌러야 열린다(화면 규칙 4번). 저장에 preChecked 를
- * 같이 실어 「조사했다」가 된다. 열람 전용의 쓰기는 서버(write-route)가 막는다.
+ * 1 이력 조회 — /lookup 과 같은 조회를 현장 주소로 돌린다(한백 확인 2026-08-23: 실무 순서가 「이력 조회로 1차 확인 →
+ * 영업자가 고객사·현장에서 재확인」). ★조회는 읽기만 한다★ — 결과를 조사 내역에 옮겨 주지 않는다(2026-09-03, 조회한
+ * 것이 조사한 것처럼 저장된다). 결과는 /lookup 이 그리는 카드 그대로다(LookupResults — 요약을 따로 만들면 갈린다).
+ *
+ * ★결과를 접는다★ (UI 리뷰 2026-10-07) — 카드 여러 장이 펼쳐지면 2·3 걸음이 화면 아래로 한참 밀렸다.
  */
-function Survey({ project, check }: {
-  project: ProjectDetail['project'];
-  /** 이력 조회와 현장 확인 결과 사이에 서는 엑셀 ↔ 증빙 대조 — 조사의 두 번째 걸음 */
-  check: ReactNode;
-}) {
-  const { busy, error, run } = useAction();
-  const [editing, setEditing] = useState(false);
-  const [state, setState] = useState<PreInstallState>(project.preInstall);
-  const [note, setNote] = useState(project.preNote ?? '');
-
-  /*
-   * 1차 조사 = /lookup 과 같은 이력 조회 — 실무 순서가 「이력 조회로 1차 확인 → 영업자가
-   * 고객사·현장에서 재확인」이라(한백 확인 2026-08-23), 그 1차를 이 자리에서 현장 주소로
-   * 돌려 초안을 만들어 준다. 자동 저장하지 않는다 — 조회는 초안이고, 저장은 사람이
-   * 재확인을 거쳐 누르는 것이다. 조회 로직·데이터는 /lookup 과 같은 것을 그대로 쓴다.
-   */
+function Lookup({ project }: { project: ProjectDetail['project'] }) {
   const loadCharger = useShardLoader<SiteRecord>(DATA_BASE);
   const loadSubsidy = useShardLoader<SubsidyRecord>(SUBSIDY_DATA_BASE);
   const [looking, setLooking] = useState(false);
-  /*
-   * 조회 결과 — /lookup 이 그리는 카드 그대로 든다 (한백 지적 2026-09-03 「조회 내용이
-   * /lookup 대비 너무 간소하다」). 글 몇 줄로 접어 적었더니 판정·충전소명·설치 이력 표·
-   * 매칭 경고가 다 빠져서, 대조하려면 결국 /lookup 을 한 번 더 열어야 했다.
-   * 요약을 따로 만들면 언젠가 갈린다 — 부품(LookupResults)을 통째로 같이 쓴다.
-   * 기설치 있음/없음 판정은 여전히 사람이 한다.
-   */
+  const [open, setOpen] = useState(true);
   const [found, setFound] = useState<{
     charger: LookupResult;
     subsidy: LookupResult<SubsidyRecord>;
@@ -334,12 +321,64 @@ function Survey({ project, check }: {
         lookupSubsidyHistory(input, loadSubsidy),
       ]);
       setFound({ charger, subsidy });
+      setOpen(true);
     } catch (e) {
       setLookErr((e as Error).message);
     } finally {
       setLooking(false);
     }
   }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <GroupHead step={1} title="이력 조회">
+        <span className="self-center">
+          <Btn
+            size="sm"
+            kind="side"
+            busy={looking}
+            busyLabel="조회 중…"
+            disabled={!project.addr}
+            onClick={() => void firstLook()}
+          >
+            {!project.addr ? '주소 미지정 — 이력 조회 불가' : found ? '다시 조회' : '주소로 이력 조회'}
+          </Btn>
+        </span>
+        {found && (
+          <span className="self-center">
+            <Btn size="sm" kind="quiet" onClick={() => setOpen((v) => !v)}>{open ? '결과 접기' : '결과 펼치기'}</Btn>
+          </span>
+        )}
+        <Err>{lookErr}</Err>
+      </GroupHead>
+      {found && open && (
+        <div className="flex max-w-3xl flex-col gap-2">
+          <LookupResults
+            charger={found.charger}
+            subsidy={found.subsidy}
+            meta={chargerMeta as IndexMeta}
+            subsidyMeta={subsidyMeta as SubsidyMeta}
+          />
+          {/* 이력은 원본 등록분일 뿐, 대수 확정은 현장이 한다 (한백 문구) */}
+          <p className="px-1 text-small font-semibold leading-snug text-amber-800">
+            현장별로 실제 기설치 대수 반드시 확인 필요 — 보조금 불가 시 추후 보조금 환수 및 패널티 적용 예정
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/*
+ * 3 현장 확인 결과 — 있음/없음과 조사 내역(대수·kW·운영사·보조금 이력 등). ★기설치 있음/없음은 여기 한 곳이다★.
+ * 평소엔 글자로 굳히고 「수정」을 눌러야 열린다(화면 규칙 4번). 저장에 preChecked 를 같이 실어 「조사했다」가 된다.
+ * 열람 전용의 쓰기는 서버(write-route)가 막는다.
+ */
+function SurveyResult({ project }: { project: ProjectDetail['project'] }) {
+  const { busy, error, run } = useAction();
+  const [editing, setEditing] = useState(false);
+  const [state, setState] = useState<PreInstallState>(project.preInstall);
+  const [note, setNote] = useState(project.preNote ?? '');
 
   async function save() {
     const ok = await run({
@@ -353,87 +392,32 @@ function Survey({ project, check }: {
 
   return (
     <div className="flex flex-col gap-2">
-      {/*
-        ★이력 조회는 편집 밖에 있다★ (한백 지시 2026-09-03 「조사결과 작성하지 않아도
-        조회가능하게」). 그전에는 「조사 내역 적기」를 눌러 편집으로 들어가야만 조회 단추가
-        나왔다 — 그런데 조회는 ★읽는 일★이다: 이 현장에 기설치가 있나만 보고 끝낼 때가 많고,
-        그때마다 편집을 열었다 취소해야 했다. 편집을 열어 두면 실수로 저장할 자리도 생긴다.
-        (같은 조회가 상단바의 「기설치 이력조회」에도 있지만 거기서는 주소를 다시 쳐야 한다.)
-
-        조회는 그대로 초안일 뿐이다 — 「조사 내역 채우기」를 누르면 그때 편집이 열리고
-        칸이 채워진다. 저장은 여전히 사람이 재확인을 거쳐 누른다.
-      */}
-      <div className="flex flex-col gap-2">
-        <span className="text-tiny font-bold tracking-[0.04em] text-slate-500">이력 조회</span>
-        <div className="flex flex-wrap items-center gap-2">
-          <Btn
-            size="sm"
-            kind="side"
-            busy={looking}
-            busyLabel="조회 중…"
-            disabled={!project.addr}
-            onClick={() => void firstLook()}
-          >
-            {project.addr ? '주소로 이력 조회' : '주소 미지정 — 이력 조회 불가'}
-          </Btn>
-          <Err>{lookErr}</Err>
-        </div>
-        {found && (
-          /*
-            ★조회 결과는 읽기만 한다★ (한백 지시 2026-09-03 「조사내역 채우기 필요없어」).
-            결과를 조사 내역 칸에 옮겨 적어 주는 단추가 있었는데, 그러면 ★조회한 것이
-            조사한 것처럼★ 저장된다 — 이력은 원본 등록분이고 조사는 현장에서 확인한 것이라
-            같은 글일 수 없다(바로 아래 경고가 그 말이다). 옮겨 적는 편함보다 그 둘이
-            섞이지 않는 것이 낫다. 조사 내역은 사람이 「조사 내역 적기」에서 쓴다.
-          */
-          <div className="flex max-w-3xl flex-col gap-2">
-            <LookupResults
-              charger={found.charger}
-              subsidy={found.subsidy}
-              meta={chargerMeta as IndexMeta}
-              subsidyMeta={subsidyMeta as SubsidyMeta}
-            />
-            {/* 이력은 원본 등록분일 뿐, 대수 확정은 현장이 한다 (한백 문구) */}
-            <p className="px-1 text-tiny font-semibold leading-snug text-amber-700">
-              현장별로 실제 기설치 대수 반드시 확인 필요 — 보조금 불가 시 추후 보조금 환수 및 패널티 적용 예정
-            </p>
-          </div>
+      <GroupHead step={3} title="현장 확인 결과">
+        {/* 안내문을 두지 않는다(규칙 2) — 무엇을 하라는 말은 단추 이름이 한다 */}
+        {!editing && (
+          <span className="self-center">
+            <Btn size="sm" kind="quiet" onClick={() => setEditing(true)}>
+              {project.preChecked ? '조사 내역 수정' : '조사 내역 적기'}
+            </Btn>
+          </span>
         )}
-      </div>
-
-      {/* 걸음 사이는 얇은 선 하나 — 상자를 겹치지 않는다(화면 규칙 1) */}
-      <div className="border-t border-slate-100 pt-2">{check}</div>
-
-      <div className="flex flex-col gap-2 border-t border-slate-100 pt-2">
-      {/*
-        머리는 편집 밖에도 선다 — 대조가 이 위로 들어오면서, 이름 없는 「미지정 · 조사 내역 적기」가
-        대조의 한 줄처럼 읽혔다. 편집 안의 같은 이름은 걷었다(같은 말 두 번, 화면 규칙 5).
-      */}
-      <span className="text-tiny font-bold tracking-[0.04em] text-slate-500">현장 확인 결과</span>
+      </GroupHead>
       {editing ? (
-        <div className="flex max-w-2xl flex-col gap-4">
-          {/*
-            현장 확인 결과 — 여기 적힌 것이 확정이고, 저장이 「조사했다」가 된다.
-            번호(①·②)는 걷었다: 조회가 편집 밖으로 나가면서 둘이 나란한 단계가 아니게 됐다 —
-            조회는 아무 때나 하는 읽기이고, 이것은 적을 때만 여는 자리다.
-          */}
-          <div className="flex flex-col gap-2">
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="mr-1 text-tiny font-bold text-slate-500">기설치</span>
-              {(['없음', '있음'] as const).map((v) => (
-                <Choice key={v} on={state === v} onClick={() => setState(v)}>{v}</Choice>
-              ))}
-            </div>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={5}
-              placeholder="조사에서 알아낸 것 — 대수 · kW · 운영사 · 설치 시기 · 보조금 수령 여부 등"
-              className={FIELD}
-            />
+        <div className="flex max-w-3xl flex-col gap-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className={`mr-1 ${TEXT.label}`}>기설치</span>
+            {(['없음', '있음'] as const).map((v) => (
+              <Choice key={v} on={state === v} onClick={() => setState(v)}>{v}</Choice>
+            ))}
           </div>
-
-          <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={5}
+            placeholder="조사에서 알아낸 것 — 대수 · kW · 운영사 · 설치 시기 · 보조금 수령 여부 등"
+            className={FIELD}
+          />
+          <div className="flex flex-wrap items-center gap-2">
             <Btn busy={busy} busyLabel="저장 중…" onClick={() => void save()}>
               조사 결과 저장
             </Btn>
@@ -447,30 +431,17 @@ function Survey({ project, check }: {
             <Err>{error}</Err>
           </div>
         </div>
-      ) : (
-        /*
-         * 안내문을 두지 않는다(화면 규칙 2, 한백 지시 2026-08-26).
-         *
-         * 「조사 결과가 아직 없다 — 현장 확인 후 적는다」가 적혀 있었다. 같은 말을 세 번
-         * 하고 있었던 셈이다: 제목 옆의 「조사 필요」 태그, 이 문장, 그리고 「조사 내역
-         * 적기」 단추. 빈 값은 종류로 말한다 — 넣어야 하는데 안 넣은 것은 「미지정」이다
-         * (화면 규칙 10). 무엇을 하라는 말은 단추 이름이 한다.
-         */
-        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          {project.preChecked ? (
-            <p className="max-w-xl whitespace-pre-line break-keep text-small text-slate-700">
-              {/* 조사는 했는데 적은 글이 없다 — 파일만 온 현장이다. 담담한 회색이다 */}
-              {project.preNote ?? <Empty kind="wait" label="내역 없음" />}
-            </p>
-          ) : (
-            <Empty kind="miss" />
-          )}
-          <Btn size="sm" kind="quiet" onClick={() => setEditing(true)}>
-            {project.preChecked ? '조사 내역 수정' : '조사 내역 적기'}
-          </Btn>
+      ) : project.preChecked ? (
+        <div className="flex max-w-3xl flex-col gap-1">
+          <p className={TEXT.body}><b>기설치 {project.preInstall}</b></p>
+          {/* 조사는 했는데 적은 글이 없다 — 파일만 온 현장이다. 담담한 회색이다 */}
+          {project.preNote
+            ? <p className={`whitespace-pre-line break-keep ${TEXT.body}`}>{project.preNote}</p>
+            : <Empty kind="wait" label="내역 없음" />}
         </div>
+      ) : (
+        <Empty kind="miss" />
       )}
-      </div>
     </div>
   );
 }

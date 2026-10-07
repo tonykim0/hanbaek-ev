@@ -10,7 +10,7 @@ import { useState } from 'react';
 import { Finding, Preview } from './parts';
 import { useFileDragging } from '@/components/DocFiles';
 import type { StagedFile } from '@/components/IntakeForm';
-import { PANEL, Tag } from '@/components/ui';
+import { GroupHead, PANEL, Tag, TEXT } from '@/components/ui';
 import type { EvaluatedDoc } from '@/lib/doc-rules';
 import type { DocReview } from '@/types/intake-auto';
 
@@ -94,8 +94,8 @@ export function DocSection({
     <section className={`${PANEL} p-5`}>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-3">
         <div className="flex flex-wrap items-baseline gap-2">
-          <h2 className="text-h3 font-black text-slate-900">서류</h2>
-          <span className="text-small font-bold tabular-nums text-slate-400">
+          <h2 className={TEXT.section}>서류</h2>
+          <span className={`${TEXT.meta} tabular-nums`}>
             필수 {check.satisfiedCount}/{check.requiredCount}
           </span>
           {check.satisfiedCount < check.requiredCount && <Tag tone="warn">필수 서류 미충족</Tag>}
@@ -120,18 +120,15 @@ export function DocSection({
           const done = list.filter((d) => staged[d.key]).length;
           return (
             <div key={sec.req}>
-              {/* 묶음 머리 — 계약 탭과 같은 꼴이다(색 막대는 걷었다: 칸 색이 이미 말한다) */}
-              <div className="mb-2 flex items-baseline gap-2">
-                <h3 className="text-tiny font-black tracking-[0.1em] text-slate-500">
-                  {sec.label}
-                </h3>
-                {/* 필수의 수는 위 진행 막대가 말한다 — 같은 값을 두 번 두지 않는다(규칙 5) */}
-                {sec.req !== 'm' && (
-                  <span className="text-tiny font-bold tabular-nums text-slate-400">
-                    {done}/{list.length}
-                  </span>
-                )}
-                <span className="text-tiny text-slate-400">{sec.note}</span>
+              {/*
+                * 묶음 머리 — 계약 탭과 같은 부품이다(ui GroupHead · 글자 역할, 2026-10-07).
+                * 필수의 수는 위 진행 막대가 말한다 — 같은 값을 두 번 두지 않는다(규칙 5).
+                */}
+              <div className="mb-2">
+                <GroupHead
+                  title={sec.label}
+                  meta={[sec.req !== 'm' ? `${done}/${list.length}` : null, sec.note].filter(Boolean).join(' · ')}
+                />
               </div>
 
               {/* 칸을 넷으로 — 계약 탭과 같다(그전에는 둘이라 같은 서류가 두 배로 커 보였다) */}

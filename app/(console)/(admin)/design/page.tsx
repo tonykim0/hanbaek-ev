@@ -14,7 +14,7 @@
  * components/ui.tsx(모양) 와 tailwind.config.js(토큰) 에 먼저 추가한다.
  */
 import {
-  Alerts, Badge, Blank, Btn, Choice, Clear, Empty, Err, FIELD, FIELD_CELL, HR, Note, Saved, Segments, Tag, Td, Th, Val,
+  Alerts, Badge, Blank, Btn, Choice, Clear, Empty, Err, FIELD, FIELD_CELL, GroupHead, HR, Note, Saved, Segments, Tag, TEXT, Td, Th, Val,
 } from '@/components/ui';
 
 export const metadata = { title: '디자인 기준 — 한백 전기차사업관리시스템' };
@@ -35,8 +35,8 @@ const SLATE_USE: Array<[string, string, string]> = [
   ['slate-800', 'bg-slate-800', '본문 강조'],
   ['slate-700', 'bg-slate-700', '표 안의 값'],
   ['slate-600', 'bg-slate-600', '보조 값'],
-  ['slate-500', 'bg-slate-500', '라벨'],
-  ['slate-400', 'bg-slate-400', '설명·비활성 글자'],
+  ['slate-500', 'bg-slate-500', '곁글 — 글자의 가장 옅은 색 (TEXT.meta)'],
+  ['slate-400', 'bg-slate-400', '글자에 안 쓴다 — 흰 바탕 2.6:1, 비활성 단추·자리 표시만'],
   ['slate-300', 'bg-slate-300', '빈 값 (—)'],
   ['slate-200', 'bg-slate-200', '경계선'],
   ['slate-100', 'bg-slate-100', '표 구분선·연한 배경'],
@@ -117,6 +117,32 @@ export default function DesignPage() {
           <b className="text-slate-700">font-bold</b>(라벨·값) · 보통 셋만 쓴다. 숫자는{' '}
           <b className="text-slate-700">tabular-nums</b> 로 폭을 고정한다.
         </p>
+      </Section>
+
+      {/*
+        글자 역할 — 크기·굵기·색 한 벌(ui TEXT · GroupHead, 2026-10-07). 활자 단계만으로는 모양이 갈렸다:
+        글자 조합 148가지, 「작은 회색 라벨」만 27가지였다. 자리에서 조합하지 말고 이 역할을 쓴다.
+      */}
+      <Section title="글자 역할" note="크기·굵기·색을 역할로 묶는다 — 자리에서 조합하지 않는다">
+        <div className="flex flex-col divide-y divide-slate-100">
+          {([
+            ['section', '구역 제목', '서류 · 기설치 조사 · 진행현황 및 메모'],
+            ['group', '묶음 제목', '필수 · 조건부 · 이력 조회 · 서류 · 대조'],
+            ['label', '칸 이름', '지금 서 있는 수 · 직인'],
+            ['body', '본문·값', '엑셀 16기 · 증빙 16기'],
+            ['meta', '곁글 — 가장 옅은 글자', '2/5 · 10-07 14:22 대조 · 해당되는 현장만'],
+          ] as const).map(([key, use, sample]) => (
+            <div key={key} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2.5">
+              <code className="w-24 shrink-0 text-micro font-bold text-brand-700">TEXT.{key}</code>
+              <span className={TEXT[key]}>{sample}</span>
+              <span className={`ml-auto ${TEXT.meta}`}>{use}</span>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3">
+          <GroupHead title="조건부" meta="1/3 · 해당되는 현장만" />
+          <GroupHead step={2} title="서류 · 대조" meta="10-07 14:22 대조"><Tag tone="warn">짚을 것 2</Tag></GroupHead>
+        </div>
       </Section>
 
       <Section title="모서리와 간격" note="동글면 상태, 각지면 누르는 것. 네 단계 밖으로 나가지 않는다">

@@ -28,7 +28,14 @@ export function DocReview({
   status,
   hasFile = true,
   onRejected,
+  suggest,
 }: {
+  /**
+   * 반려할 까닭을 이미 안다 — 기설치 대조가 직인 없음을 짚었을 때(2026-10-07). 단추 이름이 그 까닭을 말하고
+   * (화면 규칙 3 「반려 — 직인 없음」), 열면 사유 칸이 채워져 있다(고쳐 쓸 수 있다).
+   * ★반려하는 문을 하나로 둔다★ — 대조 결과에 따로 「보완요청」 단추를 두었더니 같은 칸을 돌려보내는 길이 둘이었다.
+   */
+  suggest?: { label: string; reason: string } | null;
   projectId: string;
   kind: string;
   status: ProjectDocument['status'];
@@ -127,8 +134,13 @@ export function DocReview({
            * 반려와 삭제가 같은 회색 글자라 구분이 안 됐고(한백 지적), 붉은 밑줄 글자로 뒀더니
            * 옆의 칩들 사이에서 눌리는 것으로 안 읽혔다. 배경 빨강은 「반려 확정」에만 쓴다(규칙 12).
            */
-          <Btn size="sm" kind="warn" disabled={busy} onClick={() => setRejecting(true)}>
-            반려
+          <Btn
+            size="sm"
+            kind="warn"
+            disabled={busy}
+            onClick={() => { if (suggest && !reason) setReason(suggest.reason); setRejecting(true); }}
+          >
+            {suggest ? `반려 — ${suggest.label}` : '반려'}
           </Btn>
         )}
       </div>

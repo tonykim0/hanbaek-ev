@@ -21,7 +21,7 @@ import { DocReview } from './DocReview';
 import { ReviewHistory } from './ReviewHistory';
 import { PreInstall } from './PreInstall';
 import { docCardTone, docState, RejectReason } from './parts';
-import { Btn, Err, FIELD, Note, PANEL, Saved, Tag } from '@/components/ui';
+import { Btn, Err, FIELD, GroupHead, Note, PANEL, Saved, Tag, TEXT } from '@/components/ui';
 
 // ── 계약 탭 ─────────────────────────────────────────────────────
 /**
@@ -582,13 +582,13 @@ export function IntakeTab({
           (같은 지적이 앞서 시공 탭의 서류 줄에도 있었다 — construction/rows 의 머리말)
         */}
         <div className="mb-3 flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5">
-          <h2 className="text-h3 font-black text-slate-900">서류</h2>
+          <h2 className={TEXT.section}>서류</h2>
           {/*
             * 필수 수와 막는 태그를 제목 옆에 붙인다 (한백 지시 2026-08-25). 머리말에
             * 있던 「필수 서류 미충족」은 무슨 서류가 모자란지 말하지 못했고, 그것을 보려면
             * 어차피 이 구역까지 내려온다 — 막는 말은 막힌 자리에 있어야 한다.
             */}
-          <span className="text-small font-bold tabular-nums text-slate-400">
+          <span className={`${TEXT.meta} tabular-nums`}>
             필수 {requiredDone}/{requiredHere.length}
           </span>
           {requiredMissing && <Tag tone="warn">필수 서류 미충족</Tag>}
@@ -676,15 +676,15 @@ export function IntakeTab({
 
             return (
               <div key={g.req}>
-                <div className="mb-2 flex items-baseline gap-2">
-                  <h3 className="text-tiny font-black tracking-[0.1em] text-slate-500">{g.label}</h3>
-                  {/* 필수의 수는 「서류」 옆이 말한다 — 같은 값을 두 번 두지 않는다(화면 규칙 5) */}
-                  {g.req !== 'm' && (
-                    <span className="text-tiny font-bold tabular-nums text-slate-400">
-                      {done}/{list.length}
-                    </span>
-                  )}
-                  {g.note && <span className="text-tiny text-slate-400">{g.note}</span>}
+                {/*
+                  * 묶음 머리 — 글자 역할(ui GroupHead)을 쓴다(한백 지적 2026-10-07 「회색이라 잘 안 보인다」 —
+                  * 11px · slate-500 이었다). 필수의 수는 「서류」 옆이 말한다 — 같은 값을 두 번 두지 않는다(규칙 5).
+                  */}
+                <div className="mb-2">
+                  <GroupHead
+                    title={g.label}
+                    meta={[g.req !== 'm' ? `${done}/${list.length}` : null, g.note ?? null].filter(Boolean).join(' · ') || undefined}
+                  />
                 </div>
 
                 {/* 칸을 넷으로 — 서류 하나가 손바닥만 하던 것을 줄인다(한백 지적) */}
