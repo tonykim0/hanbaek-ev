@@ -65,7 +65,8 @@ export function RowLabel({
   return (
     <span
       className={`w-48 shrink-0 break-keep py-0.5 leading-snug ${
-        strong ? 'font-bold text-slate-700' : 'text-slate-500'
+        // 이름은 slate-600 — 500 은 13px 이름 열에서 값보다 먼저 흐려 보였다(글자 역할 정리, 2026-10-07)
+        strong ? 'font-bold text-slate-700' : 'text-slate-600'
       }`}
     >
       {children}

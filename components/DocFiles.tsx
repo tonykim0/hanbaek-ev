@@ -264,7 +264,7 @@ function FileRow({
             아예 없다 — 그때는 어느 칸인지 사람이 이미 골랐다.
           */}
           {file.title && !file.name.includes(file.title) && (
-            <span className="truncate text-micro text-slate-400" title={file.title}>
+            <span className="truncate text-micro text-slate-500" title={file.title}>
               읽은 제목 <span className="font-bold text-slate-600">{file.title}</span>
             </span>
           )}

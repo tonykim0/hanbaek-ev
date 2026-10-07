@@ -38,7 +38,7 @@ import {
 import { today } from '@/lib/date';
 import { useAction } from '@/lib/use-action';
 import {
-  Badge, Btn, Confirm, Note,
+  Badge, Btn, Confirm, GroupHead, Note, TEXT,
 } from '@/components/ui';
 import {
   groupsByStatus, type CheckField, type CountField, type DateField, type GroupExtra,
@@ -326,7 +326,7 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
 
       <section>
         <div className="mb-4 flex flex-wrap items-baseline justify-between gap-3">
-          <h2 className="text-h3 font-black text-slate-900">공정</h2>
+          <h2 className={TEXT.section}>공정</h2>
           <DownloadAll
             docs={p.docs}
             siteName={detail.project.name}
@@ -358,7 +358,7 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
                   ? 'bg-brand-50 text-brand-800'
                   : entry.ok
                     ? 'border border-slate-200 bg-white text-slate-600'
-                    : 'bg-slate-100 text-slate-400';
+                    : 'bg-slate-100 text-slate-500';
             return (
               <Fragment key={st}>
                 <button
@@ -450,7 +450,7 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
                           : `이 구간으로 넘기기 → ${(STATUS_GATES[selected]?.(p, gate) ?? []).length}건 미충족`}
                     </button>
                   ) : (
-                    <p className="text-tiny font-semibold text-slate-400">
+                    <p className={TEXT.meta}>
                       🔒 {(STATUS_GATES[selected]?.(p, gate) ?? []).map((b) => b.label).join(' · ')} 필요
                     </p>
                   )
@@ -499,16 +499,16 @@ export function ConstructionTab({ detail, edit }: { detail: ProjectDetail; edit:
               {selGroups.map((g) => (
                 <div key={g.title}>
                   {/* 묶음 이름이 단계 이름과 같으면 안 적는다 — 위 칩이 이미 그 말이다 */}
+                  {/*
+                    * 묶음 머리 — 글자 역할(ui GroupHead, 2026-10-07 「시공 탭도 계약 탭처럼」). 11px · slate-400 이었다.
+                    * 준공서류 검토는 「다음 — 준공보완」을 적지 않는다 — 보완이 예정된 것처럼 읽힌다(검토 판정이 다음 걸음이다).
+                    */}
                   {g.title !== selected && (
-                    <h3 className="mb-1.5 text-tiny font-bold tracking-[0.06em] text-slate-400">
-                      {/*
-                        * 준공서류 검토는 뺀다 — 그 다음은 「준공보완」이라, 상자 이름에 적으면
-                        * 보완이 예정된 것처럼 읽힌다. 거기는 검토 판정이 다음 걸음이다.
-                        */}
-                      {g.opensNext && selNext && selected !== '준공서류 접수/검토'
-                        ? `다음 — ${selNext}`
-                        : g.title}
-                    </h3>
+                    <div className="mb-1.5">
+                      <GroupHead
+                        title={g.opensNext && selNext && selected !== '준공서류 접수/검토' ? `다음 — ${selNext}` : g.title}
+                      />
+                    </div>
                   )}
                   <div className="max-w-2xl overflow-hidden rounded-box border border-slate-200 bg-white divide-y divide-slate-100">
                     {/*

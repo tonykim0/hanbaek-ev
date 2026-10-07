@@ -11,7 +11,7 @@ import { useState } from 'react';
 
 import type { CheckField, GroupCheck } from './milestones';
 
-import { Btn, Confirm, Empty, FIELD } from '@/components/ui';
+import { Btn, Confirm, Empty, FIELD, TEXT } from '@/components/ui';
 
 import { ROW, RowLabel } from './shell';
 
@@ -42,7 +42,7 @@ export function AdvanceRow({
       </Btn>
       {/* 둘 이상 비었으면 남은 것도 적는다 — 하나 채우고 또 막히는 일을 줄인다 */}
       {blockers.length > 1 && (
-        <span className="text-tiny font-semibold text-slate-400">
+        <span className={TEXT.meta}>
           그리고 {blockers.slice(1).join(' · ')}
         </span>
       )}
@@ -185,7 +185,7 @@ export function CheckRow({
           )}
         </>
       ) : (
-        <span className="font-bold text-slate-400">미완</span>
+        <span className="font-bold text-slate-500">미완</span>
       )}
     </div>
   );
@@ -224,7 +224,7 @@ export function CompletionReview({
 
   return (
     <div className="max-w-2xl rounded-box border border-brand-200 bg-brand-50/40 px-3.5 py-3">
-      <p className="text-tiny font-bold tracking-[0.06em] text-slate-500">검토 판정</p>
+      <p className={TEXT.group}>검토 판정</p>
       {fixing ? (
         <div className="mt-2 flex flex-col gap-2">
           <textarea

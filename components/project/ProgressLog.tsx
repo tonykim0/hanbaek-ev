@@ -9,7 +9,7 @@
 import { useEffect, useState } from 'react';
 import type { NoteScope, ProjectNote } from '@/types/project';
 import { useAction } from '@/lib/use-action';
-import { Badge, Btn, Err, FIELD } from '@/components/ui';
+import { Badge, Btn, Err, FIELD, TEXT } from '@/components/ui';
 import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
 
 /**
@@ -95,7 +95,7 @@ export function ProgressLog({
     <section>
       <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <h2 className="text-lead font-black text-slate-900">진행현황 및 메모</h2>
-        <span className="text-tiny font-bold tabular-nums text-slate-400">{notes.length}건</span>
+        <span className={`${TEXT.meta} tabular-nums`}>{notes.length}건</span>
         {/* 기성 갈래는 한백끼리의 기록이다 — 협력사에게는 그 탭이 없고 응답에서도 빠진다(redactForViewer).
             계약·시공 갈래는 협력사와 같이 쓰고 알림이 가는 자리라, 어느 쪽인지 머리에서 보인다(2026-10-05) */}
         {scope === '기성' && <span className="self-center"><Badge tone="hold">한백만 봄</Badge></span>}
@@ -225,10 +225,10 @@ function NoteItem({
           >
             {note.author}
           </span>
-          <span className="shrink-0 text-tiny tabular-nums text-slate-400">{note.at}</span>
+          <span className={`shrink-0 tabular-nums ${TEXT.meta}`}>{note.at}</span>
           {fresh && <span className="shrink-0 rounded-tag bg-amber-500 px-1.5 py-0.5 text-micro font-black text-white">새 글</span>}
           {note.editedAt && (
-            <span className="shrink-0 text-tiny text-slate-400" title={`${note.editedAt} 에 고침`}>
+            <span className={`shrink-0 ${TEXT.meta}`} title={`${note.editedAt} 에 고침`}>
               수정됨
             </span>
           )}

@@ -15,7 +15,7 @@ import { DocReview } from '@/components/project/DocReview';
 import { DatePicker } from '@/components/DatePicker';
 
 import {
-  Badge, Btn, Empty, Err, FIELD_CELL, FIELD_CELL_BASE,
+  Badge, Btn, Empty, Err, FIELD_CELL, FIELD_CELL_BASE, TEXT,
 } from '@/components/ui';
 
 import { DATE_CELL, ROW, ROW_STACK, RowLabel } from './shell';
@@ -181,7 +181,7 @@ export function CountsRow({
       )}
       {/* 비교 기준은 끝으로 — 빈 칸(flex-1)으로 밀면 wrap 줄에서 혼자 한 줄을 차지한다 */}
       {compare && (
-        <span className={`ml-auto text-tiny font-semibold ${compare.mismatch ? 'text-amber-700' : 'text-slate-400'}`}>
+        <span className={`ml-auto text-tiny font-semibold ${compare.mismatch ? 'text-amber-700' : 'text-slate-500'}`}>
           {compare.label}
         </span>
       )}
@@ -481,11 +481,11 @@ export function DocRow({
           */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <span className={`text-tiny font-black ${
-            rejected ? 'text-red-700' : done ? 'text-brand-700' : 'text-slate-400'
+            rejected ? 'text-red-700' : done ? 'text-brand-700' : 'text-slate-500'
           }`}>
             {rejected ? '반려' : done ? '제출됨' : '대기'}
           </span>
-          {doc?.uploadedAt && <span className="text-tiny tabular-nums text-slate-400">{doc.uploadedAt}</span>}
+          {doc?.uploadedAt && <span className={`${TEXT.meta} tabular-nums`}>{doc.uploadedAt}</span>}
           {/* 파일 실체가 없는 기록 — 옛 데이터에 있다. 제출됨으로만 보이면 볼 수도 없는 서류를 믿게 된다 */}
           {done && !doc?.blobUrl && (
             <span className="text-tiny font-bold text-amber-700" title="기록만 있고 파일이 없습니다 — 다시 올려주세요">
