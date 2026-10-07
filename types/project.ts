@@ -611,6 +611,12 @@ export interface DocFile {
    * 막지 않는다 — 접수는 되고 경고와 꼬리표만 붙는다(photo 와 같은 방식).
    */
   stamp?: string | null;
+  /**
+   * ★계약서에 운영사(충전사업자) 직인이 찍혔는가★ — 현대엔지니어링·SK일렉링크 계약서만(한백 지시 2026-10-07,
+   * lib/cpo-seal). true 찍힘 · false 운영사 칸이 비어 있음 · null 서명 칸을 못 찾음. 없으면(undefined) 아직 안 읽었다.
+   * 협력사가 낸 판은 아파트 쪽만 날인돼 오는 일이 많다 — 운영사가 역날인한 판이 따로 돈다. 막지 않는다 — 꼬리표만.
+   */
+  cpoSeal?: boolean | null;
 }
 
 export interface ProjectDocument {

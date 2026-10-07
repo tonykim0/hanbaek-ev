@@ -17,7 +17,7 @@ import type {
   ChargerModel, RecvPreset,
   PayoutPlanRow, ProcessInfo, ProcessStatus, ProjectDetail, ProjectSummary, Settlement, SettlementRule, SettlementSummary, BatchFinal, TaxInvoice,
   Notice, NoticeFile, ReviewEvent, ProjectFactsPatch, LineFactsPatch, ProjectAxesPatch, NewContractLine,
-  NoteNotification, NoticeMessage,
+  NoteNotification, NoticeMessage, DocFile,
 } from '@/types/project';
 import type { Actor, Viewer } from '@/lib/auth/types';
 import type { DraftFull, DraftSummary, PhotoRef } from '@/lib/survey/draft-shape';
@@ -185,6 +185,17 @@ export interface ProjectRepository {
     input: { projectId: string; kind: string; url: string },
     actor: Actor
   ): Promise<{ blobUrl: string | null }>;
+
+  /**
+   * 파일 한 장에 판독이 읽은 사실을 단다 — 지금은 계약서의 운영사 직인(cpoSeal, lib/cpo-seal). [시스템 · 한백]
+   *
+   * 서류의 상태·담당은 건드리지 않는다 — 읽은 것을 적을 뿐이다(제목·열람용과 같은 결). 그사이 그 파일이 빠졌으면
+   * 아무것도 안 한다(false). 올리기와 같은 칸 잠금을 잡는다 — 겹친 업로드의 새 파일을 덮지 않게.
+   */
+  setDocFileFacts(
+    input: { projectId: string; kind: string; url: string; facts: Pick<DocFile, 'cpoSeal'> },
+    actor: Actor
+  ): Promise<boolean>;
 
   /**
    * 기설치 조사. [그 현장의 협력사 · 한백]

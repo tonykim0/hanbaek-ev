@@ -54,8 +54,29 @@ import type { TxLike } from './shared';
 export const docStore: Pick<
   ProjectRepository,
   'setDocumentStatus' | 'deleteDocument' | 'deleteDocumentFile' | 'uploadDocument'
-  | 'listReviewHistory'
+  | 'listReviewHistory' | 'setDocFileFacts'
 > = {
+  /*
+   * 판독이 읽은 사실을 파일 한 장에 단다(운영사 직인 — lib/cpo-seal). 읽기만 한 것이라 감사로그·담당·단계를 건드리지
+   * 않는다. ★올리기와 같은 칸 잠금★(hb_doc) — 판독은 응답 뒤에 도는데 그사이 같은 칸에 업로드가 오면, 잠금 없이
+   * 읽고-고쳐-쓰면 새로 붙은 파일이 사라진다(감사 M10 과 같은 자리).
+   */
+  async setDocFileFacts(input, actor): Promise<boolean> {
+    if (!canWrite(actor.role)) throw new Error('열람 전용 계정은 판독을 남길 수 없습니다.');
+    const table = isProcessDocKind(input.kind) ? processDocuments : documents;
+    return getDb().transaction(async (tx) => {
+      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hb_doc:${input.projectId}:${input.kind}`}))`);
+      const where = and(eq(table.projectId, input.projectId), eq(table.kind, input.kind));
+      const [row] = await tx.select({ files: table.files }).from(table).where(where).limit(1);
+      const files = ((row?.files ?? []) as DocFile[]).filter((f) => f?.url);
+      if (!files.some((f) => f.url === input.url)) return false;
+      await tx.update(table)
+        .set({ files: files.map((f) => (f.url === input.url ? { ...f, ...input.facts } : f)) })
+        .where(where);
+      return true;
+    });
+  },
+
   /*
    * ★검수가 오간 자취 — 새로 적는 것이 없다.★ (한백 지적 2026-09-01)
    *

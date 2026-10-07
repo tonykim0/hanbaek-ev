@@ -14,6 +14,7 @@ import { contractDocsLockedWhy, gateContextOf, nextStatusOf, prevStatusOf } from
 import { HANDOFF_STATUS } from '@/lib/board';
 import { evaluateDocs, needsPreInstallCheck, type DocReq } from '@/lib/doc-rules';
 import { bundledAsPdf, checkedFilesOf, preCheckBlocker } from '@/lib/preinstall-check';
+import { needsCpoSeal } from '@/lib/cpo-seal';
 import { DocDelete, DocFileActions, DocUpload, DownloadAll } from '@/components/DocFiles';
 import { useAction } from '@/lib/use-action';
 import { EditableFact } from './EditableFact';
@@ -802,6 +803,13 @@ export function IntakeTab({
                               single={!canEditDocs && canFillEmpty && slotEmpty}
                             />
                           )}
+                          {/*
+                            * 운영사 직인 — 현대엔지니어링·SK 계약서(한백 2026-10-07). 올라오면 저절로 읽고, 이 단추는
+                            * 이미 있던 계약서와 다시 볼 것을 읽힌다. 꼬리표는 파일 줄에 선다(DocFiles).
+                            */}
+                          {canReview && d.key === 'contract' && needsCpoSeal(project.cpo) && doc && doc.files.length > 0 && (
+                            <CpoSealButton projectId={projectId} files={doc.files} />
+                          )}
                           {/* 남는 자리를 밀어 반려·삭제를 반대쪽 끝으로 보낸다 */}
                           <span className="flex-1" />
                           {/*
@@ -1420,5 +1428,25 @@ function AskMissingDocs({
       </div>
       <Err>{error}</Err>
     </div>
+  );
+}
+
+/** 계약서의 운영사 직인을 (다시) 읽는다 — 한백 관리자. 안 읽은 장이 있으면 「직인 읽기」 */
+function CpoSealButton({ projectId, files }: { projectId: string; files: ProjectDocument['files'] }) {
+  const { busy, error, run } = useAction();
+  const unread = files.some((f) => f.cpoSeal === undefined);
+  return (
+    <>
+      <Btn
+        size="sm"
+        kind="quiet"
+        busy={busy}
+        busyLabel={`직인 읽는 중… (${files.length}장)`}
+        onClick={() => run({ url: `/api/projects/${projectId}/cpo-seal`, fail: '직인을 읽지 못했습니다.' })}
+      >
+        {unread ? '직인 읽기' : '직인 다시 읽기'}
+      </Btn>
+      <Err>{error}</Err>
+    </>
   );
 }

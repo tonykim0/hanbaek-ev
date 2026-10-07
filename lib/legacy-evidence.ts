@@ -11,21 +11,11 @@
  *
  * 서버 전용.
  */
-import Anthropic from '@anthropic-ai/sdk';
-import { imageFileToPdf, type NormalizedFile } from './files';
-import { uprightPdfFiles } from './pdf-orient';
-import { logLlmCall } from './llm-usage';
+import type { NormalizedFile } from './files';
+import { askPdfJson, preparePdfs } from './vision-ask';
 import type { EvidenceAct, EvidenceDoc, SheetScan } from './preinstall-check';
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-/** 숫자를 읽는 일이라 가장 정확한 모델 — 사진 글자 읽기(lib/survey/read-plate)와 같다 */
-const MODEL = 'claude-opus-5-5';
-/** 거절(stop_reason: refusal)이면 이 모델로 다시 — 접수 판독에서 겪었다(lib/claude.ts) */
-const REFUSAL_FALLBACK_MODEL = 'claude-sonnet-5';
-const CALL_TIMEOUT_MS = 150_000;
-/** 한 번에 보낼 PDF 총량 — 요청 한도(32MB)에 base64 팽창(1.33배)을 감안한 값 */
-const BYTES_BUDGET = 18 * 1024 * 1024;
+/* 판독 호출(모델·거절 처리·나눠 읽기)은 lib/vision-ask 에 있다 — 운영사 직인 읽기(lib/cpo-seal)와 같이 쓴다 */
 
 const DOCS: EvidenceDoc[] = ['행위신고', '필증', '계약서', '회의록', '공문', '도면', '사진', '기타'];
 const KINDS = ['신규 설치', '교체 설치', '철거'] as const;
@@ -97,71 +87,8 @@ export function actsOf(raw: unknown, names: string[]): EvidenceAct[] {
   });
 }
 
-async function ask(batch: NormalizedFile[], text: string): Promise<unknown> {
-  const content: Anthropic.ContentBlockParam[] = [
-    ...batch.map((f) => ({
-      type: 'document' as const,
-      source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: f.buffer.toString('base64') },
-    })),
-    { type: 'text', text },
-  ];
-  let model = MODEL;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const started = Date.now();
-    const message = await anthropic.messages.create(
-      { model, max_tokens: 4096, messages: [{ role: 'user', content }] },
-      { timeout: CALL_TIMEOUT_MS }
-    );
-    logLlmCall({ route: 'preinstall-check', model, ms: Date.now() - started, usage: message.usage });
-    if (message.stop_reason === 'refusal') {
-      if (model === REFUSAL_FALLBACK_MODEL) throw new Error('증빙 판독이 거절되었습니다.');
-      console.warn(`[preinstall-check] ${model} 이 거절 — ${REFUSAL_FALLBACK_MODEL} 로 다시 읽는다`);
-      model = REFUSAL_FALLBACK_MODEL;
-      continue;
-    }
-    const text = message.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
-    const json = /\{[\s\S]*\}/.exec(text)?.[0];
-    if (json) {
-      try { return JSON.parse(json); } catch { /* 다시 묻는다 */ }
-    }
-    console.warn(`[preinstall-check] 답에서 JSON 을 못 찾음(${attempt}/3) · stop=${message.stop_reason}`);
-  }
-  throw new Error('증빙 판독의 답을 읽지 못했습니다.');
-}
-
-/**
- * 판독에 보낼 묶음으로 만든다 — 사진은 PDF 로 바꾸고, 거꾸로 스캔된 쪽은 바로 세운다(접수와 같은 길).
- * 못 읽는 파일(형식이 다르거나 한 번에 못 담는 것)은 unread 로 — 조용히 빠지지 않게.
- */
-async function prepare(files: { name: string; buffer: Buffer }[]): Promise<{ batches: NormalizedFile[][]; unread: string[] }> {
-  const unread: string[] = [];
-  const pdfs: NormalizedFile[] = [];
-  for (const f of files) {
-    if (/\.pdf$/i.test(f.name)) {
-      pdfs.push({ name: f.name, buffer: f.buffer, hash: '', mimeType: 'application/pdf' });
-      continue;
-    }
-    const pdf = await imageFileToPdf(f.name, f.buffer).catch(() => null);
-    if (pdf) pdfs.push(pdf);
-    else unread.push(f.name);
-  }
-  if (pdfs.length === 0) return { batches: [], unread };
-
-  const upright = await uprightPdfFiles(pdfs, 'preinstall-check');
-
-  // 한 번에 못 담으면 나눠 읽는다 — 한 파일이 그것만으로 넘치면 못 읽은 것으로 둔다
-  const batches: NormalizedFile[][] = [];
-  let cur: NormalizedFile[] = [];
-  let bytes = 0;
-  for (const f of upright) {
-    if (f.buffer.length > BYTES_BUDGET) { unread.push(f.name); continue; }
-    if (bytes + f.buffer.length > BYTES_BUDGET && cur.length > 0) { batches.push(cur); cur = []; bytes = 0; }
-    cur.push(f);
-    bytes += f.buffer.length;
-  }
-  if (cur.length > 0) batches.push(cur);
-  return { batches, unread };
-}
+const ask = (batch: NormalizedFile[], text: string) => askPdfJson(batch, text, 'preinstall-check');
+const prepare = (files: { name: string; buffer: Buffer }[]) => preparePdfs(files, 'preinstall-check');
 
 /** 증빙 칸의 파일들을 읽는다 */
 export async function readEvidence(

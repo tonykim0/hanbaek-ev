@@ -23,6 +23,7 @@ import { canAccessProject, canWrite } from '@/lib/roles';
 import { isKnownDocKind } from '@/lib/data/assemble';
 import { attachDocument } from '@/lib/attach-doc';
 import { schedulePreInstallCheck } from '@/lib/preinstall-run';
+import { scheduleCpoSealRead } from '@/lib/cpo-seal-run';
 
 /*
  * 붙이기 전에 PDF 방향을 본다(lib/attach-doc) — 페이지마다 판정을 불러 수십 초가 걸릴 수
@@ -122,6 +123,8 @@ export async function POST(
   }
   // 설치이력·증빙이면 기설치 대조를 저절로 — 응답 뒤에 돈다(lib/preinstall-run)
   if (!result.already) schedulePreInstallCheck(params.id, params.kind);
+  // 현대엔지니어링·SK 계약서면 운영사 직인을 읽어 꼬리표로 단다 — 응답 뒤에(lib/cpo-seal-run)
+  if (!result.already) scheduleCpoSealRead(params.id, params.kind);
   return NextResponse.json({ ok: true, already: result.already });
 }
 

@@ -287,6 +287,21 @@ function FileRow({
               <span className="ml-1 font-normal text-amber-800/70">{file.photo.join(' · ')}</span>
             </span>
           ) : null}
+          {/*
+            운영사 직인 — 현대엔지니어링·SK 계약서에만 붙는다(한백 2026-10-07, lib/cpo-seal). 판독이 운영사 서명 칸을
+            읽은 결과다. 막지 않는다 — 열람용·사진 표와 같은 자리·같은 말투. 아직 안 읽었으면(undefined) 아무것도 없다.
+          */}
+          {file.cpoSeal === true ? (
+            <span className="truncate text-micro font-bold text-emerald-700">운영사 직인 있음</span>
+          ) : file.cpoSeal === false ? (
+            <span className="truncate text-micro font-bold text-amber-700" title="운영사 서명 칸에 도장이 없습니다">
+              운영사 직인 없음
+            </span>
+          ) : file.cpoSeal === null ? (
+            <span className="truncate text-micro font-bold text-slate-600" title="운영사 서명 칸을 찾지 못했습니다">
+              운영사 서명 칸 못 찾음
+            </span>
+          ) : null}
         </Peek>
         {/*
           * 「받기」가 따로 있는 이유 — 이름 링크는 브라우저에 맡기는 것이고(그릴 수 있으면

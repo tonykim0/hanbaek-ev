@@ -22,6 +22,7 @@ import { getRepository } from '@/lib/data';
 import { canAccessProject, canWrite } from '@/lib/roles';
 import { attachDocument } from '@/lib/attach-doc';
 import { schedulePreInstallCheck } from '@/lib/preinstall-run';
+import { scheduleCpoSealRead } from '@/lib/cpo-seal-run';
 import { CHECKED_KINDS } from '@/lib/preinstall-check';
 
 /*
@@ -130,6 +131,8 @@ export async function POST(
 
   /* 설치이력·증빙이 들어왔으면 기설치 대조를 저절로 돌린다 — 응답 뒤에(lib/preinstall-run) */
   if (attached > 0 && CHECKED_KINDS.some((k) => byKind.has(k))) schedulePreInstallCheck(params.id);
+  /* 계약서가 들어왔으면 운영사 직인을 읽는다 — 현대엔지니어링·SK 현장만(lib/cpo-seal-run) */
+  if (attached > 0 && byKind.has('contract')) scheduleCpoSealRead(params.id);
 
   /*
    * 한 칸이 실패해도 나머지는 붙인다. 접수를 통째로 되돌리면 사람이 처음부터 다시 해야 하는데,
