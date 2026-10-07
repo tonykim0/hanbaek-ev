@@ -18,6 +18,7 @@
  * 이 자리다(components/ui.tsx 의 Th·Td 가 표에서 하는 일과 같다).
  */
 import type { ReactNode } from 'react';
+import { FIELD_CELL_BASE } from '@/components/ui';
 
 /**
  * 줄 껍데기 — 시공 줄은 모두 같은 여백·틈을 쓴다.
@@ -40,6 +41,13 @@ export const ROW_STACK = 'relative flex items-start gap-x-3 px-3.5 py-2 text-bas
  * 값을 고치려면 DatePicker 의 입력칸 폭도 같이 본다.
  */
 export const DATE_CELL = 'w-[132px]';
+
+/**
+ * 줄 안의 글자 입력칸 — 표 칸(FIELD_CELL, 12px)의 모양에 줄 글자 크기(13px)를 입힌다.
+ * 자리에서 `${FIELD_CELL_BASE} text-base` 로 두 크기를 겹쳐 적었더니 어느 쪽이 이길지가 CSS 순서에 달려 있었다
+ * (충전기 수령지, 2026-10-07). 폭은 부르는 자리가 붙인다.
+ */
+export const ROW_FIELD = FIELD_CELL_BASE.replace('text-small', 'text-base');
 
 /**
  * 줄의 이름 열.

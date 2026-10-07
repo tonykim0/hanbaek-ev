@@ -15,10 +15,10 @@ import { DocReview } from '@/components/project/DocReview';
 import { DatePicker } from '@/components/DatePicker';
 
 import {
-  Badge, Btn, Empty, Err, FIELD_CELL, FIELD_CELL_BASE, TEXT,
+  Badge, Btn, Empty, Err, FIELD_CELL, TEXT,
 } from '@/components/ui';
 
-import { DATE_CELL, ROW, ROW_STACK, RowLabel } from './shell';
+import { DATE_CELL, ROW, ROW_FIELD, ROW_STACK, RowLabel } from './shell';
 
 /**
  * 충전기 모델 — 등록된 목록에서 고른다 (한백 지시 2026-08-26).
@@ -274,7 +274,7 @@ export function RecvSiteRow({
       disabled={busyKey === c.field || busyKey === 'recvSite'}
       onBlur={(e) => onSave(c.field, e.target.value, value[c.field])}
       onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-      className={`${FIELD_CELL_BASE} ${c.width} text-base`}
+      className={`${ROW_FIELD} ${c.width}`}
     />
   );
   /*
@@ -295,7 +295,7 @@ export function RecvSiteRow({
                 const hit = presets?.find((x) => x.id === e.target.value);
                 if (hit) onPick({ addr: hit.addr, name: hit.name, phone: hit.phone });
               }}
-              className={`${FIELD_CELL_BASE} min-w-0 flex-1 text-base`}
+              className={`${ROW_FIELD} min-w-0 flex-1 text-slate-500`}
             >
               <option value="">
                 {presets === null ? '불러오는 중…'
@@ -303,7 +303,7 @@ export function RecvSiteRow({
                     : `${org} 수령지에서 고르기 (${presets.length})`}
               </option>
               {presets?.map((x) => (
-                <option key={x.id} value={x.id}>
+                <option key={x.id} value={x.id} className="text-slate-900">
                   {[x.addr, x.name, x.phone].filter(Boolean).join(' · ')}
                 </option>
               ))}
@@ -314,7 +314,7 @@ export function RecvSiteRow({
               </Btn>
             ) : (
               <Btn size="sm" kind="side" busy={saving} busyLabel="저장 중…" disabled={!value.recvAddr} onClick={addPreset}>
-                {value.recvAddr ? '지금 수령지를 목록에 저장' : '주소를 적으면 저장할 수 있습니다'}
+                {value.recvAddr ? '지금 수령지를 목록에 저장' : '주소 미지정 — 목록 저장 불가'}
               </Btn>
             )}
             {error && <Err className="basis-full">{error}</Err>}
@@ -325,9 +325,9 @@ export function RecvSiteRow({
         <div key={c.field} className={ROW}>
           <RowLabel>{c.label}</RowLabel>
           {canEdit ? cell(c) : (
-            <span className={`font-semibold ${value[c.field] ? 'text-slate-800' : 'text-slate-300'}`}>
-              {value[c.field] ?? '비어 있음'}
-            </span>
+            value[c.field]
+              ? <span className="font-semibold text-slate-800">{value[c.field]}</span>
+              : <Empty kind="miss" />
           )}
         </div>
       ))}

@@ -543,7 +543,7 @@ export function Blank({ children }: { children: ReactNode }) {
  * 그것을 채우게 한다.
  */
 const FIELD_LOOK =
-  'rounded-ctl border border-slate-200 px-3 py-2 text-base text-slate-900 placeholder:text-slate-300 transition focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-400';
+  'rounded-ctl border border-slate-200 px-3 py-2 text-base text-slate-900 placeholder:text-slate-400 transition focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-400';
 
 /** 폭을 부르는 자리에서 정하는 칸 — `${FIELD_BASE} w-40` 처럼 쓴다 */
 export const FIELD_BASE = FIELD_LOOK;
@@ -558,7 +558,7 @@ export const FIELD = `w-full ${FIELD_LOOK}`;
  * 그러면 어디를 고칠 수 있는지 마우스를 얹어 봐야 알 수 있다.
  */
 const FIELD_CELL_LOOK =
-  'rounded-ctl border border-slate-200 px-2 py-1 text-small text-slate-900 transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-400';
+  'rounded-ctl border border-slate-200 px-2 py-1 text-small text-slate-900 placeholder:text-slate-400 transition focus:border-brand-400 focus:outline-none focus:ring-1 focus:ring-brand-100 disabled:bg-slate-50 disabled:text-slate-400';
 
 /**
  * 폭을 부르는 자리에서 정하는 좁은 칸 — `${FIELD_CELL_BASE} w-24` 처럼 쓴다.
