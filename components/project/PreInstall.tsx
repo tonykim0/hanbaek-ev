@@ -20,7 +20,7 @@ import { Badge, Btn, Choice, Empty, Err, FIELD, GroupHead, Tag, TEXT } from '@/c
 import { DocReview } from './DocReview';
 import { PreInstallCheckBlock } from './PreInstallCheck';
 import {
-  checkedFilesOf, missingSeals, sameFiles, sealFixReason, type PreInstallCheck,
+  bundledAsPdf, checkedFilesOf, missingSeals, sameFiles, sealFixReason, type PreInstallCheck,
 } from '@/lib/preinstall-check';
 import { docCardTone, docState, RejectReason } from './parts';
 import { LookupResults, useShardLoader } from '@/components/ChargerHistoryLookup';
@@ -154,6 +154,7 @@ export function PreInstall({
           canRun={canReview}
           hasSheet={(byKind.get('legacylog')?.files.length ?? 0) > 0}
           logRejected={byKind.get('legacylog')?.status === 'rejected'}
+          bundled={bundledAsPdf([...byKind.values()])}
           docs={
             /*
               격자는 서류 구역과 같다 (한백 지시 2026-09-03 「서류 컴포넌트랑 맞춰줘. 너무 넓어」) — 칸이 둘뿐이라고

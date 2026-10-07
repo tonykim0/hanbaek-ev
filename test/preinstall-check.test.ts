@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LegacyRow, LegacySheet } from '@/lib/legacy-sheet';
 import {
-  checkedFilesOf, compareLegacy, issueCount, preCheckBlocker, reviewCount, sealFixReason, sealOf,
+  bundledAsPdf, checkedFilesOf, compareLegacy, issueCount, preCheckBlocker, reviewCount, sealFixReason, sealOf,
   type EvidenceAct, type PreInstallCheck, type SheetScan,
 } from '@/lib/preinstall-check';
 
@@ -216,6 +216,19 @@ describe('계약 확인을 막는 대조 — 검증 필수 (한백 지시 2026-1
     };
     expect(gate(left)).toBe('기설치 대조 2건 미확인');
     expect(gate({ ...left, accepted: { by: '한백', at: '2026-10-07T02:00:00.000Z' } })).toBeNull();
+  });
+
+  it('★설치이력을 PDF 로도 냈으면 대조하지 않는다★ — 대조 전이어도·남은 것이 있어도 막지 않는다 (한백 2026-10-07)', () => {
+    const docs = (names: string[]) => [{ kind: 'legacylog', files: names.map((name) => ({ name })) }];
+    expect(bundledAsPdf(docs(['설치이력.xlsx', '설치이력_날인본.pdf']))).toBe(true);
+    expect(bundledAsPdf(docs(['세경1차_기설치이력없음_날인본.PDF']))).toBe(true);
+    expect(bundledAsPdf(docs(['설치이력.xlsx']))).toBe(false);
+    // 증빙 칸의 PDF 는 셈하지 않는다 — 설치이력 칸에 낸 것만이 「한 묶음으로 다 냄」이다
+    expect(bundledAsPdf([{ kind: 'legacyev', files: [{ name: '행위신고증명서.pdf' }] }])).toBe(false);
+
+    const left: PreInstallCheck = { ...base, lines: [{ verdict: 'diff', row: null, act: null, actCount: null, why: null }] };
+    expect(preCheckBlocker({ needed: true, check: null, currentFiles: files, bundled: true })).toBeNull();
+    expect(preCheckBlocker({ needed: true, check: left, currentFiles: files, bundled: true })).toBeNull();
   });
 
   it('지금 파일은 설치이력·증빙 두 칸만 본다', () => {

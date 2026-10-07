@@ -71,8 +71,13 @@ function ActCell({ line }: { line: CheckLine }) {
 }
 
 export function PreInstallCheckBlock({
-  projectId, check, currentFiles, canRun, hasSheet, logRejected = false, docs,
+  projectId, check, currentFiles, canRun, hasSheet, logRejected = false, docs, bundled = false,
 }: {
+  /**
+   * 설치이력을 PDF 로도 냈다 — 자료를 한 묶음으로 다 냈으니 대조하지 않는다(한백 지시 2026-10-07, bundledAsPdf).
+   * 대조 결과가 있으면 참고로 그대로 보이고, 계약 확인은 막지 않는다.
+   */
+  bundled?: boolean;
   projectId: string;
   check: PreInstallCheck | null | undefined;
   /** 지금 설치이력·증빙 칸의 파일 주소 — 지난 대조와 다르면 「서류가 바뀜」 */
@@ -116,7 +121,9 @@ export function PreInstallCheckBlock({
         // 대조 시각은 상태 곁이다 — 단추 곁에 두면 단추 없는 사람(협력사·열람 전용)에게 시각만 떠 있었다
         meta={check ? `${stampOf(new Date(check.checkedAt))} 대조` : undefined}
       >
-        {!check
+        {bundled
+          ? <Tag tone="ok">PDF 로 냄 · 대조 면제</Tag>
+          : !check
           /* 저절로 도는 것이라 누구를 기다린다고 적지 않는다 — 한백에게는 손으로 돌릴 단추가 곁에 선다 */
           ? <Tag tone={canRun ? 'warn' : 'mute'}>대조 전</Tag>
           : stale ? <Tag tone="warn">서류가 바뀜 — 다시 대조</Tag>
@@ -261,7 +268,7 @@ export function PreInstallCheckBlock({
         ★넘기는 자리는 결과 밑이다★ — 줄을 다 읽고 나서 누르는 일이다(한백 지시 2026-10-07 「한백이 확인하고
         넘긴다」). 남은 것이 없으면 이미 통과라 자리가 없고, 서류가 바뀐 결과는 넘길 수 없다.
       */}
-      {check && canRun && !stale && n + m > 0 && (
+      {check && canRun && !stale && !bundled && n + m > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           {accepted ? (
             <Btn kind="quiet" size="sm" busy={accepting.busy} busyLabel="취소 중…" onClick={() => accept(false)}>

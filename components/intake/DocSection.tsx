@@ -113,19 +113,20 @@ export function DocSection({
         />
       </div>
 
-      <div className="flex flex-col gap-5">
-        {DOC_SECTIONS.map((sec) => {
+      {/* 계약 탭과 같은 꼴 — 번호 붙은 묶음 머리, 사이는 얇은 선(2026-10-07). 번호는 보이는 묶음으로 센다 */}
+      <div className="flex flex-col gap-4">
+        {DOC_SECTIONS.filter((sec) => docs.some((d) => d.req === sec.req)).map((sec, si) => {
           const list = docs.filter((d) => d.req === sec.req);
-          if (list.length === 0) return null;
           const done = list.filter((d) => staged[d.key]).length;
           return (
-            <div key={sec.req}>
+            <div key={sec.req} className={si > 0 ? 'border-t border-slate-100 pt-3' : ''}>
               {/*
                 * 묶음 머리 — 계약 탭과 같은 부품이다(ui GroupHead · 글자 역할, 2026-10-07).
                 * 필수의 수는 위 진행 막대가 말한다 — 같은 값을 두 번 두지 않는다(규칙 5).
                 */}
               <div className="mb-2">
                 <GroupHead
+                  step={si + 1}
                   title={sec.label}
                   meta={[sec.req !== 'm' ? `${done}/${list.length}` : null, sec.note].filter(Boolean).join(' · ')}
                 />

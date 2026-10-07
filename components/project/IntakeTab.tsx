@@ -13,7 +13,7 @@ import { BUILDING_TYPES, CONTRACT_PARTIES, replLabel, TERM_YEARS } from '@/types
 import { contractDocsLockedWhy, gateContextOf, nextStatusOf, prevStatusOf } from '@/lib/process';
 import { HANDOFF_STATUS } from '@/lib/board';
 import { evaluateDocs, needsPreInstallCheck, type DocReq } from '@/lib/doc-rules';
-import { checkedFilesOf, preCheckBlocker } from '@/lib/preinstall-check';
+import { bundledAsPdf, checkedFilesOf, preCheckBlocker } from '@/lib/preinstall-check';
 import { DocDelete, DocFileActions, DocUpload, DownloadAll } from '@/components/DocFiles';
 import { useAction } from '@/lib/use-action';
 import { EditableFact } from './EditableFact';
@@ -133,7 +133,15 @@ function SiteFacts(
         <FactGroup title="사업·계약" rows={biz} projectId={projectId} canEdit={canEdit} />
       </div>
 
-      {canEdit && <ContractLineFacts projectId={projectId} project={project} lines={lines} termsLocked={termsLocked} />}
+      {/*
+        * ★묶음이 하나면 여기 두지 않는다★ (한백 지시 2026-10-07 「현장정보에 계약대수·계약연수는 없애」) — 상세 머리
+        * (DetailView)에 같은 값이 있고 거기서 바로 고친다(같은 값을 두 번 두지 않는다, 화면 규칙 5).
+        * 남는 것은 머리가 할 수 없는 일 둘이다: 대수가 아직 없는 현장에 넣기(0 묶음 — 머리는 「넣는 자리는 계약 탭」),
+        * 조건이 다른 묶음마다 고치기(2 묶음 이상 — 머리는 합계만 보인다).
+        */}
+      {canEdit && lines.length !== 1 && (
+        <ContractLineFacts projectId={projectId} project={project} lines={lines} termsLocked={termsLocked} />
+      )}
 
       {project.note && (
         <p className="mt-3 rounded-box border border-slate-200 px-4 py-3 text-base leading-relaxed text-slate-700">
@@ -177,16 +185,11 @@ function ContractLineFacts(
   const many = lines.length > 1;
   return (
     <section className="mt-4">
-      <p className="mb-1.5 text-tiny font-black tracking-[0.06em] text-slate-500">
-        {many ? `계약대수 — 조건이 다른 ${lines.length}묶음` : '계약대수'}
-      </p>
+      <div className="mb-1.5">
+        <GroupHead title="계약대수" meta={many ? `조건이 다른 ${lines.length}묶음` : undefined} />
+      </div>
       <div className="rounded-box border border-slate-200 px-3.5 py-2.5">
-        {termsLocked && (
-          <p className="mb-2 text-tiny font-bold text-slate-400">
-            지급조건이 확정돼 잠겼습니다 — 정산 탭에서 해제하면 고칠 수 있습니다.
-          </p>
-        )}
-
+        {/* 잠김 안내 문장은 걷었다(한백 지시 2026-10-07) — 잠긴 칸은 「수정」이 안 서는 것으로 말한다(규칙 2) */}
         {lines.length === 0 ? (
           /*
            * 빈 자리에 할 일을 둔다 — 「없음」만 적으면 접수 때 본 「현장 상세에서 채웁니다」가
@@ -584,14 +587,9 @@ export function IntakeTab({
         <div className="mb-3 flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5">
           <h2 className={TEXT.section}>서류</h2>
           {/*
-            * 필수 수와 막는 태그를 제목 옆에 붙인다 (한백 지시 2026-08-25). 머리말에
-            * 있던 「필수 서류 미충족」은 무슨 서류가 모자란지 말하지 못했고, 그것을 보려면
-            * 어차피 이 구역까지 내려온다 — 막는 말은 막힌 자리에 있어야 한다.
+            * 필수 수와 막는 태그는 「1 필수」 묶음 머리로 옮겼다(2026-10-07 — 기설치 조사와 같은 꼴). 막는 말은 막힌
+            * 자리에 있어야 한다(한백 지시 2026-08-25) — 그 자리가 이제 필수 묶음이다.
             */}
-          <span className={`${TEXT.meta} tabular-nums`}>
-            필수 {requiredDone}/{requiredHere.length}
-          </span>
-          {requiredMissing && <Tag tone="warn">필수 서류 미충족</Tag>}
           {/* 테두리 있는 단추는 baseline 에서 조금 내려앉는다 — 글자 줄이 아니라 가운데에 맞춘다 */}
           <span className="self-center">
             <DownloadAll
@@ -664,27 +662,36 @@ export function IntakeTab({
           * 필수만 계약을 막는다. 한 그리드에 다 펴놓으면 무엇이 막고 있는지 배지를 하나씩
           * 읽어야 알 수 있어서, 막는 것과 아닌 것을 자리로 가른다 — 접수 화면과 같은 문법이다.
           */}
-        <div className="flex flex-col gap-5">
-          {DOC_GROUPS.map((g) => {
+        {/*
+          * ★기설치 조사와 같은 꼴이다★ (한백 지시 2026-10-07 「기설치 조사에서 한 것처럼 서류 부분도」) — 묶음마다
+          * 번호 붙은 머리(ui GroupHead), 묶음 사이는 얇은 선 하나(규칙 1).
+          */}
+        <div className="flex flex-col gap-4">
+          {/* 번호는 보이는 묶음으로 센다 — 빈 묶음을 건너뛰면 1·3 으로 튄다 */}
+          {DOC_GROUPS.filter((g) => evaluated.some((d) => d.req === g.req && !d.preinstall)).map((g, gi) => {
             // 기설치 서류는 위 「기설치 조사」 구역에서 다룬다
             const list = evaluated.filter((d) => d.req === g.req && !d.preinstall);
-            if (list.length === 0) return null;
             const done = list.filter((d) => {
               const st = byKind.get(d.key)?.status;
               return st === 'uploaded' || st === 'approved';
             }).length;
 
             return (
-              <div key={g.req}>
+              <div key={g.req} className={gi > 0 ? 'border-t border-slate-100 pt-3' : ''}>
                 {/*
                   * 묶음 머리 — 글자 역할(ui GroupHead)을 쓴다(한백 지적 2026-10-07 「회색이라 잘 안 보인다」 —
-                  * 11px · slate-500 이었다). 필수의 수는 「서류」 옆이 말한다 — 같은 값을 두 번 두지 않는다(규칙 5).
+                  * 11px · slate-500 이었다). 필수 묶음은 수와 「필수 서류 미충족」을 같이 단다 — 계약을 막는 것이 여기다.
                   */}
                 <div className="mb-2">
                   <GroupHead
+                    step={gi + 1}
                     title={g.label}
-                    meta={[g.req !== 'm' ? `${done}/${list.length}` : null, g.note ?? null].filter(Boolean).join(' · ') || undefined}
-                  />
+                    meta={g.req === 'm'
+                      ? `${requiredDone}/${requiredHere.length}`
+                      : [`${done}/${list.length}`, g.note ?? null].filter(Boolean).join(' · ')}
+                  >
+                    {g.req === 'm' && requiredMissing && <Tag tone="warn">필수 서류 미충족</Tag>}
+                  </GroupHead>
                 </div>
 
                 {/* 칸을 넷으로 — 서류 하나가 손바닥만 하던 것을 줄인다(한백 지적) */}
@@ -889,6 +896,7 @@ export function IntakeTab({
               needed: needsPreInstallCheck(project.bizType) && !contract.docsExempt,
               check: preinstallCheck,
               currentFiles: checkedFilesOf([...byKind.values()]),
+              bundled: bundledAsPdf([...byKind.values()]),
             })}
           />
         )}

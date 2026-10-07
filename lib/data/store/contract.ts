@@ -22,7 +22,7 @@ import type { Actor, ProjectRepository } from '../repository';
 import { assertAdmin, recordsOf } from './shared';
 import type { TxLike } from './shared';
 import { reviewKindLabel } from '@/lib/review-labels';
-import { checkedFilesOf, preCheckBlocker } from '@/lib/preinstall-check';
+import { bundledAsPdf, checkedFilesOf, preCheckBlocker } from '@/lib/preinstall-check';
 import { loadPreInstallCheck } from './preinstall-check';
 import { notifyReview, retractReview } from './notifications';
 
@@ -118,6 +118,8 @@ export const contractStore: Pick<
           needed: needsPreInstallCheck(record.project.bizType) && !state.docsExempt,
           check: await loadPreInstallCheck(projectId, tx),
           currentFiles: checkedFilesOf(record.documents),
+          // 설치이력을 PDF 로도 냈으면 대조하지 않는다(한백 지시 2026-10-07, bundledAsPdf)
+          bundled: bundledAsPdf(record.documents),
         });
         if (blocker) throw new Error(`${blocker} — 기설치 대조가 끝나야 계약을 확인할 수 있습니다.`);
       }

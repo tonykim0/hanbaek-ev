@@ -309,6 +309,16 @@ export function checkedFilesOf(documents: Array<{ kind: string; files: Array<{ u
 }
 
 /**
+ * ★설치이력을 PDF 로도 냈으면 대조하지 않는다★ (한백 지시 2026-10-07 「기설치 설치이력을 PDF 로도 올린 거면 모든 자료를
+ * 한꺼번에 다 줬다는 거야 — 대조 안 해도 돼, 계약 확인으로 넘어가게」). 설치이력 칸에 PDF(스캔한 날인본·이력+증빙
+ * 묶음)가 한 장이라도 있으면 그 현장은 자료를 한 묶음으로 다 낸 것으로 보고 대조를 계약 확인의 조건에서 뺀다.
+ * 대조 결과가 있으면 화면은 그대로 보여준다(참고) — 막지만 않는다.
+ */
+export function bundledAsPdf(documents: Array<{ kind: string; files: Array<{ name: string }> }>): boolean {
+  return documents.find((d) => d.kind === 'legacylog')?.files.some((f) => /\.pdf$/i.test(f.name)) ?? false;
+}
+
+/**
  * ★계약 확인을 막는 대조 사정★ — null 이면 통과 (한백 지시 2026-10-07 「검증 필수」).
  *
  * 보조사업(기설치 조사를 하는 현장)이고 서류가 콘솔에 있는 현장만 본다 — 이관 현장은 서류가 노션에
@@ -325,8 +335,10 @@ export function preCheckBlocker(input: {
   check: PreInstallCheck | null | undefined;
   /** 지금 설치이력·증빙 칸의 파일 주소(checkedFilesOf) */
   currentFiles: string[];
+  /** 설치이력을 PDF 로도 냈다 — 대조하지 않는다(bundledAsPdf) */
+  bundled?: boolean;
 }): string | null {
-  if (!input.needed) return null;
+  if (!input.needed || input.bundled) return null;
   const c = input.check;
   if (!c) return '기설치 대조 전';
   if (!sameFiles(c.files, input.currentFiles)) return '기설치 서류 바뀜 — 다시 대조';

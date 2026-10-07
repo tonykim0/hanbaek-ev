@@ -33,7 +33,9 @@ async function withSubsidyProject<T>(fn: (id: string) => Promise<T>): Promise<T>
       hasMotherSeparation: true, preInstall: '없음', bizType: '환경부',
     }).filter((d) => d.req === 'm');
     for (const d of required) {
-      await repo.uploadDocument({ projectId: id, kind: d.key, filename: `${d.key}.pdf`, blobUrl: urlOf(id, d.key) }, admin);
+      // 설치이력은 엑셀로 — PDF 로 내면 대조가 면제된다(bundledAsPdf, 2026-10-07). 그 길은 따로 본다
+      const filename = d.key === 'legacylog' ? 'legacylog.xlsx' : `${d.key}.pdf`;
+      await repo.uploadDocument({ projectId: id, kind: d.key, filename, blobUrl: urlOf(id, d.key) }, admin);
     }
     await repo.submitContract(id, true, admin);
     const ready = await repo.getProject(id, viewerOf(USERS.admin));
@@ -79,6 +81,15 @@ describe('기설치 대조 — 계약 확인의 조건', () => {
       await expect(repo.acceptPreInstallCheck(id, left.checkedAt, false, admin)).resolves.toBeUndefined();
 
       await repo.savePreInstallCheck(id, checkOf(await filesNow(id)), admin);
+      await expect(repo.confirmContract(id, true, admin)).resolves.toBeUndefined();
+      expect((await repo.getProject(id, viewerOf(USERS.admin)))?.project.contractConfirmedAt).not.toBeNull();
+    });
+  });
+
+  it('★설치이력을 PDF 로도 냈으면 대조 없이 확인한다★ — 자료를 한 묶음으로 다 냈다 (한백 지시 2026-10-07)', async () => {
+    await withSubsidyProject(async (id) => {
+      await expect(repo.confirmContract(id, true, admin)).rejects.toThrow(/기설치 대조 전/);
+      await repo.uploadDocument({ projectId: id, kind: 'legacylog', filename: '설치이력_날인본.pdf', blobUrl: urlOf(id, 'legacylog', 'pdf') }, admin);
       await expect(repo.confirmContract(id, true, admin)).resolves.toBeUndefined();
       expect((await repo.getProject(id, viewerOf(USERS.admin)))?.project.contractConfirmedAt).not.toBeNull();
     });
