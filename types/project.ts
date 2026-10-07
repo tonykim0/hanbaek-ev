@@ -1260,14 +1260,11 @@ export interface Notice {
 }
 
 /**
- * 공지의 메시지 — 협력사 ↔ 한백 (migrations/0094). 대화는 공지 × 협력사(org)마다 한 줄기다 — 협력사는 제 업체의
- * 줄기만 받는다(저장소가 거른다), 한백은 전부.
+ * 공지의 메모 — 한백과 협력사 모두가 보는 한 줄기 (migrations/0094 · 0095, 한백 지시 2026-10-07).
  */
 export interface NoticeMessage {
   id: string;
   noticeId: string;
-  /** 대화 상대 협력사 — 줄기의 열쇠 */
-  org: string;
   /** 쓴 쪽 — 「한백」 또는 협력사 이름 */
   author: string;
   body: string;
@@ -1426,10 +1423,9 @@ export interface NoteNotification {
   /** 현장 알림이면 그 현장 — 공지 메시지 알림은 null */
   projectId: string | null;
   projectName: string | null;
-  /** 공지 메시지 알림이면 그 공지와 대화 상대 협력사 — 줄을 누르면 그 공지의 그 대화로 간다 */
+  /** 공지 메모 알림이면 그 공지 — 줄을 누르면 그 공지를 펼친다 */
   noticeId: string | null;
   noticeTitle: string | null;
-  org: string | null;
   /** 진행현황 글 알림일 때만 */
   noteId: string | null;
   /** 반려·보완요청의 머리 — 「반려 — 계약서」 · 「누락 서류 보완요청 3건」 */

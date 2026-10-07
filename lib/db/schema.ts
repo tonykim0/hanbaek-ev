@@ -45,13 +45,13 @@ export const notices = pgTable('notices', {
 });
 
 /**
- * 공지의 메시지 — 협력사 ↔ 한백 (migrations/0094). 대화는 공지 × 협력사(org)마다 한 줄기라 업체끼리는
- * 서로의 말을 못 본다. author 는 「한백」 또는 협력사 이름, author_id 는 지우기 권한에만 쓴다.
+ * 공지의 메모 — 한백과 협력사 모두가 보는 한 줄기 (migrations/0094 · 0095). org 는 쓴 쪽의 소속이다(한백은 없음) —
+ * 0094 에서는 업체마다 줄기를 가르는 열쇠였다. author 는 「한백」 또는 협력사 이름, author_id 는 지우기 권한에만 쓴다.
  */
 export const noticeMessages = pgTable('notice_messages', {
   id: text('id').primaryKey(),
   noticeId: text('notice_id').notNull().references(() => notices.id, { onDelete: 'cascade' }),
-  org: text('org').notNull(),
+  org: text('org'),
   author: text('author').notNull(),
   authorId: text('author_id'),
   body: text('body').notNull(),

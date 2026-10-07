@@ -498,16 +498,15 @@ export interface ProjectRepository {
   unreadNoticeMessages(userId: string): Promise<string[]>;
 
   /**
-   * 공지의 메시지 — 협력사 ↔ 한백 (migrations/0094). 협력사는 제 업체의 줄기만, 한백(열람 전용 포함)은 전부 받는다.
-   * mine 은 me.id 로 가린다.
+   * 공지의 메모 — 모두가 보는 한 줄기(migrations/0095). 로그인한 전부가 받는다. mine 은 me.id 로 가린다.
    */
   listNoticeMessages(me: Recipient): Promise<NoticeMessage[]>;
   /**
-   * 공지에 메시지를 남긴다 — 협력사는 제 업체 줄기에(org 를 보내도 무시), 한백 관리자는 답할 업체(org)를 골라.
-   * 받는 쪽에 알림이 간다(같은 트랜잭션). 새 메시지 id 를 돌려준다.
+   * 공지에 메모를 남긴다 [협력사 · 한백 관리자] — 한백 관리자와 협력사 모두에게 알림이 간다(쓴 사람 빼고, 같은
+   * 트랜잭션). 새 메모 id 를 돌려준다.
    */
-  addNoticeMessage(input: { noticeId: string; body: string; org?: string | null }, actor: Actor): Promise<string>;
-  /** 내가 남긴 메시지를 지운다 — 남의 것은 못 지운다. 그 메시지의 알림도 같이 지워진다 */
+  addNoticeMessage(input: { noticeId: string; body: string }, actor: Actor): Promise<string>;
+  /** 내가 남긴 메모를 지운다 — 남의 것은 못 지운다. 그 메모의 알림도 같이 지워진다 */
   deleteNoticeMessage(id: string, actor: Actor): Promise<void>;
   /** 이 현장에서 내가 안 읽은 것 — 글 id(현장 상세의 「새 글」)와 알림이 남은 갈래(그 탭을 열면 읽음) */
   unreadOnProject(userId: string, projectId: string): Promise<{ noteIds: string[]; scopes: NoteScope[] }>;

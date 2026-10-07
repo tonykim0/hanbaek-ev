@@ -25,13 +25,14 @@ import type { ProjectRepository } from '../repository';
 import type { TxLike } from './shared';
 
 /**
- * 협력사는 지금 볼 수 있는 것만 — 현장 알림은 그 현장의 협력사일 때, 공지 메시지 알림은 제 업체의 줄기일 때.
- * 한백은 전부. 공지 메시지는 현장이 없다(migrations/0094) — 그래서 projects 를 왼쪽 조인으로 붙인다.
+ * 협력사는 지금 볼 수 있는 것만 — 현장 알림은 그 현장의 협력사일 때. 공지 메모 알림은 늘(모두가 보는 줄기다).
+ * 한백은 전부. 공지 메모는 현장이 없다(migrations/0094) — 그래서 projects 를 왼쪽 조인으로 붙인다.
  */
 const accessible = (me: { role: Parameters<typeof isHanbaek>[0]; org: string | null }): SQL | undefined =>
   isHanbaek(me.role) ? undefined : or(
     and(isNotNull(notifications.projectId), or(eq(projects.salesOrg, me.org ?? ''), eq(projects.gcOrg, me.org ?? ''))),
-    and(isNotNull(notifications.noticeId), eq(noticeMessages.org, me.org ?? '')),
+    // 공지 메모는 모두가 보는 한 줄기다(migrations/0095) — 제 앞으로 온 알림이면 볼 수 있다
+    isNotNull(notifications.noticeId),
   );
 
 /** 받는 사람 — 그 갈래의 기록을 같이 쓰는 계정 모두, 쓴 사람(actorId)·멈춘 계정은 빼고 */
@@ -89,18 +90,15 @@ export async function notifyReview(tx: TxLike, input: {
 }
 
 /**
- * 공지 메시지 하나를 펼친다 — addNoticeMessage 의 트랜잭션 안에서 (migrations/0094).
- * 협력사가 쓰면 한백 관리자 전부, 한백이 쓰면 그 업체의 계정 전부 — 쓴 사람·멈춘 계정은 빼고.
+ * 공지 메모 하나를 펼친다 — addNoticeMessage 의 트랜잭션 안에서 (migrations/0094 · 0095).
+ * 한백 관리자와 협력사 계정 모두 — 쓴 사람·멈춘 계정은 빼고. 공지 메모는 모두가 보는 한 줄기라 받는 사람도 모두다.
  * 열람 전용은 받지 않는다(진행현황과 같다 — 글을 남기는 자리에 서지 않는다).
  */
 export async function fanOutNoticeMessage(tx: TxLike, input: {
-  msgId: string; noticeId: string; org: string; fromHanbaek: boolean; actorId: string;
+  msgId: string; noticeId: string; actorId: string;
 }): Promise<number> {
-  const side = input.fromHanbaek
-    ? and(eq(users.org, input.org), notInArray(users.role, ['admin', 'viewer']))
-    : eq(users.role, 'admin');
   const rows = await tx.select({ id: users.id }).from(users)
-    .where(and(side, eq(users.active, true), ne(users.id, input.actorId)));
+    .where(and(ne(users.role, 'viewer'), eq(users.active, true), ne(users.id, input.actorId)));
   if (rows.length === 0) return 0;
   await tx.insert(notifications).values(rows.map((r) => ({
     id: crypto.randomUUID(), userId: r.id, kind: 'notice', noticeId: input.noticeId, noticeMsgId: input.msgId,
@@ -134,7 +132,7 @@ export const notificationStore: Pick<
         projectName: projects.name,
         noteAuthor: projectNotes.author, noteBody: projectNotes.body, noteScope: projectNotes.scope,
         noticeId: notifications.noticeId, noticeTitle: notices.title,
-        msgOrg: noticeMessages.org, msgAuthor: noticeMessages.author, msgBody: noticeMessages.body,
+        msgAuthor: noticeMessages.author, msgBody: noticeMessages.body,
       })
       .from(notifications)
       .leftJoin(projects, eq(projects.id, notifications.projectId))
@@ -154,7 +152,6 @@ export const notificationStore: Pick<
         projectName: r.projectName,
         noticeId: r.noticeId,
         noticeTitle: r.noticeTitle,
-        org: r.msgOrg,
         noteId: r.noteId,
         title: r.title,
         scope: kind === 'notice' ? null : isNoteScope(scope) ? scope : '시공',
