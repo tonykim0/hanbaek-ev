@@ -318,31 +318,37 @@ function MonthBars({
                       위의 큰 수는 총 대수이고, 그것이 어떻게 갈렸는지는 토막마다 적는다 —
                       색과 크기로 짐작하지 않게 한다.
 
-                      토막이 얕으면 글자를 넣지 않는다 — 넣으면 막대 밖으로 삐져나와 옆 달의
-                      수와 섞인다. 그때는 마우스를 올리면 셋 다 적힌다(title).
+                      ★얕은 토막도 숫자를 넣는다★ (한백 지시 2026-10-07 「폰트를 줄여서라도 넣어」 —
+                      10월처럼 패스스루가 큰 달은 우리 몫 토막이 얕아 숫자가 빠졌다). 글자를 토막
+                      높이에 맞춰 10px → 7px 까지 줄이고, 그래도 모자라는 토막은 9px 까지 세운다 —
+                      토막 비율이 조금 어긋나지만 수는 적혀 있으니 숫자가 사라지는 것보다 낫다.
                     */
+                    const SEG_MIN = 9;
                     const barH = Math.max(row.future ? 0 : 3, (value / max) * (height - 30));
-                    const passH = pass > 0 && !row.future ? (pass / Math.max(value, 1)) * barH : 0;
-                    const oursH = barH - passH;
-                    const fits = (h: number) => h >= 15;
+                    const split = pass > 0 && !row.future;
+                    const ours = value - pass;
+                    const passH = split ? Math.max(SEG_MIN, (pass / Math.max(value, 1)) * barH) : 0;
+                    const oursH = split
+                      ? (ours > 0 ? Math.max(SEG_MIN, (ours / Math.max(value, 1)) * barH) : 0)
+                      : barH;
+                    const segFont = (h: number) => ({ fontSize: `${Math.max(7, Math.min(10, h - 2))}px`, lineHeight: 1 });
                     return (
                       <div
                         className="flex flex-col justify-end"
-                        style={{ height: `${barH}px` }}
-                        title={`${row.month} · ${projectCount}건 ${value}대${pass > 0 ? ` (우리 ${value - pass}대 · 패스스루 ${pass}대)` : ''}`}
+                        style={{ height: `${passH + oursH}px` }}
+                        title={`${row.month} · ${projectCount}건 ${value}대${pass > 0 ? ` (우리 ${ours}대 · 패스스루 ${pass}대)` : ''}`}
                       >
                         {passH > 0 && (
                           <div
                             className="flex items-center justify-center rounded-t-[6px] bg-slate-300"
                             style={{ height: `${passH}px` }}
                           >
-                            {fits(passH) && (
-                              <span className="text-micro font-black tabular-nums text-slate-700">{pass}</span>
-                            )}
+                            <span className="font-black tabular-nums text-slate-700" style={segFont(passH)}>{pass}</span>
                           </div>
                         )}
                         <div
-                          className={`flex flex-1 items-center justify-center transition ${passH > 0 ? '' : 'rounded-t-[6px]'} ${
+                          style={{ height: `${oursH}px` }}
+                          className={`flex items-center justify-center transition ${passH > 0 ? '' : 'rounded-t-[6px]'} ${
                             row.future
                               ? 'bg-slate-100'
                               : row.now
@@ -352,9 +358,9 @@ function MonthBars({
                                   : 'bg-slate-200'
                           }`}
                         >
-                          {passH > 0 && fits(oursH) && (
-                            <span className="text-micro font-black tabular-nums text-white">
-                              {value - pass}
+                          {split && ours > 0 && (
+                            <span className="font-black tabular-nums text-white" style={segFont(oursH)}>
+                              {ours}
                             </span>
                           )}
                         </div>
