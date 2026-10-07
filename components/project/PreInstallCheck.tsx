@@ -8,11 +8,15 @@
  *
  * ★칸의 파일이 바뀌면 지난 결과를 믿지 않는다★ — 결과에 대조에 쓴 파일 주소가 남아 있어,
  * 지금 칸의 파일과 다르면 「서류가 바뀜」을 단다(결과는 그대로 보여준다 — 무엇이 틀렸었는지도 정보다).
+ *
+ * ★필수다★ (한백 지시 2026-10-07 「검증 필수」) — 보조사업 현장은 대조가 맞음이거나 한백이 결과를 보고
+ * 「확인하고 넘기기」를 눌러야 계약 확인이 열린다(lib/preinstall-check preCheckBlocker). 그래서 자리를
+ * 이력 조회 바로 밑으로 올렸고(조사의 두 번째 걸음), 안 했으면 협력사에게도 「한백 대조 전」으로 선다.
  */
 import { useAction } from '@/lib/use-action';
 import { stampOf } from '@/lib/date';
 import {
-  issueCount, missingSeals, reviewCount, sealFixReason,
+  issueCount, missingSeals, reviewCount, sameFiles, sealFixReason,
   type CheckLine, type LineVerdict, type PreInstallCheck, type SealCheck,
 } from '@/lib/preinstall-check';
 import { Btn, Err, Tag, Td, Th } from '@/components/ui';
@@ -28,8 +32,6 @@ const VERDICT: Record<LineVerdict, { label: string; tone: string }> = {
   current: { label: '이번 설치 건', tone: 'text-slate-400' },
   extra: { label: '받침 자료', tone: 'text-slate-400' },
 };
-
-const same = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n');
 
 function SheetCell({ line }: { line: CheckLine }) {
   const r = line.row;
@@ -71,30 +73,41 @@ export function PreInstallCheckBlock({
   hasSheet: boolean;
 }) {
   const { busy, error, run } = useAction();
-  // 돌린 적도 없고 돌릴 수도 없으면 자리를 만들지 않는다 — 협력사에게 빈 덩이만 보인다
-  if (!check && !canRun) return null;
+  const accepting = useAction();
 
-  const stale = !!check && !same(check.files, currentFiles);
+  const stale = !!check && !sameFiles(check.files, currentFiles);
   const n = check ? issueCount(check) : 0;
   const m = check ? reviewCount(check) : 0;
+  /* 넘긴 것은 그 결과의 일이다 — 서류가 바뀌면 넘긴 것도 같이 무효다(preCheckBlocker) */
+  const accepted = check && !stale ? check.accepted ?? null : null;
+  const accept = (on: boolean) => accepting.run({
+    url: `/api/projects/${projectId}/preinstall/check/accept`,
+    body: { checkedAt: check?.checkedAt, accept: on },
+    fail: on ? '넘기지 못했습니다.' : '확인을 취소하지 못했습니다.',
+  });
 
   return (
-    <div className="mt-4 border-t border-slate-100 pt-3">
-      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5">
-        <h3 className="text-small font-black text-slate-800">엑셀 ↔ 증빙 대조</h3>
-        {check && (stale
-          ? <Tag tone="warn">서류가 바뀜 — 다시 대조</Tag>
+    <div className="flex flex-col gap-2">
+      {/* 머리는 바로 위 「이력 조회」와 같은 꼴이다 — 조사의 한 걸음이지 따로 선 구역이 아니다 */}
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className="text-tiny font-bold tracking-[0.04em] text-slate-500">엑셀 ↔ 증빙 대조</span>
+        {!check
+          /* 협력사는 돌릴 수 없다 — 누구를 기다리는지 적는다. 한백에게는 할 일이다 */
+          ? <Tag tone={canRun ? 'warn' : 'mute'}>{canRun ? '대조 전' : '한백 대조 전'}</Tag>
+          : stale ? <Tag tone="warn">서류가 바뀜 — 다시 대조</Tag>
           : n === 0 && m === 0 ? <Tag tone="ok">맞음</Tag>
           : (
             <>
-              {n > 0 && <Tag tone="warn">짚을 것 {n}</Tag>}
+              {n > 0 && <Tag tone={accepted ? 'mute' : 'warn'}>짚을 것 {n}</Tag>}
               {/* 어긋남이 아니라 코드가 판정 못 하는 줄(설계도면 증빙) — 따로 센다 */}
-              {m > 0 && <Tag tone="warn">개별 검토 {m}</Tag>}
+              {m > 0 && <Tag tone={accepted ? 'mute' : 'warn'}>개별 검토 {m}</Tag>}
+              {accepted && <Tag tone="ok">확인함 · {accepted.by} {stampOf(new Date(accepted.at))}</Tag>}
             </>
-          ))}
-        {check && <span className="text-tiny tabular-nums text-slate-400">{stampOf(new Date(check.checkedAt))} 대조</span>}
-        {canRun && (
-          <span className="self-center">
+          )}
+      </div>
+      {(check || canRun) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {canRun && (
             <Btn
               kind="side"
               size="sm"
@@ -105,16 +118,17 @@ export function PreInstallCheckBlock({
             >
               {!hasSheet ? '설치이력 없음 — 대조 불가' : check ? '다시 대조' : '대조'}
             </Btn>
-          </span>
-        )}
-        <Err>{error}</Err>
-      </div>
+          )}
+          {check && <span className="text-tiny tabular-nums text-slate-400">{stampOf(new Date(check.checkedAt))} 대조</span>}
+          <Err>{error}</Err>
+        </div>
+      )}
 
-      {check?.problem && <p className="mt-2 text-small font-bold text-amber-800">{check.problem}</p>}
+      {check?.problem && <p className="text-small font-bold text-amber-800">{check.problem}</p>}
 
       {check && (
         <>
-          <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-small">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-small">
             {/* 줄 대조를 못 했어도(스캔본만 낸 현장) 직인은 본다 — 그래서 problem 과 상관없이 그린다 */}
             {check.seal && (
               <SealLine projectId={projectId} seal={check.seal} canAsk={canRun && !stale} asked={logRejected} />
@@ -166,7 +180,7 @@ export function PreInstallCheckBlock({
           </dl>
 
           {check.lines.length > 0 ? (
-            <div className="mt-2 overflow-x-auto rounded-box border border-slate-200">
+            <div className="overflow-x-auto rounded-box border border-slate-200">
               <table className="w-full min-w-[620px] text-small">
                 <thead className="bg-slate-50 text-tiny font-bold tracking-[0.08em] text-slate-500">
                   <tr>
@@ -190,9 +204,29 @@ export function PreInstallCheckBlock({
               </table>
             </div>
           ) : check.sheet && (
-            <p className="mt-2 text-small text-slate-500">
+            <p className="text-small text-slate-500">
               {check.sheet.none ? '엑셀: 이력 없음 · 증빙 0건' : '엑셀 0줄 · 증빙 0건'}
             </p>
+          )}
+
+          {/*
+            ★넘기는 자리는 결과 밑이다★ — 줄을 다 읽고 나서 누르는 일이다(한백 지시 2026-10-07 「한백이
+            확인하고 넘긴다」). 남은 것이 없으면 이미 통과라 자리가 없고, 서류가 바뀐 결과는 넘길 수 없다 —
+            다시 대조한 결과를 본다. 되돌리는 자리는 넘긴 자리 그대로다(화면 규칙 7).
+          */}
+          {canRun && !stale && n + m > 0 && (
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              {accepted ? (
+                <Btn kind="quiet" size="sm" busy={accepting.busy} busyLabel="취소 중…" onClick={() => accept(false)}>
+                  확인 취소
+                </Btn>
+              ) : (
+                <Btn kind="side" size="sm" busy={accepting.busy} busyLabel="넘기는 중…" onClick={() => accept(true)}>
+                  {`${n + m}건 확인하고 넘기기`}
+                </Btn>
+              )}
+              <Err>{accepting.error}</Err>
+            </div>
           )}
         </>
       )}

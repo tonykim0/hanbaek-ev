@@ -11,7 +11,9 @@
  *     이번 설치 건으로 낸 신고가 섞여 있으면(계약 접수일 뒤의 신고) 그 신고의 「행위 전」이 기설치다.
  *   · 콘솔의 조사 결과(있음/없음) ↔ 엑셀 — 조사를 했다고 표시된 현장만.
  *
- * ★막지 않는다★ — 짚기만 한다. 판독은 스캔 품질에 따라 틀리고, 반려는 사람이 누른다.
+ * ★판정이 막지는 않는다 — 짚기만 한다.★ 판독은 스캔 품질에 따라 틀리고, 반려는 사람이 누른다.
+ * 막는 것은 ★대조를 했느냐★다 (한백 지시 2026-10-07 「검증 필수」): 보조사업 현장은 대조가 맞음이거나
+ * 한백이 결과를 보고 「확인함」으로 넘겨야 계약을 확인한다 — preCheckBlocker 가 그 한 곳이다.
  */
 import type { LegacyRow, LegacySheet } from './legacy-sheet';
 import type { PreInstall } from '@/types/project';
@@ -78,6 +80,12 @@ export interface PreInstallCheck {
    * 옛 데이터(이 칸이 생기기 전 대조)에는 없다.
    */
   seal?: SealCheck | null;
+  /**
+   * 한백이 결과를 보고 넘겼다 — 짚을 것·개별 검토가 남아도 계약 확인을 열어 준다 (한백 지시 2026-10-07).
+   * 이 결과에 붙는다: 다시 대조하면 새 결과라 사라진다. 설계도면 증빙(개별 검토)은 코드가 맞다고 할 수
+   * 없어 이 길이 아니면 영영 못 넘어간다.
+   */
+  accepted?: { by: string; at: string } | null;
 }
 
 /** 설치이력 스캔본(날인본) 한 장에서 판독이 읽은 것 — lib/legacy-evidence 가 채운다 */
@@ -285,4 +293,44 @@ export function compareLegacy(
     : null;
 
   return { lines, standing, survey };
+}
+
+/** 대조에 쓴 파일과 지금 칸의 파일이 같은가 — 다르면 지난 결과를 믿지 않는다(「서류가 바뀜」) */
+export function sameFiles(a: string[], b: string[]): boolean {
+  return a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n');
+}
+
+/** 대조가 견주는 칸 — 설치이력·증빙. 지금 이 두 칸의 파일이 「대조에 쓴 파일」과 같아야 한다 */
+export const CHECKED_KINDS = ['legacylog', 'legacyev'] as const;
+
+/** 두 칸의 지금 파일 주소 — 화면(PreInstall)과 저장소(계약 확인)가 같은 값을 만든다 */
+export function checkedFilesOf(documents: Array<{ kind: string; files: Array<{ url: string }> }>): string[] {
+  return CHECKED_KINDS.flatMap((k) => documents.find((d) => d.kind === k)?.files.map((f) => f.url) ?? []);
+}
+
+/**
+ * ★계약 확인을 막는 대조 사정★ — null 이면 통과 (한백 지시 2026-10-07 「검증 필수」).
+ *
+ * 보조사업(기설치 조사를 하는 현장)이고 서류가 콘솔에 있는 현장만 본다 — 이관 현장은 서류가 노션에
+ * 있어 대조할 것이 없다(계약 확인의 docsExempt 와 같은 면제). 통과는 둘 중 하나다:
+ *   · 지금 칸의 파일로 돌린 대조가 짚을 것 0 · 개별 검토 0
+ *   · 남아 있어도 한백이 그 결과를 보고 「확인함」으로 넘김(accepted)
+ * 파일이 바뀌면 둘 다 무효다 — 확인한 것은 그때의 서류다.
+ *
+ * 글은 계약 확인 단추 이름에 그대로 붙는다(「… — 계약 확인 불가」, 화면 규칙 3).
+ */
+export function preCheckBlocker(input: {
+  /** 보조사업이고 이관 현장이 아닌가 */
+  needed: boolean;
+  check: PreInstallCheck | null | undefined;
+  /** 지금 설치이력·증빙 칸의 파일 주소(checkedFilesOf) */
+  currentFiles: string[];
+}): string | null {
+  if (!input.needed) return null;
+  const c = input.check;
+  if (!c) return '기설치 대조 전';
+  if (!sameFiles(c.files, input.currentFiles)) return '기설치 서류 바뀜 — 다시 대조';
+  const left = issueCount(c) + reviewCount(c);
+  if (left > 0 && !c.accepted) return `기설치 대조 ${left}건 미확인`;
+  return null;
 }

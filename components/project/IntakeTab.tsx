@@ -13,6 +13,7 @@ import { BUILDING_TYPES, CONTRACT_PARTIES, replLabel, TERM_YEARS } from '@/types
 import { contractDocsLockedWhy, gateContextOf, nextStatusOf, prevStatusOf } from '@/lib/process';
 import { HANDOFF_STATUS } from '@/lib/board';
 import { evaluateDocs, needsPreInstallCheck, type DocReq } from '@/lib/doc-rules';
+import { checkedFilesOf, preCheckBlocker } from '@/lib/preinstall-check';
 import { DocDelete, DocFileActions, DocUpload, DownloadAll } from '@/components/DocFiles';
 import { useAction } from '@/lib/use-action';
 import { EditableFact } from './EditableFact';
@@ -880,7 +881,16 @@ export function IntakeTab({
           */}
         <div className="mt-4 flex flex-wrap items-start gap-2">
         {canReview && !project.contractConfirmedAt && (
-          <ConfirmContract projectId={projectId} contract={contract} />
+          <ConfirmContract
+            projectId={projectId}
+            contract={contract}
+            /* 저장소(confirmContract)와 같은 판정 — 화면이 열어 둔 단추를 서버가 거절하지 않게 */
+            preBlock={preCheckBlocker({
+              needed: needsPreInstallCheck(project.bizType) && !contract.docsExempt,
+              check: preinstallCheck,
+              currentFiles: checkedFilesOf([...byKind.values()]),
+            })}
+          />
         )}
 
         {/*
@@ -1178,16 +1188,22 @@ function ContractStatus({
 function ConfirmContract({
   projectId,
   contract,
+  preBlock,
 }: {
   projectId: string;
   contract: ContractState;
+  /**
+   * 기설치 엑셀 ↔ 증빙 대조가 막는 사정 — 「기설치 대조 전」 등 (한백 지시 2026-10-07 「검증 필수」).
+   * 서류·단가 조건(contract.ready)과 따로 받는다: 대조 결과는 계약 상태가 아니라 현장 상세만 읽는 값이다.
+   */
+  preBlock: string | null;
 }) {
   const { busy, error, run } = useAction();
 
   /*
    * 무엇이 막고 있는지 버튼 이름에 그대로 적는다 — 안내문을 따로 두지 않는다.
-   * 눌릴 수 있는지는 contract.ready 하나로 판정한다. 저장소도 같은 값을 보므로
-   * 「버튼은 눌리는데 저장이 거절되는」 일이 없다.
+   * 눌릴 수 있는지는 contract.ready 와 기설치 대조(preBlock) 둘로 판정한다. 저장소도 같은 두 값을
+   * 보므로 「버튼은 눌리는데 저장이 거절되는」 일이 없다.
    */
   /*
    * 기설치 반려도 이 수에 든다 — 조사 반려라는 별도 문을 걷고 기설치 두 칸의
@@ -1205,7 +1221,8 @@ function ConfirmContract({
       /* 단가를 붙이는 자리는 이 탭이 아니다 — 막는 것만 적으면 어디로 갈지 모른다 */
       : !contract.allPriced
         ? '단가 미지정 (협력사 정산관리 탭)'
-        : null;
+        /* 서류 칸이 다 차고 나서야 대조할 수 있으니 순서도 그 뒤다 */
+        : preBlock;
 
   const send = () =>
     void run({
@@ -1218,7 +1235,7 @@ function ConfirmContract({
   return (
     <div className="flex flex-col gap-1.5">
       <Btn
-        disabled={!contract.ready}
+        disabled={!contract.ready || preBlock !== null}
         busy={busy}
         onClick={send}
         className="self-start"

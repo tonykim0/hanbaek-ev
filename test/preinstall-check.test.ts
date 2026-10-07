@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LegacyRow, LegacySheet } from '@/lib/legacy-sheet';
 import {
-  compareLegacy, issueCount, reviewCount, sealFixReason, sealOf,
+  checkedFilesOf, compareLegacy, issueCount, preCheckBlocker, reviewCount, sealFixReason, sealOf,
   type EvidenceAct, type PreInstallCheck, type SheetScan,
 } from '@/lib/preinstall-check';
 
@@ -175,5 +175,54 @@ describe('기설치 없음 설치이력의 직인', () => {
 
   it('기설치 없는 현장의 「지금 서 있는 수」는 행위신고가 없어도 맞음이다', () => {
     expect(compareLegacy(none(null), [], ctx).standing?.verdict).toBe('ok');
+  });
+});
+
+describe('계약 확인을 막는 대조 — 검증 필수 (한백 지시 2026-10-07)', () => {
+  const files = ['https://x/log.xlsx', 'https://x/ev.pdf'];
+  const base: PreInstallCheck = {
+    checkedAt: '2026-10-07T01:00:00.000Z', files, sheetFile: 'log.xlsx',
+    sheet: { standing: 0, final: 0, badSplit: [], none: true }, lines: [], standing: null, survey: null,
+    unread: [], problem: null,
+  };
+  const gate = (check: PreInstallCheck | null, currentFiles = files, needed = true) =>
+    preCheckBlocker({ needed, check, currentFiles });
+
+  it('보조사업이 아니거나 이관 현장이면 보지 않는다', () => {
+    expect(gate(null, files, false)).toBeNull();
+  });
+
+  it('대조를 안 했으면 막는다', () => {
+    expect(gate(null)).toBe('기설치 대조 전');
+  });
+
+  it('남은 것이 없으면 통과 — 파일 순서는 상관없다', () => {
+    expect(gate(base, [...files].reverse())).toBeNull();
+  });
+
+  it('대조 뒤 칸의 파일이 바뀌면 막는다 — 넘긴 것도 같이 무효다', () => {
+    const accepted = { ...base, problem: '시험', accepted: { by: '한백', at: '2026-10-07T02:00:00.000Z' } };
+    expect(gate(base, [...files, 'https://x/ev2.pdf'])).toBe('기설치 서류 바뀜 — 다시 대조');
+    expect(gate(accepted, [files[0]])).toBe('기설치 서류 바뀜 — 다시 대조');
+  });
+
+  it('짚을 것·개별 검토가 남으면 그 수를 적어 막고, 한백이 넘기면 통과', () => {
+    const left: PreInstallCheck = {
+      ...base,
+      lines: [
+        { verdict: 'diff', row: null, act: null, actCount: null, why: null },
+        { verdict: 'review', row: null, act: null, actCount: null, why: null },
+      ],
+    };
+    expect(gate(left)).toBe('기설치 대조 2건 미확인');
+    expect(gate({ ...left, accepted: { by: '한백', at: '2026-10-07T02:00:00.000Z' } })).toBeNull();
+  });
+
+  it('지금 파일은 설치이력·증빙 두 칸만 본다', () => {
+    expect(checkedFilesOf([
+      { kind: 'contract', files: [{ url: 'https://x/c.pdf' }] },
+      { kind: 'legacyev', files: [{ url: 'https://x/ev.pdf' }] },
+      { kind: 'legacylog', files: [{ url: 'https://x/log.xlsx' }] },
+    ])).toEqual(['https://x/log.xlsx', 'https://x/ev.pdf']);
   });
 });

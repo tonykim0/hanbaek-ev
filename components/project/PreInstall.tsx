@@ -10,7 +10,7 @@
  * 서류 목록에서 빼내 자기 구역에 두는 것은 유지한다 — 현장마다 해야 하는 일이라
  * 증빙이 서류 열여섯 칸 사이에 섞여 있으면 조사가 됐는지 보이지 않는다.
  */
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import { reviewKindLabel } from '@/lib/review-labels';
 import type { PreInstall as PreInstallState, ProjectDetail, ProjectDocument } from '@/types/project';
 import { evaluateDocs, needsPreInstallCheck } from '@/lib/doc-rules';
@@ -19,7 +19,7 @@ import { useAction } from '@/lib/use-action';
 import { Badge, Btn, Choice, Empty, Err, FIELD, Tag } from '@/components/ui';
 import { DocReview } from './DocReview';
 import { PreInstallCheckBlock } from './PreInstallCheck';
-import type { PreInstallCheck } from '@/lib/preinstall-check';
+import { checkedFilesOf, type PreInstallCheck } from '@/lib/preinstall-check';
 import { docCardTone, docState, RejectReason } from './parts';
 import { LookupResults, useShardLoader } from '@/components/ChargerHistoryLookup';
 import {
@@ -130,7 +130,25 @@ export function PreInstall({
         </span>
       </div>
 
-      <Survey project={project} />
+      {/*
+        ★엑셀 ↔ 증빙 대조는 이력 조회 바로 밑이다★ (한백 지시 2026-10-07 「이력 조회 밑에 넣어주고 검증 필수」).
+        조사는 이력 조회(공공 자료) → 대조(낸 서류끼리) → 현장 확인 결과 순으로 간다. 대조는 계약 확인의
+        조건이라(preCheckBlocker) 맨 아래 서류 칸 뒤에 두면 안 한 것이 안 보였다.
+        돌리는 것은 한백(검수와 같은 손, canReview), 결과는 협력사도 본다.
+      */}
+      <Survey
+        project={project}
+        check={
+          <PreInstallCheckBlock
+            projectId={project.id}
+            check={check}
+            currentFiles={checkedFilesOf([...byKind.values()])}
+            canRun={canReview}
+            hasSheet={(byKind.get('legacylog')?.files.length ?? 0) > 0}
+            logRejected={byKind.get('legacylog')?.status === 'rejected'}
+          />
+        }
+      />
 
       {/*
         ★조사 반려는 없다★ (한백 승인 2026-09-03). 기설치 두 칸을 돌려보내는 문이
@@ -164,19 +182,6 @@ export function PreInstall({
           />
         ))}
       </div>
-
-      {/*
-        * 두 칸 아래에 둔다 — 견주는 것이 이 두 칸이다. 돌리는 것은 한백(검수와 같은 손, canReview),
-        * 결과는 협력사도 본다.
-        */}
-      <PreInstallCheckBlock
-        projectId={project.id}
-        check={check}
-        currentFiles={['legacylog', 'legacyev'].flatMap((k) => byKind.get(k)?.files.map((f) => f.url) ?? [])}
-        canRun={canReview}
-        hasSheet={(byKind.get('legacylog')?.files.length ?? 0) > 0}
-        logRejected={byKind.get('legacylog')?.status === 'rejected'}
-      />
     </section>
   );
 }
@@ -286,7 +291,11 @@ function PreDocCard({
  * 평소엔 글자로 굳히고 「수정」을 눌러야 열린다(화면 규칙 4번). 저장에 preChecked 를
  * 같이 실어 「조사했다」가 된다. 열람 전용의 쓰기는 서버(write-route)가 막는다.
  */
-function Survey({ project }: { project: ProjectDetail['project'] }) {
+function Survey({ project, check }: {
+  project: ProjectDetail['project'];
+  /** 이력 조회와 현장 확인 결과 사이에 서는 엑셀 ↔ 증빙 대조 — 조사의 두 번째 걸음 */
+  check: ReactNode;
+}) {
   const { busy, error, run } = useAction();
   const [editing, setEditing] = useState(false);
   const [state, setState] = useState<PreInstallState>(project.preInstall);
@@ -392,6 +401,15 @@ function Survey({ project }: { project: ProjectDetail['project'] }) {
         )}
       </div>
 
+      {/* 걸음 사이는 얇은 선 하나 — 상자를 겹치지 않는다(화면 규칙 1) */}
+      <div className="border-t border-slate-100 pt-2">{check}</div>
+
+      <div className="flex flex-col gap-2 border-t border-slate-100 pt-2">
+      {/*
+        머리는 편집 밖에도 선다 — 대조가 이 위로 들어오면서, 이름 없는 「미지정 · 조사 내역 적기」가
+        대조의 한 줄처럼 읽혔다. 편집 안의 같은 이름은 걷었다(같은 말 두 번, 화면 규칙 5).
+      */}
+      <span className="text-tiny font-bold tracking-[0.04em] text-slate-500">현장 확인 결과</span>
       {editing ? (
         <div className="flex max-w-2xl flex-col gap-4">
           {/*
@@ -400,7 +418,6 @@ function Survey({ project }: { project: ProjectDetail['project'] }) {
             조회는 아무 때나 하는 읽기이고, 이것은 적을 때만 여는 자리다.
           */}
           <div className="flex flex-col gap-2">
-            <span className="text-tiny font-bold tracking-[0.04em] text-slate-500">현장 확인 결과</span>
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="mr-1 text-tiny font-bold text-slate-500">기설치</span>
               {(['없음', '있음'] as const).map((v) => (
@@ -453,6 +470,7 @@ function Survey({ project }: { project: ProjectDetail['project'] }) {
           </Btn>
         </div>
       )}
+      </div>
     </div>
   );
 }

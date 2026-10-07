@@ -22,6 +22,8 @@ import type { Actor, ProjectRepository } from '../repository';
 import { assertAdmin, recordsOf } from './shared';
 import type { TxLike } from './shared';
 import { reviewKindLabel } from '@/lib/review-labels';
+import { checkedFilesOf, preCheckBlocker } from '@/lib/preinstall-check';
+import { loadPreInstallCheck } from './preinstall-check';
 import { notifyReview, retractReview } from './notifications';
 
 /** pgRepository 가 펼쳐 담는 조각 — 이름과 시그니처는 인터페이스가 정한다 */
@@ -102,8 +104,22 @@ export const contractStore: Pick<
        * 필수 서류가 비었거나 반려가 남은 계약을 확인해 버리면, 그 뒤로는 무엇이 확인된
        * 것인지 알 수 없어진다. 조건은 lib/stage.ts 가 정본이고 여기서 그것을 부른다.
        */
-      if (confirmed && !contractStateFor(record).ready) {
+      const state = contractStateFor(record);
+      if (confirmed && !state.ready) {
         throw new Error('서류가 다 차고 반려가 없고 단가가 붙어야 계약을 확인할 수 있습니다.');
+      }
+      /*
+       * ★기설치 엑셀 ↔ 증빙 대조도 조건이다★ (한백 지시 2026-10-07 「검증 필수」). 화면의 단추와 같은
+       * 판정(preCheckBlocker)이다 — 이관 현장은 서류가 콘솔 밖이라 계약 확인처럼 면제한다(docsExempt).
+       * 대조 저장·확인함도 같은 현장 잠금을 잡으므로 여기서 읽은 결과가 확인되는 결과다.
+       */
+      if (confirmed) {
+        const blocker = preCheckBlocker({
+          needed: needsPreInstallCheck(record.project.bizType) && !state.docsExempt,
+          check: await loadPreInstallCheck(projectId, tx),
+          currentFiles: checkedFilesOf(record.documents),
+        });
+        if (blocker) throw new Error(`${blocker} — 기설치 대조가 끝나야 계약을 확인할 수 있습니다.`);
       }
       const before = record.project.contractConfirmedAt;
       const after = confirmed ? today() : null;

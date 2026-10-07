@@ -216,6 +216,14 @@ export interface ProjectRepository {
   savePreInstallCheck(projectId: string, check: PreInstallCheck, actor: Actor): Promise<void>;
 
   /**
+   * 대조 결과를 「확인함」으로 넘긴다 · 되돌린다. [한백 전용]
+   *
+   * 짚을 것·개별 검토가 남은 결과도 한백이 보고 넘기면 계약 확인이 열린다(한백 지시 2026-10-07).
+   * checkedAt 은 화면이 본 결과의 대조 시각 — 그사이 다시 대조됐으면 거절한다.
+   */
+  acceptPreInstallCheck(projectId: string, checkedAt: string, accept: boolean, actor: Actor): Promise<void>;
+
+  /**
    * 영업사·시공사를 고친다. [한백 전용]
    *
    * ★이 문자열은 표시용이 아니라 접근 키다.★ 협력사가 자기 현장을 보는 판정이
