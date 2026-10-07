@@ -46,7 +46,7 @@ export const noticeMessageStore: Pick<
   async addNoticeMessage(input, actor): Promise<string> {
     const body = input.body?.trim();
     if (!body) throw new Error('내용을 적어주세요.');
-    if (body.length > MAX_BODY) throw new Error(`메시지는 ${MAX_BODY}자까지입니다.`);
+    if (body.length > MAX_BODY) throw new Error(`메모는 ${MAX_BODY}자까지입니다.`);
 
     const db = getDb();
     const fromHanbaek = actor.role === 'admin';
@@ -57,14 +57,14 @@ export const noticeMessageStore: Pick<
     let org: string;
     if (fromHanbaek) {
       org = input.org?.trim() ?? '';
-      if (!org) throw new Error('어느 업체에 답하는지가 없습니다.');
+      if (!org) throw new Error('어느 업체에 남기는지가 없습니다.');
       const [known] = await db.select({ id: users.id }).from(users)
         .where(and(eq(users.org, org), notInArray(users.role, HANBAEK_ROLES), eq(users.active, true))).limit(1);
       if (!known) throw new Error(`「${org}」 계정이 없습니다.`);
     } else if (!isHanbaek(actor.role) && actor.org) {
       org = actor.org;
     } else {
-      throw new Error('공지 메시지를 남길 수 없는 계정입니다.');
+      throw new Error('공지 메모를 남길 수 없는 계정입니다.');
     }
 
     const [notice] = await db.select({ title: notices.title }).from(notices).where(eq(notices.id, input.noticeId)).limit(1);
@@ -77,7 +77,7 @@ export const noticeMessageStore: Pick<
       });
       await fanOutNoticeMessage(tx, { msgId: id, noticeId: input.noticeId, org, fromHanbaek, actorId: actor.id });
       await writeAudit(tx, {
-        projectId: null, actor, action: '공지 메시지',
+        projectId: null, actor, action: '공지 메모',
         field: 'noticeMessages', oldValue: `${notice.title} · ${org}`, newValue: body.slice(0, 200),
       });
     });
@@ -87,12 +87,12 @@ export const noticeMessageStore: Pick<
   async deleteNoticeMessage(id, actor): Promise<void> {
     const db = getDb();
     const [row] = await db.select().from(noticeMessages).where(eq(noticeMessages.id, id)).limit(1);
-    if (!row) throw new Error('메시지를 찾을 수 없습니다.');
-    if (row.authorId !== actor.id) throw new Error('내가 남긴 메시지만 지울 수 있습니다.');
+    if (!row) throw new Error('메모를 찾을 수 없습니다.');
+    if (row.authorId !== actor.id) throw new Error('내가 남긴 메모만 지울 수 있습니다.');
     await db.transaction(async (tx) => {
       await tx.delete(noticeMessages).where(eq(noticeMessages.id, id));
       await writeAudit(tx, {
-        projectId: null, actor, action: '공지 메시지 삭제',
+        projectId: null, actor, action: '공지 메모 삭제',
         field: 'noticeMessages', oldValue: row.body.slice(0, 200), newValue: null,
       });
     });

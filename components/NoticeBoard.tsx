@@ -179,9 +179,9 @@ function NoticeItem({ notice, canWrite, messages, fresh, talk, initialOpen, focu
           <span className="break-keep text-base font-bold text-slate-900">{notice.title}</span>
           {/* 세어진 꼬리표다 — 각지고(규칙 11), 열지 않고도 받을 것이 있는지 보인다 */}
           {files > 0 && <Tag>첨부 {files}</Tag>}
-          {/* 오간 메시지 — 접힌 채로 보인다. 안 읽은 것이 있으면 따로 센다(알림과 같은 수) */}
-          {messages.length > 0 && <Tag>메시지 {messages.length}</Tag>}
-          {unread > 0 && <Tag tone="warn">새 메시지 {unread}</Tag>}
+          {/* 오간 메모 — 접힌 채로 보인다. 안 읽은 것이 있으면 따로 센다(알림과 같은 수) */}
+          {messages.length > 0 && <Tag>메모 {messages.length}</Tag>}
+          {unread > 0 && <Tag tone="warn">새 메모 {unread}</Tag>}
           {notice.updatedAt && (
             <span className="shrink-0 text-tiny tabular-nums text-slate-400">
               수정 {day(notice.updatedAt)}
@@ -205,7 +205,7 @@ function NoticeItem({ notice, canWrite, messages, fresh, talk, initialOpen, focu
         <div className="flex flex-col gap-2.5 pb-3 pl-5">
           <NoticeBody text={notice.body} />
           <NoticeFiles notice={notice} canWrite={canWrite} />
-          {/* 메시지 — 협력사는 제 업체의 대화, 한백은 업체마다(NoticeTalk). 열람 전용은 읽기만 */}
+          {/* 메모 — 협력사는 제 업체의 줄기, 한백은 업체마다(NoticeTalk). 열람 전용은 읽기만 */}
           {(talk.canPost || messages.length > 0 || talk.hanbaek) && (
             <NoticeTalk noticeId={notice.id} messages={messages} viewer={talk} fresh={fresh} focusOrg={focusOrg} />
           )}

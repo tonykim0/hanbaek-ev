@@ -53,12 +53,22 @@ describe('공지 메시지 — 업체마다 한 줄기', () => {
     expect(mine.map((m) => m.author)).toEqual(['네이비인프라', '한백']);
   });
 
+  it('★한백이 먼저 보낸다★ — 아직 오간 메모가 없는 업체에도 남기면 그 업체만 알림을 받는다', async () => {
+    // 에코일렉 — 개발 DB 에 계정이 있는 업체(대상전력은 시드 계정이 DB 에 없어 저장소가 거절한다)
+    await repo.addNoticeMessage({ noticeId, body: '이 양식으로 다시 내주세요.', org: '에코일렉' }, admin);
+    const eco = await noticeAlerts(USERS.ecoelec);
+    expect(eco).toHaveLength(1);
+    expect(eco[0]).toMatchObject({ author: '한백', org: '에코일렉', body: '이 양식으로 다시 내주세요.' });
+    expect((await noticeAlerts(USERS.navy)).some((n) => n.org === '에코일렉'), '다른 업체').toBe(false);
+  });
+
   it('★협력사가 남의 업체를 적어 보내도 제 업체 줄기에 남는다★ — 끼어들 수 없다', async () => {
     await repo.addNoticeMessage({ noticeId, body: '끼어들기', org: '네이비인프라' }, actorOf(USERS.daesang));
     const navySees = (await repo.listNoticeMessages(me(USERS.navy))).filter((m) => m.noticeId === noticeId);
     expect(navySees.some((m) => m.body === '끼어들기')).toBe(false);
     const daesangSees = (await repo.listNoticeMessages(me(USERS.daesang))).filter((m) => m.noticeId === noticeId);
-    expect(daesangSees.map((m) => [m.org, m.body])).toEqual([['대상전력', '끼어들기']]);
+    expect(daesangSees.find((m) => m.body === '끼어들기')?.org).toBe('대상전력');
+    expect(daesangSees.every((m) => m.org === '대상전력')).toBe(true);
   });
 
   it('한백이 계정 없는 업체에 답하면 거절한다 — 받을 사람이 없는 줄기를 만들지 않는다', async () => {
@@ -82,7 +92,7 @@ describe('공지 메시지 — 업체마다 한 줄기', () => {
 
   it('지우기는 쓴 사람만 — 지우면 그 글의 알림도 사라진다', async () => {
     const id = await repo.addNoticeMessage({ noticeId, body: '지울 글' }, actorOf(USERS.navy));
-    await expect(repo.deleteNoticeMessage(id, admin)).rejects.toThrow(/내가 남긴 메시지만/);
+    await expect(repo.deleteNoticeMessage(id, admin)).rejects.toThrow(/내가 남긴 메모만/);
     expect((await noticeAlerts(USERS.admin)).some((n) => n.body === '지울 글')).toBe(true);
     await repo.deleteNoticeMessage(id, actorOf(USERS.navy));
     expect((await noticeAlerts(USERS.admin)).some((n) => n.body === '지울 글')).toBe(false);
