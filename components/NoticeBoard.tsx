@@ -16,8 +16,10 @@
  * 글은 평소엔 글자, 고칠 때만 입력칸이다(화면 규칙 4). 삭제는 수정의 반대쪽 끝(규칙 8),
  * Confirm 으로 한 번 묻는다 — 지운 공지는 되살릴 수 없다.
  */
-import { useEffect, useState, type ReactNode } from 'react';
-import type { Notice, NoticeFile } from '@/types/project';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { Notice, NoticeFile, NoticeMessage } from '@/types/project';
+import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
+import { NoticeTalk, type TalkViewer } from '@/components/NoticeTalk';
 import { useAction } from '@/lib/use-action';
 import { formatSize } from '@/lib/materials-meta';
 import { Btn, Confirm, Empty, Err, FIELD, Tag } from '@/components/ui';
@@ -41,11 +43,21 @@ function byDay(items: Notice[]): Array<[string, Notice[]]> {
   return [...out];
 }
 
-export default function NoticeBoard({ items, canWrite }: {
+export default function NoticeBoard({ items, canWrite, messages, freshIds, talk, openId, focusOrg }: {
   items: Notice[];
   /** 공지 쓰기 — 한백 관리자만. 서버(adminWrite)가 같은 판정을 한 번 더 한다 */
   canWrite: boolean;
+  /** 공지의 메시지(협력사 ↔ 한백) — 저장소가 내 몫만 걸러 왔다(협력사는 제 업체 줄기만) */
+  messages: NoticeMessage[];
+  /** 알림으로 온, 아직 안 읽은 메시지 */
+  freshIds: string[];
+  talk: TalkViewer;
+  /** 알림에서 왔으면 그 공지(펼쳐 둔다)와 그 업체의 줄기 */
+  openId: string | null;
+  focusOrg: string | null;
 }) {
+  /* 처음 연 때의 새 글 — 펼쳐서 읽음을 찍은 뒤에도 이 화면에서는 표시를 지킨다(진행현황과 같다) */
+  const [fresh] = useState(() => new Set(freshIds));
   /*
    * 읽음 표시 — 한 번이면 된다. 실패해도 화면을 막지 않는다: 배지가 한 번 더 뜰 뿐이고,
    * 다음에 열면 다시 찍는다.
@@ -84,7 +96,16 @@ export default function NoticeBoard({ items, canWrite }: {
               {/* 상자 없이 얇은 선으로 가른다(화면 규칙 1) — 공지는 목록이지 카드 무더기가 아니다 */}
               <ol className="flex flex-col divide-y divide-slate-100 border-t border-slate-100">
                 {group.map((n) => (
-                  <NoticeItem key={n.id} notice={n} canWrite={canWrite} />
+                  <NoticeItem
+                    key={n.id}
+                    notice={n}
+                    canWrite={canWrite}
+                    messages={messages.filter((m) => m.noticeId === n.id)}
+                    fresh={fresh}
+                    talk={talk}
+                    initialOpen={n.id === openId}
+                    focusOrg={n.id === openId ? focusOrg : null}
+                  />
                 ))}
               </ol>
             </section>
@@ -95,11 +116,39 @@ export default function NoticeBoard({ items, canWrite }: {
   );
 }
 
-function NoticeItem({ notice, canWrite }: { notice: Notice; canWrite: boolean }) {
+function NoticeItem({ notice, canWrite, messages, fresh, talk, initialOpen, focusOrg }: {
+  notice: Notice;
+  canWrite: boolean;
+  messages: NoticeMessage[];
+  fresh: Set<string>;
+  talk: TalkViewer;
+  initialOpen: boolean;
+  focusOrg: string | null;
+}) {
   const { busy, error, setError, run } = useAction();
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(initialOpen);
   const [editing, setEditing] = useState(false);
   const [asking, setAsking] = useState(false);
+  const here = useRef<HTMLLIElement>(null);
+  const unread = messages.filter((m) => fresh.has(m.id)).length;
+
+  // 알림에서 왔으면 이 공지로 내려간다(업체 줄기가 따로 있으면 그쪽이 다시 내려간다)
+  useEffect(() => {
+    if (initialOpen && !focusOrg) here.current?.scrollIntoView({ block: 'start' });
+  }, [initialOpen, focusOrg]);
+
+  /*
+   * ★펼치면 이 공지의 메시지 알림을 읽는다★ — 진행현황의 탭을 여는 것과 같다. 「새 글」 표시는 이 화면에 있는
+   * 동안 남는다(fresh 는 처음 연 때의 것). 못 찍으면 알림이 남을 뿐 — 다음에 펼칠 때 다시 찍는다.
+   */
+  useEffect(() => {
+    if (!open || unread === 0) return;
+    void fetch('/api/notifications/read', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ noticeId: notice.id }),
+    })
+      .then(() => window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED)))
+      .catch(() => {});
+  }, [open, unread, notice.id]);
 
   if (editing) {
     return (
@@ -112,7 +161,7 @@ function NoticeItem({ notice, canWrite }: { notice: Notice; canWrite: boolean })
   const files = notice.files.length;
 
   return (
-    <li className="py-1">
+    <li ref={here} className="py-1">
       <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
         {/*
           * 제목이 곧 펼치는 자리다 — 따로 「펼치기」 단추를 두지 않는다(누를 것이 둘이면
@@ -130,6 +179,9 @@ function NoticeItem({ notice, canWrite }: { notice: Notice; canWrite: boolean })
           <span className="break-keep text-base font-bold text-slate-900">{notice.title}</span>
           {/* 세어진 꼬리표다 — 각지고(규칙 11), 열지 않고도 받을 것이 있는지 보인다 */}
           {files > 0 && <Tag>첨부 {files}</Tag>}
+          {/* 오간 메시지 — 접힌 채로 보인다. 안 읽은 것이 있으면 따로 센다(알림과 같은 수) */}
+          {messages.length > 0 && <Tag>메시지 {messages.length}</Tag>}
+          {unread > 0 && <Tag tone="warn">새 메시지 {unread}</Tag>}
           {notice.updatedAt && (
             <span className="shrink-0 text-tiny tabular-nums text-slate-400">
               수정 {day(notice.updatedAt)}
@@ -153,6 +205,10 @@ function NoticeItem({ notice, canWrite }: { notice: Notice; canWrite: boolean })
         <div className="flex flex-col gap-2.5 pb-3 pl-5">
           <NoticeBody text={notice.body} />
           <NoticeFiles notice={notice} canWrite={canWrite} />
+          {/* 메시지 — 협력사는 제 업체의 대화, 한백은 업체마다(NoticeTalk). 열람 전용은 읽기만 */}
+          {(talk.canPost || messages.length > 0 || talk.hanbaek) && (
+            <NoticeTalk noticeId={notice.id} messages={messages} viewer={talk} fresh={fresh} focusOrg={focusOrg} />
+          )}
         </div>
       )}
 

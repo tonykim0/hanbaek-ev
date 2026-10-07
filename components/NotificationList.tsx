@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 알림 목록 — 진행현황 글 · 서류 반려 · 누락 서류 보완요청 (app/(console)/notifications).
+ * 알림 목록 — 진행현황 글 · 서류 반려 · 누락 서류 보완요청 · 공지 메시지 (app/(console)/notifications).
  *
  * 한 줄 = 알림 하나: 현장 · 탭(계약·시공) · 누가 · 언제, 그 밑에 본문 두 줄. 반려·보완요청은 본문 앞에 붉은
  * 꼬리표(「반려 — 계약서」)가 서고 본문이 한백의 메시지(반려 사유)다. 안 읽은 줄은 굵고 왼쪽에 점이 선다.
@@ -13,6 +13,17 @@ import type { NoteNotification } from '@/types/project';
 import { TAB_OF_SCOPE } from '@/lib/notify';
 import { Btn, Err, Tag } from '@/components/ui';
 import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
+
+/**
+ * 줄을 누르면 가는 곳 — 현장 알림은 그 현장의 그 탭, 공지 메시지는 그 공지의 그 업체 대화
+ * (/notices?open=…&org=… — 공지 화면이 그 공지를 펼치고 그 대화로 내려간다, 거기서 읽힌다).
+ */
+function hrefOf(n: NoteNotification): string {
+  if (n.kind === 'notice' && n.noticeId) {
+    return `/notices?open=${encodeURIComponent(n.noticeId)}${n.org ? `&org=${encodeURIComponent(n.org)}` : ''}`;
+  }
+  return `/projects/${encodeURIComponent(n.projectId ?? '')}?tab=${TAB_OF_SCOPE[n.scope ?? '시공']}`;
+}
 
 export default function NotificationList({ items, viewingAs }: {
   items: NoteNotification[];
@@ -61,7 +72,7 @@ export default function NotificationList({ items, viewingAs }: {
           {list.map((n) => (
             <li key={n.id}>
               <Link
-                href={`/projects/${encodeURIComponent(n.projectId)}?tab=${TAB_OF_SCOPE[n.scope]}`}
+                href={hrefOf(n)}
                 className="flex gap-3 px-4 py-3 transition hover:bg-slate-50"
               >
                 <span
@@ -70,8 +81,13 @@ export default function NotificationList({ items, viewingAs }: {
                 />
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                    <span className={`truncate ${n.read ? 'font-semibold text-slate-600' : 'font-black text-slate-900'}`}>{n.projectName}</span>
-                    <span className="rounded-tag bg-slate-100 px-1.5 py-0.5 text-micro font-bold text-slate-500">{n.scope}</span>
+                    <span className={`truncate ${n.read ? 'font-semibold text-slate-600' : 'font-black text-slate-900'}`}>
+                      {n.kind === 'notice' ? n.noticeTitle : n.projectName}
+                    </span>
+                    {/* 갈래 꼬리표 — 현장 알림은 탭(계약·시공·기성), 공지 메시지는 「공지」 */}
+                    <span className="rounded-tag bg-slate-100 px-1.5 py-0.5 text-micro font-bold text-slate-500">
+                      {n.kind === 'notice' ? '공지' : n.scope}
+                    </span>
                     <span className={`rounded-tag px-1.5 py-0.5 text-micro font-black ${
                       n.author === '한백' ? 'bg-slate-900 text-white' : 'bg-brand-100 text-brand-900'
                     }`}>

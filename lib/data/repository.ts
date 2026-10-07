@@ -17,7 +17,7 @@ import type {
   ChargerModel, RecvPreset,
   PayoutPlanRow, ProcessInfo, ProcessStatus, ProjectDetail, ProjectSummary, Settlement, SettlementRule, SettlementSummary, BatchFinal, TaxInvoice,
   Notice, NoticeFile, ReviewEvent, ProjectFactsPatch, LineFactsPatch, ProjectAxesPatch, NewContractLine,
-  NoteNotification,
+  NoteNotification, NoticeMessage,
 } from '@/types/project';
 import type { Actor, Viewer } from '@/lib/auth/types';
 import type { DraftFull, DraftSummary, PhotoRef } from '@/lib/survey/draft-shape';
@@ -491,7 +491,24 @@ export interface ProjectRepository {
    * 알림을 읽었다고 찍는다 — 범위: 알림 하나 · 현장 하나(갈래까지) · 없으면 전부. 찍은 수를 돌려준다.
    * ★열람 전용도 부른다★ — 제 읽음 표시다(공지와 같다). 대행 중에는 라우트가 부르지 않는다.
    */
-  markNotificationsRead(userId: string, where?: { id?: string; projectId?: string; scope?: NoteScope }): Promise<number>;
+  markNotificationsRead(
+    userId: string, where?: { id?: string; projectId?: string; noticeId?: string; scope?: NoteScope }
+  ): Promise<number>;
+  /** 내가 안 읽은 공지 메시지 id — 공지 화면의 「새 글」·「새 메시지 N」 */
+  unreadNoticeMessages(userId: string): Promise<string[]>;
+
+  /**
+   * 공지의 메시지 — 협력사 ↔ 한백 (migrations/0094). 협력사는 제 업체의 줄기만, 한백(열람 전용 포함)은 전부 받는다.
+   * mine 은 me.id 로 가린다.
+   */
+  listNoticeMessages(me: Recipient): Promise<NoticeMessage[]>;
+  /**
+   * 공지에 메시지를 남긴다 — 협력사는 제 업체 줄기에(org 를 보내도 무시), 한백 관리자는 답할 업체(org)를 골라.
+   * 받는 쪽에 알림이 간다(같은 트랜잭션). 새 메시지 id 를 돌려준다.
+   */
+  addNoticeMessage(input: { noticeId: string; body: string; org?: string | null }, actor: Actor): Promise<string>;
+  /** 내가 남긴 메시지를 지운다 — 남의 것은 못 지운다. 그 메시지의 알림도 같이 지워진다 */
+  deleteNoticeMessage(id: string, actor: Actor): Promise<void>;
   /** 이 현장에서 내가 안 읽은 것 — 글 id(현장 상세의 「새 글」)와 알림이 남은 갈래(그 탭을 열면 읽음) */
   unreadOnProject(userId: string, projectId: string): Promise<{ noteIds: string[]; scopes: NoteScope[] }>;
 

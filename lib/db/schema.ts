@@ -45,6 +45,22 @@ export const notices = pgTable('notices', {
 });
 
 /**
+ * 공지의 메시지 — 협력사 ↔ 한백 (migrations/0094). 대화는 공지 × 협력사(org)마다 한 줄기라 업체끼리는
+ * 서로의 말을 못 본다. author 는 「한백」 또는 협력사 이름, author_id 는 지우기 권한에만 쓴다.
+ */
+export const noticeMessages = pgTable('notice_messages', {
+  id: text('id').primaryKey(),
+  noticeId: text('notice_id').notNull().references(() => notices.id, { onDelete: 'cascade' }),
+  org: text('org').notNull(),
+  author: text('author').notNull(),
+  authorId: text('author_id'),
+  body: text('body').notNull(),
+  at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  byThread: index('notice_messages_thread_idx').on(t.noticeId, t.org, t.at),
+}));
+
+/**
  * 협력사 정보 — 계정마다 사업자등록증·정산 계좌를 둔다.
  *
  * 지급(하도급 정산)에 쓰는 값이라 계정이 아니라 회사의 것에 가깝지만, 지금 계정은
@@ -431,7 +447,11 @@ export const projectNotes = pgTable('project_notes', {
 export const notifications = pgTable('notifications', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
-  projectId: text('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  /** 현장 알림이면 그 현장 — 공지 메시지 알림은 비어 있다(migrations/0094) */
+  projectId: text('project_id').references(() => projects.id, { onDelete: 'cascade' }),
+  /** 공지 메시지 알림이면 그 공지와 그 메시지 (migrations/0094) */
+  noticeId: text('notice_id').references(() => notices.id, { onDelete: 'cascade' }),
+  noticeMsgId: text('notice_msg_id').references(() => noticeMessages.id, { onDelete: 'cascade' }),
   /** 진행현황 글 알림이면 그 글 — 반려·보완요청 알림은 비어 있다(migrations/0092) */
   noteId: text('note_id').references(() => projectNotes.id, { onDelete: 'cascade' }),
   /** note(진행현황 글) · reject(서류 반려) · ask(누락 서류 보완요청) */

@@ -56,6 +56,7 @@ import { surveyDraftStore } from './store/survey-drafts';
 import { noticeStore } from './store/notices';
 import { fanOutNote, notificationStore } from './store/notifications';
 import { loadPreInstallCheck, preinstallCheckStore } from './store/preinstall-check';
+import { noticeMessageStore } from './store/notice-messages';
 import {
   accessWhere, assertAdmin, assertHanbaek, mergeDocs, PROCESS_DOC_KEYS, recordsOf,
   resolveSettlementRule, ruleMap, rowToRule, rowToSettle, settleMap, toCollected, toLine,
@@ -194,6 +195,8 @@ export const pgRepository: ProjectRepository = {
   ...notificationStore,
   // 기설치 엑셀 ↔ 증빙 대조 결과는 store/preinstall-check.ts 에 있다
   ...preinstallCheckStore,
+  // 공지의 메시지(협력사 ↔ 한백)는 store/notice-messages.ts 에 있다
+  ...noticeMessageStore,
 
   async listProjects(viewer: Viewer): Promise<ProjectSummary[]> {
     if (!isHanbaek(viewer.role) && !viewer.org) return [];

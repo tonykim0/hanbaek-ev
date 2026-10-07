@@ -1259,6 +1259,24 @@ export interface Notice {
   files: NoticeFile[];
 }
 
+/**
+ * 공지의 메시지 — 협력사 ↔ 한백 (migrations/0094). 대화는 공지 × 협력사(org)마다 한 줄기다 — 협력사는 제 업체의
+ * 줄기만 받는다(저장소가 거른다), 한백은 전부.
+ */
+export interface NoticeMessage {
+  id: string;
+  noticeId: string;
+  /** 대화 상대 협력사 — 줄기의 열쇠 */
+  org: string;
+  /** 쓴 쪽 — 「한백」 또는 협력사 이름 */
+  author: string;
+  body: string;
+  /** 남긴 시각 (YYYY-MM-DD HH:mm) */
+  at: string;
+  /** 내가 쓴 것 — 지울 수 있다 */
+  mine: boolean;
+}
+
 export interface ReviewEvent {
   id: string;
   /** 누가 — 「에코일렉(ecoelec)」처럼 이름과 계정이 같이 적혀 있다 */
@@ -1399,18 +1417,25 @@ export function isNoteScope(v: unknown): v is NoteScope {
  * 알림 한 줄 — 진행현황 글 · 서류 반려 · 누락 서류 보완요청(lib/notify.ts).
  * 글 알림은 글이 정본이라 본문·쓴 쪽을 글에서 읽는다. 반려·보완요청은 알림 줄이 제 머리(title)와 한백의 메시지(body)를 갖는다.
  */
-export type NotificationKind = 'note' | 'reject' | 'ask';
+/** note(진행현황 글) · reject(서류 반려) · ask(누락 서류 보완요청) · notice(공지 메시지, migrations/0094) */
+export type NotificationKind = 'note' | 'reject' | 'ask' | 'notice';
 
 export interface NoteNotification {
   id: string;
   kind: NotificationKind;
-  projectId: string;
-  projectName: string;
+  /** 현장 알림이면 그 현장 — 공지 메시지 알림은 null */
+  projectId: string | null;
+  projectName: string | null;
+  /** 공지 메시지 알림이면 그 공지와 대화 상대 협력사 — 줄을 누르면 그 공지의 그 대화로 간다 */
+  noticeId: string | null;
+  noticeTitle: string | null;
+  org: string | null;
   /** 진행현황 글 알림일 때만 */
   noteId: string | null;
   /** 반려·보완요청의 머리 — 「반려 — 계약서」 · 「누락 서류 보완요청 3건」 */
   title: string | null;
-  scope: NoteScope;
+  /** 현장 알림이 서는 탭의 갈래 — 공지 메시지 알림은 탭이 없어 null */
+  scope: NoteScope | null;
   /** 글을 쓴 쪽 — 「한백」 또는 협력사 이름 */
   author: string;
   body: string;
