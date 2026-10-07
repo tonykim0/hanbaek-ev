@@ -15,7 +15,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { imageFileToPdf, type NormalizedFile } from './files';
 import { uprightPdfFiles } from './pdf-orient';
 import { logLlmCall } from './llm-usage';
-import type { EvidenceAct, EvidenceDoc } from './preinstall-check';
+import type { EvidenceAct, EvidenceDoc, SheetScan } from './preinstall-check';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -97,13 +97,13 @@ export function actsOf(raw: unknown, names: string[]): EvidenceAct[] {
   });
 }
 
-async function ask(batch: NormalizedFile[]): Promise<unknown> {
+async function ask(batch: NormalizedFile[], text: string): Promise<unknown> {
   const content: Anthropic.ContentBlockParam[] = [
     ...batch.map((f) => ({
       type: 'document' as const,
       source: { type: 'base64' as const, media_type: 'application/pdf' as const, data: f.buffer.toString('base64') },
     })),
-    { type: 'text', text: prompt(batch.map((f) => f.name)) },
+    { type: 'text', text },
   ];
   let model = MODEL;
   for (let attempt = 1; attempt <= 3; attempt++) {
@@ -130,12 +130,10 @@ async function ask(batch: NormalizedFile[]): Promise<unknown> {
 }
 
 /**
- * 칸의 파일들을 읽는다. 사진은 PDF 로 바꾸고, 거꾸로 스캔된 쪽은 바로 세운다(접수와 같은 길).
- * 못 읽은 파일(형식이 다르거나 한 번에 못 담는 것)은 unread 로 돌려준다 — 조용히 빠지지 않게.
+ * 판독에 보낼 묶음으로 만든다 — 사진은 PDF 로 바꾸고, 거꾸로 스캔된 쪽은 바로 세운다(접수와 같은 길).
+ * 못 읽는 파일(형식이 다르거나 한 번에 못 담는 것)은 unread 로 — 조용히 빠지지 않게.
  */
-export async function readEvidence(
-  files: { name: string; buffer: Buffer }[]
-): Promise<{ acts: EvidenceAct[]; unread: string[] }> {
+async function prepare(files: { name: string; buffer: Buffer }[]): Promise<{ batches: NormalizedFile[][]; unread: string[] }> {
   const unread: string[] = [];
   const pdfs: NormalizedFile[] = [];
   for (const f of files) {
@@ -147,7 +145,7 @@ export async function readEvidence(
     if (pdf) pdfs.push(pdf);
     else unread.push(f.name);
   }
-  if (pdfs.length === 0) return { acts: [], unread };
+  if (pdfs.length === 0) return { batches: [], unread };
 
   const upright = await uprightPdfFiles(pdfs, 'preinstall-check');
 
@@ -162,14 +160,81 @@ export async function readEvidence(
     bytes += f.buffer.length;
   }
   if (cur.length > 0) batches.push(cur);
+  return { batches, unread };
+}
 
+/** 증빙 칸의 파일들을 읽는다 */
+export async function readEvidence(
+  files: { name: string; buffer: Buffer }[]
+): Promise<{ acts: EvidenceAct[]; unread: string[] }> {
+  const { batches, unread } = await prepare(files);
   const acts: EvidenceAct[] = [];
   for (const batch of batches) {
     const names = batch.map((f) => f.name);
-    const got = actsOf(await ask(batch), names);
+    const got = actsOf(await ask(batch, prompt(names)), names);
     acts.push(...got);
     // 답에 아예 없는 파일은 읽지 못한 것이다
     for (const n of names) if (!got.some((a) => a.file === n)) unread.push(n);
   }
   return { acts, unread };
+}
+
+/* ── 설치이력 스캔본(날인본) ─────────────────────────────────────────────────
+ * ★기설치가 없을 때 운영사·아파트 직인이 없으면 보완요청★ (한백 지시 2026-10-07).
+ * 날인본은 엑셀에 도장 그림을 박아 오기도 하지만(lib/legacy-sheet 가 코드로 본다), 출력해 찍고 스캔해
+ * 오는 일이 많다 — 경주국태그린빌의 첫 판은 아파트 직인만 있고 사업수행기관 칸이 비어 보완요청됐다.
+ * 스캔본은 그림이라 판독이 본다. 도장이 찍혔는지만 묻는다 — 누구 도장인지는 이름 칸이 말한다.
+ */
+
+function scanPrompt(names: string[]): string {
+  return `「신청지점(대기번호)별 충전기 설치 및 철거·교체 현황」(기설치 충전기 설치이력) 양식을 출력해 날인하고 스캔한 문서입니다.
+인쇄된 것과 찍힌 것만 읽어 JSON 으로 답하세요. 추측하지 마세요. JSON 외의 글은 쓰지 마세요.
+
+## 문서 (${names.length}개 — originalName 에 이 이름을 그대로)
+${names.map((n, i) => `${i + 1}. ${n}`).join('\n')}
+
+## 답 모양
+{"files":[{"originalName":"…","form":true,"applicant":{"name":"세경1차아파트관리사무소","seal":true},"operator":{"name":"현대엔지니어링 주식회사","seal":false},"total":0}]}
+
+## 항목
+- form: 서명 칸 「(설치 신청자)」·「(사업수행기관)」이 있으면 true. 서명 칸이 없는 옛 양식이거나 다른 문서면 false 이고
+  applicant·operator 는 null. (total 은 form 과 상관없이 읽는다.)
+- applicant: 「(설치 신청자)」 칸. name = 「신청자명 :」 뒤에 적힌 이름(비었으면 null).
+  seal = 그 칸 안이나 칸에 걸쳐 ★도장(인영)이 찍혀 있으면 true★ — 붉은(흑백 스캔이면 검은) 네모·동그라미 도장 자국.
+  「(인)」 글자만 있고 도장이 없으면 false. 손글씨 서명만 있어도 false.
+- operator: 「(사업수행기관)」 칸. name = 「사업자명 :」 뒤. seal 은 위와 같다.
+- total: 표 「전체」 줄의 「최종 기설치 수량(H)」 숫자. 행위 기수가 0보다 큰 줄이 하나도 없으면 0.
+  충전기 설치·철거 현황 표가 아닌 문서이거나 안 보이면 null.`;
+}
+
+const bool = (v: unknown): boolean | null => (typeof v === 'boolean' ? v : null);
+
+export function scansOf(raw: unknown, names: string[]): SheetScan[] {
+  const list = (raw as { files?: Record<string, unknown>[] } | null)?.files;
+  if (!Array.isArray(list)) return [];
+  return list.flatMap((f) => {
+    const name = str(f.originalName);
+    const file = names.find((n) => n === name) ?? names.find((n) => name && (n.includes(name) || name.includes(n)));
+    if (!file) return [];
+    const side = (v: unknown) => {
+      const s = (v ?? {}) as Record<string, unknown>;
+      return { name: str(s.name), seal: bool(s.seal) };
+    };
+    return [{ file, form: f.form === true, applicant: side(f.applicant), operator: side(f.operator), total: num(f.total) }];
+  });
+}
+
+/** 설치이력 칸의 스캔본(PDF·사진)을 읽는다 */
+export async function readSheetScans(
+  files: { name: string; buffer: Buffer }[]
+): Promise<{ scans: SheetScan[]; unread: string[] }> {
+  const { batches, unread } = await prepare(files);
+  const scans: SheetScan[] = [];
+  for (const batch of batches) {
+    const names = batch.map((f) => f.name);
+    const got = scansOf(await ask(batch, scanPrompt(names)), names);
+    scans.push(...got);
+    for (const n of names) if (!got.some((s) => s.file === n)) unread.push(n);
+  }
+  return { scans, unread };
 }

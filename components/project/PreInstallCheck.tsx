@@ -11,7 +11,10 @@
  */
 import { useAction } from '@/lib/use-action';
 import { stampOf } from '@/lib/date';
-import { issueCount, reviewCount, type CheckLine, type LineVerdict, type PreInstallCheck } from '@/lib/preinstall-check';
+import {
+  issueCount, missingSeals, reviewCount, sealFixReason,
+  type CheckLine, type LineVerdict, type PreInstallCheck, type SealCheck,
+} from '@/lib/preinstall-check';
 import { Btn, Err, Tag, Td, Th } from '@/components/ui';
 
 const VERDICT: Record<LineVerdict, { label: string; tone: string }> = {
@@ -54,8 +57,10 @@ function ActCell({ line }: { line: CheckLine }) {
 }
 
 export function PreInstallCheckBlock({
-  projectId, check, currentFiles, canRun, hasSheet,
+  projectId, check, currentFiles, canRun, hasSheet, logRejected = false,
 }: {
+  /** 설치이력 칸이 지금 반려(보완요청) 중인가 — 그러면 보완요청 단추 대신 「보완요청함」 */
+  logRejected?: boolean;
   projectId: string;
   check: PreInstallCheck | null | undefined;
   /** 지금 설치이력·증빙 칸의 파일 주소 — 지난 대조와 다르면 「서류가 바뀜」 */
@@ -107,9 +112,13 @@ export function PreInstallCheckBlock({
 
       {check?.problem && <p className="mt-2 text-small font-bold text-amber-800">{check.problem}</p>}
 
-      {check && !check.problem && (
+      {check && (
         <>
           <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-small">
+            {/* 줄 대조를 못 했어도(스캔본만 낸 현장) 직인은 본다 — 그래서 problem 과 상관없이 그린다 */}
+            {check.seal && (
+              <SealLine projectId={projectId} seal={check.seal} canAsk={canRun && !stale} asked={logRejected} />
+            )}
             {check.standing && (
               <>
                 <dt className="font-bold text-slate-500">지금 서 있는 수</dt>
@@ -180,13 +189,57 @@ export function PreInstallCheckBlock({
                 </tbody>
               </table>
             </div>
-          ) : (
+          ) : check.sheet && (
             <p className="mt-2 text-small text-slate-500">
-              {check.sheet?.none ? '엑셀: 이력 없음 · 증빙 0건' : '엑셀 0줄 · 증빙 0건'}
+              {check.sheet.none ? '엑셀: 이력 없음 · 증빙 0건' : '엑셀 0줄 · 증빙 0건'}
             </p>
           )}
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * 기설치 없음 설치이력의 직인 (한백 지시 2026-10-07) — 빠졌으면 그 자리에서 보완요청한다.
+ *
+ * 보완요청은 설치이력 칸의 반려다 — 계약 탭의 반려와 같은 길(PATCH documents)이고, 사유는 빠진 직인을
+ * 적어 채운다(sealFixReason). 되돌리는 자리도 그 칸의 반려 해제다. 서류가 바뀐 뒤의 지난 결과로는
+ * 보완요청하지 않는다(canAsk) — 고쳐 올린 것을 다시 돌려보내게 된다.
+ */
+function SealLine({ projectId, seal, canAsk, asked }: { projectId: string; seal: SealCheck; canAsk: boolean; asked: boolean }) {
+  const { busy, error, run } = useAction();
+  const missing = missingSeals(seal);
+  const mark = (ok: boolean) => <b className={ok ? 'text-brand-700' : 'text-red-700'}>{ok ? '있음' : '없음'}</b>;
+  return (
+    <>
+      <dt className="font-bold text-slate-500">직인</dt>
+      <dd className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span>
+          아파트(설치 신청자) {mark(seal.applicant)} · 운영사(사업수행기관) {mark(seal.operator)}
+          {seal.oldForm && <span className="text-slate-400"> (서명 칸 없는 옛 양식)</span>}
+        </span>
+        {missing.length > 0 && asked && <span className="text-tiny font-bold text-slate-500">보완요청함</span>}
+        {missing.length > 0 && !asked && canAsk && (
+          <span className="self-center">
+            <Btn
+              kind="warn"
+              size="sm"
+              busy={busy}
+              busyLabel="보완요청 중…"
+              onClick={() => run({
+                url: `/api/projects/${projectId}/documents/legacylog`,
+                method: 'PATCH',
+                body: { status: 'rejected', reason: sealFixReason(seal) },
+                fail: '보완요청하지 못했습니다.',
+              })}
+            >
+              보완요청 — 직인 없음
+            </Btn>
+          </span>
+        )}
+        <Err>{error}</Err>
+      </dd>
+    </>
   );
 }

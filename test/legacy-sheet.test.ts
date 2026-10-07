@@ -11,8 +11,14 @@ import { dateOf, readLegacySheet } from '@/lib/legacy-sheet';
 
 const TEMPLATE = 'public/notices/files/legacy-charger-history-template.xlsx';
 
-/** 시트 하나짜리 xlsx — 글자는 인라인으로, 숫자는 그대로 */
-async function xlsx(rows: Record<number, Record<string, string | number>>): Promise<Buffer> {
+/**
+ * 시트 하나짜리 xlsx — 글자는 인라인으로, 숫자는 그대로.
+ * 병합 셀과 박힌 그림(도장)도 줄 수 있다 — 그림 자리는 drawing XML 처럼 0부터 센 [열, 행].
+ */
+async function xlsx(
+  rows: Record<number, Record<string, string | number>>,
+  extra: { merges?: string[]; pics?: { from: [number, number]; to: [number, number] }[] } = {}
+): Promise<Buffer> {
   const zip = new JSZip();
   zip.file('xl/workbook.xml',
     '<workbook xmlns:r="r"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>');
@@ -22,7 +28,17 @@ async function xlsx(rows: Record<number, Record<string, string | number>>): Prom
     typeof v === 'number'
       ? `<c r="${c}${r}"><v>${v}</v></c>`
       : `<c r="${c}${r}" t="inlineStr"><is><t>${v.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</t></is></c>`).join('')}</row>`).join('');
-  zip.file('xl/worksheets/sheet1.xml', `<worksheet><sheetData>${body}</sheetData></worksheet>`);
+  const merges = extra.merges?.length
+    ? `<mergeCells>${extra.merges.map((m) => `<mergeCell ref="${m}"/>`).join('')}</mergeCells>` : '';
+  const drawing = extra.pics?.length ? '<drawing r:id="rId2"/>' : '';
+  zip.file('xl/worksheets/sheet1.xml', `<worksheet xmlns:r="r"><sheetData>${body}</sheetData>${merges}${drawing}</worksheet>`);
+  if (extra.pics?.length) {
+    zip.file('xl/worksheets/_rels/sheet1.xml.rels',
+      '<Relationships><Relationship Id="rId2" Type="drawing" Target="../drawings/drawing1.xml"/></Relationships>');
+    const at = ([c, r]: [number, number]) => `<xdr:col>${c}</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>${r}</xdr:row><xdr:rowOff>0</xdr:rowOff>`;
+    zip.file('xl/drawings/drawing1.xml', `<xdr:wsDr>${extra.pics.map((p) =>
+      `<xdr:twoCellAnchor><xdr:from>${at(p.from)}</xdr:from><xdr:to>${at(p.to)}</xdr:to><xdr:pic><xdr:blipFill/></xdr:pic><xdr:clientData/></xdr:twoCellAnchor>`).join('')}</xdr:wsDr>`);
+  }
   return zip.generateAsync({ type: 'nodebuffer' });
 }
 
@@ -87,6 +103,48 @@ describe('설치이력 엑셀 읽기', () => {
 
   it('양식이 아니면 이유를 말하고 멈춘다', async () => {
     await expect(readLegacySheet(await xlsx({ 1: { A: '견적서' } }))).rejects.toThrow(/행위 일자/);
+  });
+
+  /*
+   * 서명 칸과 도장 그림 — 「현엔 기설치이력없음_날인본.xlsx」의 자리 그대로다:
+   * 신청자 A5:E5 · 사업수행기관 F5:H5, 도장 그림은 C5~D7 · G5~G7 에 걸린다(0부터 센 [2,4]→[3,6] · [6,4]→[6,6]).
+   */
+  const SIGNED = {
+    5: {
+      A: '(설치 신청자)\n신청자명 : 세경1차아파트관리사무소\n\n대표자 성명 :       고흥규       (인)',
+      F: '(사업수행기관)\n사업자명 : 현대엔지니어링 주식회사\n\n대표자 성명 : 주  우  정   (인)',
+    },
+    7: HEAD, 8: { J: '증빙 자료명' }, 9: { A: '전체', K: '준공 이후 충전시설 설치 및 철거 이력 없음' },
+  };
+  const MERGES = ['A5:E5', 'F5:H5'];
+
+  it('★날인본★ — 두 서명 칸 위에 도장 그림이 있으면 둘 다 직인 있음, 이름도 읽는다', async () => {
+    const s = await readLegacySheet(await xlsx(SIGNED, {
+      merges: MERGES, pics: [{ from: [2, 4], to: [3, 6] }, { from: [6, 4], to: [6, 6] }],
+    }));
+    expect(s.sign).toEqual({
+      applicant: { name: '세경1차아파트관리사무소', seal: true },
+      operator: { name: '현대엔지니어링 주식회사', seal: true },
+    });
+  });
+
+  it('도장이 운영사 칸에만 있으면 아파트 직인 없음 — 「(양식)…미존재 (2)」(나이스만)', async () => {
+    const s = await readLegacySheet(await xlsx(SIGNED, { merges: MERGES, pics: [{ from: [6, 4], to: [6, 5] }] }));
+    expect(s.sign?.applicant.seal).toBe(false);
+    expect(s.sign?.operator.seal).toBe(true);
+  });
+
+  it('이름이 비어 있으면 null — 다음 줄 「대표자 성명」을 이름으로 잡지 않는다', async () => {
+    const s = await readLegacySheet(await xlsx({
+      ...SIGNED,
+      5: { A: '(설치 신청자)\n신청자명 :\n\n대표자 성명 :               (인)', F: SIGNED[5].F },
+    }, { merges: MERGES }));
+    expect(s.sign?.applicant).toEqual({ name: null, seal: false });
+  });
+
+  it('서명 칸이 없는 옛 양식이면 sign 은 null', async () => {
+    const s = await readLegacySheet(readFileSync(TEMPLATE));
+    expect(s.sign).toBeNull();
   });
 
   it('날짜 — 엑셀 일련번호 · 글자 둘 다', () => {

@@ -10,9 +10,9 @@
  */
 import { getRepository } from '@/lib/data';
 import { adminWrite } from '@/lib/api/write-route';
-import { readLegacySheet } from '@/lib/legacy-sheet';
-import { readEvidence } from '@/lib/legacy-evidence';
-import { compareLegacy, type PreInstallCheck } from '@/lib/preinstall-check';
+import { readLegacySheet, type LegacySheet } from '@/lib/legacy-sheet';
+import { readEvidence, readSheetScans } from '@/lib/legacy-evidence';
+import { compareLegacy, sealOf, type PreInstallCheck, type SheetScan } from '@/lib/preinstall-check';
 import type { DocFile, ProjectDetail } from '@/types/project';
 
 /** 판독까지 도는 경로라 길다 — 접수 ZIP 과 같은 예산 */
@@ -34,6 +34,16 @@ async function fetchFile(url: string): Promise<Buffer> {
   return Buffer.from(await res.arrayBuffer());
 }
 
+/** 여럿을 받는다 — 한 장을 못 받아도 대조를 멈추지 않고 그 장을 「못 읽음」으로 돌려준다 */
+async function fetchAll(files: { name: string; url: string }[]): Promise<{ got: { name: string; buffer: Buffer }[]; failed: string[] }> {
+  const got: { name: string; buffer: Buffer }[] = [];
+  const failed: string[] = [];
+  for (const f of files) {
+    try { got.push({ name: f.name, buffer: await fetchFile(f.url) }); } catch { failed.push(f.name); }
+  }
+  return { got, failed };
+}
+
 async function runCheck(detail: ProjectDetail): Promise<PreInstallCheck> {
   const p = detail.project;
   const docOf = (kind: string) => detail.documents.find((d) => d.kind === kind);
@@ -45,23 +55,47 @@ async function runCheck(detail: ProjectDetail): Promise<PreInstallCheck> {
     sheetFile: null, sheet: null, lines: [], standing: null, survey: null, unread: [], problem: null,
   };
 
-  const sheets = logFiles.filter((f) => /\.xlsx$/i.test(f.name));
   if (logFiles.length === 0) return { ...base, problem: '설치이력 엑셀이 없습니다.' };
-  if (sheets.length === 0) return { ...base, problem: '설치이력이 엑셀(.xlsx)이 아니라 읽지 못했습니다.' };
-  if (sheets.length > 1) return { ...base, problem: `설치이력 엑셀이 ${sheets.length}개입니다 — 한 장만 남겨주세요.` };
+  const sheets = logFiles.filter((f) => /\.xlsx$/i.test(f.name));
+  /* 엑셀 말고 칸에 온 것 — 출력해 날인하고 스캔한 설치이력(날인본)이다. 직인을 여기서 본다 */
+  const scanFiles = named(logFiles.filter((f) => !/\.xlsx$/i.test(f.name)));
+  const sheetFile = sheets[0]?.name ?? null;
 
-  const sheetFile = sheets[0].name;
-  let sheet;
-  try {
-    sheet = await readLegacySheet(await fetchFile(sheets[0].url));
-  } catch (err) {
-    return { ...base, sheetFile, problem: (err as Error).message };
+  let sheet: LegacySheet | null = null;
+  let problem: string | null = null;
+  if (sheets.length > 1) problem = `설치이력 엑셀이 ${sheets.length}개입니다 — 한 장만 남겨주세요.`;
+  else if (sheets.length === 1) {
+    try {
+      sheet = await readLegacySheet(await fetchFile(sheets[0].url));
+    } catch (err) {
+      problem = (err as Error).message;
+    }
   }
 
-  const ev = named(evFiles);
-  const { acts, unread } = await readEvidence(
-    await Promise.all(ev.map(async (f) => ({ name: f.name, buffer: await fetchFile(f.url) })))
-  );
+  /*
+   * 직인은 기설치가 없을 때만 본다(sealOf) — 엑셀이 기설치 있음을 말하면 스캔본을 읽을 까닭이 없다.
+   * 엑셀이 없으면 스캔본이 「없음」인지부터 판독이 읽는다.
+   */
+  const needScans = scanFiles.length > 0 && (!sheet || sheet.rows.every((r) => !r.d));
+  let scans: SheetScan[] = [];
+  let scanUnread: string[] = [];
+  if (needScans) {
+    const { got, failed } = await fetchAll(scanFiles);
+    const read = await readSheetScans(got);
+    scans = read.scans;
+    scanUnread = [...failed, ...read.unread];
+  }
+  const seal = sealOf(sheet, scans, sheetFile);
+
+  if (!sheet) {
+    // 스캔본만 낸 「이력 없음」은 견줄 줄이 없다 — 엑셀이 아니라고 짚지 않는다
+    if (!problem && !(sheets.length === 0 && seal)) problem = '설치이력이 엑셀(.xlsx)이 아니라 줄 대조를 못 했습니다.';
+    return { ...base, sheetFile, problem, seal, unread: scanUnread };
+  }
+
+  const { got: evGot, failed: evFailed } = await fetchAll(named(evFiles));
+  const { acts, unread: evUnread } = await readEvidence(evGot);
+  const unread = [...evFailed, ...evUnread];
   return {
     ...base,
     sheetFile,
@@ -71,7 +105,8 @@ async function runCheck(detail: ProjectDetail): Promise<PreInstallCheck> {
       // 이 날 뒤의 행위신고는 이번 설치 건이다 — 접수 선언이 없는 옛 현장은 확인일로 받친다
       since: p.contractSubmittedAt ?? p.contractConfirmedAt ?? null,
     }),
-    unread,
+    seal,
+    unread: [...unread, ...scanUnread],
   };
 }
 

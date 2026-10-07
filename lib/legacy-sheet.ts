@@ -39,7 +39,25 @@ export interface LegacySheet {
   badSplit: number[];
   /** 「이력 없음」으로 적은 엑셀 — 행 없이 비고에만 적는다 */
   none: boolean;
+  /**
+   * 서명 칸 — 「(설치 신청자)」(아파트)와 「(사업수행기관)」(운영사). null 이면 서명 칸이 없는 옛 양식이다
+   * (260826 양식부터 있다). 직인은 그 칸 위에 박힌 그림으로 본다(날인본 엑셀이 그렇게 온다).
+   */
+  sign: SheetSign | null;
 }
+
+export interface SignSide {
+  /** 신청자명·사업자명 칸에 적힌 이름 — 비었으면 null */
+  name: string | null;
+  /** 그 칸 위에 도장 그림이 있는가 */
+  seal: boolean;
+}
+export interface SheetSign {
+  applicant: SignSide;
+  operator: SignSide;
+}
+
+interface Range { c1: number; c2: number; r1: number; r2: number }
 
 /** 머리 글자 → 열. 못 찾으면 양식의 자리(B~K)로 둔다 */
 const HEADS: { key: keyof Omit<LegacyRow, 'row'> | 'no' | 'h'; test: RegExp; fallback: number }[] = [
@@ -73,7 +91,58 @@ export function colIndex(ref: string): number {
 
 type Cell = string | number | boolean | null;
 
-async function readCells(buf: Buffer): Promise<{ cells: Map<number, Map<number, Cell>>; date1904: boolean }> {
+/** 「A5:E5」 → 범위 */
+function rangeOf(ref: string): Range | null {
+  const m = /^([A-Z]+)(\d+)(?::([A-Z]+)(\d+))?$/.exec(ref);
+  if (!m) return null;
+  const c1 = colIndex(m[1]); const r1 = Number(m[2]);
+  return { c1, r1, c2: m[3] ? colIndex(m[3]) : c1, r2: m[4] ? Number(m[4]) : r1 };
+}
+
+/** rels 의 Target(상대 경로)을 zip 안의 경로로 — 「../drawings/drawing1.xml」 from xl/worksheets/ */
+function resolve(fromDir: string, target: string): string {
+  if (target.startsWith('/')) return target.slice(1);
+  const parts = fromDir.split('/').filter(Boolean);
+  for (const seg of target.split('/')) {
+    if (seg === '..') parts.pop();
+    else if (seg !== '.') parts.push(seg);
+  }
+  return parts.join('/');
+}
+
+/**
+ * 시트에 박힌 그림의 가운데 칸(1부터) — 도장이 어느 서명 칸 위에 있는지 보는 데 쓴다.
+ * 시작 칸이 아니라 가운데로 본다: 도장이 칸 경계를 걸쳐 박히는 일이 있다.
+ */
+async function picturesOf(zip: JSZip, sheetPath: string, sheet: string): Promise<{ col: number; row: number }[]> {
+  const rid = /<drawing\b[^>]*r:id="([^"]+)"/.exec(sheet)?.[1];
+  if (!rid) return [];
+  const dir = sheetPath.replace(/\/[^/]+$/, '');
+  const relsXml = await zip.file(`${dir}/_rels/${sheetPath.split('/').pop()}.rels`)?.async('string');
+  const target = relsXml && (new RegExp(`<Relationship\\b[^>]*Id="${rid}"[^>]*Target="([^"]+)"`).exec(relsXml)?.[1]
+    ?? new RegExp(`<Relationship\\b[^>]*Target="([^"]+)"[^>]*Id="${rid}"`).exec(relsXml)?.[1]);
+  if (!target) return [];
+  const drawing = await zip.file(resolve(dir, target))?.async('string');
+  if (!drawing) return [];
+  const at = (blk: string | undefined) => {
+    if (!blk) return null;
+    const col = /<xdr:col>(\d+)<\/xdr:col>/.exec(blk)?.[1];
+    const row = /<xdr:row>(\d+)<\/xdr:row>/.exec(blk)?.[1];
+    return col && row ? { col: Number(col) + 1, row: Number(row) + 1 } : null;
+  };
+  const out: { col: number; row: number }[] = [];
+  for (const m of drawing.matchAll(/<xdr:(twoCellAnchor|oneCellAnchor)\b[\s\S]*?<\/xdr:\1>/g)) {
+    if (!/<xdr:pic>/.test(m[0])) continue;
+    const from = at(/<xdr:from>([\s\S]*?)<\/xdr:from>/.exec(m[0])?.[1]);
+    const to = at(/<xdr:to>([\s\S]*?)<\/xdr:to>/.exec(m[0])?.[1]) ?? from;
+    if (from && to) out.push({ col: (from.col + to.col) / 2, row: (from.row + to.row) / 2 });
+  }
+  return out;
+}
+
+async function readCells(buf: Buffer): Promise<{
+  cells: Map<number, Map<number, Cell>>; date1904: boolean; merges: Range[]; pictures: { col: number; row: number }[];
+}> {
   const zip = await JSZip.loadAsync(buf);
   const read = (p: string) => zip.file(p)?.async('string') ?? Promise.resolve(null);
 
@@ -86,8 +155,10 @@ async function readCells(buf: Buffer): Promise<{ cells: Map<number, Map<number, 
     ? new RegExp(`<Relationship\\b[^>]*Id="${firstRid}"[^>]*Target="([^"]+)"`).exec(rels)?.[1]
       ?? new RegExp(`<Relationship\\b[^>]*Target="([^"]+)"[^>]*Id="${firstRid}"`).exec(rels)?.[1]
     : undefined;
-  const sheetPath = target ? `xl/${target.replace(/^\/?xl\//, '').replace(/^\//, '')}` : 'xl/worksheets/sheet1.xml';
-  const sheet = (await read(sheetPath)) ?? (await read('xl/worksheets/sheet1.xml'));
+  const named = target ? `xl/${target.replace(/^\/?xl\//, '').replace(/^\//, '')}` : null;
+  const namedXml = named ? await read(named) : null;
+  const sheetPath = namedXml ? named! : 'xl/worksheets/sheet1.xml';
+  const sheet = namedXml ?? (await read(sheetPath));
   if (!sheet) throw new Error('엑셀에서 시트를 찾지 못했습니다.');
 
   const sharedXml = (await read('xl/sharedStrings.xml')) ?? '';
@@ -113,7 +184,49 @@ async function readCells(buf: Buffer): Promise<{ cells: Map<number, Map<number, 
     if (!cells.has(row)) cells.set(row, new Map());
     cells.get(row)!.set(col, value);
   }
-  return { cells, date1904 };
+  const merges = [...sheet.matchAll(/<mergeCell\b[^>]*ref="([^"]+)"/g)]
+    .map((m) => rangeOf(m[1])).filter((r): r is Range => r !== null);
+  return { cells, date1904, merges, pictures: await picturesOf(zip, sheetPath, sheet) };
+}
+
+/**
+ * 서명 칸을 찾고, 그 칸 위에 도장 그림이 있는지 본다.
+ *
+ * 칸의 범위는 병합 셀이다(양식: 신청자 A5:E5 · 사업수행기관 F5:H5). 병합이 없으면 두 칸 사이를
+ * 나눠 쓴다. 도장은 칸 글자 줄보다 아래로 늘어지는 일이 있어 아래로 두 줄까지 본다.
+ */
+function signOf(
+  cells: Map<number, Map<number, Cell>>, merges: Range[], pictures: { col: number; row: number }[]
+): SheetSign | null {
+  const find = (re: RegExp) => {
+    for (const [r, m] of cells) for (const [c, v] of m) if (typeof v === 'string' && re.test(flat(v))) return { r, c, text: v };
+    return null;
+  };
+  const app = find(/\(설치신청자\)/);
+  const op = find(/\(사업수행기관\)/);
+  if (!app && !op) return null;
+
+  const span = (at: { r: number; c: number }, other: { c: number } | null): Range =>
+    merges.find((g) => at.r >= g.r1 && at.r <= g.r2 && at.c >= g.c1 && at.c <= g.c2)
+      ?? { r1: at.r, r2: at.r, c1: at.c, c2: other && other.c > at.c ? other.c - 1 : at.c + 4 };
+  const nameAfter = (text: string, label: RegExp) => {
+    const m = label.exec(text.normalize('NFC'));
+    const v = m?.[1]?.trim();
+    return v ? v : null;
+  };
+  const side = (at: { r: number; c: number; text: string } | null, other: { c: number } | null, label: RegExp): SignSide => {
+    if (!at) return { name: null, seal: false };
+    const g = span(at, other);
+    return {
+      name: nameAfter(at.text, label),
+      seal: pictures.some((p) => p.col >= g.c1 - 0.5 && p.col <= g.c2 + 0.5 && p.row >= g.r1 - 0.5 && p.row <= g.r2 + 2),
+    };
+  };
+  return {
+    // 콜론 뒤는 같은 줄만 — 비어 있으면 다음 줄 「대표자 성명」을 이름으로 잡는다
+    applicant: side(app, op, /신청자명[ \t]*[:：][ \t]*([^\r\n]*)/),
+    operator: side(op, app, /사업자명[ \t]*[:：][ \t]*([^\r\n]*)/),
+  };
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -144,7 +257,7 @@ const numOf = (v: Cell): number | null => {
 const strOf = (v: Cell): string | null => (v === null || typeof v === 'boolean' ? null : String(v).trim() || null);
 
 export async function readLegacySheet(buf: Buffer): Promise<LegacySheet> {
-  const { cells, date1904 } = await readCells(buf);
+  const { cells, date1904, merges, pictures } = await readCells(buf);
   const rowNums = [...cells.keys()].sort((a, b) => a - b);
 
   // 칸 글자가 「행위 일자」 그 자체인 줄 — 위쪽 유의 사항 글에도 「[B열]: 행위 일자」가 있다
@@ -200,5 +313,6 @@ export async function readLegacySheet(buf: Buffer): Promise<LegacySheet> {
       .filter((x) => !isNew(x) && x.d !== null && x.d !== (x.e ?? 0) + (x.f ?? 0) + (x.g ?? 0))
       .map((x) => x.row),
     none: rows.length === 0 && allText.some((t) => /이력(이)?없음/.test(flat(t))),
+    sign: signOf(cells, merges, pictures),
   };
 }

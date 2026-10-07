@@ -6,12 +6,15 @@
  */
 import { describe, expect, it } from 'vitest';
 import type { LegacyRow, LegacySheet } from '@/lib/legacy-sheet';
-import { compareLegacy, issueCount, reviewCount, type EvidenceAct, type PreInstallCheck } from '@/lib/preinstall-check';
+import {
+  compareLegacy, issueCount, reviewCount, sealFixReason, sealOf,
+  type EvidenceAct, type PreInstallCheck, type SheetScan,
+} from '@/lib/preinstall-check';
 
 const row = (r: number, date: string, d: number, kind = '신규 설치', evidence: string | null = null, note: string | null = null): LegacyRow =>
   ({ row: r, date, kind, d, e: null, f: null, g: null, evidence, note });
-const sheetOf = (rows: LegacyRow[], standing: number, final = standing): LegacySheet =>
-  ({ rows, standing, final, badSplit: [], none: rows.length === 0 });
+const sheetOf = (rows: LegacyRow[], standing: number, final = standing, sign: LegacySheet['sign'] = null): LegacySheet =>
+  ({ rows, standing, final, badSplit: [], none: rows.length === 0, sign });
 const act = (date: string, before: number | null, after: number | null, extra: Partial<EvidenceAct> = {}): EvidenceAct => ({
   file: `행위신고증명서(${date.slice(0, 4)}).pdf`, doc: '행위신고', title: '행위신고증명서', date,
   number: null, kind: '신규 설치', before, after, count: null, ...extra,
@@ -115,5 +118,62 @@ describe('콘솔의 조사 결과 ↔ 엑셀', () => {
   it('기설치는 최종 수량(H)으로 본다 — 지금은 0기여도 8년 전에 임의로 걷은 것이 있으면 있음', () => {
     const s = sheetOf([row(8, '2015-01-01', 4), { ...row(9, '2018-01-01', 4, '철거'), f: 4 }], 0, 4);
     expect(compareLegacy(s, [], { ...ctx, survey: { state: '있음', checked: true } }).survey?.verdict).toBe('ok');
+  });
+});
+
+/*
+ * ★기설치가 없으면 운영사·아파트 직인이 둘 다 있어야 한다★ (한백 2026-10-07).
+ * 모양은 실제 파일에서 왔다 — 「현엔 기설치이력없음_날인본.xlsx」(둘 다) · 「(양식)…미존재 (2).xlsx」(나이스만) ·
+ * 경주국태그린빌 첫 스캔본(아파트만 — 보완요청됐다) · 옛 양식(서명 칸 없음).
+ */
+describe('기설치 없음 설치이력의 직인', () => {
+  const side = (name: string | null, seal: boolean) => ({ name, seal });
+  const scan = (file: string, applicant: boolean | null, operator: boolean | null, total: number | null = 0, form = true): SheetScan =>
+    ({ file, form, applicant: { name: null, seal: applicant }, operator: { name: null, seal: operator }, total });
+  const none = (sign: LegacySheet['sign']) => sheetOf([], 0, 0, sign);
+
+  it('엑셀에 도장 그림이 둘 다 있으면 맞음', () => {
+    const s = sealOf(none({ applicant: side('세경1차아파트관리사무소', true), operator: side('현대엔지니어링 주식회사', true) }), [], '날인본.xlsx');
+    expect(s).toEqual({ applicant: true, operator: true, from: ['날인본.xlsx'], oldForm: false });
+  });
+
+  it('아파트 직인이 없으면 짚고, 보완요청 사유에 빠진 쪽을 적는다', () => {
+    const s = sealOf(none({ applicant: side(null, false), operator: side('NICE인프라(주)', true) }), [], '미존재 (2).xlsx')!;
+    expect(s.applicant).toBe(false);
+    expect(sealFixReason(s)).toBe('기설치 없음 설치이력에 아파트(설치 신청자) 직인이 없습니다 — 두 곳 모두 날인해 다시 올려주세요.');
+    expect(issueCount({ ...whole({ lines: [], standing: null, survey: null }), seal: s })).toBe(1);
+  });
+
+  it('★엑셀은 이름만, 도장은 스캔본에★ — 어느 한 곳에 있으면 있는 것이다', () => {
+    const s = sealOf(none({ applicant: side('하엘에스페이스 관리위원회', false), operator: side('주식회사 플러그링크', false) }),
+      [scan('날인본.pdf', true, true)], '이력.xlsx');
+    expect(s).toMatchObject({ applicant: true, operator: true, from: ['이력.xlsx', '날인본.pdf'] });
+  });
+
+  it('스캔본만 낸 현장 — 경주국태그린빌 첫 판(아파트만)은 운영사 직인 없음', () => {
+    const s = sealOf(null, [scan('국태그린빌.pdf', true, false)], null)!;
+    expect(s).toMatchObject({ applicant: true, operator: false });
+    expect(sealFixReason(s)).toMatch(/운영사\(사업수행기관\) 직인이 없습니다/);
+  });
+
+  it('서명 칸 없는 옛 양식뿐이면 둘 다 없음 — 새 양식으로 날인하라고 적는다', () => {
+    const s = sealOf(none(null), [], '옛양식.xlsx')!;
+    expect(s).toMatchObject({ applicant: false, operator: false, oldForm: true });
+    expect(sealFixReason(s)).toMatch(/서명 칸이 있는 새 양식으로/);
+  });
+
+  it('기설치가 있으면 직인을 보지 않는다 — 증빙이 수량을 받친다', () => {
+    expect(sealOf(금천효성, [], '이력.xlsx')).toBeNull();
+    // 양식 예시 줄을 지우지 않고 0기로 둔 엑셀(경주국태그린빌 보완판)은 「없음」이다
+    expect(sealOf(sheetOf([row(8, '2012-01-01', 0), row(9, '2019-01-01', 0, '교체 설치')], 0), [], 'x.xlsx')).not.toBeNull();
+  });
+
+  it('엑셀이 없고 스캔본의 합계가 0 보다 크거나 안 보이면 보지 않는다 — 모르는 것을 보완요청하지 않는다', () => {
+    expect(sealOf(null, [scan('미리샘.pdf', null, null, 17, false)], null)).toBeNull();
+    expect(sealOf(null, [scan('흐림.pdf', true, false, null)], null)).toBeNull();
+  });
+
+  it('기설치 없는 현장의 「지금 서 있는 수」는 행위신고가 없어도 맞음이다', () => {
+    expect(compareLegacy(none(null), [], ctx).standing?.verdict).toBe('ok');
   });
 });

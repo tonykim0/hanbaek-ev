@@ -175,6 +175,7 @@ export function PreInstall({
         currentFiles={['legacylog', 'legacyev'].flatMap((k) => byKind.get(k)?.files.map((f) => f.url) ?? [])}
         canRun={canReview}
         hasSheet={(byKind.get('legacylog')?.files.length ?? 0) > 0}
+        logRejected={byKind.get('legacylog')?.status === 'rejected'}
       />
     </section>
   );

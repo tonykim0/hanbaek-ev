@@ -73,6 +73,71 @@ export interface PreInstallCheck {
   unread: string[];
   /** 대조 자체를 못 한 이유 — 엑셀이 없다 등 */
   problem: string | null;
+  /**
+   * 기설치가 없을 때 — 설치이력의 운영사·아파트 직인 (한백 지시 2026-10-07). 기설치가 있거나 알 수 없으면 null.
+   * 옛 데이터(이 칸이 생기기 전 대조)에는 없다.
+   */
+  seal?: SealCheck | null;
+}
+
+/** 설치이력 스캔본(날인본) 한 장에서 판독이 읽은 것 — lib/legacy-evidence 가 채운다 */
+export interface SheetScan {
+  file: string;
+  /** 서명 칸이 있는 그 양식인가 — 아니면 applicant·operator 는 null */
+  form: boolean;
+  applicant: { name: string | null; seal: boolean | null };
+  operator: { name: string | null; seal: boolean | null };
+  /** 「전체」 줄의 최종 기설치 수량 — 안 보이면 null */
+  total: number | null;
+}
+
+export interface SealCheck {
+  /** 설치 신청자(아파트) 직인 */
+  applicant: boolean;
+  /** 사업수행기관(운영사) 직인 */
+  operator: boolean;
+  /** 본 파일 — 엑셀(도장 그림)·스캔본(판독) */
+  from: string[];
+  /** 서명 칸이 있는 양식이 하나도 없다 — 옛 양식이라 날인할 자리가 없다 */
+  oldForm: boolean;
+}
+
+/**
+ * ★기설치가 없으면 설치이력에 운영사·아파트 직인이 둘 다 있어야 한다★ (한백 지시 2026-10-07).
+ *
+ * 기설치가 있는 현장은 증빙(행위신고증명서 등)이 수량을 받치지만, 없는 현장은 「없음」을 두 쪽이 날인한
+ * 설치이력 한 장이 증빙의 전부다 — 경주국태그린빌의 첫 판이 사업수행기관 칸이 비어 보완요청됐다.
+ * 직인은 엑셀에 박힌 도장 그림(lib/legacy-sheet, 코드)이나 스캔본(판독)에서 본다 — 어느 쪽이든 한
+ * 곳에 있으면 있는 것이다(엑셀은 이름만 적고 출력본에 찍어 내는 일이 흔하다).
+ *
+ * 기설치가 없는가: 엑셀이 있으면 엑셀로(기수가 0보다 큰 줄이 없음), 없으면 스캔본의 「전체」 합계로.
+ * 둘 다 모르면 null — 모르는 것을 보완요청하지 않는다.
+ */
+export function sealOf(sheet: LegacySheet | null, scans: SheetScan[], sheetFile: string | null): SealCheck | null {
+  const none = sheet
+    ? sheet.rows.every((r) => !r.d)
+    : scans.some((s) => s.total === 0) && !scans.some((s) => (s.total ?? 0) > 0);
+  if (!none) return null;
+  const signed = scans.filter((s) => s.form);
+  return {
+    applicant: !!sheet?.sign?.applicant.seal || signed.some((s) => s.applicant.seal === true),
+    operator: !!sheet?.sign?.operator.seal || signed.some((s) => s.operator.seal === true),
+    from: [...(sheet && sheetFile ? [sheetFile] : []), ...scans.map((s) => s.file)],
+    oldForm: !sheet?.sign && signed.length === 0,
+  };
+}
+
+/** 빠진 직인 — 보완요청 사유에 그대로 쓴다 */
+export function missingSeals(s: SealCheck): string[] {
+  return [!s.applicant ? '아파트(설치 신청자)' : null, !s.operator ? '운영사(사업수행기관)' : null]
+    .filter((x): x is string => x !== null);
+}
+
+/** 보완요청 사유 — 화면의 단추가 이 글로 설치이력 칸을 반려한다 */
+export function sealFixReason(s: SealCheck): string {
+  return `기설치 없음 설치이력에 ${missingSeals(s).join('·')} 직인이 없습니다 — `
+    + (s.oldForm ? '서명 칸이 있는 새 양식으로 ' : '')
+    + '두 곳 모두 날인해 다시 올려주세요.';
 }
 
 /**
@@ -85,12 +150,15 @@ export function reviewCount(c: PreInstallCheck): number {
 
 /** 짚을 것의 수 — 화면 꼬리표와 할 일이 같은 수를 센다 */
 export function issueCount(c: PreInstallCheck): number {
-  if (c.problem) return 1;
+  const seal = c.seal && missingSeals(c.seal).length > 0 ? 1 : 0;
+  // 줄 대조를 못 했어도 직인은 본다(스캔본만 낸 현장) — 둘을 같이 센다
+  if (c.problem) return 1 + seal;
   return c.lines.filter((l) => l.verdict === 'diff' || l.verdict === 'no-evidence'
       || l.verdict === 'no-row' || l.verdict === 'no-count').length
     + (c.standing?.verdict === 'diff' ? 1 : 0)
     + (c.survey?.verdict === 'diff' ? 1 : 0)
-    + (c.sheet?.badSplit.length ?? 0);
+    + (c.sheet?.badSplit.length ?? 0)
+    + seal;
 }
 
 const flat = (s: string | null | undefined) => (s ?? '').normalize('NFC').replace(/\s+/g, '');
@@ -203,7 +271,9 @@ export function compareLegacy(
     sheet: sheet.standing,
     evidence: pick?.n ?? null,
     from: pick?.from ?? null,
-    verdict: pick === null ? 'unknown' as const : pick.n === sheet.standing ? 'ok' as const : 'diff' as const,
+    // 엑셀이 0기이고 행위신고도 없으면 맞다 — 기설치 없는 현장의 정상 모양이다
+    verdict: pick === null ? (sheet.standing === 0 ? 'ok' as const : 'unknown' as const)
+      : pick.n === sheet.standing ? 'ok' as const : 'diff' as const,
   };
 
   // 기설치는 최종 기설치 수량(H)으로 본다 — 8년 전에 임의로 걷은 것(F)도 기설치로 센다(양식)
