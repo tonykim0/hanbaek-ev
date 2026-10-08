@@ -73,6 +73,13 @@ export const contractStore: Pick<
         .update(projects)
         .set({
           contractSubmittedAt: after,
+          /*
+           * ★한백이 접수를 무르면 처음 모으는 자리(계약접수)로 돌아간다★ (한백 지적 2026-10-08 — 마리나베이101 2·3블럭 ·
+           * 은계타운 상가가 「접수 취소해서 계약접수로 가야 하는데 계약보완에 있다」). 보완요청 이력이 남아 있으면 보드가
+           * 계약보완에 세운다(lib/board) — 한 달 전에 끝난 보완이 오늘의 접수 취소를 계약보완으로 끌고 갔다. 협력사가 제
+           * 재검토 요청을 무르는 것은 그대로다(아직 고치는 중이다).
+           */
+          ...(!submitted && actor.role === 'admin' ? { contractFixAskedAt: null } : {}),
           // 냈으면 볼 차례가 한백이고, 되돌리면 다시 내는 쪽 차례다
           court: submitted ? '한백' : '영업사',
           lastProgressAt: today(),
@@ -133,6 +140,8 @@ export const contractStore: Pick<
         .update(projects)
         .set({
           contractConfirmedAt: after,
+          /* 확인은 보완이 끝났다는 판정이다 — 보완요청 이력을 닫는다(위 submitContract 와 같은 까닭, 2026-10-08) */
+          ...(confirmed ? { contractFixAskedAt: null } : {}),
           /*
            * ★담당는 그 단계가 정한다★ (한백 지시 2026-08-25).
            *

@@ -105,6 +105,35 @@ describe('기설치 대조 — 계약 확인의 조건', () => {
     });
   });
 
+  it('★보완요청 이력은 판이 끝나면 닫힌다★ — 협력사가 무르면 남고, 한백이 접수를 무르거나 확인하면 지운다 (2026-10-08)', async () => {
+    await withSubsidyProject(async (id) => {
+      const partner = actorOf(USERS.navy);  // 시험 현장의 영업사
+      const fixAsked = async () => (await repo.getProject(id, viewerOf(USERS.admin)))!.project.contractFixAskedAt;
+      // 한 판 — 반려 → 고쳐 올림 → 재검토 요청
+      await repo.setDocumentStatus({ projectId: id, kind: 'contract', status: 'rejected', reason: '서명 누락' }, admin);
+      await repo.uploadDocument({ projectId: id, kind: 'contract', filename: 'contract-2.pdf', blobUrl: urlOf(id, 'contract', '2') }, partner);
+      await repo.submitContract(id, true, partner);
+      expect(await fixAsked()).not.toBeNull();
+
+      // 협력사가 제 요청을 무르면 아직 고치는 중이다 — 이력은 남는다(계약보완)
+      await repo.submitContract(id, false, partner);
+      expect(await fixAsked()).not.toBeNull();
+
+      // 한백이 접수를 무르면 처음 모으는 자리로 — 이력을 지운다(계약접수, 마리나베이101 2블럭)
+      await repo.submitContract(id, true, partner);
+      await repo.submitContract(id, false, admin);
+      expect(await fixAsked()).toBeNull();
+
+      // 다시 한 판 — 이번에는 한백이 확인해서 닫는다
+      await repo.setDocumentStatus({ projectId: id, kind: 'contract', status: 'rejected', reason: '날짜 오기' }, admin);
+      await repo.uploadDocument({ projectId: id, kind: 'contract', filename: 'contract-3.pdf', blobUrl: urlOf(id, 'contract', '3') }, partner);
+      expect(await fixAsked()).not.toBeNull();
+      await repo.savePreInstallCheck(id, checkOf(await filesNow(id)), admin);
+      await repo.confirmContract(id, true, admin);
+      expect(await fixAsked()).toBeNull();
+    });
+  });
+
   it('보조사업이 아니면 대조 없이 확인한다', async () => {
     // money-kit 의 자체투자 현장이 늘 이 길이다 — 그 시험들이 대조 없이 확인을 찍는다
     const sub = evaluateDocs({
