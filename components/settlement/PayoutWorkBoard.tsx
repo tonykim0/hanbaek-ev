@@ -230,6 +230,24 @@ export default function PayoutWorkBoard({
   // 필터로 가려진 줄은 확정에 안 실린다 — 안 보이는 것이 함께 나가면 합계가 거짓말이 된다
   const chosen = shown.filter((p) => p.state === '지급 가능' && picked.has(p.key));
 
+  /*
+   * ★모두 선택★ (한백 지시 2026-10-08 「협력사 지급관리에서 모두 선택 가능하게」) — 머리의 체크칸이 ★보이는★ 지급 가능
+   * 줄을 한 번에 고르고 푼다. 지급처·검색으로 거른 뒤 누르면 그 줄들만이다(가려진 줄은 위 chosen 처럼 안 실린다).
+   * 일부만 골랐으면 반쯤 찬 칸(indeterminate)이고, 누르면 나머지를 마저 고른다.
+   */
+  const readyShown = shown.filter((p) => p.state === '지급 가능');
+  const allPicked = readyShown.length > 0 && readyShown.every((p) => picked.has(p.key));
+  const somePicked = !allPicked && readyShown.some((p) => picked.has(p.key));
+  const toggleAll = () =>
+    setPicked((prev) => {
+      const next = new Set(prev);
+      for (const p of readyShown) {
+        if (allPicked) next.delete(p.key);
+        else next.add(p.key);
+      }
+      return next;
+    });
+
 
   return (
     <div>
@@ -347,7 +365,21 @@ export default function PayoutWorkBoard({
           */}
           <thead className="border-b border-slate-100 bg-slate-50 text-tiny font-bold tracking-[0.06em] text-slate-500">
             <tr>
-              {canConfirm && <Th rowSpan={2} className="w-10" />}
+              {canConfirm && (
+                <Th rowSpan={2} className="w-10">
+                  {readyShown.length > 0 && (
+                    <input
+                      type="checkbox"
+                      aria-label={`지급 가능 ${readyShown.length}건 모두 선택`}
+                      title={allPicked ? '모두 풀기' : `지급 가능 ${readyShown.length}건 모두 선택`}
+                      checked={allPicked}
+                      ref={(el) => { if (el) el.indeterminate = somePicked; }}
+                      onChange={toggleAll}
+                      className="h-4 w-4 accent-brand-600"
+                    />
+                  )}
+                </Th>
+              )}
               <Th left rowSpan={2}>현장</Th>
               {/*
                 지급처가 하나뿐이면 열을 안 세운다 — 협력사에게는 모든 줄에 제 회사 이름이
