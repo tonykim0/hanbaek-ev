@@ -20,7 +20,7 @@ import { Badge, Btn, Choice, Empty, Err, FIELD, GroupHead, Tag, TEXT } from '@/c
 import { DocReview } from './DocReview';
 import { PreInstallCheckBlock } from './PreInstallCheck';
 import {
-  bundledAsPdf, checkedFilesOf, missingSeals, sameFiles, sealFixReason, type PreInstallCheck,
+  bundledAsPdf, checkedFilesOf, missingSeals, sameFiles, SEAL_FIX_REASON, type PreInstallCheck,
 } from '@/lib/preinstall-check';
 import { docCardTone, docState, RejectReason, ResubmitReason } from './parts';
 import { LookupResults, useShardLoader } from '@/components/ChargerHistoryLookup';
@@ -115,7 +115,7 @@ export function PreInstall({
   const sealGap = check?.seal && sameFiles(check.files, current) && missingSeals(check.seal).length > 0
     ? check.seal : null;
   const suggestFor = (kind: string) =>
-    kind === 'legacylog' && sealGap ? { label: '직인 없음', reason: sealFixReason(sealGap) } : null;
+    kind === 'legacylog' && sealGap ? { label: '직인 없음', reason: SEAL_FIX_REASON } : null;
 
   return (
     /*

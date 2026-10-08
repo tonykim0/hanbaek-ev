@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import type { LegacyRow, LegacySheet } from '@/lib/legacy-sheet';
 import {
-  bundledAsPdf, checkedFilesOf, compareLegacy, issueCount, preCheckBlocker, reviewCount, sealFixReason, sealOf,
+  bundledAsPdf, checkedFilesOf, compareLegacy, issueCount, preCheckBlocker, missingSeals, reviewCount, SEAL_FIX_REASON, sealOf,
   subsidyIdOf, subsidyOnly, type EvidenceAct, type PreInstallCheck, type SheetScan,
 } from '@/lib/preinstall-check';
 
@@ -137,10 +137,11 @@ describe('기설치 없음 설치이력의 직인', () => {
     expect(s).toEqual({ applicant: true, operator: true, from: ['날인본.xlsx'], oldForm: false });
   });
 
-  it('아파트 직인이 없으면 짚고, 보완요청 사유에 빠진 쪽을 적는다', () => {
+  it('아파트 직인이 없으면 짚는다 — 보완요청 사유는 한 줄이다(한백 지시 2026-10-08)', () => {
     const s = sealOf(none({ applicant: side(null, false), operator: side('NICE인프라(주)', true) }), [], '미존재 (2).xlsx')!;
     expect(s.applicant).toBe(false);
-    expect(sealFixReason(s)).toBe('기설치 없음 설치이력에 아파트(설치 신청자) 직인이 없습니다 — 두 곳 모두 날인해 다시 올려주세요.');
+    expect(missingSeals(s)).toEqual(['아파트(설치 신청자)']);
+    expect(SEAL_FIX_REASON).toBe('기설치 없음 설치이력에 직인이 없습니다.');
     expect(issueCount({ ...whole({ lines: [], standing: null, survey: null }), seal: s })).toBe(1);
   });
 
@@ -153,13 +154,12 @@ describe('기설치 없음 설치이력의 직인', () => {
   it('스캔본만 낸 현장 — 경주국태그린빌 첫 판(아파트만)은 운영사 직인 없음', () => {
     const s = sealOf(null, [scan('국태그린빌.pdf', true, false)], null)!;
     expect(s).toMatchObject({ applicant: true, operator: false });
-    expect(sealFixReason(s)).toMatch(/운영사\(사업수행기관\) 직인이 없습니다/);
+    expect(missingSeals(s)).toEqual(['운영사(사업수행기관)']);
   });
 
-  it('서명 칸 없는 옛 양식뿐이면 둘 다 없음 — 새 양식으로 날인하라고 적는다', () => {
+  it('서명 칸 없는 옛 양식뿐이면 둘 다 없음', () => {
     const s = sealOf(none(null), [], '옛양식.xlsx')!;
     expect(s).toMatchObject({ applicant: false, operator: false, oldForm: true });
-    expect(sealFixReason(s)).toMatch(/서명 칸이 있는 새 양식으로/);
   });
 
   it('기설치가 있으면 직인을 보지 않는다 — 증빙이 수량을 받친다', () => {
