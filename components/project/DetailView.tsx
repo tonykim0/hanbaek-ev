@@ -764,7 +764,7 @@ function SiteHeader({
           url={`/api/projects/${project.id}/facts`}
           field="contractDate"
           empty="미지정"
-          placeholder="2026-06-09"
+          date
         />
         <EditableFact
           label="계약접수일"
@@ -772,7 +772,7 @@ function SiteHeader({
           canEdit={canReview}
           url={`/api/projects/${project.id}/facts`}
           field="createdAt"
-          placeholder="2026-09-10"
+          date
         />
       </dl>
 

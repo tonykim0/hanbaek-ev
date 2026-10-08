@@ -31,7 +31,7 @@ function fmt(d: Date): string {
 }
 
 export function DatePicker({
-  value, onChange, disabled = false, ariaLabel, empty = '날짜 선택',
+  value, onChange, disabled = false, ariaLabel, empty = '날짜 선택', autoOpen = false,
 }: {
   value: string | null;
   /** null = 지운다 */
@@ -40,6 +40,8 @@ export function DatePicker({
   ariaLabel: string;
   /** 비어 있을 때 단추에 적는 말 */
   empty?: string;
+  /** 나타나자마자 달력을 연다 — 「수정」을 눌러 이 칸이 열린 자리(EditableFact date)에서 한 번 더 누르지 않게 */
+  autoOpen?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -60,6 +62,12 @@ export function DatePicker({
     setPos({ top, left });
     setOpen(true);
   };
+
+  // 처음 한 번만 — 단추 자리가 잡힌 뒤에 재야 위·아래가 맞는다
+  useEffect(() => {
+    if (autoOpen) toggle();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 바깥 클릭·Escape·스크롤로 닫는다 — 고정 좌표라 스크롤하면 단추와 어긋난다
   useEffect(() => {

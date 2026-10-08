@@ -19,12 +19,13 @@
  * 협력사에게는 「고치기」가 없다. 못 하는 일은 눌리지 않게 한다.
  */
 import { useState } from 'react';
+import { DatePicker } from '@/components/DatePicker';
 import { useAction } from '@/lib/use-action';
 import { Btn, Empty, Err, FIELD, Picks, Val } from '@/components/ui';
 
 export function EditableFact({
   label, value, canEdit, url, field, method = 'PATCH', empty = '—', placeholder,
-  suggestions = [], na = false, row = false, editValue, numeric = false, lockNote,
+  suggestions = [], na = false, row = false, editValue, numeric = false, lockNote, date = false,
 }: {
   label: string;
   value: string | null;
@@ -85,6 +86,12 @@ export function EditableFact({
    * 되돌릴 길이 있는 잠금에만 준다.
    */
   lockNote?: string;
+  /**
+   * 날짜 칸인가 — 고칠 때 글자 입력칸 대신 달력을 연다(한백 지적 2026-10-08 「계약일 직접 치는 게 어려워」).
+   * 2026-06-09 꼴을 손으로 맞춰 치게 하지 않는다 — 날짜 칸은 전부 DatePicker 를 쓴다(그 부품의 머리말).
+   * 고르면 바로 저장한다(승인일 칸과 같다). 값은 YYYY-MM-DD 로 나간다.
+   */
+  date?: boolean;
 }) {
   const { busy, error, setError, run } = useAction();
   const [editing, setEditing] = useState(false);
@@ -123,6 +130,28 @@ export function EditableFact({
       <div className="min-w-0">
         <dt className="text-tiny font-bold tracking-[0.04em] text-slate-400">{label}</dt>
         <dd className="mt-0.5"><Empty kind="na" /></dd>
+      </div>
+    );
+  }
+
+  // 날짜는 달력 하나 — 고르면 저장된다. 실패하면 칸이 열린 채 그 자리에 까닭이 선다
+  if (editing && date) {
+    return (
+      <div className="col-span-full flex w-full flex-col gap-1.5 py-1">
+        <dt className="text-micro font-bold tracking-[0.04em] text-slate-400">{label}</dt>
+        <dd className="flex flex-wrap items-center gap-1.5">
+          <DatePicker
+            ariaLabel={label}
+            value={draft || null}
+            disabled={busy}
+            autoOpen
+            onChange={(v) => { setDraft(v ?? ''); void save(v ?? ''); }}
+          />
+          <Btn size="sm" kind="quiet" disabled={busy} onClick={close}>
+            취소
+          </Btn>
+          <Err>{error}</Err>
+        </dd>
       </div>
     );
   }
