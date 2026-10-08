@@ -22,6 +22,10 @@ export interface AutoFields {
   bizType: BizType | null;
   parkTotal: number | null;
   mgr: string | null;
+  /** 대표자 — 사업자등록증·고유번호증의 「대표자」 (한백 지시 2026-10-08) */
+  repName: string | null;
+  /** 계약서상 계약일 YYYY-MM-DD — 계약서가 여럿이면 가장 최근 계약일(이번 계약) */
+  contractDate: string | null;
   tel: string | null;
   mail: string | null;
   /**

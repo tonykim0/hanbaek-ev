@@ -127,6 +127,10 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
    * 현장 상세에서 고친다.
    */
   const [mgr, setMgr] = useState('');
+  /* 대표자도 칸이 없다 — 사업자등록증·고유번호증에서 판독이 읽어 싣는다(한백 지시 2026-10-08, 현장 상세에서 고친다) */
+  const [repName, setRepName] = useState<string | null>(null);
+  /* 계약일도 칸이 없다 — 판독이 이번 계약서(가장 최근 계약일)에서 읽어 싣는다(현장 상세 머리말에서 고친다) */
+  const [contractDate, setContractDate] = useState<string | null>(null);
   /* 설치위치도 칸이 없다 — 결과서의 실내/실외 체크를 판독이 읽어 그대로 싣는다(현장 상세에서 고친다) */
   const [installLoc, setInstallLoc] = useState<InstallLoc | null>(null);
   const [tel, setTel] = useState('');
@@ -242,6 +246,9 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
       fill('powerType', f.powerType, setPowerType);
       fill('parkTotal', f.parkTotal, (v) => setParkTotal(String(v)));
       fill('mgr', f.mgr, setMgr);
+      // 설치위치처럼 판독값으로 덮는다 — 다른 ZIP 의 대표자가 남지 않게
+      setRepName(f.repName ?? null);
+      setContractDate(f.contractDate ?? null);
       // 다른 ZIP 을 다시 올리면 앞 값이 남지 않게 판독값으로 덮는다(못 읽었으면 비운다)
       setInstallLoc(f.installLoc ?? null);
       fill('tel', f.tel, setTel);
@@ -438,7 +445,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
       salesOrg: isAdmin ? salesOrg.trim() || null : null,
       gcOrg: isAdmin ? gcOrg.trim() || null : null,
       parkTotal: parkTotal ? Number(parkTotal) : null,
-      mgr: mgr || null, tel: tel || null, mail: mail || null,
+      mgr: mgr || null, repName, contractDate, tel: tel || null, mail: mail || null,
       preInstall, preNote: preNote || null,
       powerType, replType: projectRepl, bizType, note: note || null,
       lines,
@@ -446,7 +453,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
       documents: Object.entries(staged).flatMap(([kind, list]) =>
         list.map((d) => ({ kind, filename: d.filename }))),
     }),
-    [cpo, name, addr, bldgType, installLoc, contractParty, parkTotal, mgr, tel, mail, preInstall, preNote,
+    [cpo, name, addr, bldgType, installLoc, contractParty, parkTotal, mgr, repName, contractDate, tel, mail, preInstall, preNote,
       powerType, projectRepl, bizType, note, lines, staged, isAdmin, salesOrg, gcOrg]
   );
 

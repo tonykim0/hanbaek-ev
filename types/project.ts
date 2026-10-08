@@ -220,6 +220,17 @@ export interface Project {
   contractParty: ContractParty | null;
   parkTotal: number | null;
   mgr: string | null;
+  /**
+   * 계약주체의 대표자 — 사업자등록증·고유번호증의 「대표자」 (한백 지시 2026-10-08). 접수 판독이 채우고, 사업자등록증 칸에
+   * 파일이 들어오면 비었을 때 읽어 채운다(lib/rep-name-run). 한백이 현장 정보에서 고친다.
+   */
+  repName: string | null;
+  /**
+   * 계약서상 계약일 YYYY-MM-DD — 계약서 끝 서명란 위의 「계약일」 (한백 지시 2026-10-08). 계약서 수령일(createdAt ·
+   * 계약접수일)과 다르다: 받은 날이 아니라 계약서에 적힌 날. 접수 판독이 채우고, 계약서 칸에 파일이 들어오면 비었을 때
+   * 읽어 채운다(lib/fact-read-run). 한백이 머리말에서 고친다.
+   */
+  contractDate: string | null;
   tel: string | null;
   mail: string | null;
   preInstall: PreInstall;
@@ -665,6 +676,9 @@ export type ProjectFactsPatch = {
   contractParty?: ContractParty | null;
   parkTotal?: number | null;
   mgr?: string | null;
+  repName?: string | null;
+  /** 계약서상 계약일 YYYY-MM-DD */
+  contractDate?: string | null;
   tel?: string | null;
   mail?: string | null;
   note?: string | null;
@@ -1766,6 +1780,10 @@ export interface IntakeDraft {
   contractParty: ContractParty | null;
   parkTotal: number | null;
   mgr: string | null;
+  /** 대표자 — 판독이 사업자등록증·고유번호증에서 읽은 값(화면에 칸이 없다, 담당자와 같다). 옛 초안·API 는 모른다 */
+  repName?: string | null;
+  /** 계약서상 계약일 — 판독이 이번 계약서(가장 최근 계약일)에서 읽은 값 YYYY-MM-DD */
+  contractDate?: string | null;
   tel: string | null;
   mail: string | null;
   preInstall: PreInstall;

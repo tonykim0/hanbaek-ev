@@ -12,6 +12,7 @@
  * id 목록으로 한 번에 긁어와 메모리에서 묶는다.
  */
 import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { isDay } from '@/lib/fact-read';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
 import { allSlots } from './db-slot';
@@ -120,6 +121,12 @@ function cleanFacts(patch: ProjectFactsPatch): Record<string, unknown> {
 
   if ('addr' in patch) out.addr = text(patch.addr);
   if ('mgr' in patch) out.mgr = text(patch.mgr);
+  if ('repName' in patch) out.repName = text(patch.repName);
+  if ('contractDate' in patch) {
+    const v = text(patch.contractDate);
+    if (v && !isDay(v)) throw new Error('계약일은 2026-06-09 꼴로 적어주세요.');
+    out.contractDate = v;
+  }
   if ('tel' in patch) out.tel = text(patch.tel);
   if ('mail' in patch) out.mail = text(patch.mail);
   if ('note' in patch) out.note = text(patch.note);
@@ -813,6 +820,8 @@ function projectRowOf(id: string, draft: IntakeDraft, actor: Actor, day: string)
     contractParty: draft.contractParty,
     parkTotal: draft.parkTotal,
     mgr: draft.mgr,
+    repName: draft.repName?.trim() || null,
+    contractDate: draft.contractDate && isDay(draft.contractDate) ? draft.contractDate : null,
     tel: draft.tel,
     mail: draft.mail,
     preInstall: draft.preInstall,

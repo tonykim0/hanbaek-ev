@@ -18,6 +18,7 @@
  * 서버 전용.
  */
 import { put } from '@vercel/blob';
+import { contractDateOfFiles, repNameOf } from './fact-read';
 import type { FileCategory } from '@/types/intake';
 import type { AutoDoc, AutoFields, AutoIntakeResult } from '@/types/intake-auto';
 import type {
@@ -293,6 +294,8 @@ export async function autoIntakeFromZip(
     bizType: metadata?.사업구분 ?? null,
     parkTotal: metadata?.총주차면수 ?? null,
     mgr: metadata?.현장담당자?.trim() || null,
+    repName: repNameOf(metadata?.대표자),
+    contractDate: contractDateOfFiles(metadata?.files),
     tel: metadata?.현장연락처?.trim() || null,
     mail: metadata?.현장이메일?.trim() || null,
     preInstall: categories.length > 0 ? preInstallFromCategories(categories) : null,

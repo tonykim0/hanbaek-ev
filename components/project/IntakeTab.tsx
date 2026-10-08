@@ -89,6 +89,8 @@ function SiteFacts(
       } },
     { label: '계약주체', value: project.contractParty,
       edit: { field: 'contractParty', suggestions: CONTRACT_PARTIES } },
+    /* 계약주체의 대표자 — 사업자등록증·고유번호증에서 읽는다(한백 지시 2026-10-08, lib/rep-name) */
+    { label: '대표자', value: project.repName, edit: { field: 'repName' } },
     { label: '현장 담당자', value: project.mgr, edit: { field: 'mgr' } },
     { label: '연락처', value: project.tel, edit: { field: 'tel', placeholder: '010-0000-0000' } },
     { label: '이메일', value: project.mail, edit: { field: 'mail' } },

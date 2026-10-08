@@ -88,6 +88,8 @@ export interface ExtractedMetadata {
   소재지: SojaejiName | null;
   사업구분: BusinessType | null;
   현장담당자: string | null;
+  /** 사업자등록증·고유번호증의 대표자 성명 — 옛 판독 결과에는 없다 */
+  대표자?: string | null;
   현장연락처: string | null;
   현장이메일: string | null;
   설치위치: string | null;

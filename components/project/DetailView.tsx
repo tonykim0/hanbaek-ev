@@ -484,7 +484,9 @@ function TabStrip({
 
 const FACT_GRID =
   'grid grid-cols-2 gap-x-4 gap-y-3 text-base'
-  + ' sm:grid-cols-[repeat(4,minmax(0,9rem))] lg:grid-cols-[repeat(5,minmax(0,9rem))]';
+  + ' sm:grid-cols-[repeat(4,minmax(0,9rem))] lg:grid-cols-[repeat(5,minmax(0,9rem))]'
+  /* 2줄이 여섯 칸이다(계약일이 들었다, 2026-10-08) — 넓은 화면에서는 한 줄에 선다 */
+  + ' xl:grid-cols-[repeat(6,minmax(0,9rem))]';
 
 function SiteHeader({
   detail, contract, canReview, knownOrgs, processEdit, column, band, titleRef,
@@ -603,7 +605,8 @@ function SiteHeader({
         * 네 줄로 나눈다 (한백 확인 2026-08-21).
         *
         *   1줄 — 누구의 일인가: 사업연도 · 운영사 · 영업사 · 시공사 · 사업구분
-        *   2줄 — 계약의 뼈대: 계약대수 · 계약연수 · 수전방식 · 설치위치 · 계약접수일
+        *   2줄 — 계약의 뼈대: 계약대수 · 계약연수 · 수전방식 · 설치위치 · 계약일 · 계약접수일
+        *   (계약일은 계약서에 적힌 날, 계약접수일은 받은 날이라 나란히 둔다 — 한백 지시 2026-10-08)
         *   (사업구분을 1줄로 올렸다 — 설치위치가 들며 2줄이 여섯 칸이 되어 계약접수일이
         *    혼자 셋째 줄로 밀렸다. 한 줄 다섯 칸이 넓은 화면의 격자다. 한백 지시 2026-09-30)
         *   3·4줄 — 승인 흐름 (ApprovalFacts): 운영사 계약서 제출 / 대기번호 · 환경부 승인일
@@ -749,6 +752,19 @@ function SiteHeader({
           field="installLoc"
           empty="미지정"
           suggestions={[...INSTALL_LOCS]}
+        />
+        {/*
+          * ★계약서상 계약일★ (한백 지시 2026-10-08 「이 섹션에 계약서상 계약일도 적어줘」) — 서명란 위의 날짜를 판독이
+          * 읽어 넣는다(접수 · 계약서 칸, lib/fact-read). 못 읽었거나 옛 현장이면 미지정 — 한백이 여기서 적는다.
+          */}
+        <EditableFact
+          label="계약일"
+          value={project.contractDate}
+          canEdit={canReview}
+          url={`/api/projects/${project.id}/facts`}
+          field="contractDate"
+          empty="미지정"
+          placeholder="2026-06-09"
         />
         <EditableFact
           label="계약접수일"

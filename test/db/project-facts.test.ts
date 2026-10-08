@@ -49,6 +49,17 @@ describe('현장 정보 고치기', () => {
     });
   });
 
+  it('대표자·계약일 — 접수가 싣고, 한백이 고치고, 계약일은 달력에 있는 날만 받는다 (한백 지시 2026-10-08)', async () => {
+    await withProject(async (id) => {
+      expect(await factOf(id)).toMatchObject({ repName: '김대원', contractDate: '2026-06-09' });
+      await repo.setProjectFacts(id, { repName: ' 이화행 ', contractDate: '2026-07-29' }, admin);
+      expect(await factOf(id)).toMatchObject({ repName: '이화행', contractDate: '2026-07-29' });
+      await expect(repo.setProjectFacts(id, { contractDate: '2026-02-30' }, admin)).rejects.toThrow(/계약일/);
+      await repo.setProjectFacts(id, { contractDate: '' }, admin);
+      expect((await factOf(id)).contractDate).toBeNull();
+    }, { repName: '김대원', contractDate: '2026-06-09' });
+  });
+
   it('★협력사는 못 고친다★ — 자기 현장이어도', async () => {
     await withProject(async (id) => {
       await expect(repo.setProjectFacts(id, { mgr: '침입' }, partner)).rejects.toThrow();

@@ -184,6 +184,10 @@ export const projects = pgTable('projects', {
   contractParty: text('contract_party'),            // 노션에 없던 신규 필드
   parkTotal: integer('park_total'),
   mgr: text('mgr'),
+  /** 계약주체의 대표자 — 사업자등록증·고유번호증에서 읽는다 (migrations/0096) */
+  repName: text('rep_name'),
+  /** 계약서상 계약일 YYYY-MM-DD — 계약서 서명란 위의 날짜. 계약서 수령일(createdAt)과 다르다 (migrations/0096) */
+  contractDate: text('contract_date'),
   tel: text('tel'),
   mail: text('mail'),
   preInstall: text('pre_install').notNull().default('없음'),

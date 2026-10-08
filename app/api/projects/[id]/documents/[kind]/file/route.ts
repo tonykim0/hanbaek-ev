@@ -24,6 +24,7 @@ import { isKnownDocKind } from '@/lib/data/assemble';
 import { attachDocument } from '@/lib/attach-doc';
 import { schedulePreInstallCheck } from '@/lib/preinstall-run';
 import { scheduleCpoSealRead } from '@/lib/cpo-seal-run';
+import { scheduleFactRead } from '@/lib/fact-read-run';
 
 /*
  * 붙이기 전에 PDF 방향을 본다(lib/attach-doc) — 페이지마다 판정을 불러 수십 초가 걸릴 수
@@ -125,6 +126,8 @@ export async function POST(
   if (!result.already) schedulePreInstallCheck(params.id, params.kind);
   // 현대엔지니어링·SK 계약서면 운영사 직인을 읽어 꼬리표로 단다 — 응답 뒤에(lib/cpo-seal-run)
   if (!result.already) scheduleCpoSealRead(params.id, params.kind);
+  // 사업자등록증·계약서면 대표자·계약일이 비었을 때 읽어 현장 정보에 넣는다(lib/fact-read-run)
+  if (!result.already) scheduleFactRead(params.id, [params.kind]);
   return NextResponse.json({ ok: true, already: result.already });
 }
 

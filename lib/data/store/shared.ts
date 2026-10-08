@@ -158,6 +158,8 @@ export function toProject(r: ProjectRow): Project {
     contractParty: r.contractParty as ContractParty | null,
     parkTotal: r.parkTotal,
     mgr: r.mgr,
+    repName: r.repName,
+    contractDate: r.contractDate,
     tel: r.tel,
     mail: r.mail,
     preInstall: r.preInstall as PreInstall,
