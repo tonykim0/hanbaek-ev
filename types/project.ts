@@ -617,6 +617,13 @@ export interface DocFile {
    * 협력사가 낸 판은 아파트 쪽만 날인돼 오는 일이 많다 — 운영사가 역날인한 판이 따로 돈다. 막지 않는다 — 꼬리표만.
    */
   cpoSeal?: boolean | null;
+  /**
+   * ★보완하며 새로 올린 파일★ (한백 지시 2026-10-08 「반려된 상태에서 협력사가 파일을 또 새로 올리면 이번에 어떤 부분이
+   * 업데이트됐는지 그 칸만 하이라이트」). 반려·보완요청을 받은 뒤 협력사가 올린 장에 붙고, 한백의 다음 판정(반려·보완요청·
+   * 계약 확인)에서 걷힌다 — 그래서 늘 「이번 판」에 새로 온 것만 남는다(lib/data/store/docs clearResubmitMarks).
+   * reason 은 그 칸이 받았던 반려 사유 — 반려 없이 같이 고쳐 올린 칸은 null.
+   */
+  resubmit?: { reason: string | null };
 }
 
 export interface ProjectDocument {

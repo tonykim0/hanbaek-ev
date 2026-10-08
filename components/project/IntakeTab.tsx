@@ -21,7 +21,7 @@ import { EditableFact } from './EditableFact';
 import { DocReview } from './DocReview';
 import { ReviewHistory } from './ReviewHistory';
 import { PreInstall } from './PreInstall';
-import { docCardTone, docState, RejectReason } from './parts';
+import { docCardTone, docState, RejectReason, ResubmitReason } from './parts';
 import { Btn, Err, FIELD, GroupHead, Note, PANEL, Saved, Tag, TEXT } from '@/components/ui';
 
 // ── 계약 탭 ─────────────────────────────────────────────────────
@@ -713,6 +713,7 @@ export function IntakeTab({
                          *   초록 — 냈다            (더 볼 것 없다)
                          *   빨강 — 필수인데 안 냈다  (접수를 막는다)
                          *   주황 — 반려, 보완할 차례 (냈는데 문제가 있다)
+                         *   하늘 — 보완하며 새로 올렸다 (이번 판에 한백이 볼 칸 — DocFile.resubmit, 한백 지시 2026-10-08)
                          *   무색 — 조건부·선택      (해당되는 현장만이라 색을 줄 이유가 없다)
                          *
                          * 옅은 색(50)으로 채운다. 화면 규칙 12 는 짙은 빨강을 되돌릴 수 없는 것을
@@ -745,6 +746,7 @@ export function IntakeTab({
                         )}
 
                         {doc?.rejectReason && <RejectReason>{doc.rejectReason}</RejectReason>}
+                        <ResubmitReason doc={doc} />
 
                         {/*
                           * ★카드를 세 구역으로 나눈다★ (한백 지시 2026-08-25 — 조작 UI 가 엉망이었다).

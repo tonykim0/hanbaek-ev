@@ -155,6 +155,11 @@ export function DocFileActions({
   canRemove?: boolean;
 }) {
   if (doc.files.length === 0) return null;
+  /*
+   * 「새로 올림」은 칸에 앞 판의 장이 같이 있을 때만 장마다 단다 — 다 새것이면 칸 머리(docState)가 이미 그 말을 한다
+   * (같은 말을 두 번 두지 않는다, 화면 규칙 5).
+   */
+  const mixed = doc.files.some((f) => f.resubmit) && doc.files.some((f) => !f.resubmit);
 
   /* 자리(여백)는 부르는 쪽이 정한다 — 부품이 자기 mt 를 갖고 있으면 줄에 세울 때 어긋난다 */
   return (
@@ -163,6 +168,7 @@ export function DocFileActions({
         <FileRow
           key={f.url}
           file={f}
+          fresh={mixed && !!f.resubmit}
           index={i}
           kind={doc.kind}
           siteName={siteName}
@@ -177,9 +183,11 @@ export function DocFileActions({
 
 /** 파일 한 장 — 이름 · 미리보기 · 받기 · 빼기 */
 function FileRow({
-  file, index, kind, siteName, label, projectId, canRemove,
+  file, fresh = false, index, kind, siteName, label, projectId, canRemove,
 }: {
   file: DocFile;
+  /** 이번 판에 새로 온 장인가 — 앞 판의 장과 섞여 있을 때만 true(DocFileActions) */
+  fresh?: boolean;
   index: number;
   kind: string;
   siteName: string;
@@ -287,6 +295,8 @@ function FileRow({
               <span className="ml-1 font-normal text-amber-800/70">{file.photo.join(' · ')}</span>
             </span>
           ) : null}
+          {/* 보완하며 새로 올린 장 — 칸에 앞 판의 장이 같이 있을 때 어느 것이 이번 것인지(DocFile.resubmit, 한백 지시 2026-10-08) */}
+          {fresh ? <span className="truncate text-micro font-bold text-sky-700">새로 올림</span> : null}
           {/*
             운영사 직인 — 현대엔지니어링·SK 계약서에만 붙는다(한백 2026-10-07, lib/cpo-seal). 판독이 운영사 서명 칸을
             읽은 결과다. 막지 않는다 — 열람용·사진 표와 같은 자리·같은 말투. 아직 안 읽었으면(undefined) 아무것도 없다.

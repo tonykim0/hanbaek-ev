@@ -22,7 +22,7 @@ import { PreInstallCheckBlock } from './PreInstallCheck';
 import {
   bundledAsPdf, checkedFilesOf, missingSeals, sameFiles, sealFixReason, type PreInstallCheck,
 } from '@/lib/preinstall-check';
-import { docCardTone, docState, RejectReason } from './parts';
+import { docCardTone, docState, RejectReason, ResubmitReason } from './parts';
 import { LookupResults, useShardLoader } from '@/components/ChargerHistoryLookup';
 import {
   DATA_BASE, lookupChargerHistory, type IndexMeta, type LookupResult, type SiteRecord,
@@ -222,6 +222,7 @@ function PreDocCard({
       </div>
       {doc?.uploadedAt && <p className="mt-1 text-tiny text-slate-400">{doc.uploadedAt}</p>}
       {doc?.rejectReason && <RejectReason>{doc.rejectReason}</RejectReason>}
+      <ResubmitReason doc={doc} />
 
       {/*
         * 서류 칸과 같은 세 구역이다 — 사실 · 파일 목록 · 조작 (IntakeTab 의 카드 주석 참조).

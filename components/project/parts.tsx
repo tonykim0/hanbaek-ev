@@ -8,6 +8,7 @@
  */
 import type { ProjectDocument } from '@/types/project';
 import type { DocReq } from '@/lib/doc-rules';
+import { resubmitOf } from '@/lib/doc-state';
 import { Val, type EmptyKind } from '@/components/ui';
 
 /**
@@ -61,6 +62,8 @@ export { docState } from '@/lib/doc-state';
  */
 export function docCardTone(doc: ProjectDocument | undefined, req: DocReq): string {
   if (doc?.status === 'rejected') return 'border-amber-300 bg-amber-50';
+  /* 보완하며 새로 올린 칸 — 이번 판에 한백이 볼 것(DocFile.resubmit). 고리(ring)는 자리를 밀지 않는다 */
+  if (resubmitOf(doc)) return 'border-sky-400 bg-sky-50 ring-1 ring-sky-400';
   if (doc?.blobUrl || doc?.status === 'uploaded' || doc?.status === 'approved') {
     return 'border-brand-200 bg-brand-50';
   }
@@ -75,6 +78,20 @@ export function docCardTone(doc: ProjectDocument | undefined, req: DocReq): stri
  * 구역 위 띠는 목록의 한 줄. 같은 문장이 자리마다 다른 옷을 입으면 같은 것인지
  * 물어야 한다. 카드 바탕이 주황이라 사유는 흰 바탕으로 띄운다(붉은 바탕은 묻힌다).
  */
+/**
+ * 새로 올린 칸이 받았던 반려 사유 — 한백이 새 파일을 그 사유에 견준다(한백 지시 2026-10-08). 반려 없이 같이 고쳐 올린
+ * 칸(사유 null)에는 서지 않는다.
+ */
+export function ResubmitReason({ doc }: { doc: ProjectDocument | undefined }) {
+  const r = resubmitOf(doc);
+  if (!r?.reason) return null;
+  return (
+    <p className="mt-1 text-tiny leading-snug text-sky-900">
+      <b>받았던 반려</b> {r.reason}
+    </p>
+  );
+}
+
 export function RejectReason({ children }: { children: string }) {
   return (
     <p className="mt-2 rounded-ctl bg-white px-2 py-1.5 text-tiny leading-snug text-red-800">

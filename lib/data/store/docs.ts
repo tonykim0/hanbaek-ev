@@ -146,6 +146,11 @@ export const docStore: Pick<
 
       if (!checkReviewable(row, input)) return; // 같은 값이면 로그를 남기지 않는다
 
+      /* 한백이 판정했다 — 보완하며 새로 올린 표시를 걷는다. 반려는 새 판을 여니 현장 전체를, 해제·확인은 그 칸만 */
+      if (!isProcessDocKind(input.kind)) {
+        await clearResubmitMarks(tx, input.projectId, input.status === 'rejected' ? undefined : input.kind);
+      }
+
       if (!row) {
         // 미제출 칸의 반려 — 행이 없으면 만든다 (askMissingDocs 가 세우는 것과 같은 모양)
         await tx.insert(table).values({
@@ -450,7 +455,8 @@ function appendedFiles(
   before: unknown,
   input: { filename: string; blobUrl: string; title?: string | null; photo?: string[] | null; stamp?: string | null },
   actorName: string,
-  day: string
+  day: string,
+  resubmit: DocFile['resubmit'] = undefined
 ): DocFile[] {
   const files = ((before ?? []) as DocFile[]).filter((f) => f?.url);
   if (files.some((f) => f.url === input.blobUrl)) return files;
@@ -463,7 +469,23 @@ function appendedFiles(
     ...(input.title?.trim() ? { title: input.title.trim() } : {}),
     ...(input.photo?.length ? { photo: input.photo } : {}),
     ...(input.stamp ? { stamp: input.stamp } : {}),
+    ...(resubmit ? { resubmit } : {}),
   }];
+}
+
+/**
+ * ★보완하며 새로 올린 표시를 걷는다★ — 한백의 판정이 한 판을 닫는다 (한백 지시 2026-10-08, DocFile.resubmit).
+ * 반려·보완요청·계약 확인은 현장 전체를(kind 없이), 반려가 아닌 판정(해제·확인)은 그 칸만 걷는다.
+ * 그래야 다음 보완 때 「이번에 새로 온 것」만 칠해진다 — 앞 판에 고쳐 온 칸이 남아 있으면 한백은 무엇이 이번 것인지 못 가른다.
+ */
+export async function clearResubmitMarks(tx: TxLike, projectId: string, kind?: string): Promise<void> {
+  await tx.execute(sql`
+    update documents d set files = (
+      select coalesce(jsonb_agg(e.f - 'resubmit' order by e.i), '[]'::jsonb)
+      from jsonb_array_elements(d.files) with ordinality as e(f, i))
+    where d.project_id = ${projectId}
+      ${kind ? sql`and d.kind = ${kind}` : sql``}
+      and jsonb_path_exists(d.files, '$[*].resubmit')`);
 }
 
 /** 공정 서류 갈래 — process_documents 표. 행위신고는 신고일도 같이 채운다. */
@@ -609,12 +631,23 @@ async function putContractDoc(
 ): Promise<void> {
 
     const [before] = await tx
-      .select({ status: documents.status, files: documents.files })
+      .select({ status: documents.status, files: documents.files, rejectReason: documents.rejectReason })
       .from(documents)
       .where(and(eq(documents.projectId, input.projectId), eq(documents.kind, input.kind)))
       .limit(1);
 
-    const files = appendedFiles(before?.files, input, actor.name, day);
+    /*
+     * ★보완하며 올린 장에 표시를 단다★ (한백 지시 2026-10-08) — 반려된 칸을 다시 올렸거나, 한 번 돌려받은 계약(보완요청
+     * 이력 · 아직 확인 전)에 협력사가 고쳐 올린 것이다. 한백이 올린 것은 달지 않는다 — 한백이 보여줄 상대가 한백이다.
+     */
+    const [proj] = await tx
+      .select({ fixAsked: projects.contractFixAskedAt, confirmed: projects.contractConfirmedAt })
+      .from(projects).where(eq(projects.id, input.projectId)).limit(1);
+    const answering = before?.status === 'rejected';
+    const resubmit = actor.role !== 'admin' && (answering || (!!proj?.fixAsked && !proj.confirmed))
+      ? { reason: answering ? before?.rejectReason ?? null : null }
+      : undefined;
+    const files = appendedFiles(before?.files, input, actor.name, day, resubmit);
     const row = {
       projectId: input.projectId,
       kind: input.kind,

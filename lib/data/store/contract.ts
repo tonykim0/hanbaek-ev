@@ -25,6 +25,7 @@ import { reviewKindLabel } from '@/lib/review-labels';
 import { bundledAsPdf, checkedFilesOf, preCheckBlocker } from '@/lib/preinstall-check';
 import { loadPreInstallCheck } from './preinstall-check';
 import { notifyReview, retractReview } from './notifications';
+import { clearResubmitMarks } from './docs';
 
 /** pgRepository 가 펼쳐 담는 조각 — 이름과 시그니처는 인터페이스가 정한다 */
 export const contractStore: Pick<
@@ -126,6 +127,8 @@ export const contractStore: Pick<
       const before = record.project.contractConfirmedAt;
       const after = confirmed ? today() : null;
       if (Boolean(before) === Boolean(after)) return;
+      // 확인은 한백이 다 봤다는 판정이다 — 보완하며 새로 올린 표시를 걷는다(DocFile.resubmit)
+      if (confirmed) await clearResubmitMarks(tx, projectId);
       await tx
         .update(projects)
         .set({
@@ -232,6 +235,8 @@ export const contractStore: Pick<
 
     const db = getDb();
     await db.transaction(async (tx) => {
+      // 새 보완 판을 연다 — 앞 판에 고쳐 온 표시를 걷는다(DocFile.resubmit)
+      if (ask) await clearResubmitMarks(tx, projectId);
       for (const kind of kinds) await markMissing(tx, projectId, kind, ask, why, day);
       await applyAskSideEffects(tx, projectId, ask, day);
       /*
