@@ -52,7 +52,7 @@ export const preinstallCheckStore: Pick<ProjectRepository, 'savePreInstallCheck'
         action: '기설치 대조',
         field: 'preinstallCheck',
         oldValue: null,
-        newValue: check.problem ?? (said || '맞음'),
+        newValue: check.problem ?? (check.subsidyOnly ? '보조사업 이력 · 대조 면제' : said || '맞음'),
       });
     });
   },

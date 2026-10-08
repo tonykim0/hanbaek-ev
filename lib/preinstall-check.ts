@@ -86,6 +86,11 @@ export interface PreInstallCheck {
    * 없어 이 길이 아니면 영영 못 넘어간다.
    */
   accepted?: { by: string; at: string } | null;
+  /**
+   * 엑셀의 모든 줄이 보조사업 설치분이다(사업연도·대기번호 — subsidyOnly) — 증빙을 읽지 않았고 계약 확인을 막지 않는다
+   * (한백 지시 2026-10-08). 옛 결과에는 없다.
+   */
+  subsidyOnly?: boolean;
 }
 
 /** 설치이력 스캔본(날인본) 한 장에서 판독이 읽은 것 — lib/legacy-evidence 가 채운다 */
@@ -146,6 +151,43 @@ export function sealFixReason(s: SealCheck): string {
   return `기설치 없음 설치이력에 ${missingSeals(s).join('·')} 직인이 없습니다 — `
     + (s.oldForm ? '서명 칸이 있는 새 양식으로 ' : '')
     + '두 곳 모두 날인해 다시 올려주세요.';
+}
+
+/**
+ * 보조사업 표기 — ★사업연도와 대기번호가 둘 다 있어야 한다★ (한백 지시 2026-10-08 「순수하게 보조금 사업으로 이뤄졌고
+ * 사업연도와 대기번호가 있으면 별도의 증빙자료 필요없으므로 검수 불필요」). 그 둘이면 충전기·보조금 이력 조회에서 찾아진다
+ * (안내문 유형 2 — K열에 사업연도 + 대기번호). 「완속보조금」·「보조금 이력 존재」만으로는 찾을 수 없어 면제가 아니다.
+ *
+ * 실제 설치이력 엑셀 177개에서 모은 모양(2026-10-08): 「사업연도: 2023년, 대기번호: 5710」 · 「사업연도 2025 대기번호 1829」 ·
+ * 「2022 보조금 사업 대기번호2914」 · 「2022.09_대기번호2914」 · 「대기번호 2022년 252번」 · 「대기번호 1704 2023년 보조금 사업」.
+ * 안내문의 「(2024년 1111번)」과 이력 조회의 신청번호 「2024-1111」도 받는다.
+ * J(증빙 자료명)·K(비고) 어느 쪽에 적어도 된다 — 양식은 K 라지만 J 에 적는 일이 많다.
+ */
+export function subsidyIdOf(text: string | null | undefined): { year: number; no: number } | null {
+  const t = (text ?? '').normalize('NFC');
+  // 「2024년 1111번」 — 해와 번호가 붙어 온다. 「2024년 2번 교체」 같은 글과 섞이지 않게 보조사업 말이 있을 때만
+  const pair = /보조|대기|사업\s*연도/.test(t) ? /(?<!\d)(20[1-3]\d)\s*년\s*(\d{1,6})\s*번/.exec(t) : null;
+  if (pair) return { year: +pair[1], no: +pair[2] };
+  // 신청번호 「2024-1111」 — 날짜(2023-02-21)·세움터 접수번호와 섞이지 않게 이름표가 붙어 있을 때만
+  const dash = /(?:대기|신청)\s*번호\s*[:：]?\s*(20[1-3]\d)\s*-\s*(\d{1,6})(?![\d-])/.exec(t);
+  if (dash) return { year: +dash[1], no: +dash[2] };
+  const num = /대기\s*번호\s*[:：]?\s*(\d{1,6})/.exec(t);
+  if (!num) return null;
+  // 해는 번호 자리를 뺀 나머지에서 찾는다 — 번호가 「2014」 같은 모양이면 해로 읽힌다
+  const rest = `${t.slice(0, num.index)} ${t.slice(num.index + num[0].length)}`;
+  const year = /사업\s*연도\s*[:：]?\s*(20[1-3]\d)/.exec(rest) ?? /(?<!\d)(20[1-3]\d)(?!\d)/.exec(rest);
+  return year ? { year: +year[1], no: +num[1] } : null;
+}
+
+const rowSubsidy = (row: LegacyRow) => subsidyIdOf(`${row.evidence ?? ''} ${row.note ?? ''}`);
+
+/**
+ * ★순수 보조사업 이력 — 모든 줄에 사업연도·대기번호가 있다★ (한백 지시 2026-10-08). 그러면 따로 증빙이 필요 없어
+ * 대조(검수)를 하지 않는다: 증빙을 판독에 보내지 않고, 계약 확인도 막지 않는다(preCheckBlocker). 한 줄이라도
+ * 보조사업이 아니면(자부담 설치·행위신고 증빙 줄) 평소대로 대조한다 — 그때도 보조사업 줄은 그 줄만 면제다.
+ */
+export function subsidyOnly(sheet: LegacySheet): boolean {
+  return sheet.rows.length > 0 && sheet.rows.every((r) => rowSubsidy(r) !== null);
 }
 
 /**
@@ -211,9 +253,10 @@ export function compareLegacy(
         .sort((a, b) => Number(b.doc === '행위신고') - Number(a.doc === '행위신고'))[0];
 
     if (!act) {
-      // 양식은 비고(K)에 적으라지만 실제 엑셀은 증빙 자료명(J)에 「사업연도 2025 대기번호 1829」로 적는 일이 많다
-      if (/보조사업|대기번호|\d{4}년\s*\d+번/.test(`${row.evidence ?? ''} ${row.note ?? ''}`)) {
-        lines.push({ verdict: 'exempt', row, act: null, actCount: null, why: null });
+      // 보조사업 설치분 — 사업연도·대기번호가 있어야 면제다(subsidyIdOf). 읽은 번호를 곁글로 남겨 사람이 이력 조회와 견준다
+      const id = rowSubsidy(row);
+      if (id) {
+        lines.push({ verdict: 'exempt', row, act: null, actCount: null, why: `보조사업 ${id.year}년 ${id.no}번 · 증빙 면제` });
         continue;
       }
       /*
@@ -234,7 +277,9 @@ export function compareLegacy(
       }
       lines.push({
         verdict: 'no-evidence', row, act: null, actCount: null,
-        why: `${row.date ?? '날짜 없음'} 행위의 증빙을 찾지 못함`,
+        why: /보조/.test(text)
+          ? '보조사업 표기에 사업연도·대기번호가 없어 면제 불가'
+          : `${row.date ?? '날짜 없음'} 행위의 증빙을 찾지 못함`,
       });
       continue;
     }
@@ -275,7 +320,9 @@ export function compareLegacy(
   const pick = current && current.before !== null
     ? { n: current.before, from: `${current.date} 신고의 행위 전` }
     : last ? { n: last.after!, from: `${last.date} 신고의 행위 후` } : null;
-  const standing = {
+  // 줄이 전부 보조사업 면제면 견줄 증빙이 없다 — 「행위신고 없음」으로 짚지 않는다
+  const allExempt = lines.length > 0 && lines.every((l) => l.verdict === 'exempt');
+  const standing = allExempt ? null : {
     sheet: sheet.standing,
     evidence: pick?.n ?? null,
     from: pick?.from ?? null,
@@ -342,6 +389,8 @@ export function preCheckBlocker(input: {
   const c = input.check;
   if (!c) return '기설치 대조 전';
   if (!sameFiles(c.files, input.currentFiles)) return '기설치 서류 바뀜 — 다시 대조';
+  // 순수 보조사업 이력 — 증빙이 필요 없어 검수하지 않는다(subsidyOnly, 한백 지시 2026-10-08)
+  if (c.subsidyOnly) return null;
   const left = issueCount(c) + reviewCount(c);
   if (left > 0 && !c.accepted) return `기설치 대조 ${left}건 미확인`;
   return null;

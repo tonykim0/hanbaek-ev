@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import type { LegacyRow, LegacySheet } from '@/lib/legacy-sheet';
 import {
   bundledAsPdf, checkedFilesOf, compareLegacy, issueCount, preCheckBlocker, reviewCount, sealFixReason, sealOf,
-  type EvidenceAct, type PreInstallCheck, type SheetScan,
+  subsidyIdOf, subsidyOnly, type EvidenceAct, type PreInstallCheck, type SheetScan,
 } from '@/lib/preinstall-check';
 
 const row = (r: number, date: string, d: number, kind = '신규 설치', evidence: string | null = null, note: string | null = null): LegacyRow =>
@@ -239,3 +239,63 @@ describe('계약 확인을 막는 대조 — 검증 필수 (한백 지시 2026-1
     ])).toEqual(['https://x/log.xlsx', 'https://x/ev.pdf']);
   });
 });
+
+describe('★순수 보조사업 이력 — 사업연도·대기번호가 있으면 검수하지 않는다★ (한백 지시 2026-10-08)', () => {
+  it('실제 엑셀의 적은 모양을 읽는다', () => {
+    const cases: [string, { year: number; no: number } | null][] = [
+      ['사업연도: 2023년, 대기번호: 5710', { year: 2023, no: 5710 }],
+      ['사업연도 2025 대기번호 1829 플러그링크 9기', { year: 2025, no: 1829 }],
+      ['사업연도 : 2021 대기번호 : 373', { year: 2021, no: 373 }],
+      ['2022 보조금 사업 대기번호2914', { year: 2022, no: 2914 }],
+      ['2022.09_대기번호2914', { year: 2022, no: 2914 }],
+      ['대기번호 2022년 252번 이력 추', { year: 2022, no: 252 }],
+      ['대기번호 1704 2023년 보조금 사업', { year: 2023, no: 1704 }],
+      ['사업연도 2018, 대기번호 170 2기, 대기번호 171 2기 · 완속충전기', { year: 2018, no: 170 }],
+      ['사업연도 2019년 · 대기번호 4995 · 공사완료 2019-08-09', { year: 2019, no: 4995 }],
+      ['보조사업으로 설치한 충전시설(2024년 1111번)', { year: 2024, no: 1111 }],
+      ['보조금 신청번호 2024-1111', { year: 2024, no: 1111 }],
+    ];
+    for (const [text, want] of cases) expect(subsidyIdOf(text), text).toEqual(want);
+  });
+
+  it('사업연도나 대기번호가 빠지면 보조사업 표기가 아니다', () => {
+    for (const text of [
+      '완속보조금', '환경부 보조금 이력 존재', '사업연도 2021년 대기번호 한국전기차충전서비스',
+      '대기번호 2014', '세움터 접수번호 2022-4210000-0063363[2022-07-08]호', '2024년 2번 교체', '공사완료 2023-02-21', null,
+    ]) expect(subsidyIdOf(text), String(text)).toBeNull();
+  });
+
+  it('모든 줄이 보조사업이어야 순수 보조사업 이력이다 — 한 줄이라도 자부담이면 평소대로 대조한다', () => {
+    const pure = sheetOf([
+      row(8, '2019-11-01', 4, '신규 설치', '사업연도: 2019년, 대기번호: 16932'),
+      row(9, '2022-11-01', 3, '신규 설치', null, '2022년 보조사업 대기번호 777'),
+    ], 7);
+    expect(subsidyOnly(pure)).toBe(true);
+    expect(subsidyOnly(sheetOf([...pure.rows, row(10, '2024-05-01', 1)], 8))).toBe(false);
+    expect(subsidyOnly(sheetOf([row(8, '2020-01-01', 2, '신규 설치', '완속보조금')], 2))).toBe(false);
+    expect(subsidyOnly(sheetOf([], 0))).toBe(false);
+  });
+
+  it('줄은 읽은 번호를 곁글로 단 면제 — 지금 서 있는 수는 견줄 증빙이 없어 짚지 않는다', () => {
+    const s = sheetOf([row(8, '2019-11-01', 4, '신규 설치', '사업연도: 2019년, 대기번호: 16932')], 4);
+    const r = compareLegacy(s, [], ctx);
+    expect(r.lines).toMatchObject([{ verdict: 'exempt', why: '보조사업 2019년 16932번 · 증빙 면제' }]);
+    expect(r.standing).toBeNull();
+    expect(issueCount(whole(r))).toBe(0);
+  });
+
+  it('보조라고만 적고 번호가 없으면 그 까닭으로 짚는다', () => {
+    const r = compareLegacy(sheetOf([row(8, '2020-01-01', 2, '신규 설치', '완속보조금')], 2), [], ctx);
+    expect(r.lines[0]).toMatchObject({ verdict: 'no-evidence', why: '보조사업 표기에 사업연도·대기번호가 없어 면제 불가' });
+  });
+
+  it('계약 확인을 막지 않는다 — 조사 결과가 어긋나도 검수 대상이 아니다. 서류가 바뀌면 다시 대조', () => {
+    const files = ['a.xlsx'];
+    const check: PreInstallCheck = {
+      ...whole({ lines: [], standing: null, survey: { state: '없음', verdict: 'diff' } }), files, subsidyOnly: true,
+    };
+    expect(preCheckBlocker({ needed: true, check, currentFiles: files })).toBeNull();
+    expect(preCheckBlocker({ needed: true, check, currentFiles: [...files, 'b.pdf'] })).toBe('기설치 서류 바뀜 — 다시 대조');
+  });
+});
+

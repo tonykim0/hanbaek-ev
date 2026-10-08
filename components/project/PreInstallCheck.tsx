@@ -96,6 +96,8 @@ export function PreInstallCheckBlock({
   const [showAll, setShowAll] = useState(false);
 
   const stale = !!check && !sameFiles(check.files, currentFiles);
+  /* 모든 줄이 보조사업(사업연도·대기번호)이면 검수하지 않는다 — 계약 확인을 막지 않는다(한백 지시 2026-10-08, subsidyOnly) */
+  const subsidy = !!check?.subsidyOnly && !stale;
   const n = check ? issueCount(check) : 0;
   const m = check ? reviewCount(check) : 0;
   /* 넘긴 것은 그 결과의 일이다 — 서류가 바뀌면 넘긴 것도 같이 무효다(preCheckBlocker) */
@@ -123,6 +125,8 @@ export function PreInstallCheckBlock({
       >
         {bundled
           ? <Tag tone="ok">PDF 로 냄 · 대조 면제</Tag>
+          : subsidy
+          ? <Tag tone="ok">보조사업 이력 · 대조 면제</Tag>
           : !check
           /* 저절로 도는 것이라 누구를 기다린다고 적지 않는다 — 한백에게는 손으로 돌릴 단추가 곁에 선다 */
           ? <Tag tone={canRun ? 'warn' : 'mute'}>대조 전</Tag>
@@ -248,7 +252,8 @@ export function PreInstallCheckBlock({
           {/* 접어 둔 줄 — 다 맞으면 이 한 줄이 결과의 전부다 */}
           {quiet.length > 0 && (
             <div className="flex flex-wrap items-center gap-2">
-              {flagged.length === 0 && !showAll && (
+              {/* 맞은 줄이 하나도 없으면(전부 보조사업 면제) 「0줄 모두 맞음」이 된다 — 그때는 머리의 꼬리표가 말한다 */}
+              {flagged.length === 0 && okCount > 0 && !showAll && (
                 <span className={`${TEXT.body} font-bold ${TONE.맞음}`}>엑셀 {okCount}줄 모두 맞음</span>
               )}
               <Btn size="sm" kind="quiet" onClick={() => setShowAll((v) => !v)}>
@@ -268,7 +273,7 @@ export function PreInstallCheckBlock({
         ★넘기는 자리는 결과 밑이다★ — 줄을 다 읽고 나서 누르는 일이다(한백 지시 2026-10-07 「한백이 확인하고
         넘긴다」). 남은 것이 없으면 이미 통과라 자리가 없고, 서류가 바뀐 결과는 넘길 수 없다.
       */}
-      {check && canRun && !stale && !bundled && n + m > 0 && (
+      {check && canRun && !stale && !bundled && !subsidy && n + m > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           {accepted ? (
             <Btn kind="quiet" size="sm" busy={accepting.busy} busyLabel="취소 중…" onClick={() => accept(false)}>

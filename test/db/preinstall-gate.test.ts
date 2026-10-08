@@ -86,6 +86,16 @@ describe('기설치 대조 — 계약 확인의 조건', () => {
     });
   });
 
+  it('★순수 보조사업 이력이면 검수 없이 확인한다★ — 사업연도·대기번호가 있으면 증빙이 필요 없다 (한백 지시 2026-10-08)', async () => {
+    await withSubsidyProject(async (id) => {
+      // 조사 결과가 어긋나 있어도 — 그것은 증빙 검수가 아니다
+      const subsidy = checkOf(await filesNow(id), { subsidyOnly: true, survey: { state: '없음', verdict: 'diff' } });
+      await repo.savePreInstallCheck(id, subsidy, admin);
+      await expect(repo.confirmContract(id, true, admin)).resolves.toBeUndefined();
+      expect((await repo.getProject(id, viewerOf(USERS.admin)))?.project.contractConfirmedAt).not.toBeNull();
+    });
+  });
+
   it('★설치이력을 PDF 로도 냈으면 대조 없이 확인한다★ — 자료를 한 묶음으로 다 냈다 (한백 지시 2026-10-07)', async () => {
     await withSubsidyProject(async (id) => {
       await expect(repo.confirmContract(id, true, admin)).rejects.toThrow(/기설치 대조 전/);

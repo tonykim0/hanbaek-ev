@@ -18,7 +18,7 @@ import { loadPreInstallCheck } from '@/lib/data/store/preinstall-check';
 import { readLegacySheet, type LegacySheet } from '@/lib/legacy-sheet';
 import { readEvidence, readSheetScans } from '@/lib/legacy-evidence';
 import {
-  CHECKED_KINDS, checkedFilesOf, compareLegacy, sameFiles, sealOf, type PreInstallCheck, type SheetScan,
+  CHECKED_KINDS, checkedFilesOf, compareLegacy, sameFiles, sealOf, subsidyOnly, type PreInstallCheck, type SheetScan,
 } from '@/lib/preinstall-check';
 import { background } from '@/lib/background';
 import type { DocFile, ProjectDetail } from '@/types/project';
@@ -98,18 +98,29 @@ export async function runPreInstallCheck(detail: ProjectDetail): Promise<PreInst
     return { ...base, sheetFile, problem, seal, unread: scanUnread };
   }
 
+  const ctx = {
+    survey: { state: p.preInstall, checked: p.preChecked },
+    // 이 날 뒤의 행위신고는 이번 설치 건이다 — 접수 선언이 없는 옛 현장은 확인일로 받친다
+    since: p.contractSubmittedAt ?? p.contractConfirmedAt ?? null,
+  };
+  const sheetFacts = { standing: sheet.standing, final: sheet.final, badSplit: sheet.badSplit, none: sheet.none };
+
+  /*
+   * ★모든 줄이 보조사업(사업연도·대기번호)이면 증빙을 읽지 않는다★ (한백 지시 2026-10-08 「별도의 증빙자료 필요없으므로
+   * 검수 불필요」). 판독 값도 시간도 들지 않는다 — 줄은 다 「보조사업 · 증빙 면제」로 서고 계약 확인을 막지 않는다.
+   */
+  if (subsidyOnly(sheet)) {
+    return { ...base, sheetFile, sheet: sheetFacts, ...compareLegacy(sheet, [], ctx), seal, unread: scanUnread, subsidyOnly: true };
+  }
+
   const { got: evGot, failed: evFailed } = await fetchAll(named(evFiles));
   const { acts, unread: evUnread } = await readEvidence(evGot);
   const unread = [...evFailed, ...evUnread];
   return {
     ...base,
     sheetFile,
-    sheet: { standing: sheet.standing, final: sheet.final, badSplit: sheet.badSplit, none: sheet.none },
-    ...compareLegacy(sheet, acts, {
-      survey: { state: p.preInstall, checked: p.preChecked },
-      // 이 날 뒤의 행위신고는 이번 설치 건이다 — 접수 선언이 없는 옛 현장은 확인일로 받친다
-      since: p.contractSubmittedAt ?? p.contractConfirmedAt ?? null,
-    }),
+    sheet: sheetFacts,
+    ...compareLegacy(sheet, acts, ctx),
     seal,
     unread: [...unread, ...scanUnread],
   };
