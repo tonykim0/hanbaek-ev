@@ -547,6 +547,8 @@ const PEEK_H = 560;
  */
 function Thumb({ file }: { file: DocFile }) {
   const [src, setSrc] = useState<string | null>(null);
+  /* 못 구웠다(암호 걸린 PDF·깨진 파일·그림이 안 열림) — 「…」(굽는 중)로 영영 남지 않게 형식 이름으로 바꾼다(감사 L23) */
+  const [failed, setFailed] = useState(false);
   const [seen, setSeen] = useState(false);
   const box = useRef<HTMLSpanElement>(null);
   const pdf = extOf(file) === 'pdf';
@@ -564,12 +566,16 @@ function Thumb({ file }: { file: DocFile }) {
   useEffect(() => {
     if (!seen || !pdf) return;
     let alive = true;
-    void pdfThumb(file.url).then((v) => { if (alive) setSrc(v); });
+    void pdfThumb(file.url).then((v) => {
+      if (!alive) return;
+      if (v) setSrc(v);
+      else setFailed(true);
+    });
     return () => { alive = false; };
   }, [seen, pdf, file.url]);
 
   /* 이미지는 구울 것이 없다 — 파일이 곧 그림이다 */
-  const show = pdf ? src : isImage(file) ? file.url : null;
+  const show = failed ? null : pdf ? src : isImage(file) ? file.url : null;
 
   return (
     <span
@@ -583,11 +589,12 @@ function Thumb({ file }: { file: DocFile }) {
           alt=""
           /* 위를 보인다 — 서류는 제목이 맨 위에 있다. 가운데를 보이면 본문만 나온다 */
           className="h-full w-full object-cover object-top"
+          onError={() => setFailed(true)}
         />
       ) : (
         /* 빈 값도 자리를 지킨다(화면 규칙 6) — 자리가 사라지면 칸 높이가 들쭉날쭉해진다 */
         <span className="flex h-full items-center justify-center text-micro font-bold text-slate-300">
-          {pdf ? '…' : extOf(file).toUpperCase()}
+          {pdf && !failed ? '…' : extOf(file).toUpperCase()}
         </span>
       )}
     </span>
@@ -601,9 +608,16 @@ function Peek({ file, className, children }: {
   className: string;
   children: React.ReactNode;
 }) {
-  const [box, setBox] = useState<{ left: number; top: number } | null>(null);
+  const [box, setBox] = useState<{ left: number; top: number; height: number } | null>(null);
   /* 그릴 수 있는 것만 — 엑셀·워드는 iframe 이 내려받기를 시작한다 */
   const can = canPreview(file);
+  /* 고정 좌표라 스크롤하면 이름과 떨어져 제자리에 남는다(감사 L24) — 스크롤하면 닫는다 */
+  useEffect(() => {
+    if (!box) return;
+    const off = () => setBox(null);
+    window.addEventListener('scroll', off, true);
+    return () => window.removeEventListener('scroll', off, true);
+  }, [box]);
 
   const open = (e: React.PointerEvent<HTMLSpanElement>) => {
     /* 손가락으로는 「올리기」가 없다 — 눌러서 여는 길이 그대로 남아 있으므로 여기서는 뺀다 */
@@ -611,8 +625,10 @@ function Peek({ file, className, children }: {
     const r = e.currentTarget.getBoundingClientRect();
     const room = window.innerWidth - r.right;
     const left = room > PEEK_W + 24 ? r.right + 12 : Math.max(12, r.left - PEEK_W - 12);
-    const top = Math.max(12, Math.min(window.innerHeight - PEEK_H - 12, r.top - 40));
-    setBox({ left, top });
+    /* 창이 낮으면 덧창을 줄인다 — 높이를 못 박아 두면 아래가 잘렸다(감사 L24) */
+    const height = Math.min(PEEK_H, window.innerHeight - 24);
+    const top = Math.max(12, Math.min(window.innerHeight - height - 12, r.top - 40));
+    setBox({ left, top, height });
   };
 
   return (
@@ -626,7 +642,7 @@ function Peek({ file, className, children }: {
         <span
           /* 읽기만 하는 덧창이다 — 손이 닿으면 안 된다(밑의 단추를 가린다) */
           className="pointer-events-none fixed z-50 overflow-hidden rounded-box border border-slate-300 bg-white shadow-2xl"
-          style={{ left: box.left, top: box.top, width: PEEK_W, height: PEEK_H }}
+          style={{ left: box.left, top: box.top, width: PEEK_W, height: box.height }}
         >
           {isImage(file) ? (
             /* eslint-disable-next-line @next/next/no-img-element */

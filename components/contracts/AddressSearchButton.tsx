@@ -61,7 +61,14 @@ function loadPostcodeScript(): Promise<void> {
     script.src = POSTCODE_SCRIPT_SRC;
     script.async = true;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error('주소 검색을 불러오지 못했습니다.'));
+    /*
+     * 실패한 스크립트는 걷는다 (감사 L29) — 남겨 두면 다시 누를 때 위 existing 이 그것을 집어 이미 지나간 load·error 를
+     * 기다리다 영영 안 끝나, 단추가 「여는 중…」으로 잠겼다. 걷으면 다음 누름이 새로 받는다.
+     */
+    script.onerror = () => {
+      script.remove();
+      reject(new Error('주소 검색을 불러오지 못했습니다.'));
+    };
     document.head.appendChild(script);
   });
 }

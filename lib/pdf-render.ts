@@ -74,6 +74,8 @@ export function pdfThumb(url: string): Promise<string | null> {
       await page.render({ canvasContext: ctx, viewport }).promise;
       return cv.toDataURL('image/jpeg', 0.75);
     } catch {
+      /* 실패는 들고 있지 않는다 — 잠깐 끊긴 것도 창을 닫을 때까지 「못 구움」으로 굳었다(감사 L23). 다음에 칸이 열리면 다시 굽는다 */
+      cache.delete(url);
       return null;
     } finally {
       /* 문서를 놓아 준다 — 안 놓으면 일꾼이 파일을 물고 있어 메모리가 쌓인다 */

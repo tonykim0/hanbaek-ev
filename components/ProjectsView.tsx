@@ -140,6 +140,8 @@ export default function ProjectsView({
   const [urlHadFilters] = useState(
     () => ATTRS.some((a) => split(sp.get(a.key)).length > 0) || split(sp.get('flag')).length > 0
   );
+  /** 주소로 받은 첫 조건 — 사람이 손대기 전에는 저장하지 않는다(감사 L2, 아래 저장 효과) */
+  const fromUrl = useRef({ attrs, flags });
   /**
    * 저장분을 읽기 전에는 저장하지 않는다.
    *
@@ -194,8 +196,13 @@ export default function ProjectsView({
   // 이 브라우저에도 남긴다 — 주소는 링크용이고, 이쪽은 다음에 다시 왔을 때를 위한 것이다
   useEffect(() => {
     if (!restored.current) return;
+    /*
+     * ★링크로 받은 조건은 저장하지 않는다★ (감사 L2) — 남이 보낸 링크를 한 번 열었다고 내가 걸어 둔 조건이 그 링크의
+     * 것으로 덮였다. 사람이 무엇이든 바꾸면(값이 새 객체가 된다) 그때부터 저장한다.
+     */
+    if (urlHadFilters && attrs === fromUrl.current.attrs && flags === fromUrl.current.flags) return;
     writeSaved(band, { attrs, flags });
-  }, [band, attrs, flags]);
+  }, [band, attrs, flags, urlHadFilters]);
 
   /*
    * 서버가 따라잡으면 임시 위치를 버린다.
@@ -241,10 +248,18 @@ export default function ProjectsView({
   /** 연도로 좁힌 것이 이 화면의 「전체」다 — 필터는 이 안에서 다시 거른다 */
   const scoped = useMemo(() => inBusinessYear(withMoves, year), [withMoves, year]);
 
-  /** 축별로 고를 수 있는 값 — 이 사람 화면에, 고른 해에 있는 값만 나온다 */
+  /**
+   * 축별로 고를 수 있는 값 — 이 사람 화면에, 고른 해에 있는 값만 나온다.
+   * ★걸려 있는 값은 화면에 없어도 남긴다★ (감사 M8) — 저장분·링크로 걸린 값(「26년 8월」 접수분이 다 시공으로 넘어간
+   * 뒤)이 목록에서 빠지면 체크칸이 안 그려져 풀 수 없고, 목록이 0건인 까닭도 안 보였다. 뒤에 붙여 그 자리에서 푼다.
+   */
   const options = useMemo(
-    () => Object.fromEntries(ATTRS.map((a) => [a.key, optionsOf(scoped, a.key)])) as Record<AttrKey, string[]>,
-    [scoped]
+    () => Object.fromEntries(ATTRS.map((a) => {
+      const have = optionsOf(scoped, a.key);
+      const stale = (attrs[a.key] ?? []).filter((v) => !have.includes(v));
+      return [a.key, [...have, ...stale]];
+    })) as Record<AttrKey, string[]>,
+    [scoped, attrs]
   );
 
   const filtered = useMemo(() => {

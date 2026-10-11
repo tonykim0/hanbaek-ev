@@ -15,6 +15,7 @@
  * A4 PDF 로 받는다. 여러 장이면 한 묶음으로 나온다.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { downloadBlob } from '@/lib/download';
 import { PDFDocument } from 'pdf-lib';
 import {
   estimateQuad, flatten, orderQuad, outputSize, warpToRect, type Bitmap, type Pt,
@@ -185,30 +186,41 @@ export default function PhotoScanner() {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [over, setOver] = useState(false);
+  /** 지금 모양 그대로 내려받았는가 — 받은 뒤 장·모서리·색을 바꾸면 다시 false(감사 L25) */
+  const [saved, setSaved] = useState(false);
   const dragging = useFileDragging();
 
-  /* 만들다 만 것을 두고 나가면 다시 찍어야 한다 — 파일이 우리 쪽에 없다 */
+  /* 만들다 만 것을 두고 나가면 다시 찍어야 한다 — 파일이 우리 쪽에 없다. 받았으면 묻지 않는다(받은 뒤에도 「아직」이라 했다) */
   useLeaveGuard(
-    shots.length > 0,
+    shots.length > 0 && !saved,
     '아직 스캔본을 내려받지 않았습니다. 이 페이지를 벗어나면 사라집니다 — 나가시겠습니까?'
   );
+  useEffect(() => { setSaved(false); }, [shots, mono]);
 
   const shot = shots[at] ?? null;
 
   /* ★FileList 가 아니라 File[] 을 받는다★ — 이유는 아래 파일 입력에 적었다 */
   const take = useCallback(async (files: File[]) => {
     const isPdf = (f: File) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
-    const picked = files.filter((f) => f.type.startsWith('image/') || isPdf(f));
+    /* HEIC 는 윈도우에서 type 이 비어 오는 일이 많다 — 확장자로도 받는다 */
+    const isHeic = (f: File) => /hei[cf]/i.test(f.type) || /\.hei[cf]$/i.test(f.name);
+    const picked = files.filter((f) => f.type.startsWith('image/') || isHeic(f) || isPdf(f));
     if (picked.length === 0) {
-      setError('사진(JPG·PNG·HEIC)이나 PDF 를 넣어주세요.');
+      setError('사진(JPG·PNG)이나 PDF 를 넣어주세요.');
       return;
     }
     setError(null);
     setBusy(`${picked.length}개 읽는 중…`);
-    try {
-      const read: Shot[] = [];
-      let dropped = 0;
-      for (const f of picked) {
+    /*
+     * ★한 장이 안 읽혀도 나머지는 받는다★ (감사 M28) — 한 묶음 try 라 한 파일이 실패하면 이미 읽은 장까지 다 버렸다.
+     * 못 읽은 것은 이름을 모아 말한다. HEIC 는 크롬·엣지가 못 연다 — 실사보고서 사진 칸(PhotoSlots)과 같은 말로 길을 준다.
+     */
+    const read: Shot[] = [];
+    const failed: string[] = [];
+    const heic: string[] = [];
+    let dropped = 0;
+    for (const f of picked) {
+      try {
         if (isPdf(f)) {
           const r = await readPdf(f);
           read.push(...r.shots);
@@ -216,19 +228,24 @@ export default function PhotoScanner() {
         } else {
           read.push(await readShot(f));
         }
+      } catch {
+        (isHeic(f) ? heic : failed).push(f.name);
       }
-      if (read.length === 0) throw new Error('읽을 수 있는 장이 없습니다.');
+    }
+    const why = [
+      heic.length ? `${heic.join(', ')} — 이 브라우저는 HEIC 사진을 못 엽니다. JPG 로 바꿔 넣어주세요(아이폰 설정 › 카메라 › 포맷 › 호환성 우선).` : '',
+      failed.length ? `${failed.join(', ')} 을(를) 읽지 못했습니다.` : '',
       /* ★자른 것은 말한다★ — 조용히 20장만 가져오면 나머지가 사라진 것을 사람이 모른다 */
-      if (dropped > 0) setError(`장이 많아 앞 20장만 가져왔습니다 — ${dropped}장은 빠졌습니다.`);
+      dropped > 0 ? `장이 많아 앞 20장만 가져왔습니다 — ${dropped}장은 빠졌습니다.` : '',
+    ].filter(Boolean).join(' ');
+    if (why) setError(why);
+    if (read.length > 0) {
       setShots((prev) => {
         setAt(prev.length);
         return [...prev, ...read];
       });
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(null);
     }
+    setBusy(null);
   }, []);
 
   const make = async () => {
@@ -261,12 +278,9 @@ export default function PhotoScanner() {
       }
       const bytes = await pdf.save();
       const blob = new Blob([bytes as unknown as BlobPart], { type: 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `스캔본_${shots.length}장.pdf`;
-      a.click();
-      URL.revokeObjectURL(url);
+      /* 공용 내려받기 — 곧바로 주소를 거두면 브라우저에 따라 조용히 안 받아졌다(감사 M27, 1초 뒤에 거둔다) */
+      downloadBlob(blob, `스캔본_${shots.length}장.pdf`);
+      setSaved(true);
     } catch (e) {
       setError((e as Error).message);
     } finally {
