@@ -40,6 +40,33 @@ export const COURTS_OF_ROLE: Record<Role, Court[]> = {
 };
 
 /**
+ * ★그 차례가 정말 이 계정의 회사 것인가★ (감사 M2) — 역할만 보면 턴키(영업·시공 둘 다)가 영업사로만 참여한 현장의
+ * 시공 차례를, 시공사로만 참여한 현장의 계약 차례를 제 할 일로 봤다(남의 회사 차례다). 영업사 차례는 그 현장의 영업사,
+ * 시공사 차례는 그 현장의 시공사여야 한다 — 소속 비교는 canAccessProject(lib/roles)와 같은 맨 같음이다.
+ * 한백의 차례는 소속을 안 본다(한백은 소속이 없다).
+ */
+export function turnIsMine(
+  court: Court, role: Role, org: string | null, p: { salesOrg: string | null; gcOrg: string | null }
+): boolean {
+  if (!COURTS_OF_ROLE[role].includes(court)) return false;
+  if (court === '영업사') return org !== null && org === p.salesOrg;
+  if (court === '시공사') return org !== null && org === p.gcOrg;
+  return true;
+}
+
+/**
+ * 할 일로 세우지 않는 칸 (감사 L1) — 조립(lib/todos)이 거르고 할 일 화면(TodoBoard)도 칸을 안 그린다. 둘이 다른 목록을
+ * 보면 어떤 사람에게도 영영 비는 칸이 선다(준공완료가 그랬다).
+ *   준공완료 — 끝난 현장. 남은 일(준공마감·기성 수금)은 기성 할 일이 따로 세운다
+ *   운영사 계약서 제출 — 운영사 회신을 기다리는 칸, 기다리는 것은 할 일이 아니다(한백 지시 2026-08-29)
+ *   계약중단 — 누구 차례도 아니다
+ */
+export const NON_TODO_COLUMNS: readonly string[] = ['준공완료', '운영사 계약서 제출', '계약중단'];
+
+/** 밀림의 문턱 — 이만큼 정체했거나 날이 지난 일이 「밀린 것만」에 걸린다 */
+export const OVERDUE_DAYS = 7;
+
+/**
  * 할 일이 속한 업무 — 화면에서는 「업무」라고 부른다(한백 확인 2026-08-24).
  * 코드·CLAUDE.md 는 계약·시공을 가르는 이 축을 국면이라 부르지만 그것은 안쪽 어휘다.
  */
@@ -86,6 +113,12 @@ export interface TodoItem {
   urgency: number;
   /** 급함을 사람 말로 — 카드에 그대로 적는다. 없으면 적을 것이 없다는 뜻이다 */
   urgencyLabel: string | null;
+  /**
+   * 밀렸는가 — 「밀린 것만」과 카드의 붉은 글자가 본다(감사 M4). 급함(urgency)은 칸 안 정렬의 자라 그것으로 가르면,
+   * 지급일이 23일 남은 세금계산서 발행(urgency = 30 − 남은 날)까지 「지급일 지남」으로 걸렸다. 조립이 갈래마다 정한다:
+   * 현장은 정체 7일, 확정 누락은 늘(이미 지났다), 발행은 아니다(가확정은 지급일 전에만 선다).
+   */
+  overdue: boolean;
 }
 
 /** 그 현장에서 지금 할 일 — 보드 칸 판정을 그대로 쓴다(부르는 쪽이 한 번 계산해 넘긴다) */

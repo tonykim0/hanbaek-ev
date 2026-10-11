@@ -16,7 +16,7 @@ import { bandOfColumn, boardColumnOf, courtOfColumn } from '@/lib/board';
 import { batchesOf, batchKey, batchStateOf } from '@/lib/payout-board';
 import { actorOf, viewerOf } from '@/lib/auth/session';
 import { isHanbaek } from '@/lib/roles';
-import { COURTS_OF_ROLE, whatOf } from '@/lib/todo-types';
+import { NON_TODO_COLUMNS, OVERDUE_DAYS, turnIsMine, whatOf } from '@/lib/todo-types';
 import { won } from '@/lib/format';
 import { today } from '@/lib/date';
 import type { SessionPayload } from '@/lib/auth/types';
@@ -29,7 +29,6 @@ export { TODO_GROUPS, type TodoGroup, type TodoItem } from '@/lib/todo-types';
 
 
 export async function todosOf(session: SessionPayload): Promise<TodoItem[]> {
-  const mine = COURTS_OF_ROLE[session.role];
   /*
    * 발행은 협력사의 일, 확정 누락은 한백의 일이다.
    * 화면을 옮길 때마다 불리므로(TopBar) 두 읽기를 한꺼번에 시작한다 —
@@ -46,9 +45,11 @@ export async function todosOf(session: SessionPayload): Promise<TodoItem[]> {
    * 지급 내역을 따로 불러 같은 현장을 두 번 읽었다. 여기에 기성까지 붙이면 세 번이 되고,
    * 이 조립은 화면을 옮길 때마다 돈다.
    */
-  const [{ projects, history, settlements }, finals] = await Promise.all([
+  const [{ projects, history, settlements }, finals, taxInvoices] = await Promise.all([
     getRepository().listTodoSources(viewerOf(session)),
     wantsBatches ? getRepository().listBatchFinals(actorOf(session)) : [],
+    /* 계산서를 올린 배치를 빼려면 계산서를 읽어야 한다(감사 M1 — 안 읽어 늘 「발행」이 남았다) */
+    wantsInvoices ? getRepository().listTaxInvoices(actorOf(session)) : [],
   ]);
 
   const items: TodoItem[] = projects
@@ -64,7 +65,8 @@ export async function todosOf(session: SessionPayload): Promise<TodoItem[]> {
      * 선언으로 한백이 된 3건). 칸은 이미 「지금 무엇이 막고 있나」를 알고 있으므로
      * 그 답에서 차례를 유도한다(lib/board courtOfColumn).
      */
-    .filter(({ column }) => mine.includes(courtOfColumn(column)))
+    /* 차례의 역할만이 아니라 그 현장에서 그 자리에 선 회사인지까지 본다(감사 M2, lib/todo-types turnIsMine) */
+    .filter(({ p, column }) => turnIsMine(courtOfColumn(column), session.role, session.org, p))
     /*
      * ★준공한 현장은 여기서 뺀다★ (2026-08-29 흐름 워크스루).
      *
@@ -72,7 +74,7 @@ export async function todosOf(session: SessionPayload): Promise<TodoItem[]> {
      * 목록에 남았다. 그 자리에 실제로 남은 일(준공마감 지정 · 기성 수금)은 기성 할 일이
      * 금액까지 적어 따로 세우고, 그것들은 끝나면 사라진다. 두 벌로 세울 이유가 없다.
      */
-    .filter(({ column }) => column !== '준공완료')
+    .filter(({ column }) => !NON_TODO_COLUMNS.includes(column))
     .map(({ p, column }) => {
       return {
         id: p.id,
@@ -86,6 +88,7 @@ export async function todosOf(session: SessionPayload): Promise<TodoItem[]> {
         /* 정체일이 곧 급함이다 — 하루 = 1. 정산의 날짜 급함과 같은 자에 올린다 */
         urgency: p.stalledDays,
         urgencyLabel: p.stalledDays > 0 ? `${p.stalledDays}일 정체` : null,
+        overdue: p.stalledDays >= OVERDUE_DAYS,
       };
     });
 
@@ -94,7 +97,7 @@ export async function todosOf(session: SessionPayload): Promise<TodoItem[]> {
    *   협력사   가확정 → 「세금계산서 발행」 (1~2일 회전을 지키는 신호, 한백 확인 2026-08-23)
    *   관리자   확정 누락 → 확정은 지급의 전제인데 건너뛴 채 지급일이 지난 것
    */
-  const batches = batchesOf(history, finals);
+  const batches = batchesOf(history, finals, taxInvoices);
   /*
    * ★계산서를 이미 올린 배치는 빠진다★ (2026-08-30). 협력사가 콘솔에서 직접 올리게
    * 되면서, 올린 뒤에도 「세금계산서 발행」이 남으면 처리해도 줄지 않는 할 일이 된다.
@@ -116,6 +119,8 @@ export async function todosOf(session: SessionPayload): Promise<TodoItem[]> {
        */
       urgency: Math.max(0, 30 - daysUntil(b.paidAt)),
       urgencyLabel: labelUntil(b.paidAt),
+      // 가확정은 지급일 전(오늘 포함)에만 선다 — 아직 지난 일이 아니다
+      overdue: false,
     }));
 
   /* 오래 놓친 것이 위로 — 지급일이 이른 순 */
@@ -136,6 +141,7 @@ export async function todosOf(session: SessionPayload): Promise<TodoItem[]> {
        */
       urgency: 30 + Math.max(0, -daysUntil(b.paidAt)),
       urgencyLabel: labelUntil(b.paidAt),
+      overdue: true,
     }));
 
   /*

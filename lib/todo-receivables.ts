@@ -62,6 +62,7 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
         urgency: waited,
         urgencyLabel: days.length === 0 ? null
           : waited > 0 ? `받을 수 있게 된 지 ${waited}일` : '오늘부터 받을 수 있음',
+        overdue: waited >= 7,
       });
     }
 
@@ -93,6 +94,7 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
          */
         urgency: 30,
         urgencyLabel: '준공 · 마지막 기성 대기',
+        overdue: true,
       });
     }
 
@@ -116,6 +118,8 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
          */
         urgency: 7,
         urgencyLabel: null,
+        // 밀림 문턱에 놓은 자리다 — 「밀린 것만」에 걸린다(위 주석)
+        overdue: true,
       });
     }
 
@@ -149,6 +153,8 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
          */
         urgency: 7,
         urgencyLabel: null,
+        // 밀림 문턱에 놓은 자리다 — 「밀린 것만」에 걸린다(위 주석)
+        overdue: true,
       });
     }
 
@@ -167,6 +173,8 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
         stalledDays: 0,
         urgency: 7,
         urgencyLabel: null,
+        // 밀림 문턱에 놓은 자리다 — 「밀린 것만」에 걸린다(위 주석)
+        overdue: true,
       });
     }
   }

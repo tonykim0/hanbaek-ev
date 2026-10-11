@@ -276,9 +276,16 @@ export const pricingStore: Pick<
         }
       }
 
+      /*
+       * 케이스 이름에 박힌 시기 표기도 같이 옮긴다 (감사 L15) — 이름은 「… (2026-03-01)」 꼴로 적용 시작을 품는데(CaseForm),
+       * 이 빠른 수정은 날짜만 바꿔 이름이 옛 시기를 말했다. 이름에 그 날짜가 없으면(손으로 지은 이름) 건드리지 않는다.
+       */
+      const caseName = next.startDate !== me.startDate && me.caseName.includes(`(${me.startDate})`)
+        ? me.caseName.replace(`(${me.startDate})`, `(${next.startDate})`)
+        : me.caseName;
       await tx
         .update(pricingRules)
-        .set({ startDate: next.startDate, note: next.note })
+        .set({ startDate: next.startDate, note: next.note, caseName })
         .where(eq(pricingRules.id, id));
       if (next.startDate !== me.startDate) {
         await writeAudit(tx, {

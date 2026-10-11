@@ -43,7 +43,7 @@ import { ProgressLog } from './ProgressLog';
  */
 const NOTE_SCOPE_OF_TAB = { intake: '계약', construction: '시공', receivable: '기성' } as const;
 import { ReceivableTab, SettlementTab } from './SettlementTab';
-import { daysSince } from '@/lib/date';
+import { elapsedLabel } from '@/lib/date';
 
 /** settlement = 협력사 지급(주소가 이미 퍼져 있어 키는 안 바꾼다) · receivable = 기성(한백만) */
 export type TabKey = 'intake' | 'construction' | 'settlement' | 'receivable';
@@ -984,7 +984,7 @@ function DateFact({
    * 확정할 때만 쓴다(화면 규칙 12).
    * 오늘이면 「오늘」이다 — 「0일 경과」는 셀 것이 없는데 센 말이라 어색하다.
    */
-  const since = elapsed && value ? (daysSince(value) === 0 ? '오늘' : `${daysSince(value)}일 경과`) : null;
+  const since = elapsed && value ? elapsedLabel(value) : null;
   const head = (
     <dt className="flex flex-wrap items-baseline gap-1.5 text-tiny font-bold tracking-[0.04em] text-slate-400">
       {label}

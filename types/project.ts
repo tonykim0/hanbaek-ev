@@ -1223,6 +1223,8 @@ export interface ProjectSummary {
     cpoApprovalDate: string | null;
     notifyDate: string | null;
     notifyDone: boolean;
+    /** 행위신고 대상 아님(notifySkippedAt) — 표가 「해당없음」으로 그린다(감사 L5, 미지정 「—」과 다른 말) */
+    notifySkipped: boolean;
     chargerOrderDate: string | null;
     chargerRecvDate: string | null;
     chargerDone: boolean;

@@ -113,9 +113,15 @@ export function constructionLabelOf(status: ProcessStatus): string {
  * 시공 탭을 열면 첫 구간이 「오지 않은 구간」이라 무엇을 기다리는지 화면에 없었다
  * (2026-08-29 흐름 워크스루).
  */
-export function showsOnBoard(p: { stage: Stage; status: ProcessStatus }, band: '계약' | '시공'): boolean {
+export function showsOnBoard(
+  p: { stage: Stage; status: ProcessStatus; holdState?: string | null }, band: '계약' | '시공'
+): boolean {
   if (phaseOfProject(p) === band) return true;
-  return p.status === HANDOFF_STATUS && band === '시공' && p.stage !== 'intake';
+  /*
+   * ★멈춘 현장은 맞물리는 칸이어도 한쪽에만★ (감사 L4) — 계약중단은 칸 이름이 곧 상태라 계약 보드의 계약중단 칸에
+   * 서는데, 운영사 계약서 제출 상태면 시공 보드에도 실려 같은 현장이 두 보드의 계약중단 칸에 두 번 세어졌다.
+   */
+  return p.status === HANDOFF_STATUS && band === '시공' && p.stage !== 'intake' && !p.holdState;
 }
 
 export const BOARD_COLUMNS: BoardColumnDef[] = [

@@ -42,6 +42,11 @@ export const noticeStore: Pick<
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
+    /*
+     * users 에 줄이 없는 계정(파일 계정 — 개발 시드·AUTH_USERS)은 읽음을 찍을 자리가 없다 — 세면 영원히 전체 공지 수가
+     * 배지로 남는다(감사 L22, 읽음 찍기가 0줄을 고친다). 셀 수 없는 것은 0 이다. 프로덕션 계정은 전부 users 에 있다.
+     */
+    if (!me) return 0;
     // 한 번도 안 열었으면(null) 전부가 새것이다 — 「확인 전에는 표시」가 그 말이다
     const [row] = await db
       .select({ n: sql<number>`count(*)::int` })

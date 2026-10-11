@@ -52,3 +52,17 @@ describe('현장 삭제의 문', () => {
     });
   });
 });
+
+describe('지급처 이름 고치기의 문 (감사 M3)', () => {
+  it('★돈이 나간 쪽의 지급처는 못 바꾼다★ — 확정한 지난 배치가 새 이름의 「확정 누락」으로 되살아난다', async () => {
+    await withPayableProject(async ({ id, org }) => {
+      await repo.runPayoutBatch([{ projectId: id, kind: '영업비' }], '2026-10-10', admin);
+      await expect(repo.setOrgs(id, { salesOrg: `${org}-새이름` }, admin)).rejects.toThrow(/영업비 지급 1건[\s\S]*영업사를 바꿀 수 없습니다/);
+      expect((await repo.getProject(id, { role: 'admin', org: null }))!.project.salesOrg).toBe(org);
+      // 돈이 안 나간 쪽(시공비)의 지급처는 그대로 고친다
+      await repo.setOrgs(id, { gcOrg: '대상전력' }, admin);
+      expect((await repo.getProject(id, { role: 'admin', org: null }))!.project.gcOrg).toBe('대상전력');
+    });
+  });
+});
+

@@ -3,7 +3,7 @@
  * 러너가 도는지 확인하는 첫 파일이기도 하다.
  */
 import { describe, expect, it } from 'vitest';
-import { dayOf, daysSince, monthShift, stampOf, thisMonth, today } from '@/lib/date';
+import { dayOf, daysSince, elapsedLabel, monthShift, stampOf, thisMonth, today } from '@/lib/date';
 
 /** 한국 시각 t 를 UTC Date 로 — 테스트가 시간대에 안 흔들리게 직접 만든다 */
 const kst = (iso: string) => new Date(Date.parse(`${iso}+09:00`));
@@ -55,3 +55,15 @@ describe('today', () => {
     expect(today(at)).toBe(dayOf(at));
   });
 });
+
+describe('elapsedLabel — 경과 배지 (감사 L26)', () => {
+  const now = kst('2026-10-11T09:00:00');
+  it('지난 날은 N일 경과, 오늘은 오늘', () => {
+    expect(elapsedLabel('2026-10-01', now)).toBe('10일 경과');
+    expect(elapsedLabel('2026-10-11', now)).toBe('오늘');
+  });
+  it('★앞날은 없다★ — 미래의 승인일이 붉은 「오늘」로 섰다', () => {
+    expect(elapsedLabel('2026-10-20', now)).toBeNull();
+  });
+});
+

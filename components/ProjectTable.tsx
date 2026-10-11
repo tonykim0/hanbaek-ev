@@ -19,7 +19,7 @@ import Link from 'next/link';
 import type { ProcessStatus, ProjectSummary } from '@/types/project';
 import { PROCESS_STATUSES, subsidized } from '@/types/project';
 import {
-  BAND_TONE, bandOfColumn, BOARD_COLUMNS, boardColumnOf, type BoardColumn,
+  BAND_TONE, bandOfColumn, BOARD_COLUMNS, boardColumnOf, constructionLabelOf, type BoardColumn,
 } from '@/lib/board';
 import type { AttrFilters, AttrKey } from '@/lib/project-filter';
 import { Badge, Blank, Tag } from '@/components/ui';
@@ -286,7 +286,7 @@ export default function ProjectTable({
                   </td>
                   {show('stage') && (
                     <td className="px-3 py-2.5">
-                      <StageCell p={p} col={col} canMove={canMove} onMove={onMove} busy={busy} />
+                      <StageCell p={p} col={col} canMove={canMove} onMove={onMove} busy={busy} construction={tab === 'construction'} />
                     </td>
                   )}
                   {show('qty') && (
@@ -332,9 +332,12 @@ export default function ProjectTable({
                   {show('sales') && <Cell value={p.salesOrg} />}
                   {show('gc') && <Cell value={p.gcOrg} />}
                   {show('envApproval') && <MilestoneCell date={p.milestones.envApprovalDate} />}
-                  {show('notify') && (
+                  {show('notify') && (p.milestones.notifySkipped ? (
+                    /* 대상 아님은 규칙상 없는 것이다 — 「—」(아직)와 갈라 적는다(화면 규칙 10, 감사 L5) */
+                    <td className="whitespace-nowrap px-3 py-2.5"><span className="text-slate-300">해당없음</span></td>
+                  ) : (
                     <MilestoneCell date={p.milestones.notifyDate} done={p.milestones.notifyDone} />
-                  )}
+                  ))}
                   {show('chargerOrder') && <MilestoneCell date={p.milestones.chargerOrderDate} />}
                   {show('chargerRecv') && (
                     <MilestoneCell date={p.milestones.chargerRecvDate} done={p.milestones.chargerDone} />
@@ -532,19 +535,25 @@ function QueueCell({ p, canEdit }: { p: ProjectSummary; canEdit: boolean }) {
  * 공정 단계는 조건이 찬 것만 목록에 올린다. 못 고르는 값을 올려놓고 거절하지 않는다.
  */
 function StageCell({
-  p, col, canMove, onMove, busy,
+  p, col, canMove, onMove, busy, construction = false,
 }: {
   p: ProjectSummary;
   col: BoardColumn;
   canMove: boolean;
   onMove: (p: ProjectSummary, status: ProcessStatus) => void;
   busy: boolean;
+  /**
+   * 시공관리 표인가 — 그러면 맞물리는 칸을 보드와 같은 이름(「환경부 승인 대기」)으로 부른다(감사 L3).
+   * 같은 현장을 보드와 표가 다른 이름으로 부르면 둘이 다른 칸처럼 읽힌다(lib/board constructionLabelOf).
+   */
+  construction?: boolean;
 }) {
+  const name = (s: string) => (construction ? constructionLabelOf(s as ProcessStatus) : s);
   const fixed = !canMove || p.stage === 'intake' || p.holdState !== null;
   if (fixed) {
     // 색으로 계약·시공·멈춤을 가른다 — 138줄을 훑을 때 글자보다 색이 먼저 읽힌다
     return (
-      <Badge tone={BAND_TONE[bandOfColumn(col)]}>{col}</Badge>
+      <Badge tone={BAND_TONE[bandOfColumn(col)]}>{name(col)}</Badge>
     );
   }
   const options = PROCESS_STATUSES.filter((s) => s === p.status || p.entryOk.includes(s));
@@ -562,7 +571,7 @@ function StageCell({
       >
         {options.map((s) => (
           <option key={s} value={s}>
-            {s}
+            {name(s)}
           </option>
         ))}
       </select>

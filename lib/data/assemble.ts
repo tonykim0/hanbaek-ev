@@ -348,6 +348,7 @@ export function summaryOf(r: ProjectRecord, rules: RuleMap, settles: SettleMap):
       cpoApprovalDate: d.process.cpoApprovalDate,
       notifyDate: d.process.notifyDate,
       notifyDone: d.process.notifyDoneAt !== null,
+      notifySkipped: d.process.notifySkippedAt !== null,
       chargerOrderDate: d.process.chargerOrderDate,
       chargerRecvDate: d.process.chargerRecvDate,
       chargerDone: d.process.chargerDoneAt !== null,

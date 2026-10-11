@@ -5,7 +5,9 @@
  * 통째로 달라지고, 그 사실은 화면을 열어 보기 전에는 드러나지 않는다.
  */
 import { describe, expect, it } from 'vitest';
-import { COURTS_OF_ROLE } from '@/lib/todo-types';
+import { COURTS_OF_ROLE, NON_TODO_COLUMNS, turnIsMine } from '@/lib/todo-types';
+import { BOARD_COLUMNS, courtOfColumn } from '@/lib/board';
+import type { BoardColumn } from '@/lib/board';
 
 describe('할 일의 차례 — 계정 구분마다', () => {
   it('한백은 관리자와 열람 전용이 같이 본다 (한백 지시 2026-08-31)', () => {
@@ -31,3 +33,35 @@ describe('할 일의 차례 — 계정 구분마다', () => {
     }
   });
 });
+
+describe('★그 차례가 그 현장에서 이 회사 것인가★ (감사 M2)', () => {
+  const p = { salesOrg: '에코일렉', gcOrg: '대상전력' };
+  it('턴키업체라도 영업사로만 선 현장의 시공 차례는 제 것이 아니다', () => {
+    expect(turnIsMine('영업사', 'salesCons', '에코일렉', p)).toBe(true);
+    expect(turnIsMine('시공사', 'salesCons', '에코일렉', p)).toBe(false);
+    expect(turnIsMine('시공사', 'salesCons', '대상전력', p)).toBe(true);
+    expect(turnIsMine('영업사', 'salesCons', '대상전력', p)).toBe(false);
+  });
+  it('양쪽에 다 선 턴키는 둘 다 제 것', () => {
+    const both = { salesOrg: '에코일렉', gcOrg: '에코일렉' };
+    expect(turnIsMine('영업사', 'salesCons', '에코일렉', both)).toBe(true);
+    expect(turnIsMine('시공사', 'salesCons', '에코일렉', both)).toBe(true);
+  });
+  it('역할이 맞아도 소속이 없거나 다르면 아니다 · 한백 차례는 소속을 안 본다', () => {
+    expect(turnIsMine('영업사', 'sales', null, p)).toBe(false);
+    expect(turnIsMine('영업사', 'sales', '남의회사', p)).toBe(false);
+    expect(turnIsMine('한백', 'admin', null, p)).toBe(true);
+    expect(turnIsMine('한백', 'viewer', null, p)).toBe(true);
+    expect(turnIsMine('한백', 'sales', '에코일렉', p)).toBe(false);
+  });
+});
+
+describe('할 일 칸 — 어떤 계정에게도 영영 비는 칸이 없다 (감사 L1)', () => {
+  it('할 일로 세우는 칸은 누군가의 차례다', () => {
+    const held = new Set(Object.values(COURTS_OF_ROLE).flat());
+    for (const c of BOARD_COLUMNS.filter((x) => !NON_TODO_COLUMNS.includes(x.key))) {
+      expect(held.has(courtOfColumn(c.key as BoardColumn)), c.key).toBe(true);
+    }
+  });
+});
+

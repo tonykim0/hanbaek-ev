@@ -5,7 +5,7 @@
  * 따로 찍혀 칸과 어긋났고, 그 어긋남이 할 일 개수로 드러났다(29건 중 10건).
  */
 import { describe, expect, it } from 'vitest';
-import { boardColumnOf, courtOfColumn } from '@/lib/board';
+import { boardColumnOf, courtOfColumn, showsOnBoard } from '@/lib/board';
 describe('courtOfColumn — 차례는 칸이 정한다 (2026-09-04)', () => {
   it('★한백의 계약 할 일은 둘뿐이다★ — 검토와 완료', () => {
     expect(courtOfColumn('계약검토')).toBe('한백');
@@ -72,3 +72,15 @@ describe('boardColumnOf — 계약 칸은 협력사의 선언이 정한다', () 
     expect(row({ holdState: '계약중단', submitted: true })).toBe('계약중단');
   });
 });
+
+describe('맞물리는 칸 — 두 보드에 서는가 (감사 L4)', () => {
+  it('운영사 계약서 제출은 계약·시공 양쪽에 선다', () => {
+    const p = { stage: 'construction' as const, status: '운영사 계약서 제출' as const };
+    expect(showsOnBoard(p, '시공')).toBe(true);
+  });
+  it('★멈춘 현장은 시공 보드에 싣지 않는다★ — 계약중단 칸에 두 번 세어졌다', () => {
+    const p = { stage: 'construction' as const, status: '운영사 계약서 제출' as const, holdState: '계약중단' };
+    expect(showsOnBoard(p, '시공')).toBe(false);
+  });
+});
+

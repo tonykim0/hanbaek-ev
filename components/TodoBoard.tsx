@@ -38,13 +38,13 @@
  */
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { TODO_GROUPS, type TodoItem } from '@/lib/todo-types';
+import { NON_TODO_COLUMNS, OVERDUE_DAYS, TODO_GROUPS, type TodoItem } from '@/lib/todo-types';
 import { BOARD_COLUMNS } from '@/lib/board';
 import { Blank, FIELD } from '@/components/ui';
 
 const ALL = '전체';
 /** 밀림의 문턱 — 7일 정체(카드가 빨개지는 자리)와 같은 잣대다 */
-const OVERDUE_AT = 7;
+const OVERDUE_AT = OVERDUE_DAYS;
 
 
 export default function TodoBoard({ items }: { items: TodoItem[] }) {
@@ -54,7 +54,7 @@ export default function TodoBoard({ items }: { items: TodoItem[] }) {
   const shown = useMemo(
     () => items.filter((t) =>
       (group === ALL || t.group === group)
-      && (!overdueOnly || t.urgency >= OVERDUE_AT)),
+      && (!overdueOnly || t.overdue)),
     [items, group, overdueOnly]
   );
   const filtered = shown.length !== items.length;
@@ -198,7 +198,8 @@ function kindColumns(group: string, list: TodoItem[]): Array<[string, TodoItem[]
   }
 
   /* 이 업무가 흐름을 가진 국면인가 — 보드의 띠 이름과 같은 말이면 그렇다 */
-  const flow = BOARD_COLUMNS.filter((c) => c.band === group && c.key !== '계약중단');
+  /* 할 일로 안 세우는 칸은 그리지 않는다 — 조립과 같은 목록이다(lib/todo-types NON_TODO_COLUMNS, 감사 L1) */
+  const flow = BOARD_COLUMNS.filter((c) => c.band === group && !NON_TODO_COLUMNS.includes(c.key));
   if (flow.length > 0) {
     const cols: Array<[string, TodoItem[]]> = flow.map((c) => [c.key, by.get(c.key) ?? []]);
     /* 흐름에 없는 종류가 섞여 있으면(이름이 바뀌었거나 새로 생겼거나) 뒤에 붙인다 — 잃지 않는다 */
@@ -230,7 +231,7 @@ function TodoCard({ t }: { t: TodoItem }) {
         {t.urgencyLabel && (
           <span
             className={`shrink-0 text-tiny font-bold tabular-nums ${
-              t.urgency >= OVERDUE_AT ? 'text-red-600' : 'text-slate-400'
+              t.overdue ? 'text-red-600' : 'text-slate-400'
             }`}
           >
             {t.urgencyLabel}

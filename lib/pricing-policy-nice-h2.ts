@@ -380,7 +380,10 @@ export async function applyNiceH2(
         && dup.installTerms === rule.installTerms
         && dup.otherSupport === rule.otherSupport
         && dup.coexistTerms === rule.coexistTerms
-        && dup.miscTerms === rule.miscTerms;
+        && dup.miscTerms === rule.miscTerms
+        /* 감리·안전관리비 부담 — 빠져 있어 그 두 칸만 고친 정책이 「지나감」으로 조용히 넘어갔다(감사 L17) */
+        && dup.supervisionBearer === rule.supervisionBearer
+        && dup.safetyFeeBearer === rule.safetyFeeBearer;
       const same = sameMoney
         && samePolicy
         && stepsKeyById.get(dup.defaultSettlementRuleId) === settlementStepsKeyOf(rule.settlementSteps)

@@ -102,6 +102,7 @@ export function SettlementTab({
         cpo={detail.project.cpo}
         vis={vis}
         passThrough={isPassThroughSite(detail.project)}
+        canPick={canReview && !!ruleOptions}
       />
 
       <PaymentSection
@@ -140,16 +141,24 @@ export function ReceivableTab({
   const steps = admin?.steps ?? [];
   /* 수금률은 ★차수만★ 센다 (한백 2026-09-06) — 수수료는 차수 밖의 마지막 한 건이다 */
   const rate = collectionRate(steps);
+  const unpriced = detail.lines.filter((l) => !l.rule).length;
 
   return (
     <section>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
-        <RuleFact
-          projectId={detail.project.id}
-          rule={admin?.settlementRule ?? null}
-          canEdit={canReview}
-          choices={settlementRuleChoices}
-        />
+        <span className="flex flex-wrap items-center gap-2">
+          <RuleFact
+            projectId={detail.project.id}
+            rule={admin?.settlementRule ?? null}
+            canEdit={canReview}
+            choices={settlementRuleChoices}
+          />
+          {/*
+            * 단가가 빠진 라인은 기성 계획에서 빠진다(lib/settlement — 지정된 라인만 더한다) — 그 사실을 여기 적는다(감사 L27).
+            * 안 적으면 차수 금액이 이 현장의 전부로 읽힌다. 기성관리 보드와 같은 말이다.
+            */}
+          {unpriced > 0 && <Tag tone="warn">단가 미지정 {unpriced}건</Tag>}
+        </span>
         <div className="flex flex-wrap items-baseline gap-3">
           {rate !== null && (
             <span className="text-tiny font-bold text-slate-500">
@@ -631,12 +640,14 @@ function RuleFact({
  * 감사 기록의 일이고, 이 표는 무엇이 적용 중인지만 말한다.
  */
 function ContractLines(
-  { lines, cpo, vis, passThrough }: {
+  { lines, cpo, vis, passThrough, canPick }: {
     lines: ProjectDetail['lines'];
     cpo: CpoName;
     vis: Visibility;
     /** 받은 만큼 내려주는 현장 — 대당 값이 케이스가 아니라 실제로 내려주는 값이다 */
     passThrough: boolean;
+    /** 위에 「지급조건」(케이스 고르기)이 서는가 — 아니면 그쪽을 가리키지 않는다(감사 L28, 협력사·열람 전용 화면에는 없다) */
+    canPick: boolean;
   }
 ) {
   return (
@@ -674,7 +685,7 @@ function ContractLines(
                   {l.rule ? (
                     l.rule.caseName
                   ) : (
-                    <span className="text-slate-400">미지정 — 위 「지급조건」에서 고릅니다</span>
+                    <span className="text-slate-400">{canPick ? '미지정 — 위 「지급조건」에서 고릅니다' : '미지정'}</span>
                   )}
                 </Td>
                 {/*

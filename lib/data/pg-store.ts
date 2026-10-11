@@ -576,6 +576,26 @@ export const pgRepository: ProjectRepository = {
       };
       if (next.salesOrg === row.salesOrg && next.gcOrg === row.gcOrg) return;
 
+      /*
+       * ★돈이 나간 쪽의 지급처는 못 바꾼다★ (감사 M3). 원장에는 지급처가 없고(정본은 현장의 영업사·시공사) 배치는
+       * 지급처 × 구분 × 지급일로 묶이는데, 최종 확정·세금계산서는 그때의 이름을 열쇠로 들고 있다. 이름을 바꾸면 이미
+       * 확정한 지난 배치가 새 이름의 「확정 누락」으로 되살아나고 붙어 있던 계산서는 옛 이름에 고아로 남았다.
+       * 확정·계산서를 새 이름으로 옮기지 않는 것은 그 열쇠를 다른 현장들도 같이 쓰기 때문이다.
+       * 영업사는 영업비, 시공사는 시공비의 지급처다 — 바꾸려는 쪽의 줄만 본다.
+       */
+      for (const [side, kind, label] of [['salesOrg', '영업비', '영업사'], ['gcOrg', '시공비', '시공사']] as const) {
+        if (next[side] === row[side]) continue;
+        const paid = await tx.select({ at: payoutEntries.at }).from(payoutEntries)
+          .where(and(eq(payoutEntries.projectId, projectId), eq(payoutEntries.kind, kind)));
+        if (paid.length > 0) {
+          const days = [...new Set(paid.map((e) => e.at))].sort().join(' · ');
+          throw new Error(
+            `${kind} 지급 ${paid.length}건이 「${row[side] ?? '지급처 없음'}」 이름으로 거래명세서에 묶여 있어 ${label}를 바꿀 수 없습니다`
+            + ` (지급일 ${days}).`
+          );
+        }
+      }
+
       await tx.update(projects).set(next).where(eq(projects.id, projectId));
 
       /*

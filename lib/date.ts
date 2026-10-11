@@ -63,3 +63,13 @@ export function daysSince(day: string, now: Date = new Date()): number {
   const to = Date.parse(`${today(now)}T00:00:00Z`);
   return Math.max(0, Math.round((to - then) / 86400000));
 }
+
+/**
+ * 그 날부터 지난 날을 사람 말로 — 「오늘」·「N일 경과」. ★앞날이면 null★ (감사 L26) — daysSince 가 앞날을 0 으로 접어서
+ * 미래의 승인일이 붉은 「오늘」로 섰다. 아직 오지 않은 날에는 셀 경과가 없다.
+ */
+export function elapsedLabel(day: string, now: Date = new Date()): string | null {
+  if (day > today(now)) return null;
+  const n = daysSince(day, now);
+  return n === 0 ? '오늘' : `${n}일 경과`;
+}
