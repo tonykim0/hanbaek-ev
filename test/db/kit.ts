@@ -12,6 +12,9 @@ import type { Actor, User, Viewer } from '@/lib/auth/types';
 import { SESSION_COOKIE } from '@/lib/auth/types';
 import { createSessionToken } from '@/lib/auth/session';
 import { getRepository } from '@/lib/data';
+import { getDb } from '@/lib/db/client';
+import { batchFinals, payoutEntries, taxInvoices } from '@/lib/db/schema';
+import { eq, inArray } from 'drizzle-orm';
 import { jar } from './cookie-jar';
 
 /** 개발 시드 계정(lib/auth/users.ts DEV_USERS 와 같다 — 비밀번호는 안 쓴다, 쿠키를 직접 만든다) */
@@ -64,23 +67,47 @@ export async function withProject<T>(fn: (id: string) => Promise<T>, over: Parti
   try {
     return await fn(id);
   } finally {
-    await repo.deleteProject(id, admin).catch(() => undefined);
+    await dropFixture(id).catch(() => undefined);
   }
 }
 
-/** 죽은 실행이 남긴 시험 현장을 지운다 — 표지의 시각이 한 시간 넘은 것만 */
+/**
+ * 시험 현장을 지운다 — ★지급 원장이 달린 것까지★.
+ *
+ * 저장소의 deleteProject 는 원장 줄이 하나라도 있으면 거절한다(돈이 오간 현장 — 2026-09-16 실사고 뒤의 문, 프로덕션에서는
+ * 맞다). 그래서 지급을 걷는 시험(money-kit · delete-guard)의 현장은 끝나도 안 지워져 개발 DB 에 쌓였다 — 2026-10-11 에
+ * 92건이었다(CLAUDE.md 「다음 할 일」 0-1). 시험은 그 줄을 먼저 걷고 지운다 — 개발 DB 에서만(setup 이 프로젝트 ref 를 본다).
+ */
+export async function dropFixture(id: string): Promise<void> {
+  await getDb().delete(payoutEntries).where(eq(payoutEntries.projectId, id));
+  await getRepository().deleteProject(id, actorOf(USERS.admin));
+}
+
+/** 시험 지급처(money-kit 의 「시험영업사-<run>-n」·「시험시공사-<run>」)의 표지 시각 — 아니면 null */
+const TEST_ORG_RE = /^시험(영업사|시공사)-([0-9a-z]+)-\d+/;
+const staleRun = (run: string) => {
+  const at = parseInt(run, 36);
+  return !Number.isNaN(at) && Date.now() - at >= 60 * 60 * 1000;
+};
+
+/**
+ * 죽은 실행이 남긴 시험 현장을 지운다 — 표지의 시각이 한 시간 넘은 것만(지금 도는 다른 실행의 것은 둔다).
+ * 현장에 안 매달린 지급처 단위의 표(최종 확정·세금계산서)도 시험 지급처 것은 같이 걷는다 — 현장을 지워도 안 지워진다.
+ */
 export async function sweepStaleFixtures(): Promise<number> {
   const repo = getRepository();
-  const admin = actorOf(USERS.admin);
   const all = await repo.listProjects(viewerOf(USERS.admin));
   let n = 0;
   for (const p of all) {
     const m = FIXTURE_RE.exec(p.name);
-    if (!m) continue;
-    const at = parseInt(m[1], 36);
-    if (Number.isNaN(at) || Date.now() - at < 60 * 60 * 1000) continue;
-    await repo.deleteProject(p.id, admin).catch(() => undefined);
-    n++;
+    if (!m || !staleRun(m[1])) continue;
+    await dropFixture(p.id).then(() => { n++; }, () => undefined);
+  }
+  const db = getDb();
+  for (const table of [batchFinals, taxInvoices]) {
+    const orgs = [...new Set((await db.select({ org: table.org }).from(table)).map((r) => r.org))]
+      .filter((o) => { const m = TEST_ORG_RE.exec(o); return !!m && staleRun(m[2]); });
+    if (orgs.length > 0) await db.delete(table).where(inArray(table.org, orgs));
   }
   return n;
 }

@@ -11,7 +11,7 @@
 import { evaluateDocs } from '@/lib/doc-rules';
 import { getRepository } from '@/lib/data';
 import type { PayoutKind, PricingRule, TaxInvoice } from '@/types/project';
-import { RUN, USERS, actorOf, draft, viewerOf } from './kit';
+import { RUN, USERS, actorOf, draft, dropFixture, viewerOf } from './kit';
 
 export const admin = actorOf(USERS.admin);
 export const adminView = viewerOf(USERS.admin);
@@ -60,7 +60,8 @@ export async function withPayableProject<T>(
     return await fn({ id, org, lineId, ruleId: rule.id });
   } finally {
     await cleanupOrg(org).catch(() => undefined);
-    await repo.deleteProject(id, admin).catch(() => undefined);
+    // 원장 줄이 달린 현장은 저장소가 안 지운다 — 시험은 줄부터 걷는다(kit dropFixture)
+    await dropFixture(id).catch(() => undefined);
   }
 }
 
