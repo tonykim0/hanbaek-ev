@@ -1,9 +1,10 @@
 /**
- * 알림 — 진행현황 글 · 서류 반려 · 누락 서류 보완요청이 그 현장의 사람들에게 간다 (한백 지시 2026-10-05·06).
+ * 알림 — 진행현황 글 · 서류 반려 · 누락 서류 보완요청 · 환경부 승인이 그 현장의 사람들에게 간다
+ * (한백 지시 2026-10-05·06·12).
  * 누구에게 갈지는 lib/notify.ts 가 정한다(그 현장의 기록을 같이 쓰는 사람 모두, 쓴 사람만 빼고).
  *
- * ★남길 때 받는 사람마다 한 줄을 펼쳐 넣는다★ — 글은 addNote, 반려는 setDocumentStatus, 보완요청은 askMissingDocs 의
- * 트랜잭션 안에서(일과 알림이 같이 남거나 같이 안 남는다). 읽음은 그 줄의 read_at.
+ * ★남길 때 받는 사람마다 한 줄을 펼쳐 넣는다★ — 글은 addNote, 반려는 setDocumentStatus, 보완요청은 askMissingDocs,
+ * 환경부 승인은 updateProcess 의 트랜잭션 안에서(일과 알림이 같이 남거나 같이 안 남는다). 읽음은 그 줄의 read_at.
  * 화면 셋이 읽는다: 사이드바의 안 읽은 수 · 알림 목록(/notifications) · 현장 상세(「새 글」과 그 탭의 읽음).
  *
  * ★반려를 풀면 아직 안 읽은 반려 알림을 거둔다★ — 반려 취소·해제·다시 올리기. 풀린 반려를 알리면 거짓말이다.
@@ -70,6 +71,14 @@ export async function fanOutNote(tx: TxLike, input: {
   });
 }
 
+/** 현장 하나의 받는 사람 — 그 현장의 영업사·시공사를 읽어 recipientsOf 에 넘긴다 */
+async function projectRecipients(tx: TxLike, projectId: string, scope: NoteScope, actorId: string): Promise<string[]> {
+  const [p] = await tx.select({ salesOrg: projects.salesOrg, gcOrg: projects.gcOrg })
+    .from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!p) return [];
+  return recipientsOf(tx, { scope, actorId, salesOrg: p.salesOrg, gcOrg: p.gcOrg });
+}
+
 /**
  * 반려·보완요청을 펼친다 — 그 일의 트랜잭션 안에서. 같은 서류의 안 읽은 반려 알림은 먼저 거둔다(사유를 고쳐
  * 다시 반려하면 알림이 둘 서지 않게 — 새 사유 하나만).
@@ -79,13 +88,24 @@ export async function notifyReview(tx: TxLike, input: {
   docKind: string | null; title: string; body: string;
 }): Promise<number> {
   await retractReview(tx, { projectId: input.projectId, kind: input.kind, docKind: input.docKind });
-  const [p] = await tx.select({ salesOrg: projects.salesOrg, gcOrg: projects.gcOrg })
-    .from(projects).where(eq(projects.id, input.projectId)).limit(1);
-  if (!p) return 0;
-  const to = await recipientsOf(tx, { scope: input.scope, actorId: input.actorId, salesOrg: p.salesOrg, gcOrg: p.gcOrg });
-  return insertFor(tx, to, {
+  return insertFor(tx, await projectRecipients(tx, input.projectId, input.scope, input.actorId), {
     projectId: input.projectId, kind: input.kind, scope: input.scope,
     docKind: input.docKind, title: input.title, body: input.body,
+  });
+}
+
+/**
+ * 환경부 승인을 펼친다 — updateProcess 의 트랜잭션 안에서, 승인일이 빈 칸에서 날짜가 될 때.
+ * ★현장마다 한 번이다★ — 지웠다 다시 넣어도 또 가지 않는다(한백 「처음 넣으면」). 받는 사람은 시공 탭 글과 같다.
+ */
+export async function notifyApproval(tx: TxLike, input: {
+  projectId: string; actorId: string; title: string; body: string;
+}): Promise<number> {
+  const [sent] = await tx.select({ id: notifications.id }).from(notifications)
+    .where(and(eq(notifications.projectId, input.projectId), eq(notifications.kind, 'approval'))).limit(1);
+  if (sent) return 0;
+  return insertFor(tx, await projectRecipients(tx, input.projectId, '시공', input.actorId), {
+    projectId: input.projectId, kind: 'approval', scope: '시공', title: input.title, body: input.body,
   });
 }
 
@@ -117,7 +137,7 @@ export async function retractReview(tx: TxLike, input: {
   await tx.delete(notifications).where(and(...conds));
 }
 
-const KINDS: NotificationKind[] = ['note', 'reject', 'ask', 'notice'];
+const KINDS: NotificationKind[] = ['note', 'reject', 'ask', 'notice', 'approval'];
 
 export const notificationStore: Pick<
   ProjectRepository,
@@ -155,7 +175,7 @@ export const notificationStore: Pick<
         noteId: r.noteId,
         title: r.title,
         scope: kind === 'notice' ? null : isNoteScope(scope) ? scope : '시공',
-        // 반려·보완요청은 한백만 한다 · 공지 메시지는 그 글을 쓴 쪽
+        // 반려·보완요청·환경부 승인은 한백만 한다 · 공지 메시지는 그 글을 쓴 쪽
         author: kind === 'note' ? r.noteAuthor ?? '' : kind === 'notice' ? r.msgAuthor ?? '' : '한백',
         body: (kind === 'note' ? r.noteBody : kind === 'notice' ? r.msgBody : r.ownBody) ?? '',
         at: stampOf(r.createdAt),

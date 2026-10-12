@@ -23,6 +23,8 @@ import type { ProcessStatus } from '@/types/project';
 import type { Actor, ProcessPatch, ProjectRepository } from '../repository';
 import { toDetail } from '../assemble';
 import { assertAdmin, recordsOf, ruleMap, settleMap, toProcess, type TxLike } from './shared';
+import { approvalNotice } from '@/lib/notify';
+import { notifyApproval } from './notifications';
 
 /** pgRepository 가 펼쳐 담는 조각 — 이름과 시그니처는 인터페이스가 정한다 */
 export const processStore: Pick<
@@ -72,6 +74,22 @@ export const processStore: Pick<
         .update(projects)
         .set({ lastProgressAt: today() })
         .where(eq(projects.id, projectId));
+
+      /*
+       * 환경부 승인일이 빈 칸에서 날짜가 되면 그 현장 사람들에게 알린다 (한백 지시 2026-10-12) — 처음 한 번만,
+       * 고치거나 지울 때는 안 보낸다. 다음 할 일(행위신고 → 충전기 발주)은 이 저장 뒤의 값으로 잰다.
+       */
+      if (patch.envApprovalDate && !before?.envApprovalDate) {
+        const after = { ...before, ...patch };
+        await notifyApproval(tx, {
+          projectId, actorId: actor.id,
+          ...approvalNotice({
+            date: patch.envApprovalDate,
+            notifyCleared: !!(after.notifyDoneAt || after.notifySkippedAt),
+            pastOrder: statusIndex(asProcessStatus(before?.status)) >= statusIndex('충전기 발주'),
+          }),
+        });
+      }
 
       for (const f of fields) {
         // 설치 실적은 숫자다 — 로그는 글자로 남긴다

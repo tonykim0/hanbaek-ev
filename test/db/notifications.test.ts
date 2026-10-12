@@ -8,6 +8,7 @@ import { POST as notePOST, DELETE as noteDELETE } from '@/app/api/projects/[id]/
 import { GET as listGET } from '@/app/api/notifications/route';
 import { GET as unreadGET } from '@/app/api/notifications/unread/route';
 import { POST as readPOST } from '@/app/api/notifications/read/route';
+import { POST as processPOST } from '@/app/api/projects/[id]/process/route';
 import { getRepository } from '@/lib/data';
 import { RUN, USERS, actorOf, call, signIn, signInAs, withProject } from './kit';
 
@@ -108,5 +109,29 @@ describe('진행현황 알림', () => {
     expect(ask[0].body.endsWith('— 이번 주 안에 올려주세요')).toBe(true);
     await repo.askMissingDocs(id, false, null, admin);
     expect((await repo.listNotifications(me(USERS.navy))).filter((x) => x.projectId === id && x.kind === 'ask')).toHaveLength(0);
+  }, site));
+
+  it('환경부 승인일을 처음 넣으면 그 현장 사람들에게 — 고치거나 지웠다 다시 넣어도 또 가지 않는다', () => withProject(async (id) => {
+    const approvals = async (u: (typeof USERS)[keyof typeof USERS]) =>
+      (await repo.listNotifications(me(u))).filter((x) => x.projectId === id && x.kind === 'approval');
+    await signIn(USERS.admin);
+    expect((await call(processPOST, { params: { id }, body: { envApprovalDate: '2026-10-12' } })).status).toBe(200);
+    for (const u of [USERS.navy, USERS.ecoelec]) {
+      const got = await approvals(u);
+      expect(got).toHaveLength(1);
+      expect(got[0]).toMatchObject({ author: '한백', scope: '시공', title: '환경부 승인', read: false });
+      expect(got[0].body).toBe('2026-10-12 승인 — 운영사 시공승인도 같은 날로 봅니다.\n행위신고를 마치면 충전기 발주로 넘어갑니다.');
+    }
+    expect(await approvals(USERS.admin), '넣은 사람은 받지 않는다').toHaveLength(0);
+    expect(await approvals(USERS.viewer)).toHaveLength(0);
+    // 고치기 · 지우기 · 다시 넣기 — 현장마다 한 번이다
+    for (const envApprovalDate of ['2026-10-13', null, '2026-10-14']) {
+      expect((await call(processPOST, { params: { id }, body: { envApprovalDate } })).status).toBe(200);
+    }
+    expect(await approvals(USERS.navy)).toHaveLength(1);
+    // 시공 탭을 열면 읽힌다
+    await signIn(USERS.ecoelec);
+    await call(readPOST, { method: 'POST', body: { projectId: id, scope: '시공' } });
+    expect((await approvals(USERS.ecoelec))[0].read).toBe(true);
   }, site));
 });
