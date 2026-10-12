@@ -78,9 +78,14 @@ describe('맞물리는 칸 — 두 보드에 서는가 (감사 L4)', () => {
     const p = { stage: 'construction' as const, status: '운영사 계약서 제출' as const };
     expect(showsOnBoard(p, '시공')).toBe(true);
   });
-  it('★멈춘 현장은 시공 보드에 싣지 않는다★ — 계약중단 칸에 두 번 세어졌다', () => {
-    const p = { stage: 'construction' as const, status: '운영사 계약서 제출' as const, holdState: '계약중단' };
-    expect(showsOnBoard(p, '시공')).toBe(false);
+  it('★멈춘 현장은 국면과 상관없이 계약 보드 한 곳에 선다★ — 계약중단 칸은 하나다', () => {
+    for (const status of ['운영사 계약서 제출', '행위신고', '착공'] as const) {
+      const p = { stage: 'construction' as const, status, holdState: '계약중단' };
+      expect(showsOnBoard(p, '계약'), status).toBe(true);
+      expect(showsOnBoard(p, '시공'), status).toBe(false);
+    }
+    const intake = { stage: 'intake' as const, status: '운영사 계약서 제출' as const, holdState: '계약중단' };
+    expect(showsOnBoard(intake, '계약')).toBe(true);
   });
 });
 

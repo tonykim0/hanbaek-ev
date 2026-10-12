@@ -116,12 +116,15 @@ export function constructionLabelOf(status: ProcessStatus): string {
 export function showsOnBoard(
   p: { stage: Stage; status: ProcessStatus; holdState?: string | null }, band: '계약' | '시공'
 ): boolean {
-  if (phaseOfProject(p) === band) return true;
   /*
-   * ★멈춘 현장은 맞물리는 칸이어도 한쪽에만★ (감사 L4) — 계약중단은 칸 이름이 곧 상태라 계약 보드의 계약중단 칸에
-   * 서는데, 운영사 계약서 제출 상태면 시공 보드에도 실려 같은 현장이 두 보드의 계약중단 칸에 두 번 세어졌다.
+   * ★계약중단 칸은 하나다 — 계약 보드에 모은다★ (한백 지시 2026-10-12 「계약중단 칸을 하나로 통합하자」).
+   * 멈춘 현장도 국면을 따라 갈렸었다: 행위신고까지 간 뒤 멈춘 에코메트로 타워 A동은 시공 보드의 계약중단 칸에만
+   * 서서, 계약관리에서 찾던 한백에게 「지워졌나」로 보였다. 국면과 상관없이 계약 보드 한 칸에 서고 시공 보드에는
+   * 그 칸이 없다 — 같은 현장이 두 칸에 두 번 세어지던 일(감사 L4)도 같이 닫힌다.
    */
-  return p.status === HANDOFF_STATUS && band === '시공' && p.stage !== 'intake' && !p.holdState;
+  if (p.holdState) return band === '계약';
+  if (phaseOfProject(p) === band) return true;
+  return p.status === HANDOFF_STATUS && band === '시공' && p.stage !== 'intake';
 }
 
 export const BOARD_COLUMNS: BoardColumnDef[] = [

@@ -74,6 +74,8 @@ export default function ProjectBoard({
    * 멈춤 칸(계약중단)은 따로 줄을 만들지 않고 같은 줄 맨 오른쪽에 붙는다(한백 확인) —
    * 몇 건 안 되는 멈춤이 별도 줄로 계약·시공과 같은 자리를 차지했다.
    * 늘 맨 끝에 선다 — 카드가 갈 곳이 보여야 보낼 수 있다.
+   * ★계약 보드에만 선다★(2026-10-12 「계약중단 칸을 하나로」) — 멈춘 현장은 국면과 상관없이 거기 모인다
+   * (lib/board showsOnBoard). 시공 보드에 빈 칸을 두면 두 칸이 갈려 있는 것처럼 보인다.
    */
   /*
    * 맞물리는 칸(운영사 계약서 제출)은 양쪽 보드에 선다 — 계약의 끝이자 시공의 시작이라
@@ -82,7 +84,7 @@ export default function ProjectBoard({
    */
   const cols = [
     ...visible.filter((c) => c.band === band || c.alsoOn?.band === band),
-    ...visible.filter((c) => c.band === '멈춤'),
+    ...(band === '계약' ? visible.filter((c) => c.band === '멈춤') : []),
   ];
   /** 그 보드에서 부르는 이름 — 같은 칸을 계약은 「냈다」로, 시공은 「기다린다」로 본다 */
   const labelOf = (c: (typeof cols)[number]) =>
