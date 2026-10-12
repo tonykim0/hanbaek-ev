@@ -1,11 +1,11 @@
 'use client';
 
 /**
- * 알림 목록 — 진행현황 글 · 서류 반려 · 누락 서류 보완요청 · 환경부 승인 · 공지 메모 (app/(console)/notifications).
+ * 알림 목록 — 진행현황 글 · 서류 반려 · 누락 서류 보완요청 · 환경부 대기번호·승인 · 공지 메모 (app/(console)/notifications).
  *
  * 한 줄 = 알림 하나: 현장 · 탭(계약·시공) · 누가 · 언제, 그 밑에 본문 두 줄. 반려·보완요청은 본문 앞에 붉은
- * 꼬리표(「반려 — 계약서」)가 서고 본문이 한백의 메시지(반려 사유)다. 환경부 승인은 초록 꼬리표 — 막힌 일이 아니라
- * 열린 일이다. 안 읽은 줄은 굵고 왼쪽에 점이 선다.
+ * 꼬리표(「반려 — 계약서」)가 서고 본문이 한백의 메시지(반려 사유)다. 환경부 대기번호·승인은 초록 꼬리표 — 막힌 일이
+ * 아니라 열린 일이다. 안 읽은 줄은 굵고 왼쪽에 점이 선다.
  * 줄을 누르면 그 현장의 그 탭으로 간다 — 그 탭을 열면 그 갈래의 알림이 읽힌다(ProgressLog).
  */
 import Link from 'next/link';
@@ -23,6 +23,9 @@ function hrefOf(n: NoteNotification): string {
   if (n.kind === 'notice' && n.noticeId) return `/notices?open=${encodeURIComponent(n.noticeId)}`;
   return `/projects/${encodeURIComponent(n.projectId ?? '')}?tab=${TAB_OF_SCOPE[n.scope ?? '시공']}`;
 }
+
+/** 열린 일을 알리는 줄인가 — 환경부 대기번호·승인(초록 꼬리표, 두 줄에서 안 자른다) */
+const opened = (n: NoteNotification) => n.kind === 'approval' || n.kind === 'queue';
 
 export default function NotificationList({ items, viewingAs }: {
   items: NoteNotification[];
@@ -95,13 +98,13 @@ export default function NotificationList({ items, viewingAs }: {
                     <span className="ml-auto shrink-0 text-tiny tabular-nums text-slate-400">{n.at}</span>
                   </span>
                   {/*
-                    * 글은 두 줄에서 자른다 — 긴 글은 그 탭에서 읽는다. 환경부 승인은 자르지 않는다: 짧은 정해진 글인데
-                    * 폰에서는 첫 문장이 두 줄을 차지해 둘째 줄(다음 할 일)이 잘렸다.
+                    * 글은 두 줄에서 자른다 — 긴 글은 그 탭에서 읽는다. 환경부 대기번호·승인은 자르지 않는다: 짧은 정해진
+                    * 글인데 폰에서는 첫 문장이 두 줄을 차지해 둘째 줄(다음 할 일)이 잘렸다.
                     */}
                   <span className={`mt-1 whitespace-pre-wrap break-keep text-base leading-relaxed ${
-                    n.kind === 'approval' ? '' : 'line-clamp-2'
+                    opened(n) ? '' : 'line-clamp-2'
                   } ${n.read ? 'text-slate-500' : 'text-slate-800'}`}>
-                    {n.title && <span className="mr-1.5"><Tag tone={n.kind === 'approval' ? 'ok' : 'stop'}>{n.title}</Tag></span>}
+                    {n.title && <span className="mr-1.5"><Tag tone={opened(n) ? 'ok' : 'stop'}>{n.title}</Tag></span>}
                     {n.body}
                   </span>
                 </span>

@@ -24,7 +24,7 @@ import type { Actor, ProcessPatch, ProjectRepository } from '../repository';
 import { toDetail } from '../assemble';
 import { assertAdmin, recordsOf, ruleMap, settleMap, toProcess, type TxLike } from './shared';
 import { approvalNotice } from '@/lib/notify';
-import { notifyApproval } from './notifications';
+import { notifyMilestone } from './notifications';
 
 /** pgRepository 가 펼쳐 담는 조각 — 이름과 시그니처는 인터페이스가 정한다 */
 export const processStore: Pick<
@@ -81,8 +81,8 @@ export const processStore: Pick<
        */
       if (patch.envApprovalDate && !before?.envApprovalDate) {
         const after = { ...before, ...patch };
-        await notifyApproval(tx, {
-          projectId, actorId: actor.id,
+        await notifyMilestone(tx, {
+          projectId, kind: 'approval', actorId: actor.id,
           ...approvalNotice({
             date: patch.envApprovalDate,
             notifyCleared: !!(after.notifyDoneAt || after.notifySkippedAt),

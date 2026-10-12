@@ -39,7 +39,7 @@ export const TAB_OF_SCOPE: Record<NoteScope, 'intake' | 'construction' | 'receiv
  * (한백 지시 2026-10-12 「환경부 승인일을 입력 완료하면 그 현장에 승인 완료 알림을」).
  * 고치거나 지울 때는 안 보낸다(한백 「처음 넣으면, 이것만 하자」).
  *
- * 받는 사람은 시공 탭 글과 같다(noteAudience '시공') — 누르면 시공 탭으로 간다.
+ * 받는 사람은 시공 탭 글과 같다(noteAudience '시공') — 누르면 시공 탭으로 간다. 대기번호도 같다(queueNotice).
  * 둘째 줄은 다음 할 일이다: 「충전기 발주」는 승인일과 행위신고(완료·대상 아님)가 둘 다 차야 열린다(lib/process).
  * 이미 발주 칸을 지난 현장(늦게 적은 승인일)에는 다음 할 일을 적지 않는다 — 지난 일을 시키게 된다.
  * ★기성은 말하지 않는다★ — 이 날짜가 기성 「환경부 승인」 차수를 열지만 기성은 한백만 보는 탭이다.
@@ -57,4 +57,29 @@ export function approvalNotice(input: {
     ? '행위신고도 끝나 있어 충전기 발주를 준비합니다.'
     : '행위신고를 마치면 충전기 발주로 넘어갑니다.';
   return { title: '환경부 승인', body: `${head}\n${next}` };
+}
+
+/**
+ * 환경부 대기번호 알림의 글 — 한백이 대기번호를 ★처음★ 넣으면 그 현장 사람들에게 간다
+ * (한백 지시 2026-10-12 「대기번호 입력했을 때도 알림 가게」). 승인 알림과 같은 규칙이다: 현장마다 한 번,
+ * 받는 사람은 시공 탭 글과 같다(시공 보드의 첫 칸이 「환경부 승인 대기」다).
+ *
+ * 둘째 줄은 기다리는 동안의 할 일이다 — 행위신고는 승인을 기다리는 동안 시공팀이 미리 하는 일이다
+ * (types PROCESS_STATUSES 「행위신고」). 승인이 이미 났거나 발주 칸을 지났으면(늦게 적은 번호) 적지 않는다.
+ */
+export function queueNotice(input: {
+  no: string;
+  /** 환경부 승인일이 이미 있는가 */
+  approved: boolean;
+  /** 행위신고를 마쳤거나 대상이 아닌가 */
+  notifyCleared: boolean;
+  /** 이미 「충전기 발주」 칸이거나 그 뒤인가 */
+  pastOrder: boolean;
+}): { title: string; body: string } {
+  const head = `대기번호 ${input.no} — 환경부 접수가 끝났습니다.`;
+  if (input.approved || input.pastOrder) return { title: '환경부 대기번호', body: head };
+  const next = input.notifyCleared
+    ? '환경부 승인이 나면 충전기 발주로 넘어갑니다.'
+    : '승인을 기다리는 동안 행위신고를 미리 해 두세요.';
+  return { title: '환경부 대기번호', body: `${head}\n${next}` };
 }

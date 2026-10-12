@@ -9,6 +9,7 @@ import { GET as listGET } from '@/app/api/notifications/route';
 import { GET as unreadGET } from '@/app/api/notifications/unread/route';
 import { POST as readPOST } from '@/app/api/notifications/read/route';
 import { POST as processPOST } from '@/app/api/projects/[id]/process/route';
+import { POST as queuePOST } from '@/app/api/projects/[id]/env-queue/route';
 import { getRepository } from '@/lib/data';
 import { RUN, USERS, actorOf, call, signIn, signInAs, withProject } from './kit';
 
@@ -134,4 +135,26 @@ describe('진행현황 알림', () => {
     await call(readPOST, { method: 'POST', body: { projectId: id, scope: '시공' } });
     expect((await approvals(USERS.ecoelec))[0].read).toBe(true);
   }, site));
+
+  it('환경부 대기번호도 처음 넣으면 그 현장 사람들에게 — 고치거나 지웠다 다시 넣어도 또 가지 않는다', () => withProject(async (id) => {
+    const queued = async (u: (typeof USERS)[keyof typeof USERS]) =>
+      (await repo.listNotifications(me(u))).filter((x) => x.projectId === id && x.kind === 'queue');
+    await signIn(USERS.admin);
+    expect((await call(queuePOST, { params: { id }, body: { value: '2026-595' } })).status).toBe(200);
+    for (const u of [USERS.navy, USERS.ecoelec]) {
+      const got = await queued(u);
+      expect(got).toHaveLength(1);
+      expect(got[0]).toMatchObject({ author: '한백', scope: '시공', title: '환경부 대기번호', read: false });
+      expect(got[0].body).toBe('대기번호 2026-595 — 환경부 접수가 끝났습니다.\n승인을 기다리는 동안 행위신고를 미리 해 두세요.');
+    }
+    expect(await queued(USERS.admin), '넣은 사람은 받지 않는다').toHaveLength(0);
+    for (const value of ['2026-596', null, '2026-597']) {
+      expect((await call(queuePOST, { params: { id }, body: { value } })).status).toBe(200);
+    }
+    expect(await queued(USERS.navy)).toHaveLength(1);
+    // 대기번호를 넣었어도 승인 알림은 따로 간다 — 갈래마다 한 번
+    expect((await call(processPOST, { params: { id }, body: { envApprovalDate: '2026-10-20' } })).status).toBe(200);
+    expect((await repo.listNotifications(me(USERS.navy))).filter((x) => x.projectId === id).map((x) => x.kind).sort())
+      .toEqual(['approval', 'queue']);
+  }, { ...site, bizType: '환경부' })); // 대기번호는 환경부 현장에만 있다(자체투자는 422)
 });

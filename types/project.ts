@@ -1440,14 +1440,14 @@ export function isNoteScope(v: unknown): v is NoteScope {
 }
 
 /**
- * 알림 한 줄 — 진행현황 글 · 서류 반려 · 누락 서류 보완요청 · 환경부 승인(lib/notify.ts).
- * 글 알림은 글이 정본이라 본문·쓴 쪽을 글에서 읽는다. 반려·보완요청·환경부 승인은 알림 줄이 제 머리(title)와 본문(body)을 갖는다.
+ * 알림 한 줄 — 진행현황 글 · 서류 반려 · 누락 서류 보완요청 · 환경부 대기번호·승인(lib/notify.ts).
+ * 글 알림은 글이 정본이라 본문·쓴 쪽을 글에서 읽는다. 반려·보완요청·환경부 대기번호·승인은 알림 줄이 제 머리(title)와 본문(body)을 갖는다.
  */
 /**
  * note(진행현황 글) · reject(서류 반려) · ask(누락 서류 보완요청) · notice(공지 메시지, migrations/0094) ·
- * approval(환경부 승인일을 처음 넣음 — lib/notify approvalNotice)
+ * approval(환경부 승인일을 처음 넣음 — lib/notify approvalNotice) · queue(환경부 대기번호를 처음 넣음 — queueNotice)
  */
-export type NotificationKind = 'note' | 'reject' | 'ask' | 'notice' | 'approval';
+export type NotificationKind = 'note' | 'reject' | 'ask' | 'notice' | 'approval' | 'queue';
 
 export interface NoteNotification {
   id: string;
