@@ -64,22 +64,8 @@ export function approvalNotice(input: {
  * (한백 지시 2026-10-12 「대기번호 입력했을 때도 알림 가게」). 승인 알림과 같은 규칙이다: 현장마다 한 번,
  * 받는 사람은 시공 탭 글과 같다(시공 보드의 첫 칸이 「환경부 승인 대기」다).
  *
- * 둘째 줄은 기다리는 동안의 할 일이다 — 행위신고는 승인을 기다리는 동안 시공팀이 미리 하는 일이다
- * (types PROCESS_STATUSES 「행위신고」). 승인이 이미 났거나 발주 칸을 지났으면(늦게 적은 번호) 적지 않는다.
+ * ★한 줄뿐이다★ (한백 2026-10-13 「대기번호 2026-595 — 환경부 접수 완료, 위 메시지만」) — 할 일은 붙이지 않는다.
  */
-export function queueNotice(input: {
-  no: string;
-  /** 환경부 승인일이 이미 있는가 */
-  approved: boolean;
-  /** 행위신고를 마쳤거나 대상이 아닌가 */
-  notifyCleared: boolean;
-  /** 이미 「충전기 발주」 칸이거나 그 뒤인가 */
-  pastOrder: boolean;
-}): { title: string; body: string } {
-  const head = `대기번호 ${input.no} — 환경부 접수가 끝났습니다.`;
-  if (input.approved || input.pastOrder) return { title: '환경부 대기번호', body: head };
-  const next = input.notifyCleared
-    ? '환경부 승인이 나면 충전기 발주로 넘어갑니다.'
-    : '승인을 기다리는 동안 행위신고를 미리 해 두세요.';
-  return { title: '환경부 대기번호', body: `${head}\n${next}` };
+export function queueNotice(no: string): { title: string; body: string } {
+  return { title: '환경부 대기번호', body: `대기번호 ${no} — 환경부 접수 완료` };
 }

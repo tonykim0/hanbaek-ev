@@ -145,7 +145,7 @@ describe('진행현황 알림', () => {
       const got = await queued(u);
       expect(got).toHaveLength(1);
       expect(got[0]).toMatchObject({ author: '한백', scope: '시공', title: '환경부 대기번호', read: false });
-      expect(got[0].body).toBe('대기번호 2026-595 — 환경부 접수가 끝났습니다.\n승인을 기다리는 동안 행위신고를 미리 해 두세요.');
+      expect(got[0].body).toBe('대기번호 2026-595 — 환경부 접수 완료');
     }
     expect(await queued(USERS.admin), '넣은 사람은 받지 않는다').toHaveLength(0);
     for (const value of ['2026-596', null, '2026-597']) {

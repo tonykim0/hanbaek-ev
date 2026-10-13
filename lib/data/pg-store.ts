@@ -501,16 +501,7 @@ export const pgRepository: ProjectRepository = {
 
       // 빈 칸에서 번호가 되면 그 현장 사람들에게 알린다 (한백 지시 2026-10-12) — 처음 한 번만(notifyMilestone)
       if (value && !row.envQueueNo) {
-        const [p] = await tx.select().from(processes).where(eq(processes.projectId, projectId)).limit(1);
-        await notifyMilestone(tx, {
-          projectId, kind: 'queue', actorId: actor.id,
-          ...queueNotice({
-            no: value,
-            approved: !!p?.envApprovalDate,
-            notifyCleared: !!(p?.notifyDoneAt || p?.notifySkippedAt),
-            pastOrder: statusIndex(asProcessStatus(p?.status)) >= statusIndex('충전기 발주'),
-          }),
-        });
+        await notifyMilestone(tx, { projectId, kind: 'queue', actorId: actor.id, ...queueNotice(value) });
       }
     });
   },

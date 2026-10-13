@@ -37,18 +37,8 @@ describe('환경부 승인 알림의 글 — 승인일과 다음 할 일', () =>
   });
 });
 
-describe('환경부 대기번호 알림의 글 — 번호와 기다리는 동안의 할 일', () => {
-  const base = { no: '2026-595', approved: false, notifyCleared: false, pastOrder: false };
-  it('행위신고가 남았으면 미리 하라고 · 끝났거나 대상이 아니면 승인 뒤의 일', () => {
-    expect(queueNotice(base)).toEqual({
-      title: '환경부 대기번호',
-      body: '대기번호 2026-595 — 환경부 접수가 끝났습니다.\n승인을 기다리는 동안 행위신고를 미리 해 두세요.',
-    });
-    expect(queueNotice({ ...base, notifyCleared: true }).body)
-      .toBe('대기번호 2026-595 — 환경부 접수가 끝났습니다.\n환경부 승인이 나면 충전기 발주로 넘어갑니다.');
-  });
-  it('승인이 이미 났거나 발주 칸을 지났으면(늦게 적은 번호) 할 일을 적지 않는다', () => {
-    expect(queueNotice({ ...base, approved: true }).body).toBe('대기번호 2026-595 — 환경부 접수가 끝났습니다.');
-    expect(queueNotice({ ...base, pastOrder: true }).body).toBe('대기번호 2026-595 — 환경부 접수가 끝났습니다.');
+describe('환경부 대기번호 알림의 글', () => {
+  it('번호와 접수 완료 한 줄뿐이다', () => {
+    expect(queueNotice('2026-595')).toEqual({ title: '환경부 대기번호', body: '대기번호 2026-595 — 환경부 접수 완료' });
   });
 });
