@@ -34,7 +34,8 @@ export const CATEGORY_TO_KIND: Record<FileCategory, string | null> = {
   '별지2 사전체크리스트': 'checklist2',
   '설치승인서': 'approval',
   '설치승낙서': 'installConsent',
-  '견적서': 'quote',
+  /* 견적서 (SK) 는 계약 서류가 아니다 — 시공 탭 행위신고에서 받는다(2026-10-13). 접수에 섞여 오면 버리지 않고 기타로 */
+  '견적서': 'etc',
   '기타': 'etc',
 };
 

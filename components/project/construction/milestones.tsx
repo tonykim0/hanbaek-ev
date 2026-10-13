@@ -203,6 +203,14 @@ export function groupsByStatus(
         },
       },
       /*
+       * ★견적서 (SK) 는 행위신고 밑 따로 선 구역이다★ (한백 지시 2026-10-13 — 계약 서류에서 옮겼다). 신고 대상 여부와
+       * 상관없이 SK 현장은 낸다 — 행위신고 상자 안에 두면 「대상 아님」을 고른 현장에서 칸이 접혀 낼 자리가 없다.
+       * 조건은 doc-rules 의 only 한 곳이다(processDocsFor 가 거르면 빈 상자를 세우지 않는다).
+       */
+      ...(processDocsFor(['skQuote'], { powerType: ctx.powerType, bizType: ctx.bizType, cpo: ctx.cpo }).length > 0
+        ? [{ title: '견적서', rows: [], docs: ['skQuote'] } satisfies Group]
+        : []),
+      /*
        * ★충전기 수령지는 행위신고 밑 따로 선 구역이다★ (한백 지시 2026-09-30) — 환경부 승인이
        * 나면 한백이 바로 발주를 넣고, 그때 어디로 보낼지가 필요하다. 승인 직후 현장이 서 있는
        * 칸이 행위신고라 협력사가 여기서 적는다. 신고 대상 여부와 상관없는 일이라 행위신고

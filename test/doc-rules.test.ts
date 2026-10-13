@@ -5,7 +5,8 @@
  * 독촉할 곳을 못 찾는다(화면 규칙 10).
  */
 import { describe, expect, it } from 'vitest';
-import { evaluateDocs, PROCESS_DOCS, processDocsFor, type DocContext } from '@/lib/doc-rules';
+import { DOC_KEYS, evaluateDocs, PROCESS_DOCS, processDocsFor, type DocContext } from '@/lib/doc-rules';
+import { kindOfCategory } from '@/lib/doc-category-map';
 import { ALL_DOC_KEYS, isKnownDocKind } from '@/lib/data/assemble';
 
 const 준공서류 = ['completeConfirm', 'costSurvey', 'safety', 'safetyMgr', 'useInspect', 'asBuilt', 'promoStart'] as const;
@@ -73,23 +74,28 @@ describe('PROCESS_DOCS — 종류 목록', () => {
   });
 });
 
-describe('견적서 (SK) — SK일렉링크 전체 필수 (한백 지시 2026-09-03)', () => {
+describe('견적서 (SK) — 계약 서류가 아니라 행위신고에서 받는다 (한백 지시 2026-10-13)', () => {
   const ctx = (over: Partial<DocContext>): DocContext => ({
     cpo: null, contractParty: null, bldgType: null,
     hasMotherSeparation: false, preInstall: '없음', bizType: null,
     ...over,
   });
-  const quoteReq = (c: DocContext) => evaluateDocs(c).find((d) => d.key === 'quote')!.req;
 
-  it('SK 는 사업구분과 무관하게 필수다 — 자체투자만이던 것을 넓혔다', () => {
-    expect(quoteReq(ctx({ cpo: 'SK일렉링크', bizType: '자체투자' }))).toBe('m');
-    expect(quoteReq(ctx({ cpo: 'SK일렉링크', bizType: '환경부' }))).toBe('m');
-    expect(quoteReq(ctx({ cpo: 'SK일렉링크', bizType: null }))).toBe('m');
+  it('SK 계약 서류에 견적서 칸이 없다 — 접수도 영업비 지급조건도 막지 않는다', () => {
+    const keys = evaluateDocs(ctx({ cpo: 'SK일렉링크', bizType: '자체투자' })).map((d) => d.key);
+    expect(keys).not.toContain('quote');
+    expect(DOC_KEYS).not.toContain('quote');
   });
 
-  it('다른 운영사·미지정은 선택 — 모르는 운영사에게 SK 서류를 요구하지 않는다', () => {
-    expect(quoteReq(ctx({ cpo: '플러그링크' }))).toBe('o');
-    expect(quoteReq(ctx({ cpo: null, bizType: '자체투자' }))).toBe('o');
+  it('공정 서류 skQuote 는 SK 현장에만 선다', () => {
+    const sk = processDocsFor(['skQuote'], { cpo: 'SK일렉링크', bizType: '환경부', powerType: null });
+    expect(sk.map((d) => d.name)).toEqual(['견적서 (SK)']);
+    expect(processDocsFor(['skQuote'], { cpo: '플러그링크', bizType: '환경부', powerType: null })).toEqual([]);
+    expect(processDocsFor(['skQuote'], { cpo: null, bizType: null, powerType: null })).toEqual([]);
+  });
+
+  it('접수 판독이 견적서를 알아보면 기타 칸으로 간다 — 계약 칸이 없어도 파일을 버리지 않는다', () => {
+    expect(kindOfCategory('견적서')).toBe('etc');
   });
 });
 

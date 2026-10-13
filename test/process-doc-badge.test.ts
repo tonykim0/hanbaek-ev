@@ -11,7 +11,7 @@
  * (shownProcessDocs) 다시 갈리지 않게 했다.
  */
 import { describe, expect, it } from 'vitest';
-import { shownProcessDocs } from '@/components/project/construction/milestones';
+import { groupsByStatus, shownProcessDocs } from '@/components/project/construction/milestones';
 import type { GateContext } from '@/lib/process';
 import type { ProjectDetail } from '@/types/project';
 
@@ -47,6 +47,17 @@ describe('배지 분모는 화면이 그리는 서류다', () => {
     expect(keys(P(), '환경부')).toContain('completeConfirm');
     expect(keys(P(), '자체투자')).not.toContain('completeConfirm');
     expect(keys(P(), '자체투자')).not.toContain('costSurvey');
+  });
+
+  it('견적서 (SK) 는 SK 현장의 행위신고 구간에만 센다 (2026-10-13 — 계약 서류에서 옮겼다)', () => {
+    const sk = shownProcessDocs(P(), { ...ctxOf('환경부'), cpo: 'SK일렉링크' }).map((d) => d.key);
+    expect(sk).toContain('skQuote');
+    expect(sk).toContain('orderQuote'); // 발주 견적서와는 다른 서류라 둘 다 선다(한백 확인)
+    expect(keys(P(), '환경부')).not.toContain('skQuote');
+    /* 「대상 아님」을 골라도 칸이 선다 — 행위신고 상자 밖의 따로 선 구역이다 */
+    const groups = groupsByStatus(P({ notifySkippedAt: '2026-10-13' }), { ...ctxOf('환경부'), cpo: 'SK일렉링크' });
+    const own = groups['행위신고']?.find((g) => g.docs?.includes('skQuote'));
+    expect(own?.need).toBeUndefined();
   });
 
   it('분모가 사업구분마다 다르다 — 연동이 가장 좁다', () => {

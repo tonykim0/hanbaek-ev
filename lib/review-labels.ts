@@ -14,6 +14,8 @@ const FIELD_LABELS: Record<string, string> = {
   documents: '서류',
   preInstall: '기설치 조사',
   'process.status': '공정 단계',
+  /* 옛 계약 서류 키 — 견적서 (SK) 를 공정 서류 skQuote 로 옮기기 전(2026-10-13)의 기록이 이 이름으로 남아 있다 */
+  quote: '견적서 (SK)',
 };
 
 export function reviewKindLabel(kind: string): string {
