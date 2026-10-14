@@ -909,6 +909,7 @@ export function IntakeTab({
               check: preinstallCheck,
               currentFiles: checkedFilesOf([...byKind.values()]),
               bundled: bundledAsPdf([...byKind.values()]),
+              cpo: project.cpo,
             })}
           />
         )}

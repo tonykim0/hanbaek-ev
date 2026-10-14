@@ -19,7 +19,7 @@ import { useState, type ReactNode } from 'react';
 import { useAction } from '@/lib/use-action';
 import { stampOf } from '@/lib/date';
 import {
-  issueCount, missingSeals, reviewCount, sameFiles,
+  issueCount, missingSeals, operatorSealNeeded, reviewCount, sameFiles,
   type CheckLine, type LineVerdict, type PreInstallCheck,
 } from '@/lib/preinstall-check';
 import { Btn, Err, GroupHead, Tag, TEXT, Td, Th } from '@/components/ui';
@@ -71,7 +71,7 @@ function ActCell({ line }: { line: CheckLine }) {
 }
 
 export function PreInstallCheckBlock({
-  projectId, check, currentFiles, canRun, hasSheet, logRejected = false, docs, bundled = false,
+  projectId, check, currentFiles, canRun, hasSheet, logRejected = false, docs, bundled = false, cpo,
 }: {
   /**
    * 설치이력을 PDF 로도 냈다 — 자료를 한 묶음으로 다 냈으니 대조하지 않는다(한백 지시 2026-10-07, bundledAsPdf).
@@ -90,6 +90,8 @@ export function PreInstallCheckBlock({
   logRejected?: boolean;
   /** 이 걸음의 서류 두 칸(설치이력·증빙) — 머리 밑, 결과 위에 선다 */
   docs: ReactNode;
+  /** 현장의 운영사 — 플러그링크·SK일렉링크는 운영사 직인을 받지 않는다(operatorSealNeeded) */
+  cpo: string;
 }) {
   const { busy, error, run } = useAction();
   const accepting = useAction();
@@ -98,7 +100,7 @@ export function PreInstallCheckBlock({
   const stale = !!check && !sameFiles(check.files, currentFiles);
   /* 모든 줄이 보조사업(사업연도·대기번호)이면 검수하지 않는다 — 계약 확인을 막지 않는다(한백 지시 2026-10-08, subsidyOnly) */
   const subsidy = !!check?.subsidyOnly && !stale;
-  const n = check ? issueCount(check) : 0;
+  const n = check ? issueCount(check, cpo) : 0;
   const m = check ? reviewCount(check) : 0;
   /* 넘긴 것은 그 결과의 일이다 — 서류가 바뀌면 넘긴 것도 같이 무효다(preCheckBlocker) */
   const accepted = check && !stale ? check.accepted ?? null : null;
@@ -186,9 +188,13 @@ export function PreInstallCheckBlock({
             <>
               <dt className={TEXT.label}>직인</dt>
               <dd className={TEXT.body}>
-                아파트(설치 신청자) <Mark ok={check.seal.applicant} /> · 운영사(사업수행기관) <Mark ok={check.seal.operator} />
+                아파트(설치 신청자) <Mark ok={check.seal.applicant} /> · 운영사(사업수행기관){' '}
+                {/* 받지 않는 운영사의 빈 칸은 빠뜨린 것이 아니다 — 「해당없음」(규칙 10) */}
+                {check.seal.operator || operatorSealNeeded(cpo)
+                  ? <Mark ok={check.seal.operator} />
+                  : <span className="text-slate-500">해당없음</span>}
                 {check.seal.oldForm && <span className={TEXT.meta}> (서명 칸 없는 옛 양식)</span>}
-                {missingSeals(check.seal).length > 0 && logRejected && <span className={TEXT.meta}> · 보완요청함</span>}
+                {missingSeals(check.seal, cpo).length > 0 && logRejected && <span className={TEXT.meta}> · 보완요청함</span>}
               </dd>
             </>
           )}

@@ -112,7 +112,7 @@ export function PreInstall({
    * 서류가 바뀐 지난 결과로는 제안하지 않는다 — 고쳐 올린 것을 다시 돌려보내게 된다.
    */
   const current = checkedFilesOf([...byKind.values()]);
-  const sealGap = check?.seal && sameFiles(check.files, current) && missingSeals(check.seal).length > 0
+  const sealGap = check?.seal && sameFiles(check.files, current) && missingSeals(check.seal, project.cpo).length > 0
     ? check.seal : null;
   const suggestFor = (kind: string) =>
     kind === 'legacylog' && sealGap ? { label: '직인 없음', reason: SEAL_FIX_REASON } : null;
@@ -155,6 +155,7 @@ export function PreInstall({
           hasSheet={(byKind.get('legacylog')?.files.length ?? 0) > 0}
           logRejected={byKind.get('legacylog')?.status === 'rejected'}
           bundled={bundledAsPdf([...byKind.values()])}
+          cpo={project.cpo}
           docs={
             /*
               격자는 서류 구역과 같다 (한백 지시 2026-09-03 「서류 컴포넌트랑 맞춰줘. 너무 넓어」) — 칸이 둘뿐이라고

@@ -28,6 +28,9 @@ const 금천효성 = sheetOf([
 const 증명서 = [act('2018-09-28', 0, 4), act('2021-12-16', 4, 8), act('2025-11-21', 8, 16)];
 const ctx = { survey: { state: '있음' as const, checked: true }, since: '2026-09-11' };
 
+/** 운영사 직인을 받는 운영사 — 직인이 주제가 아닌 시험의 기본값 */
+const HEC = '현대엔지니어링';
+
 const whole = (r: ReturnType<typeof compareLegacy>): PreInstallCheck =>
   ({ checkedAt: '', files: [], sheetFile: null, sheet: { standing: 0, final: 0, badSplit: [], none: false }, unread: [], problem: null, ...r });
 
@@ -36,7 +39,7 @@ describe('엑셀 줄 ↔ 증빙', () => {
     const r = compareLegacy(금천효성, 증명서, ctx);
     expect(r.lines.map((l) => [l.row?.row, l.verdict, l.actCount])).toEqual([[10, 'ok', 4], [11, 'ok', 4], [12, 'ok', 8]]);
     expect(r.standing).toEqual({ sheet: 16, evidence: 16, from: '2025-11-21 신고의 행위 후', verdict: 'ok' });
-    expect(issueCount(whole(r))).toBe(0);
+    expect(issueCount(whole(r), HEC)).toBe(0);
   });
 
   it('★기수가 다르면 어긋남★ — 엑셀 2021 줄을 5기로 적은 경우', () => {
@@ -44,7 +47,7 @@ describe('엑셀 줄 ↔ 증빙', () => {
     const r = compareLegacy(bad, 증명서, ctx);
     expect(r.lines[1]).toMatchObject({ verdict: 'diff', why: '기수 — 엑셀 5기 · 증빙 4기' });
     expect(r.standing?.verdict).toBe('diff');
-    expect(issueCount(whole(r))).toBe(2);
+    expect(issueCount(whole(r), HEC)).toBe(2);
   });
 
   it('신고번호가 J열에 있으면 날짜가 달라도 짝을 짓고, 날짜 어긋남을 말한다', () => {
@@ -92,7 +95,7 @@ describe('엑셀 줄 ↔ 증빙', () => {
     ]);
     expect(r.lines[1].why).toMatch(/도면을 찾지 못함/);
     const c = whole(r);
-    expect(issueCount(c)).toBe(0);
+    expect(issueCount(c, HEC)).toBe(0);
     expect(reviewCount(c)).toBe(3);
   });
 
@@ -140,9 +143,9 @@ describe('기설치 없음 설치이력의 직인', () => {
   it('아파트 직인이 없으면 짚는다 — 보완요청 사유는 한 줄이다(한백 지시 2026-10-08)', () => {
     const s = sealOf(none({ applicant: side(null, false), operator: side('NICE인프라(주)', true) }), [], '미존재 (2).xlsx')!;
     expect(s.applicant).toBe(false);
-    expect(missingSeals(s)).toEqual(['아파트(설치 신청자)']);
+    expect(missingSeals(s, HEC)).toEqual(['아파트(설치 신청자)']);
     expect(SEAL_FIX_REASON).toBe('기설치 없음 설치이력에 직인이 없습니다.');
-    expect(issueCount({ ...whole({ lines: [], standing: null, survey: null }), seal: s })).toBe(1);
+    expect(issueCount({ ...whole({ lines: [], standing: null, survey: null }), seal: s }, HEC)).toBe(1);
   });
 
   it('★엑셀은 이름만, 도장은 스캔본에★ — 어느 한 곳에 있으면 있는 것이다', () => {
@@ -154,7 +157,34 @@ describe('기설치 없음 설치이력의 직인', () => {
   it('스캔본만 낸 현장 — 경주국태그린빌 첫 판(아파트만)은 운영사 직인 없음', () => {
     const s = sealOf(null, [scan('국태그린빌.pdf', true, false)], null)!;
     expect(s).toMatchObject({ applicant: true, operator: false });
-    expect(missingSeals(s)).toEqual(['운영사(사업수행기관)']);
+    expect(missingSeals(s, HEC)).toEqual(['운영사(사업수행기관)']);
+  });
+
+  /*
+   * ★플러그링크·SK일렉링크는 운영사 직인을 받지 않는다★ (한백 지시 2026-10-14). 모양은 글로스터호텔청주점(플러그링크)의
+   * 설치이력 — 관리단 도장 그림 하나뿐이고 「주식회사 플러그링크 … (인)」 칸은 글자만이다.
+   */
+  it('플러그링크·SK일렉링크는 아파트 직인만 본다 — 운영사 칸이 비어도 짚지 않는다', () => {
+    const s = sealOf(none({ applicant: side('글로스터호텔청주점 관리단', true), operator: side('주식회사 플러그링크', false) }),
+      [], '청주 글로스터호텔_기설치수량 미존재_플러그링크.xlsx')!;
+    expect(s).toMatchObject({ applicant: true, operator: false });
+    const check = { ...whole({ lines: [], standing: null, survey: null }), seal: s };
+    for (const cpo of ['플러그링크', 'SK일렉링크']) {
+      expect(missingSeals(s, cpo)).toEqual([]);
+      expect(issueCount(check, cpo)).toBe(0);
+      expect(preCheckBlocker({ needed: true, check, currentFiles: [], cpo })).toBeNull();
+    }
+    // 다른 운영사는 그대로 둘 다 받는다
+    for (const cpo of ['현대엔지니어링', '나이스인프라', '에버온']) {
+      expect(missingSeals(s, cpo)).toEqual(['운영사(사업수행기관)']);
+      expect(preCheckBlocker({ needed: true, check, currentFiles: [], cpo })).toBe('기설치 대조 1건 미확인');
+    }
+  });
+
+  it('플러그링크·SK일렉링크도 아파트 직인은 받는다', () => {
+    const s = sealOf(none({ applicant: side(null, false), operator: side('SK일렉링크', false) }), [], '이력.xlsx')!;
+    expect(missingSeals(s, 'SK일렉링크')).toEqual(['아파트(설치 신청자)']);
+    expect(missingSeals(s, '플러그링크')).toEqual(['아파트(설치 신청자)']);
   });
 
   it('서명 칸 없는 옛 양식뿐이면 둘 다 없음', () => {
@@ -186,7 +216,7 @@ describe('계약 확인을 막는 대조 — 검증 필수 (한백 지시 2026-1
     unread: [], problem: null,
   };
   const gate = (check: PreInstallCheck | null, currentFiles = files, needed = true) =>
-    preCheckBlocker({ needed, check, currentFiles });
+    preCheckBlocker({ needed, check, currentFiles, cpo: HEC });
 
   it('보조사업이 아니거나 이관 현장이면 보지 않는다', () => {
     expect(gate(null, files, false)).toBeNull();
@@ -227,8 +257,8 @@ describe('계약 확인을 막는 대조 — 검증 필수 (한백 지시 2026-1
     expect(bundledAsPdf([{ kind: 'legacyev', files: [{ name: '행위신고증명서.pdf' }] }])).toBe(false);
 
     const left: PreInstallCheck = { ...base, lines: [{ verdict: 'diff', row: null, act: null, actCount: null, why: null }] };
-    expect(preCheckBlocker({ needed: true, check: null, currentFiles: files, bundled: true })).toBeNull();
-    expect(preCheckBlocker({ needed: true, check: left, currentFiles: files, bundled: true })).toBeNull();
+    expect(preCheckBlocker({ needed: true, check: null, currentFiles: files, bundled: true, cpo: HEC })).toBeNull();
+    expect(preCheckBlocker({ needed: true, check: left, currentFiles: files, bundled: true, cpo: HEC })).toBeNull();
   });
 
   it('지금 파일은 설치이력·증빙 두 칸만 본다', () => {
@@ -281,7 +311,7 @@ describe('★순수 보조사업 이력 — 사업연도·대기번호가 있으
     const r = compareLegacy(s, [], ctx);
     expect(r.lines).toMatchObject([{ verdict: 'exempt', why: '보조사업 2019년 16932번 · 증빙 면제' }]);
     expect(r.standing).toBeNull();
-    expect(issueCount(whole(r))).toBe(0);
+    expect(issueCount(whole(r), HEC)).toBe(0);
   });
 
   it('보조라고만 적고 번호가 없으면 그 까닭으로 짚는다', () => {
@@ -294,8 +324,8 @@ describe('★순수 보조사업 이력 — 사업연도·대기번호가 있으
     const check: PreInstallCheck = {
       ...whole({ lines: [], standing: null, survey: { state: '없음', verdict: 'diff' } }), files, subsidyOnly: true,
     };
-    expect(preCheckBlocker({ needed: true, check, currentFiles: files })).toBeNull();
-    expect(preCheckBlocker({ needed: true, check, currentFiles: [...files, 'b.pdf'] })).toBe('기설치 서류 바뀜 — 다시 대조');
+    expect(preCheckBlocker({ needed: true, check, currentFiles: files, cpo: HEC })).toBeNull();
+    expect(preCheckBlocker({ needed: true, check, currentFiles: [...files, 'b.pdf'], cpo: HEC })).toBe('기설치 서류 바뀜 — 다시 대조');
   });
 });
 

@@ -35,7 +35,7 @@ export const preinstallCheckStore: Pick<ProjectRepository, 'savePreInstallCheck'
     const db = getDb();
     await db.transaction(async (tx) => {
       await lockProject(tx, projectId);
-      const [p] = await tx.select({ id: projects.id }).from(projects).where(eq(projects.id, projectId)).limit(1);
+      const [p] = await tx.select({ cpo: projects.cpo }).from(projects).where(eq(projects.id, projectId)).limit(1);
       if (!p) throw new Error('현장을 찾을 수 없습니다.');
       const at = new Date(check.checkedAt);
       await tx.insert(preinstallChecks)
@@ -44,7 +44,7 @@ export const preinstallCheckStore: Pick<ProjectRepository, 'savePreInstallCheck'
           target: preinstallChecks.projectId,
           set: { result: check, checkedBy: actor.name, checkedAt: at },
         });
-      const n = issueCount(check);
+      const n = issueCount(check, p.cpo);
       const m = reviewCount(check);
       const said = [n > 0 ? `짚은 것 ${n}건` : null, m > 0 ? `개별 검토 ${m}건` : null].filter(Boolean).join(' · ');
       await writeAudit(tx, {
@@ -80,7 +80,9 @@ export const preinstallCheckStore: Pick<ProjectRepository, 'savePreInstallCheck'
         if (!sameFiles(check.files, current)) {
           throw new Error('대조한 뒤 서류가 바뀌었습니다 — 다시 대조한 뒤 확인하세요.');
         }
-        if (issueCount(check) + reviewCount(check) === 0) return; // 넘길 것이 없다 — 이미 통과다
+        const [p] = await tx.select({ cpo: projects.cpo }).from(projects).where(eq(projects.id, projectId)).limit(1);
+        if (!p) throw new Error('현장을 찾을 수 없습니다.');
+        if (issueCount(check, p.cpo) + reviewCount(check) === 0) return; // 넘길 것이 없다 — 이미 통과다
       }
       if (Boolean(check.accepted) === accept) return;
       const accepted = accept ? { by: actor.name, at: new Date().toISOString() } : null;

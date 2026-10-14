@@ -140,10 +140,20 @@ export function sealOf(sheet: LegacySheet | null, scans: SheetScan[], sheetFile:
   };
 }
 
-/** 빠진 직인 — 보완요청 사유에 그대로 쓴다 */
-export function missingSeals(s: SealCheck): string[] {
-  return [!s.applicant ? '아파트(설치 신청자)' : null, !s.operator ? '운영사(사업수행기관)' : null]
-    .filter((x): x is string => x !== null);
+/**
+ * ★플러그링크·SK일렉링크는 운영사(충전사업자) 직인을 받지 않는다★ (한백 지시 2026-10-14 「플러그링크, SK일렉링크는
+ * 충전사업자 직인 없어도 돼」) — 아파트 직인만 본다. 글로스터호텔청주점이 관리단 도장만 찍어 와 「직인 없음」으로
+ * 반려됐다. 판독(sealOf)은 그대로 둘 다 읽어 남기고 빠진 것을 셀 때 뺀다 — 이 지시 전의 대조 결과에도 바로 맞는다.
+ */
+const OPERATOR_SEAL_EXEMPT: readonly string[] = ['플러그링크', 'SK일렉링크'];
+export const operatorSealNeeded = (cpo: string) => !OPERATOR_SEAL_EXEMPT.includes(cpo);
+
+/** 빠진 직인 — 보완요청 사유에 그대로 쓴다. 운영사 직인은 받는 운영사만(operatorSealNeeded) */
+export function missingSeals(s: SealCheck, cpo: string): string[] {
+  return [
+    !s.applicant ? '아파트(설치 신청자)' : null,
+    !s.operator && operatorSealNeeded(cpo) ? '운영사(사업수행기관)' : null,
+  ].filter((x): x is string => x !== null);
 }
 
 /**
@@ -198,9 +208,9 @@ export function reviewCount(c: PreInstallCheck): number {
   return c.problem ? 0 : c.lines.filter((l) => l.verdict === 'review').length;
 }
 
-/** 짚을 것의 수 — 화면 꼬리표와 할 일이 같은 수를 센다 */
-export function issueCount(c: PreInstallCheck): number {
-  const seal = c.seal && missingSeals(c.seal).length > 0 ? 1 : 0;
+/** 짚을 것의 수 — 화면 꼬리표와 할 일이 같은 수를 센다. 운영사는 직인을 받는지 가린다(missingSeals) */
+export function issueCount(c: PreInstallCheck, cpo: string): number {
+  const seal = c.seal && missingSeals(c.seal, cpo).length > 0 ? 1 : 0;
   // 줄 대조를 못 했어도 직인은 본다(스캔본만 낸 현장) — 둘을 같이 센다
   if (c.problem) return 1 + seal;
   return c.lines.filter((l) => l.verdict === 'diff' || l.verdict === 'no-evidence'
@@ -384,6 +394,8 @@ export function preCheckBlocker(input: {
   currentFiles: string[];
   /** 설치이력을 PDF 로도 냈다 — 대조하지 않는다(bundledAsPdf) */
   bundled?: boolean;
+  /** 현장의 운영사 — 운영사 직인을 받는지 가른다(operatorSealNeeded) */
+  cpo: string;
 }): string | null {
   if (!input.needed || input.bundled) return null;
   const c = input.check;
@@ -391,7 +403,7 @@ export function preCheckBlocker(input: {
   if (!sameFiles(c.files, input.currentFiles)) return '기설치 서류 바뀜 — 다시 대조';
   // 순수 보조사업 이력 — 증빙이 필요 없어 검수하지 않는다(subsidyOnly, 한백 지시 2026-10-08)
   if (c.subsidyOnly) return null;
-  const left = issueCount(c) + reviewCount(c);
+  const left = issueCount(c, input.cpo) + reviewCount(c);
   if (left > 0 && !c.accepted) return `기설치 대조 ${left}건 미확인`;
   return null;
 }
