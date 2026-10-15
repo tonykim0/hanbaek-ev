@@ -19,21 +19,9 @@ describe('진행현황 글은 그 현장의 기록을 같이 쓰는 사람 모�
   });
 });
 
-describe('환경부 승인 알림의 글 — 승인일과 다음 할 일', () => {
-  it('행위신고가 남았으면 그것부터 · 끝났거나 대상이 아니면 충전기 발주', () => {
-    expect(approvalNotice({ date: '2026-10-12', notifyCleared: false, pastOrder: false })).toEqual({
-      title: '환경부 승인',
-      body: '2026-10-12 승인 — 운영사 시공승인도 같은 날로 봅니다.\n행위신고를 마치면 충전기 발주로 넘어갑니다.',
-    });
-    expect(approvalNotice({ date: '2026-10-12', notifyCleared: true, pastOrder: false }).body)
-      .toBe('2026-10-12 승인 — 운영사 시공승인도 같은 날로 봅니다.\n행위신고도 끝나 있어 충전기 발주를 준비합니다.');
-  });
-  it('이미 발주 칸을 지난 현장(늦게 적은 승인일)에는 다음 할 일을 적지 않는다 · 기성은 말하지 않는다', () => {
-    const n = approvalNotice({ date: '2026-09-01', notifyCleared: true, pastOrder: true });
-    expect(n.body).toBe('2026-09-01 승인 — 운영사 시공승인도 같은 날로 봅니다.');
-    for (const v of [true, false]) {
-      expect(approvalNotice({ date: '2026-10-12', notifyCleared: v, pastOrder: false }).body).not.toMatch(/기성|지급|청구/);
-    }
+describe('환경부 승인 알림의 글', () => {
+  it('승인일과 승인 완료 한 줄뿐이다 — 기성은 말하지 않는다', () => {
+    expect(approvalNotice('2026-10-12')).toEqual({ title: '환경부 승인', body: '승인일 2026-10-12 — 환경부 승인 완료' });
   });
 });
 

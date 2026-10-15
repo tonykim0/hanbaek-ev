@@ -121,7 +121,7 @@ describe('진행현황 알림', () => {
       const got = await approvals(u);
       expect(got).toHaveLength(1);
       expect(got[0]).toMatchObject({ author: '한백', scope: '시공', title: '환경부 승인', read: false });
-      expect(got[0].body).toBe('2026-10-12 승인 — 운영사 시공승인도 같은 날로 봅니다.\n행위신고를 마치면 충전기 발주로 넘어갑니다.');
+      expect(got[0].body).toBe('승인일 2026-10-12 — 환경부 승인 완료');
     }
     expect(await approvals(USERS.admin), '넣은 사람은 받지 않는다').toHaveLength(0);
     expect(await approvals(USERS.viewer)).toHaveLength(0);

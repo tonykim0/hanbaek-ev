@@ -38,25 +38,13 @@ export const TAB_OF_SCOPE: Record<NoteScope, 'intake' | 'construction' | 'receiv
  * 환경부 승인 알림의 글 — 한백이 환경부 승인일을 ★처음★ 넣으면 그 현장 사람들에게 간다
  * (한백 지시 2026-10-12 「환경부 승인일을 입력 완료하면 그 현장에 승인 완료 알림을」).
  * 고치거나 지울 때는 안 보낸다(한백 「처음 넣으면, 이것만 하자」).
- *
  * 받는 사람은 시공 탭 글과 같다(noteAudience '시공') — 누르면 시공 탭으로 간다. 대기번호도 같다(queueNotice).
- * 둘째 줄은 다음 할 일이다: 「충전기 발주」는 승인일과 행위신고(완료·대상 아님)가 둘 다 차야 열린다(lib/process).
- * 이미 발주 칸을 지난 현장(늦게 적은 승인일)에는 다음 할 일을 적지 않는다 — 지난 일을 시키게 된다.
- * ★기성은 말하지 않는다★ — 이 날짜가 기성 「환경부 승인」 차수를 열지만 기성은 한백만 보는 탭이다.
+ *
+ * ★한 줄뿐이다★ (한백 2026-10-15 「승인 알림도 한 줄로」 — 대기번호 알림과 같은 꼴). 할 일은 붙이지 않는다.
+ * 기성은 말하지 않는다 — 이 날짜가 기성 「환경부 승인」 차수를 열지만 기성은 한백만 보는 탭이다.
  */
-export function approvalNotice(input: {
-  date: string;
-  /** 행위신고를 마쳤거나 대상이 아닌가 */
-  notifyCleared: boolean;
-  /** 이미 「충전기 발주」 칸이거나 그 뒤인가 */
-  pastOrder: boolean;
-}): { title: string; body: string } {
-  const head = `${input.date} 승인 — 운영사 시공승인도 같은 날로 봅니다.`;
-  if (input.pastOrder) return { title: '환경부 승인', body: head };
-  const next = input.notifyCleared
-    ? '행위신고도 끝나 있어 충전기 발주를 준비합니다.'
-    : '행위신고를 마치면 충전기 발주로 넘어갑니다.';
-  return { title: '환경부 승인', body: `${head}\n${next}` };
+export function approvalNotice(date: string): { title: string; body: string } {
+  return { title: '환경부 승인', body: `승인일 ${date} — 환경부 승인 완료` };
 }
 
 /**

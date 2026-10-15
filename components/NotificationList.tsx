@@ -24,7 +24,7 @@ function hrefOf(n: NoteNotification): string {
   return `/projects/${encodeURIComponent(n.projectId ?? '')}?tab=${TAB_OF_SCOPE[n.scope ?? '시공']}`;
 }
 
-/** 열린 일을 알리는 줄인가 — 환경부 대기번호·승인(초록 꼬리표, 두 줄에서 안 자른다) */
+/** 열린 일을 알리는 줄인가 — 환경부 대기번호·승인(초록 꼬리표) */
 const opened = (n: NoteNotification) => n.kind === 'approval' || n.kind === 'queue';
 
 export default function NotificationList({ items, viewingAs }: {
@@ -97,13 +97,7 @@ export default function NotificationList({ items, viewingAs }: {
                     </span>
                     <span className="ml-auto shrink-0 text-tiny tabular-nums text-slate-400">{n.at}</span>
                   </span>
-                  {/*
-                    * 글은 두 줄에서 자른다 — 긴 글은 그 탭에서 읽는다. 환경부 대기번호·승인은 자르지 않는다: 짧은 정해진
-                    * 글인데 폰에서는 첫 문장이 두 줄을 차지해 둘째 줄(다음 할 일)이 잘렸다.
-                    */}
-                  <span className={`mt-1 whitespace-pre-wrap break-keep text-base leading-relaxed ${
-                    opened(n) ? '' : 'line-clamp-2'
-                  } ${n.read ? 'text-slate-500' : 'text-slate-800'}`}>
+                  <span className={`mt-1 line-clamp-2 whitespace-pre-wrap break-keep text-base leading-relaxed ${n.read ? 'text-slate-500' : 'text-slate-800'}`}>
                     {n.title && <span className="mr-1.5"><Tag tone={opened(n) ? 'ok' : 'stop'}>{n.title}</Tag></span>}
                     {n.body}
                   </span>
