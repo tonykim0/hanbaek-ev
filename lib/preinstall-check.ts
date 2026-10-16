@@ -16,7 +16,6 @@
  * 한백이 결과를 보고 「확인함」으로 넘겨야 계약을 확인한다 — preCheckBlocker 가 그 한 곳이다.
  */
 import type { LegacyRow, LegacySheet } from './legacy-sheet';
-import type { PreInstall } from '@/types/project';
 
 /** 증빙 문서의 종류 — 행위신고만 「엑셀에 없는 행위」를 짚는다(나머지는 받침 자료다) */
 export type EvidenceDoc = '행위신고' | '필증' | '계약서' | '회의록' | '공문' | '도면' | '사진' | '기타';
@@ -69,8 +68,6 @@ export interface PreInstallCheck {
   lines: CheckLine[];
   /** 지금 서 있는 수 — 엑셀 ↔ 증빙 */
   standing: { sheet: number; evidence: number | null; from: string | null; verdict: 'ok' | 'diff' | 'unknown' } | null;
-  /** 콘솔의 조사 결과 ↔ 엑셀 (조사 표시가 된 현장만) */
-  survey: { state: PreInstall; verdict: 'ok' | 'diff' } | null;
   /** 판독이 못 읽은 증빙 파일 */
   unread: string[];
   /** 대조 자체를 못 한 이유 — 엑셀이 없다 등 */
@@ -216,7 +213,6 @@ export function issueCount(c: PreInstallCheck, cpo: string): number {
   return c.lines.filter((l) => l.verdict === 'diff' || l.verdict === 'no-evidence'
       || l.verdict === 'no-row' || l.verdict === 'no-count').length
     + (c.standing?.verdict === 'diff' ? 1 : 0)
-    + (c.survey?.verdict === 'diff' ? 1 : 0)
     + (c.sheet?.badSplit.length ?? 0)
     + seal;
 }
@@ -244,12 +240,10 @@ export function compareLegacy(
   sheet: LegacySheet,
   acts: EvidenceAct[],
   ctx: {
-    /** 콘솔의 조사 결과 — checked 가 false 면 견주지 않는다 */
-    survey: { state: PreInstall; checked: boolean };
     /** 계약 접수일 — 이 날 이후의 신고는 이번 설치 건이다. 모르면 null */
     since: string | null;
   }
-): Pick<PreInstallCheck, 'lines' | 'standing' | 'survey'> {
+): Pick<PreInstallCheck, 'lines' | 'standing'> {
   const isCurrent = (a: EvidenceAct) => a.doc === '행위신고' && !!ctx.since && !!a.date && a.date >= ctx.since;
   const used = new Set<EvidenceAct>();
   const lines: CheckLine[] = [];
@@ -341,15 +335,11 @@ export function compareLegacy(
       : pick.n === sheet.standing ? 'ok' as const : 'diff' as const,
   };
 
-  // 기설치는 최종 기설치 수량(H)으로 본다 — 8년 전에 임의로 걷은 것(F)도 기설치로 센다(양식)
-  const survey = ctx.survey.checked
-    ? {
-      state: ctx.survey.state,
-      verdict: (ctx.survey.state === '있음') === (sheet.final > 0) ? 'ok' as const : 'diff' as const,
-    }
-    : null;
-
-  return { lines, standing, survey };
+  /*
+   * 콘솔의 조사 결과(있음/없음)와 견주던 줄은 걷었다 (2026-10-15) — 그 값을 적던 「현장 확인 결과」가 메모 칸인데
+   * 판정에 쓰였다(components/project/PreInstall 머리 주석).
+   */
+  return { lines, standing };
 }
 
 /** 대조에 쓴 파일과 지금 칸의 파일이 같은가 — 다르면 지난 결과를 믿지 않는다(「서류가 바뀜」) */

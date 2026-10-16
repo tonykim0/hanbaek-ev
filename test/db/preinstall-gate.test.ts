@@ -51,7 +51,7 @@ const urlOf = (id: string, kind: string, n = '') => `https://test.local/${RUN}/$
 
 const checkOf = (files: string[], over: Partial<PreInstallCheck> = {}): PreInstallCheck => ({
   checkedAt: new Date().toISOString(), files, sheetFile: null,
-  sheet: { standing: 0, final: 0, badSplit: [], none: true }, lines: [], standing: null, survey: null,
+  sheet: { standing: 0, final: 0, badSplit: [], none: true }, lines: [], standing: null,
   unread: [], problem: null, ...over,
 });
 
@@ -88,8 +88,10 @@ describe('기설치 대조 — 계약 확인의 조건', () => {
 
   it('★순수 보조사업 이력이면 검수 없이 확인한다★ — 사업연도·대기번호가 있으면 증빙이 필요 없다 (한백 지시 2026-10-08)', async () => {
     await withSubsidyProject(async (id) => {
-      // 조사 결과가 어긋나 있어도 — 그것은 증빙 검수가 아니다
-      const subsidy = checkOf(await filesNow(id), { subsidyOnly: true, survey: { state: '없음', verdict: 'diff' } });
+      // 수가 어긋나 있어도 — 그것은 증빙 검수가 아니다
+      const subsidy = checkOf(await filesNow(id), {
+        subsidyOnly: true, standing: { sheet: 16, evidence: 8, from: null, verdict: 'diff' },
+      });
       await repo.savePreInstallCheck(id, subsidy, admin);
       await expect(repo.confirmContract(id, true, admin)).resolves.toBeUndefined();
       expect((await repo.getProject(id, viewerOf(USERS.admin)))?.project.contractConfirmedAt).not.toBeNull();

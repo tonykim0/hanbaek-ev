@@ -57,7 +57,7 @@ export async function runPreInstallCheck(detail: ProjectDetail): Promise<PreInst
   const base: PreInstallCheck = {
     checkedAt: new Date().toISOString(),
     files: [...logFiles, ...evFiles].map((f) => f.url),
-    sheetFile: null, sheet: null, lines: [], standing: null, survey: null, unread: [], problem: null,
+    sheetFile: null, sheet: null, lines: [], standing: null, unread: [], problem: null,
   };
 
   if (logFiles.length === 0) return { ...base, problem: '설치이력 엑셀이 없습니다.' };
@@ -99,7 +99,6 @@ export async function runPreInstallCheck(detail: ProjectDetail): Promise<PreInst
   }
 
   const ctx = {
-    survey: { state: p.preInstall, checked: p.preChecked },
     // 이 날 뒤의 행위신고는 이번 설치 건이다 — 접수 선언이 없는 옛 현장은 확인일로 받친다
     since: p.contractSubmittedAt ?? p.contractConfirmedAt ?? null,
   };

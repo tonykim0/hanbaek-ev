@@ -26,7 +26,7 @@ const 금천효성 = sheetOf([
   row(12, '2025-11-21', 8),
 ], 16);
 const 증명서 = [act('2018-09-28', 0, 4), act('2021-12-16', 4, 8), act('2025-11-21', 8, 16)];
-const ctx = { survey: { state: '있음' as const, checked: true }, since: '2026-09-11' };
+const ctx = { since: '2026-09-11' };
 
 /** 운영사 직인을 받는 운영사 — 직인이 주제가 아닌 시험의 기본값 */
 const HEC = '현대엔지니어링';
@@ -58,10 +58,9 @@ describe('엑셀 줄 ↔ 증빙', () => {
 
   it('증빙이 없는 줄 — 보조사업 설치분(비고에 사업연도·대기번호)은 면제, 아니면 짚는다', () => {
     const s = sheetOf([row(8, '2020-03-01', 2, '신규 설치', null, '보조사업으로 설치한 충전시설(2020년 1111번)'), row(9, '2022-05-01', 3)], 5);
-    const r = compareLegacy(s, [], { ...ctx, survey: { state: '있음', checked: false } });
+    const r = compareLegacy(s, [], ctx);
     expect(r.lines.map((l) => l.verdict)).toEqual(['exempt', 'no-evidence']);
     expect(r.standing?.verdict).toBe('unknown');
-    expect(r.survey).toBeNull();
   });
 
   it('행위신고가 있는데 엑셀에 그 줄이 없으면 짚는다 — 필증·계약서는 받침 자료라 짚지 않는다', () => {
@@ -87,7 +86,7 @@ describe('엑셀 줄 ↔ 증빙', () => {
       row(10, '2015-01-01', 3, '신규 설치', null, '준공 당시 건설사 설치'),
     ], 55);
     const drawing = act('2008-11-02', null, null, { doc: '도면', file: '설계도면.pdf', title: '지하주차장 평면도', kind: null });
-    const r = compareLegacy(s, [drawing], { ...ctx, survey: { state: '있음', checked: true } });
+    const r = compareLegacy(s, [drawing], ctx);
     expect(r.lines.map((l) => [l.row?.row, l.verdict, l.act?.file ?? null])).toEqual([
       [8, 'review', '설계도면.pdf'],   // 증빙 칸의 도면을 그 줄에 붙인다
       [9, 'review', null],             // 도면은 하나뿐 — 두 번째 줄에는 「도면을 찾지 못함」
@@ -107,20 +106,6 @@ describe('엑셀 줄 ↔ 증빙', () => {
   it('기수를 못 읽은 증빙은 「못 읽음」 — 맞다고 하지 않는다', () => {
     const acts = [act('2018-09-28', null, null), ...증명서.slice(1)];
     expect(compareLegacy(금천효성, acts, ctx).lines[0].verdict).toBe('no-count');
-  });
-});
-
-describe('콘솔의 조사 결과 ↔ 엑셀', () => {
-  it('★조사 「없음」인데 엑셀이 16기★ — 설치이력을 올리면 조사함으로 굳는 현장(금천효성1차)', () => {
-    const r = compareLegacy(금천효성, 증명서, { ...ctx, survey: { state: '없음', checked: true } });
-    expect(r.survey).toEqual({ state: '없음', verdict: 'diff' });
-  });
-  it('조사 표시가 없으면 견주지 않는다', () => {
-    expect(compareLegacy(금천효성, 증명서, { ...ctx, survey: { state: '없음', checked: false } }).survey).toBeNull();
-  });
-  it('기설치는 최종 수량(H)으로 본다 — 지금은 0기여도 8년 전에 임의로 걷은 것이 있으면 있음', () => {
-    const s = sheetOf([row(8, '2015-01-01', 4), { ...row(9, '2018-01-01', 4, '철거'), f: 4 }], 0, 4);
-    expect(compareLegacy(s, [], { ...ctx, survey: { state: '있음', checked: true } }).survey?.verdict).toBe('ok');
   });
 });
 
@@ -145,7 +130,7 @@ describe('기설치 없음 설치이력의 직인', () => {
     expect(s.applicant).toBe(false);
     expect(missingSeals(s, HEC)).toEqual(['아파트(설치 신청자)']);
     expect(SEAL_FIX_REASON).toBe('기설치 없음 설치이력에 직인이 없습니다.');
-    expect(issueCount({ ...whole({ lines: [], standing: null, survey: null }), seal: s }, HEC)).toBe(1);
+    expect(issueCount({ ...whole({ lines: [], standing: null }), seal: s }, HEC)).toBe(1);
   });
 
   it('★엑셀은 이름만, 도장은 스캔본에★ — 어느 한 곳에 있으면 있는 것이다', () => {
@@ -168,7 +153,7 @@ describe('기설치 없음 설치이력의 직인', () => {
     const s = sealOf(none({ applicant: side('글로스터호텔청주점 관리단', true), operator: side('주식회사 플러그링크', false) }),
       [], '청주 글로스터호텔_기설치수량 미존재_플러그링크.xlsx')!;
     expect(s).toMatchObject({ applicant: true, operator: false });
-    const check = { ...whole({ lines: [], standing: null, survey: null }), seal: s };
+    const check = { ...whole({ lines: [], standing: null }), seal: s };
     for (const cpo of ['플러그링크', 'SK일렉링크']) {
       expect(missingSeals(s, cpo)).toEqual([]);
       expect(issueCount(check, cpo)).toBe(0);
@@ -212,7 +197,7 @@ describe('계약 확인을 막는 대조 — 검증 필수 (한백 지시 2026-1
   const files = ['https://x/log.xlsx', 'https://x/ev.pdf'];
   const base: PreInstallCheck = {
     checkedAt: '2026-10-07T01:00:00.000Z', files, sheetFile: 'log.xlsx',
-    sheet: { standing: 0, final: 0, badSplit: [], none: true }, lines: [], standing: null, survey: null,
+    sheet: { standing: 0, final: 0, badSplit: [], none: true }, lines: [], standing: null,
     unread: [], problem: null,
   };
   const gate = (check: PreInstallCheck | null, currentFiles = files, needed = true) =>
@@ -319,10 +304,10 @@ describe('★순수 보조사업 이력 — 사업연도·대기번호가 있으
     expect(r.lines[0]).toMatchObject({ verdict: 'no-evidence', why: '보조사업 표기에 사업연도·대기번호가 없어 면제 불가' });
   });
 
-  it('계약 확인을 막지 않는다 — 조사 결과가 어긋나도 검수 대상이 아니다. 서류가 바뀌면 다시 대조', () => {
+  it('계약 확인을 막지 않는다 — 수가 어긋나도 검수 대상이 아니다. 서류가 바뀌면 다시 대조', () => {
     const files = ['a.xlsx'];
     const check: PreInstallCheck = {
-      ...whole({ lines: [], standing: null, survey: { state: '없음', verdict: 'diff' } }), files, subsidyOnly: true,
+      ...whole({ lines: [], standing: { sheet: 16, evidence: 8, from: null, verdict: 'diff' } }), files, subsidyOnly: true,
     };
     expect(preCheckBlocker({ needed: true, check, currentFiles: files, cpo: HEC })).toBeNull();
     expect(preCheckBlocker({ needed: true, check, currentFiles: [...files, 'b.pdf'], cpo: HEC })).toBe('기설치 서류 바뀜 — 다시 대조');

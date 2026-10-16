@@ -17,7 +17,7 @@ import { boardColumnOf } from './board';
 export const EMPTY = '(없음)';
 
 export type AttrKey =
-  | 'col' | 'month' | 'cpo' | 'term' | 'biz' | 'bldg' | 'power' | 'sales' | 'gc' | 'queue' | 'pre';
+  | 'col' | 'month' | 'cpo' | 'term' | 'biz' | 'bldg' | 'power' | 'sales' | 'gc' | 'queue';
 
 export interface Attr {
   key: AttrKey;
@@ -87,21 +87,6 @@ export const ATTRS: Attr[] = [
     valuesOf: (p) =>
       !subsidized(p.bizType) ? ['해당없음'] : [p.envQueueNo?.trim() ? '있음' : '없음'],
   },
-  {
-    key: 'pre',
-    label: '기설치 조사',
-    /*
-     * 환경부 사업은 현장마다 기설치를 조사해야 한다 — 「조사 필요」만 걸러 보는 것이 그 업무다.
-     * 조사 전과 「조사해서 없음」을 같은 값으로 두면 그 목록을 만들 수 없다.
-     *
-     * 자체투자는 「조사 필요」가 아니라 「해당없음」이다. 보조금을 안 받으니 조사할 이유가
-     * 없는데, 둘을 같은 값으로 두면 조사할 곳 목록에 자체투자가 섞여 들어온다.
-     */
-    valuesOf: (p) =>
-      !subsidized(p.bizType)
-        ? ['해당없음']
-        : [p.preInstall ? `기설치 ${p.preInstall}` : '조사 필요'],
-  },
 ];
 
 export const ATTR_BY_KEY = new Map(ATTRS.map((a) => [a.key, a]));
@@ -116,7 +101,7 @@ export const ATTR_BY_KEY = new Map(ATTRS.map((a) => [a.key, a]));
  *
  * ★ATTRS 를 줄이지 않는다.★ 표의 열 머리글에서도 같은 축을 거는데(ProjectTable),
  * 거기서 걸 수 있는 것은 열이 있는 만큼이다 — 축을 지우면 그쪽에서도 사라진다.
- * 나머지 축(단계·계약연수·건축물·수전방식·대기번호·기설치)은 열 머리글에 남는다.
+ * 나머지 축(단계·계약연수·건축물·수전방식·대기번호)은 열 머리글에 남는다.
  * 거기서 걸어 둔 것은 판에도 나온다 — 걸려 있는데 보이지 않는 조건을 두지 않는다
  * (푸는 자리가 없으면 왜 이것만 나오는지 알 수 없다).
  */

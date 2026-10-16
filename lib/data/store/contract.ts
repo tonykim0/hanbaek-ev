@@ -17,7 +17,6 @@ import { canAccessProject, canWrite } from '@/lib/roles';
 import { needsPreInstallCheck } from '@/lib/doc-rules';
 import { COURT_AFTER_STATUS } from '@/lib/process';
 import { contractStateFor, missingRequiredDocs } from '../assemble';
-import type { PreInstall, Project } from '@/types/project';
 import type { Actor, ProjectRepository } from '../repository';
 import { assertAdmin, recordsOf } from './shared';
 import type { TxLike } from './shared';
@@ -30,7 +29,7 @@ import { clearResubmitMarks } from './docs';
 /** pgRepository 가 펼쳐 담는 조각 — 이름과 시그니처는 인터페이스가 정한다 */
 export const contractStore: Pick<
   ProjectRepository,
-  'submitContract' | 'confirmContract' | 'askMissingDocs' | 'setPreInstall'
+  'submitContract' | 'confirmContract' | 'askMissingDocs'
 > = {
   async submitContract(projectId, submitted, actor): Promise<void> {
     // 열람 전용은 무엇도 바꾸지 않는다 — 라우트 껍데기가 이미 막지만 여기서 한 번 더
@@ -275,43 +274,6 @@ export const contractStore: Pick<
     return { kinds };
   },
 
-  async setPreInstall(projectId, patch, actor): Promise<void> {
-    const db = getDb();
-    await db.transaction(async (tx) => {
-      const [row] = await tx
-        .select({
-          id: projects.id, salesOrg: projects.salesOrg, gcOrg: projects.gcOrg,
-          preInstall: projects.preInstall, preNote: projects.preNote, preChecked: projects.preChecked,
-          bizType: projects.bizType,
-        })
-        .from(projects)
-        .where(eq(projects.id, projectId))
-        .limit(1);
-      if (!row) throw new Error('현장을 찾을 수 없습니다.');
-      checkPreInstallWrite(row, actor);
-
-      const next = {
-        preInstall: patch.preInstall ?? (row.preInstall as PreInstall),
-        preNote: 'preNote' in patch ? (patch.preNote?.trim() || null) : row.preNote,
-        preChecked: patch.preChecked ?? row.preChecked,
-      };
-      if (
-        next.preInstall === row.preInstall
-        && next.preNote === row.preNote
-        && next.preChecked === row.preChecked
-      ) return;
-
-      await savePreInstall(tx, projectId, next);
-
-      await writeAudit(tx, {
-        projectId, actor,
-        action: '기설치 조사',
-        field: 'preInstall',
-        oldValue: `${row.preInstall}${row.preChecked ? ' (확인)' : ''}`,
-        newValue: `${next.preInstall}${next.preChecked ? ' (확인)' : ''}`,
-      });
-    });
-  },
 };
 
 /**
@@ -377,37 +339,5 @@ async function applyAskSideEffects(
           }
         : (left?.n ?? 0) > 0 ? {} : { court: '한백' as const }),
     })
-    .where(eq(projects.id, projectId));
-}
-
-/**
- * 기설치 조사를 적을 수 있는가 — 아니면 던진다.
- *
- * 자체투자는 조사 자체를 하지 않는다 — 환경부 보조금이 기설치 여부로 갈리기 때문에 하는
- * 조사다. 조사는 현장에 가는 쪽(그 현장의 협력사·한백)이 한다.
- *
- * 반려는 여기 없다 — 「다시 조사해라」는 기설치 두 칸의 서류 반려로 한다(2026-09-03).
- */
-function checkPreInstallWrite(
-  row: { salesOrg: string | null; gcOrg: string | null; bizType: string | null },
-  actor: Actor
-): void {
-  if (!needsPreInstallCheck(row.bizType as Project['bizType'])) {
-    throw new Error('자체투자 현장은 기설치 조사를 하지 않습니다.');
-  }
-  if (!canAccessProject(actor.role, actor.org, row)) {
-    throw new Error('이 현장의 기설치를 적을 권한이 없습니다.');
-  }
-}
-
-/** 조사 결과를 저장한다. 조사는 진척이라 정체일 기준을 갱신한다. */
-async function savePreInstall(
-  tx: TxLike,
-  projectId: string,
-  next: { preInstall: PreInstall; preNote: string | null; preChecked: boolean }
-): Promise<void> {
-  await tx
-    .update(projects)
-    .set({ ...next, lastProgressAt: today() })
     .where(eq(projects.id, projectId));
 }

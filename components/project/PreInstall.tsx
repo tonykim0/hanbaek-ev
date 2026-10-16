@@ -1,22 +1,22 @@
 'use client';
 
 /**
- * 기설치 조사 — 조사 결과(있음/없음 + 내역)와 서류 두 칸(설치이력·증빙).
+ * 기설치 조사 — 이력 조회와 서류 두 칸(설치이력·증빙)·대조.
  *
- * 한때 조사 입력을 걷어내고 「파일이 곧 조사 결과」로 뒀는데, 파일만으로는 몇 대·몇 kW·
- * 어느 운영사인지가 화면에 남지 않아 조사 내역 입력을 되살렸다(한백 지시 2026-08-23).
- * 저장 경로는 원래 있던 것이다 — PATCH /preinstall 이 있음/없음·내역·조사 표시를 받는다.
+ * ★「현장 확인 결과」(있음/없음 + 조사 내역 적기)는 걷었다★ (한백 2026-10-15 「이건 순수히 메모 기능인데 잘못
+ * 이용했다」). 그 칸은 접수 때 협력사가 적은 기설치 있음/없음을 덮어쓰고 「조사했다」 표시(preChecked)를 세웠고,
+ * 제목의 「조사 필요」·시공관리 표의 「기설치 조사」 열·대조의 「조사 결과 어긋남」이 그 표시를 읽었다.
+ * 기설치 확인은 설치이력 엑셀 대조가 한다. 접수 때 값(증빙 필수 여부·NICE 문구)은 그대로다.
  *
  * 서류 목록에서 빼내 자기 구역에 두는 것은 유지한다 — 현장마다 해야 하는 일이라
  * 증빙이 서류 열여섯 칸 사이에 섞여 있으면 조사가 됐는지 보이지 않는다.
  */
 import { useState } from 'react';
 import { reviewKindLabel } from '@/lib/review-labels';
-import type { PreInstall as PreInstallState, ProjectDetail, ProjectDocument } from '@/types/project';
+import type { ProjectDetail, ProjectDocument } from '@/types/project';
 import { evaluateDocs, needsPreInstallCheck } from '@/lib/doc-rules';
 import { DocDelete, DocFileActions, DocUpload, DownloadAll } from '@/components/DocFiles';
-import { useAction } from '@/lib/use-action';
-import { Badge, Btn, Choice, Empty, Err, FIELD, GroupHead, Tag, TEXT } from '@/components/ui';
+import { Badge, Btn, Err, GroupHead, TEXT } from '@/components/ui';
 import { DocReview } from './DocReview';
 import { PreInstallCheckBlock } from './PreInstallCheck';
 import {
@@ -35,7 +35,7 @@ import subsidyMeta from '@/public/data/subsidy-history/meta.json';
 
 export function PreInstall({
   project, docs, byKind, siteName, canReview, canRemove = false,
-  canEditDocs = false, canFillEmpty = false, surveyText, check = null,
+  canEditDocs = false, canFillEmpty = false, check = null,
 }: {
   /** 설치이력 엑셀 ↔ 증빙의 마지막 대조 (lib/preinstall-check) */
   check?: PreInstallCheck | null;
@@ -56,15 +56,6 @@ export function PreInstall({
   canEditDocs?: boolean;
   /** 빈 칸에는 올릴 수 있는가 — 잠긴 뒤의 예외, 착공 전까지(IntakeTab 의 같은 이름 주석) */
   canFillEmpty?: boolean;
-  /**
-   * 조사 내역을 글자로 — 묶음에 .txt 로 같이 들어간다.
-   *
-   * ★파일이 아니라 입력값이라 빠뜨리기 쉽다★ (2026-08-25 에 서류 묶음에서 겪은 것과
-   * 같은 자리다): 대수·kW·운영사가 적힌 조사 결과는 올린 파일이 아니어서, 파일만 받으면
-   * 그 내역이 화면에만 남아 사람이 옮겨 적어야 했다. 만드는 자리는 IntakeTab 한 곳이다 —
-   * 여기서 다시 만들면 두 묶음의 글이 갈린다.
-   */
-  surveyText?: string | null;
 }) {
   /*
    * 자체투자는 기설치 조사를 하지 않는다 — 환경부 보조금이 기설치 여부로 갈리기 때문에
@@ -119,11 +110,11 @@ export function PreInstall({
 
   return (
     /*
-     * ★걸음 셋으로 선다★ (UI 리뷰 2026-10-07 「뒤죽박죽에 보기 쉽지 않다」) — 이력 조회(공공 자료) → 서류·대조
-     * (낸 서류끼리) → 현장 확인 결과. 걸음마다 번호 붙은 머리(ui GroupHead)이고 사이는 얇은 선 하나다(규칙 1).
+     * ★걸음으로 선다★ (UI 리뷰 2026-10-07 「뒤죽박죽에 보기 쉽지 않다」) — 이력 조회(공공 자료) → 서류·대조
+     * (낸 서류끼리). 걸음마다 번호 붙은 머리(ui GroupHead)이고 사이는 얇은 선 하나다(규칙 1).
+     * 셋째 걸음(현장 확인 결과)은 2026-10-15 에 걷었다(위 머리 주석).
      * 대조가 이력 조회 바로 밑인 것은 그대로다(한백 지시 2026-10-07 「이력 조회 밑에 넣어주고 검증 필수」) —
      * 서류 두 칸을 그 걸음 안으로 올렸다: 대조가 판정하는 것이 그 두 칸이다.
-     * 기설치 있음/없음은 3 걸음 한 곳에만 둔다 — 제목 배지·대조의 「조사 결과」 줄과 세 번 있었다(규칙 5).
      */
     <section className="flex flex-col gap-4">
       {/*
@@ -132,14 +123,12 @@ export function PreInstall({
       */}
       <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1.5">
         <h2 className={TEXT.section}>기설치 조사</h2>
-        {!project.preChecked && <Tag tone="warn">조사 필요</Tag>}
         {/* 테두리 있는 단추는 baseline 에서 조금 내려앉는다 — 글자 줄이 아니라 가운데에 맞춘다 */}
         <span className="self-center">
           <DownloadAll
             docs={docs.map((d) => byKind.get(d.key)).filter((d): d is ProjectDocument => Boolean(d))}
             siteName={siteName}
             labelOf={(kind) => docs.find((d) => d.key === kind)?.label ?? reviewKindLabel(kind)}
-            extra={surveyText ? [{ name: '기설치 조사내역', text: surveyText }] : []}
           />
         </span>
       </div>
@@ -182,10 +171,6 @@ export function PreInstall({
             </div>
           }
         />
-      </div>
-
-      <div className="border-t border-slate-100 pt-3">
-        <SurveyResult project={project} />
       </div>
     </section>
   );
@@ -367,83 +352,6 @@ function Lookup({ project }: { project: ProjectDetail['project'] }) {
             현장별로 실제 기설치 대수 반드시 확인 필요 — 보조금 불가 시 추후 보조금 환수 및 패널티 적용 예정
           </p>
         </div>
-      )}
-    </div>
-  );
-}
-
-/*
- * 3 현장 확인 결과 — 있음/없음과 조사 내역(대수·kW·운영사·보조금 이력 등). ★기설치 있음/없음은 여기 한 곳이다★.
- * 평소엔 글자로 굳히고 「수정」을 눌러야 열린다(화면 규칙 4번). 저장에 preChecked 를 같이 실어 「조사했다」가 된다.
- * 열람 전용의 쓰기는 서버(write-route)가 막는다.
- */
-function SurveyResult({ project }: { project: ProjectDetail['project'] }) {
-  const { busy, error, run } = useAction();
-  const [editing, setEditing] = useState(false);
-  const [state, setState] = useState<PreInstallState>(project.preInstall);
-  const [note, setNote] = useState(project.preNote ?? '');
-
-  async function save() {
-    const ok = await run({
-      url: `/api/projects/${project.id}/preinstall`,
-      method: 'PATCH',
-      body: { preInstall: state, preNote: note.trim() || null, preChecked: true },
-      fail: '조사 내역을 저장하지 못했습니다.',
-    });
-    if (ok) setEditing(false);
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      <GroupHead step={3} title="현장 확인 결과">
-        {/* 안내문을 두지 않는다(규칙 2) — 무엇을 하라는 말은 단추 이름이 한다 */}
-        {!editing && (
-          <span className="self-center">
-            <Btn size="sm" kind="quiet" onClick={() => setEditing(true)}>
-              {project.preChecked ? '조사 내역 수정' : '조사 내역 적기'}
-            </Btn>
-          </span>
-        )}
-      </GroupHead>
-      {editing ? (
-        <div className="flex max-w-3xl flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className={`mr-1 ${TEXT.label}`}>기설치</span>
-            {(['없음', '있음'] as const).map((v) => (
-              <Choice key={v} on={state === v} onClick={() => setState(v)}>{v}</Choice>
-            ))}
-          </div>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            rows={5}
-            placeholder="조사에서 알아낸 것 — 대수 · kW · 운영사 · 설치 시기 · 보조금 수령 여부 등"
-            className={FIELD}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <Btn busy={busy} busyLabel="저장 중…" onClick={() => void save()}>
-              조사 결과 저장
-            </Btn>
-            <Btn
-              kind="quiet"
-              disabled={busy}
-              onClick={() => { setEditing(false); setState(project.preInstall); setNote(project.preNote ?? ''); }}
-            >
-              취소
-            </Btn>
-            <Err>{error}</Err>
-          </div>
-        </div>
-      ) : project.preChecked ? (
-        <div className="flex max-w-3xl flex-col gap-1">
-          <p className={TEXT.body}><b>기설치 {project.preInstall}</b></p>
-          {/* 조사는 했는데 적은 글이 없다 — 파일만 온 현장이다. 담담한 회색이다 */}
-          {project.preNote
-            ? <p className={`whitespace-pre-line break-keep ${TEXT.body}`}>{project.preNote}</p>
-            : <Empty kind="wait" label="내역 없음" />}
-        </div>
-      ) : (
-        <Empty kind="miss" />
       )}
     </div>
   );

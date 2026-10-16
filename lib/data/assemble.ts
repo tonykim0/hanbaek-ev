@@ -317,8 +317,6 @@ export function summaryOf(r: ProjectRecord, rules: RuleMap, settles: SettleMap):
     bizType: d.project.bizType,
     powerType: d.project.powerType,
     envQueueNo: d.project.envQueueNo,
-    // 조사 전이면 값을 주지 않는다 — 접수 기본값 '없음' 과 「안 봤음」을 가른다
-    preInstall: d.project.preChecked ? d.project.preInstall : null,
     createdAt: d.project.createdAt,
     lines: d.lines.map((l) => ({ termYears: l.termYears, qty: l.qty })),
     stage: d.stage,

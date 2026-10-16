@@ -1164,8 +1164,6 @@ export interface ProjectSummary {
   bizType: BizType | null;
   powerType: PowerType | null;
   envQueueNo: string | null;
-  /** 기설치 조사 결과 — 조사 전이면 null (「없음」과 가른다) */
-  preInstall: PreInstall | null;
   createdAt: string;
   lines: Array<{ termYears: number; qty: number }>;
   stage: Stage;

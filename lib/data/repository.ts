@@ -198,27 +198,6 @@ export interface ProjectRepository {
   ): Promise<boolean>;
 
   /**
-   * 기설치 조사. [그 현장의 협력사 · 한백]
-   *
-   * 환경부 사업은 현장마다 기설치 충전기를 조사해야 한다. 조사는 현장에 가는 쪽(협력사)이
-   * 하고 한백이 확인하므로 양쪽이 쓴다 — 한백만 쓸 수 있으면 조사한 사람이 적을 자리가 없다.
-   *
-   * preChecked 는 「봤다」는 표시다. preInstall 의 '없음' 과 「아직 안 봤음」을 가른다.
-   *
-   * 반려는 여기 없다 — 「다시 조사해라」는 기설치 두 칸(설치이력·증빙)의 서류 반려로
-   * 한다(2026-09-03). 결과가 같은 문이 셋이었다: migrations/0050 참조.
-   */
-  setPreInstall(
-    projectId: string,
-    patch: {
-      preInstall?: PreInstall;
-      preNote?: string | null;
-      preChecked?: boolean;
-    },
-    actor: Actor
-  ): Promise<void>;
-
-  /**
    * 기설치 이력 엑셀 ↔ 증빙 대조 결과를 남긴다. [한백 전용]
    *
    * 현장마다 마지막 하나 — 다시 대조하면 덮는다. 대조 자체(엑셀 읽기·증빙 판독·판정)는

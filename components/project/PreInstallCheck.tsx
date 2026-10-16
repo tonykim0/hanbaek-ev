@@ -198,15 +198,6 @@ export function PreInstallCheckBlock({
               </dd>
             </>
           )}
-          {/* 조사 결과는 3 걸음의 값이다 — 여기는 어긋날 때만 짚는다(같은 값을 두 번 두지 않는다, 규칙 5) */}
-          {check.survey?.verdict === 'diff' && (
-            <>
-              <dt className={TEXT.label}>조사 결과</dt>
-              <dd className={TEXT.body}>
-                기설치 {check.survey.state} · 엑셀 최종 {check.sheet?.final ?? 0}기 <b className={TONE.어긋남}>어긋남</b>
-              </dd>
-            </>
-          )}
           {check.sheet && check.sheet.badSplit.length > 0 && (
             <>
               <dt className={TEXT.label}>수량 검증</dt>

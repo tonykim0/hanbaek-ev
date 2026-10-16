@@ -41,7 +41,6 @@ const PICKABLE = [
   { key: 'created', label: '접수일', attr: 'month', group: '기본' },
   // 영업(계약) 단계에서 다루는 속성
   { key: 'queue', label: '환경부 대기번호', attr: 'queue', group: '영업' },
-  { key: 'pre', label: '기설치 조사', attr: 'pre', group: '영업' },
   { key: 'biz', label: '사업유형', attr: 'biz', group: '영업' },
   { key: 'bldg', label: '건축물', attr: 'bldg', group: '영업' },
   { key: 'power', label: '수전방식', attr: 'power', group: '영업' },
@@ -69,7 +68,7 @@ const MILESTONE_KEYS: readonly ColKey[] = [
 ];
 const DEFAULT_HIDDEN: Record<'intake' | 'construction', readonly ColKey[]> = {
   intake: MILESTONE_KEYS,
-  construction: ['queue', 'pre', 'biz', 'bldg', 'power', 'created'],
+  construction: ['queue', 'biz', 'bldg', 'power', 'created'],
 };
 
 const COLUMN_ORDER = new Map(BOARD_COLUMNS.map((c, i) => [c.key, i]));
@@ -244,7 +243,6 @@ export default function ProjectTable({
               {show('term') && head('계약연수', { sort: 'term', attr: 'term' })}
               {show('cpo') && head('운영사', { attr: 'cpo' })}
               {show('queue') && head('환경부 대기번호', { attr: 'queue' })}
-              {show('pre') && head('기설치 조사', { attr: 'pre' })}
               {show('biz') && head('사업유형', { attr: 'biz' })}
               {show('bldg') && head('건축물', { attr: 'bldg' })}
               {show('power') && head('수전방식', { attr: 'power' })}
@@ -309,21 +307,6 @@ export default function ProjectTable({
                   {show('queue') && (
                     <td className="px-3 py-2.5">
                       <QueueCell p={p} canEdit={canMove} />
-                    </td>
-                  )}
-                  {/*
-                    조사 전은 눈에 걸려야 한다 — 환경부 사업은 현장마다 해야 하는 일이다.
-                    자체투자는 조사할 이유가 없으므로 「조사 필요」로 세지 않는다.
-                  */}
-                  {show('pre') && (
-                    <td className="whitespace-nowrap px-3 py-2.5">
-                      {!subsidized(p.bizType) ? (
-                        <span className="text-slate-300">해당없음</span>
-                      ) : p.preInstall ? (
-                        <span className="text-slate-600">{p.preInstall}</span>
-                      ) : (
-                        <Tag tone="warn">조사 필요</Tag>
-                      )}
                     </td>
                   )}
                   {show('biz') && <Cell value={p.bizType} />}

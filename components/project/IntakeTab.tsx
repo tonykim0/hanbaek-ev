@@ -509,27 +509,6 @@ export function IntakeTab({
     return doc?.status === 'rejected' && !doc.blobUrl;
   });
 
-  /*
-   * 기설치 조사 내역을 서류 묶음에 같이 넣는다 (한백 지시 2026-08-25).
-   *
-   * 조사 결과(있음/없음 · 대수·kW·운영사)는 올린 파일이 아니라 입력값이라 zip 에 들어갈
-   * 것이 없었다 — 서류를 전부 받아도 이 내역만 화면에 남아 사람이 옮겨 적어야 했다.
-   * 설치이력·증빙 파일은 이미 들어간다(아래 DownloadAll 이 evaluated 전체를 본다).
-   *
-   * 자체투자는 조사를 하지 않으므로 넣을 것이 없다 — 「해당없음」인 구역의 빈 파일을
-   * 묶음에 끼우면 받는 쪽이 조사를 빠뜨린 것으로 읽는다.
-   */
-  const surveyText = needsPreInstallCheck(project.bizType)
-    ? [
-        `${siteName} — 기설치 조사`,
-        '',
-        `기설치: ${project.preChecked ? project.preInstall : '미조사'}`,
-        '',
-        '조사 내역',
-        project.preNote?.trim() || '(비어 있음)',
-      ].join('\n')
-    : null;
-
   /* 띠가 세는 것 — 사유는 카드가 적는다(RejectReason). 여기서는 건수와 이름만 쓴다 */
   const rejected = evaluated
     .map((d) => ({ key: d.key, label: d.label, doc: byKind.get(d.key) }))
@@ -576,7 +555,6 @@ export function IntakeTab({
          */
         canEditDocs={canEditDocs}
         canFillEmpty={canFillEmpty}
-        surveyText={surveyText}
         check={preinstallCheck}
       />
 
@@ -599,7 +577,6 @@ export function IntakeTab({
               docs={evaluated.map((d) => byKind.get(d.key)).filter((d): d is ProjectDocument => Boolean(d))}
               siteName={siteName}
               labelOf={(kind) => evaluated.find((d) => d.key === kind)?.label ?? reviewKindLabel(kind)}
-              extra={surveyText ? [{ name: '기설치 조사내역', text: surveyText }] : []}
             />
           </span>
         </div>
