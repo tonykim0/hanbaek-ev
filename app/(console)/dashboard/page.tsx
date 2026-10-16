@@ -477,7 +477,12 @@ function Breakdown({
                   {row.pass && <Tag>패스스루</Tag>}
                 </span>
                 <span className="text-small font-black tabular-nums text-slate-900">{percent}%</span>
-                <span className="w-[64px] text-right text-tiny tabular-nums text-slate-400">
+                {/*
+                  ★접지 않는다★ (한백 지적 2026-10-16 「패스스루 위에 건이 개행되고 있어」) — 폭을 64px 로 박아 두어
+                  「100대 · 12건」처럼 자릿수가 늘면 「건」이 다음 줄로 떨어졌다. 글은 한 줄로 서고, 폭은 세 자리 대수·두 자리
+                  건수가 들어가게 잡아 둔다 — 줄마다 폭이 다르면 옆의 % 가 줄마다 다른 자리에 선다.
+                */}
+                <span className="w-[88px] shrink-0 whitespace-nowrap text-right text-tiny tabular-nums text-slate-400">
                   {row.qty}대 · {row.projects}건
                   {/* 그중 패스스루 몫 — 막대의 회색 토막과 같은 수다 */}
                   {row.passQty > 0 && (
