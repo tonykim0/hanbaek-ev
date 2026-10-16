@@ -14,6 +14,8 @@ import { contractDocsLockedWhy, gateContextOf, nextStatusOf, prevStatusOf } from
 import { HANDOFF_STATUS } from '@/lib/board';
 import { evaluateDocs, needsPreInstallCheck, type DocReq } from '@/lib/doc-rules';
 import { bundledAsPdf, checkedFilesOf, preCheckBlocker } from '@/lib/preinstall-check';
+import { parkingBlocker, parkingFilesOf, VIEW_ONLY_REASON, viewOnlyNow } from '@/lib/parking-check';
+import { ParkingCheckBlock } from './ParkingCheck';
 import { needsCpoSeal } from '@/lib/cpo-seal';
 import { DocDelete, DocFileActions, DocUpload, DownloadAll } from '@/components/DocFiles';
 import { useAction } from '@/lib/use-action';
@@ -399,10 +401,12 @@ function FactGroup(
 
 export function IntakeTab({
   project, evaluated, byKind, contract, projectId, siteName, canReview, canSubmit, canEditDocs,
-  canFillEmpty = false, knownOrgs, status, lines, preinstallCheck = null,
+  canFillEmpty = false, knownOrgs, status, lines, preinstallCheck = null, parkingCheck = null,
 }: {
   /** 기설치 이력 엑셀 ↔ 증빙의 마지막 대조 — 기설치 조사 구역이 그린다 */
   preinstallCheck?: ProjectDetail['preinstallCheck'];
+  /** 주차면 대조(건축물대장·결과서·신청서)의 마지막 결과 — 서류 묶음 밑에 선다 */
+  parkingCheck?: ProjectDetail['parkingCheck'];
   knownOrgs: string[];
   project: ProjectDetail['project'];
   evaluated: ReturnType<typeof evaluateDocs>;
@@ -503,6 +507,11 @@ export function IntakeTab({
    * 않고 서버가 다시 세므로 「단추는 눌리는데 저장이 거절되는」 일이 없다.
    */
   const missing = evaluated.filter((d) => d.req === 'm' && !byKind.get(d.key)?.blobUrl);
+  /* 서류 묶음 — 보이는 것만 센다(빈 묶음을 건너뛰면 1·3 으로 튄다). 주차면 대조가 그다음 번호를 받는다 */
+  const shownGroups = DOC_GROUPS.filter((g) => evaluated.some((d) => d.req === g.req && !d.preinstall));
+  /* 주차면 대조가 보는 세 칸(건축물대장·결과서·신청서)의 지금 파일 — 지난 대조와 견준다 */
+  const parkingFiles = parkingFilesOf([...byKind.values()]);
+  const viewOnly = viewOnlyNow(parkingCheck, parkingFiles);
   /* 지금 서 있는 보완요청 — 파일 없이 반려로 세워진 칸 (되돌릴 수 있어야 한다) */
   const asked = evaluated.filter((d) => {
     const doc = byKind.get(d.key);
@@ -648,7 +657,7 @@ export function IntakeTab({
           */}
         <div className="flex flex-col gap-4">
           {/* 번호는 보이는 묶음으로 센다 — 빈 묶음을 건너뛰면 1·3 으로 튄다 */}
-          {DOC_GROUPS.filter((g) => evaluated.some((d) => d.req === g.req && !d.preinstall)).map((g, gi) => {
+          {shownGroups.map((g, gi) => {
             // 기설치 서류는 위 「기설치 조사」 구역에서 다룬다
             const list = evaluated.filter((d) => d.req === g.req && !d.preinstall);
             const done = list.filter((d) => {
@@ -804,6 +813,8 @@ export function IntakeTab({
                               kind={d.key}
                               status={doc?.status ?? 'none'}
                               hasFile={(doc?.files.length ?? 0) > 0}
+                              /* 대조가 열람용을 짚었으면 건축물대장 칸의 반려가 그 사유를 들고 연다(기설치의 직인 없음과 같다) */
+                              suggest={d.key === 'bldgreg' && viewOnly ? { label: '열람용', reason: VIEW_ONLY_REASON } : null}
                             />
                           )}
                           {/*
@@ -828,6 +839,22 @@ export function IntakeTab({
               </div>
             );
           })}
+          {/*
+            * ★주차면 대조는 서류 묶음 밑, 「계약 확인 완료」 바로 위다★ (한백 지시 2026-10-16) — 대조하는 것이 위의 서류
+            * 칸 셋(건축물대장·결과서·신청서)이고, 막는 것이 그 밑의 단추다. 번호는 서류 묶음 다음이다.
+            * 이관 현장은 서류가 콘솔 밖이라 대조하지 않는다(parkingBlocker 의 면제와 같다).
+            */}
+          {!contract.docsExempt && (
+            <div className="border-t border-slate-100 pt-3">
+              <ParkingCheckBlock
+                projectId={projectId}
+                check={parkingCheck}
+                currentFiles={parkingFiles}
+                canRun={canReview}
+                step={shownGroups.length + 1}
+              />
+            </div>
+          )}
         </div>
 
         {/*
@@ -887,6 +914,11 @@ export function IntakeTab({
               currentFiles: checkedFilesOf([...byKind.values()]),
               bundled: bundledAsPdf([...byKind.values()]),
               cpo: project.cpo,
+            }) ?? parkingBlocker({
+              // 주차면 대조도 계약 확인의 조건이다(한백 결정 2026-10-16) — 저장소 confirmContract 와 같은 판정
+              needed: !contract.docsExempt,
+              check: parkingCheck,
+              currentFiles: parkingFiles,
             })}
           />
         )}

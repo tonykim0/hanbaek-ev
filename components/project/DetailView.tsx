@@ -369,6 +369,7 @@ export default function ProjectDetailView({
               status={process.status}
               lines={lines}
               preinstallCheck={detail.preinstallCheck ?? null}
+              parkingCheck={detail.parkingCheck ?? null}
             />
           )}
           {tab === 'construction' && <ConstructionTab detail={detail} edit={processEdit} />}

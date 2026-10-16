@@ -23,6 +23,7 @@ import { canAccessProject, canWrite } from '@/lib/roles';
 import { isKnownDocKind } from '@/lib/data/assemble';
 import { attachDocument } from '@/lib/attach-doc';
 import { schedulePreInstallCheck } from '@/lib/preinstall-run';
+import { scheduleParkingCheck } from '@/lib/parking-run';
 import { scheduleCpoSealRead } from '@/lib/cpo-seal-run';
 import { scheduleFactRead } from '@/lib/fact-read-run';
 
@@ -124,6 +125,8 @@ export async function POST(
   }
   // 설치이력·증빙이면 기설치 대조를 저절로 — 응답 뒤에 돈다(lib/preinstall-run)
   if (!result.already) schedulePreInstallCheck(params.id, params.kind);
+  // 건축물대장·결과서·신청서면 주차면 대조를 저절로 — 응답 뒤에(lib/parking-run)
+  if (!result.already) scheduleParkingCheck(params.id, params.kind);
   // 현대엔지니어링·SK 계약서면 운영사 직인을 읽어 꼬리표로 단다 — 응답 뒤에(lib/cpo-seal-run)
   if (!result.already) scheduleCpoSealRead(params.id, params.kind);
   // 사업자등록증·계약서면 대표자·계약일이 비었을 때 읽어 현장 정보에 넣는다(lib/fact-read-run)
@@ -186,5 +189,7 @@ export async function DELETE(
   }
   // 설치이력·증빙에서 한 장이 빠졌으면 남은 것으로 다시 대조한다(lib/preinstall-run)
   schedulePreInstallCheck(params.id, params.kind);
+  // 세 칸에서 한 장이 빠졌으면 주차면도 남은 것으로 다시 대조한다(lib/parking-run)
+  scheduleParkingCheck(params.id, params.kind);
   return NextResponse.json({ ok: true });
 }

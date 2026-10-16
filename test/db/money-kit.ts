@@ -11,7 +11,7 @@
 import { evaluateDocs } from '@/lib/doc-rules';
 import { getRepository } from '@/lib/data';
 import type { PayoutKind, PricingRule, TaxInvoice } from '@/types/project';
-import { RUN, USERS, actorOf, draft, dropFixture, viewerOf } from './kit';
+import { RUN, USERS, actorOf, draft, dropFixture, passParking, viewerOf } from './kit';
 
 export const admin = actorOf(USERS.admin);
 export const adminView = viewerOf(USERS.admin);
@@ -56,6 +56,8 @@ export async function withPayableProject<T>(
       await repo.uploadDocument({ projectId: id, kind: d.key, filename: `${d.key}.pdf`, blobUrl: `https://test.local/${RUN}/${id}/${d.key}.pdf` }, admin);
     }
     await repo.submitContract(id, true, admin);
+    // 주차면 대조는 여기서 보지 않는다 — 맞음으로 남겨 계약 확인의 문을 지난다(parking-gate 가 따로 본다)
+    await passParking(id);
     if (opts.confirm !== false) await repo.confirmContract(id, true, admin);
     return await fn({ id, org, lineId, ruleId: rule.id });
   } finally {

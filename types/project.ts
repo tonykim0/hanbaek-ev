@@ -10,6 +10,7 @@
  *  - 서류는 번호가 아니라 종류(kind)로 다룬다.
  */
 import type { PreInstallCheck } from '@/lib/preinstall-check';
+import type { ParkingCheck } from '@/lib/parking-check';
 
 export type CpoName =
   | '플러그링크'
@@ -1755,6 +1756,11 @@ export interface ProjectDetail {
    * 협력사도 본다: 어긋난 곳을 고쳐 다시 내는 것이 협력사의 일이다. 금액이 없다.
    */
   preinstallCheck?: PreInstallCheck | null;
+  /**
+   * 주차면 대조(건축물대장·결과서·신청서)의 마지막 결과 — 상세를 열 때만 읽는다.
+   * 협력사도 본다: 어긋난 서류를 고쳐 다시 내는 것이 협력사의 일이다. 금액이 없다.
+   */
+  parkingCheck?: ParkingCheck | null;
 }
 
 // ── 접수 입력 ────────────────────────────────────────────────────

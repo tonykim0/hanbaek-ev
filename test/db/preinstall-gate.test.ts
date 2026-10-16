@@ -10,7 +10,7 @@ import { POST as ACCEPT } from '@/app/api/projects/[id]/preinstall/check/accept/
 import { getRepository } from '@/lib/data';
 import { evaluateDocs } from '@/lib/doc-rules';
 import type { PreInstallCheck } from '@/lib/preinstall-check';
-import { RUN, USERS, actorOf, call, draft, signIn, signOut, viewerOf } from './kit';
+import { RUN, USERS, actorOf, call, draft, passParking, signIn, signOut, viewerOf } from './kit';
 
 const repo = getRepository();
 const admin = actorOf(USERS.admin);
@@ -38,6 +38,8 @@ async function withSubsidyProject<T>(fn: (id: string) => Promise<T>): Promise<T>
       await repo.uploadDocument({ projectId: id, kind: d.key, filename, blobUrl: urlOf(id, d.key) }, admin);
     }
     await repo.submitContract(id, true, admin);
+    // 주차면 대조는 이 시험의 주제가 아니다 — 맞음으로 남긴다(parking-gate 가 따로 본다)
+    await passParking(id);
     const ready = await repo.getProject(id, viewerOf(USERS.admin));
     // 픽스처가 맞는지부터 — 대조 말고 다른 것이 막으면 이 시험은 아무것도 말하지 않는다
     expect(ready?.contract.ready, '서류·단가가 다 찬 현장이어야 한다').toBe(true);

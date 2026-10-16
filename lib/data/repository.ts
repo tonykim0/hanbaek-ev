@@ -22,6 +22,7 @@ import type {
 import type { Actor, Viewer } from '@/lib/auth/types';
 import type { DraftFull, DraftSummary, PhotoRef } from '@/lib/survey/draft-shape';
 import type { PreInstallCheck } from '@/lib/preinstall-check';
+import type { ParkingCheck } from '@/lib/parking-check';
 import type { Role } from '@/lib/roles';
 
 /** 알림을 받는 사람 — 세고 읽는 쪽(세션의 id·구분·소속) */
@@ -212,6 +213,15 @@ export interface ProjectRepository {
    * checkedAt 은 화면이 본 결과의 대조 시각 — 그사이 다시 대조됐으면 거절한다.
    */
   acceptPreInstallCheck(projectId: string, checkedAt: string, accept: boolean, actor: Actor): Promise<void>;
+
+  /**
+   * 주차면 대조 결과를 남긴다 — 건축물대장(K-apt·공문) = 결과서 = 신청서 · 열람용 여부. [한백 전용]
+   * 현장마다 마지막 하나. 대조 자체는 lib/parking-run 이 하고 여기는 저장만 한다. getProject 의 parkingCheck 로 읽힌다.
+   */
+  saveParkingCheck(projectId: string, check: ParkingCheck, actor: Actor): Promise<void>;
+
+  /** 주차면 대조 결과를 「확인함」으로 넘긴다 · 되돌린다. [한백 전용] — 기설치 대조의 확인함과 같은 꼴 */
+  acceptParkingCheck(projectId: string, checkedAt: string, accept: boolean, actor: Actor): Promise<void>;
 
   /**
    * 영업사·시공사를 고친다. [한백 전용]

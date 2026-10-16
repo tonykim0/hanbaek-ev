@@ -13,7 +13,6 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { documents } from '@/lib/db/schema';
 import { getRepository } from '@/lib/data';
-import type { Actor } from '@/lib/data/repository';
 import { loadPreInstallCheck } from '@/lib/data/store/preinstall-check';
 import { readLegacySheet, type LegacySheet } from '@/lib/legacy-sheet';
 import { readEvidence, readSheetScans } from '@/lib/legacy-evidence';
@@ -21,33 +20,8 @@ import {
   CHECKED_KINDS, checkedFilesOf, compareLegacy, sameFiles, sealOf, subsidyOnly, type PreInstallCheck, type SheetScan,
 } from '@/lib/preinstall-check';
 import { background } from '@/lib/background';
+import { AUTO, fetchAll, fetchFile, named, SETTLE_MS } from '@/lib/check-kit';
 import type { DocFile, ProjectDetail } from '@/types/project';
-
-/** 칸 안에서 이름이 겹치면 판독의 답을 파일에 되짚을 수 없다 — 뒤에 번호를 붙인다 */
-function named(files: DocFile[]): { name: string; url: string }[] {
-  const seen = new Map<string, number>();
-  return files.map((f) => {
-    const n = (seen.get(f.name) ?? 0) + 1;
-    seen.set(f.name, n);
-    return { url: f.url, name: n === 1 ? f.name : f.name.replace(/(\.[^.]+)?$/, ` (${n})$1`) };
-  });
-}
-
-async function fetchFile(url: string): Promise<Buffer> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`파일을 읽지 못했습니다 (${res.status})`);
-  return Buffer.from(await res.arrayBuffer());
-}
-
-/** 여럿을 받는다 — 한 장을 못 받아도 대조를 멈추지 않고 그 장을 「못 읽음」으로 돌려준다 */
-async function fetchAll(files: { name: string; url: string }[]): Promise<{ got: { name: string; buffer: Buffer }[]; failed: string[] }> {
-  const got: { name: string; buffer: Buffer }[] = [];
-  const failed: string[] = [];
-  for (const f of files) {
-    try { got.push({ name: f.name, buffer: await fetchFile(f.url) }); } catch { failed.push(f.name); }
-  }
-  return { got, failed };
-}
 
 export async function runPreInstallCheck(detail: ProjectDetail): Promise<PreInstallCheck> {
   const p = detail.project;
@@ -125,11 +99,6 @@ export async function runPreInstallCheck(detail: ProjectDetail): Promise<PreInst
   };
 }
 
-
-/** 저절로 돈 대조를 남기는 이름 — 감사 기록·「대조한 사람」에 사람 대신 선다 */
-const AUTO: Actor = { id: 'system', name: '자동 대조', role: 'admin', org: null };
-/** 연달아 올라오는 파일(증빙 여러 장)을 기다리는 시간 — 마지막 올림 하나만 돈다 */
-const SETTLE_MS = 8_000;
 
 const isChecked = (kind: string) => (CHECKED_KINDS as readonly string[]).includes(kind);
 

@@ -23,6 +23,8 @@ import type { TxLike } from './shared';
 import { reviewKindLabel } from '@/lib/review-labels';
 import { bundledAsPdf, checkedFilesOf, preCheckBlocker } from '@/lib/preinstall-check';
 import { loadPreInstallCheck } from './preinstall-check';
+import { loadParkingCheck } from './parking-check';
+import { parkingBlocker, parkingFilesOf } from '@/lib/parking-check';
 import { notifyReview, retractReview } from './notifications';
 import { clearResubmitMarks } from './docs';
 
@@ -130,6 +132,16 @@ export const contractStore: Pick<
           cpo: record.project.cpo,
         });
         if (blocker) throw new Error(`${blocker} — 기설치 대조가 끝나야 계약을 확인할 수 있습니다.`);
+        /*
+         * ★주차면 대조도 조건이다★ (한백 결정 2026-10-16 「막는다」) — 건축물대장(K-apt·공문) = 결과서 = 신청서 ·
+         * 열람용 아님. 화면의 단추와 같은 판정(parkingBlocker)이고, 이관 현장은 같이 면제한다.
+         */
+        const parking = parkingBlocker({
+          needed: !state.docsExempt,
+          check: await loadParkingCheck(projectId, tx),
+          currentFiles: parkingFilesOf(record.documents),
+        });
+        if (parking) throw new Error(`${parking} — 주차면 대조가 끝나야 계약을 확인할 수 있습니다.`);
       }
       const before = record.project.contractConfirmedAt;
       const after = confirmed ? today() : null;

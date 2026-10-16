@@ -336,6 +336,14 @@ export const preinstallChecks = pgTable('preinstall_checks', {
   checkedAt: timestamp('checked_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/** 주차면 대조 결과 — 현장마다 마지막 하나 (migrations/0100, lib/parking-check) */
+export const parkingChecks = pgTable('parking_checks', {
+  projectId: text('project_id').primaryKey().references(() => projects.id, { onDelete: 'cascade' }),
+  result: jsonb('result').notNull(),
+  checkedBy: text('checked_by'),
+  checkedAt: timestamp('checked_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const chargerModels = pgTable('charger_models', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
