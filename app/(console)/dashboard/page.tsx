@@ -7,6 +7,7 @@ import { isHanbaek } from '@/lib/roles';
 import { ATTRS, EMPTY, optionsOf, type AttrKey } from '@/lib/project-filter';
 import { businessYearsOf, inBusinessYear } from '@/lib/business-year';
 import YearTabs from '@/components/YearTabs';
+import ScrollEnd from '@/components/ScrollEnd';
 import { Blank, PANEL, Tag } from '@/components/ui';
 import { isPassThroughOrg, isPassThroughSite } from '@/lib/settlement';
 import type { ProjectSummary } from '@/types/project';
@@ -154,9 +155,13 @@ export default async function DashboardPage({
     <div className="flex flex-col gap-7">
       <PageHeader year={year} years={years} period={period} />
 
-      <div className="grid gap-5 lg:grid-cols-2">
+      {/*
+        ★그래프 둘은 xl 부터 나란히 선다★ (2026-10-16 UI 손질) — lg(1024)에서 나란히 서면 칸이 좁아 최근 달(8~12월)이
+        상자 안 가로 스크롤 뒤로 숨었다. grid-cols-1 은 minmax(0,1fr) 이다 — 없으면 한 줄 격자의 칸이 그래프의 최소 폭만큼
+        늘어나 폰에서 페이지 전체가 옆으로 밀렸다.
+      */}
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
         <Panel
-          eyebrow="수주"
           title={`${year}년 월별 수주`}
           side={<span>그 달에 접수된 대수 · 건수 · 현장당 평균 · 회색은 패스스루</span>}
         >
@@ -164,7 +169,6 @@ export default async function DashboardPage({
         </Panel>
 
         <Panel
-          eyebrow="수주"
           title={`${year}년 누적 수주`}
           side={<span>1월부터 더한 대수 · 건수 · 현장당 평균 · 회색은 패스스루</span>}
         >
@@ -177,7 +181,7 @@ export default async function DashboardPage({
           <h2 className="text-h2 font-black text-slate-900">수주 구성</h2>
           <span className="text-tiny font-semibold text-slate-400">대수 기준 · 회색은 패스스루</span>
         </div>
-        <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2 xl:grid-cols-3">
           {isAdmin && <Breakdown title="영업사" rows={dist('sales')} attr="sales" />}
           {/*
             ★시공사 묶음은 걷었다★ (한백 지시 2026-09-23 「수주 구성에서 시공사는 필요없어.
@@ -211,26 +215,25 @@ function PageHeader({ year, years, period }: { year: string; years: string[]; pe
 }
 
 function Panel({
-  eyebrow,
   title,
   side,
   className = '',
   children,
 }: {
-  eyebrow: string;
   title: string;
   side?: ReactNode;
   className?: string;
   children: ReactNode;
 }) {
   return (
-    <section className={`${PANEL} p-5 sm:p-6 ${className}`}>
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <p className="mb-1 text-micro font-black tracking-[0.14em] text-brand-700">{eyebrow}</p>
-          <h2 className="text-h3 font-black text-slate-900">{title}</h2>
-        </div>
-        {side && <div className="pt-1 text-tiny font-semibold text-slate-400">{side}</div>}
+    <section className={`${PANEL} min-w-0 p-5 sm:p-6 ${className}`}>
+      {/*
+        ★제목은 접지 않는다★ — 옆 설명이 길어 좁은 폭에서 「2026년 월별 / 수주」로 접혔다. 설명이 제목 밑으로 내려간다.
+        제목 위의 「수주」 작은 글씨는 걷었다 — 제목이 같은 말을 한다(규칙 5).
+      */}
+      <div className="mb-5 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 className="whitespace-nowrap text-h3 font-black text-slate-900">{title}</h2>
+        {side && <div className="text-tiny font-semibold text-slate-400">{side}</div>}
       </div>
       {children}
     </section>
@@ -267,27 +270,42 @@ function MonthBars({
   kind: 'month' | 'acc';
 }) {
   const height = 196;
+  /* 막대가 자랄 수 있는 높이 — 꼭대기 숫자 자리를 뺀다. 막대와 눈금 줄이 같은 자를 쓴다 */
+  const barArea = height - 30;
   const valueOf = (row: (typeof rows)[number]) => (kind === 'month' ? row.qty : row.accQty);
   /* 그중 받은 것을 그대로 내려주는 몫 — 막대 위쪽에 회색으로 쌓인다 */
   const passOf = (row: (typeof rows)[number]) => (kind === 'month' ? row.passQty : row.accPassQty);
   const projectCountOf = (row: (typeof rows)[number]) =>
     kind === 'month' ? row.projects : row.accProjects;
-  const max = Math.max(...rows.map(valueOf), 1);
+  /*
+   * ★눈금 숫자가 제 줄에 서게★ — 꼭대기를 최댓값 그대로 두고 1/3·2/3 를 반올림해 적었더니, 최댓값이 4 면 「3·1」이
+   * 2.7·1.3 높이의 줄에 붙었다. 꼭대기를 3 의 배수로 올리면 세 칸이 정수로 떨어진다.
+   */
+  const step = Math.max(1, Math.ceil(Math.max(...rows.map(valueOf), 1) / 3));
+  const max = step * 3;
   const title = kind === 'month' ? '월별 수주' : '누적 수주';
   const fill = kind === 'month' ? 'bg-sky-400' : 'bg-brand-400';
   const fillNow = kind === 'month' ? 'bg-sky-700' : 'bg-brand-700';
 
   return (
-    <div className="overflow-x-auto pb-1">
+    <ScrollEnd className="overflow-x-auto pb-1">
       <div
         role="img"
         aria-label={`${title} 대수: ${rows.map((row) => `${row.label} ${row.future ? '예정' : `${valueOf(row)}대`}`).join(', ')}`}
-        className="min-w-[520px]"
+        className="min-w-[440px]"
       >
         <div className="relative" style={{ height }}>
-          <div aria-hidden className="absolute inset-0 flex flex-col justify-between">
-            {[max, Math.round(max * 0.66), Math.round(max * 0.33), 0].map((tick, index) => (
-              <div key={index} className="flex items-center gap-3">
+          {/*
+            눈금 줄은 막대와 같은 자로 선다 — 막대는 꼭대기 숫자 자리(30px)를 뺀 높이에서 재는데 줄은 상자 전체에 고루
+            흩어져 있어, 4 짜리 막대가 「4」 줄보다 아래서 끝났다. 줄마다 그 값의 막대 높이에 둔다.
+          */}
+          <div aria-hidden className="absolute inset-0">
+            {[0, step, step * 2, max].map((tick) => (
+              <div
+                key={tick}
+                className="absolute inset-x-0 flex translate-y-1/2 items-center gap-3"
+                style={{ bottom: `${(tick / max) * barArea}px` }}
+              >
                 <span className="w-7 text-right text-micro font-semibold tabular-nums text-slate-300">{tick}</span>
                 <div className="flex-1 border-t border-slate-100" />
               </div>
@@ -324,7 +342,8 @@ function MonthBars({
                       토막 비율이 조금 어긋나지만 수는 적혀 있으니 숫자가 사라지는 것보다 낫다.
                     */
                     const SEG_MIN = 9;
-                    const barH = Math.max(row.future ? 0 : 3, (value / max) * (height - 30));
+                    // 아직 안 온 달은 막대가 없다 — 누적 그래프가 지금까지의 합을 연한 막대로 꽉 채워 앞날의 수주처럼 보였다
+                    const barH = row.future ? 0 : Math.max(3, (value / max) * barArea);
                     const split = pass > 0 && !row.future;
                     const ours = value - pass;
                     const passH = split ? Math.max(SEG_MIN, (pass / Math.max(value, 1)) * barH) : 0;
@@ -388,10 +407,10 @@ function MonthBars({
                 <p className={`text-tiny font-bold ${row.now ? 'text-brand-800' : row.future ? 'text-slate-300' : 'text-slate-500'}`}>
                   {row.label}
                 </p>
-                <p className={`mt-0.5 text-micro tabular-nums ${projectCount > 0 && !row.future ? 'text-slate-400' : 'text-slate-300'}`}>
+                <p className={`mt-0.5 text-micro tabular-nums ${projectCount > 0 && !row.future ? 'text-slate-600' : 'text-slate-300'}`}>
                   {row.future ? '예정' : `${projectCount}건`}
                 </p>
-                <p className={`text-micro tabular-nums ${row.now ? 'font-bold text-brand-700' : 'text-slate-300'}`}>
+                <p className={`text-micro tabular-nums ${row.now ? 'font-bold text-brand-700' : 'text-slate-500'}`}>
                   {avg || '\u00A0'}
                 </p>
               </div>
@@ -399,7 +418,7 @@ function MonthBars({
           })}
         </div>
       </div>
-    </div>
+    </ScrollEnd>
   );
 }
 
