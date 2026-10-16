@@ -16,7 +16,7 @@ import { getDb } from '@/lib/db/client';
 import { batchFinals, payoutEntries, taxInvoices } from '@/lib/db/schema';
 import { eq, inArray } from 'drizzle-orm';
 import { jar } from './cookie-jar';
-import { parkingFilesOf } from '@/lib/parking-check';
+import { PARKING_CHECK_VERSION, parkingFilesOf } from '@/lib/parking-check';
 
 /** 개발 시드 계정(lib/auth/users.ts DEV_USERS 와 같다 — 비밀번호는 안 쓴다, 쿠키를 직접 만든다) */
 export const USERS = {
@@ -133,7 +133,7 @@ export async function call<P extends Record<string, string>>(
 }
 
 /**
- * 주차면 대조를 「맞음」으로 남긴다 — 계약 확인이 대조를 조건으로 본다(2026-10-16, lib/parking-check parkingBlocker).
+ * 건축물대장 대조를 「맞음」으로 남긴다 — 계약 확인이 대조를 조건으로 본다(2026-10-16, lib/parking-check parkingBlocker).
  * 계약 확인까지 가야 하는 픽스처(money-kit 등)가 판독 없이 그 문을 지나게 한다. 대조 자체를 보는 시험(parking-gate)은 안 쓴다.
  */
 export async function passParking(id: string): Promise<void> {
@@ -143,5 +143,6 @@ export async function passParking(id: string): Promise<void> {
   await repo.saveParkingCheck(id, {
     checkedAt: new Date().toISOString(), files: parkingFilesOf(d.documents), reads: [],
     basis: { value: 100, from: '건축물대장' }, consult: 100, apply: null, applyChecked: false, issues: [], unread: [],
+    version: PARKING_CHECK_VERSION,
   }, actorOf(USERS.admin));
 }

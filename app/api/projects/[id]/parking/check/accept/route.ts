@@ -1,5 +1,5 @@
 /**
- * POST /api/projects/[id]/parking/check/accept — 주차면 대조 결과 「확인함」 · 취소 [한백 전용]
+ * POST /api/projects/[id]/parking/check/accept — 건축물대장 대조 결과 「확인함」 · 취소 [한백 전용]
  *
  * 한백 결정 2026-10-16 「막는다」 — 짚을 것이 남은 대조는 한백이 결과를 보고 넘겨야 계약을 확인한다.
  *   { checkedAt, accept: true }   본 결과를 넘긴다 (checkedAt = 화면이 본 결과의 대조 시각)

@@ -134,7 +134,7 @@ export async function POST(
 
   /* 설치이력·증빙이 들어왔으면 기설치 대조를 저절로 돌린다 — 응답 뒤에(lib/preinstall-run) */
   if (attached > 0 && CHECKED_KINDS.some((k) => byKind.has(k))) schedulePreInstallCheck(params.id);
-  /* 건축물대장·결과서·신청서가 들어왔으면 주차면 대조를 저절로 — 응답 뒤에(lib/parking-run) */
+  /* 건축물대장·결과서·신청서가 들어왔으면 건축물대장 대조를 저절로 — 응답 뒤에(lib/parking-run) */
   if (attached > 0 && PARKING_SLOTS.some((k) => byKind.has(k))) scheduleParkingCheck(params.id);
   /* 계약서가 들어왔으면 운영사 직인을 읽는다 — 현대엔지니어링·SK 현장만(lib/cpo-seal-run) */
   if (attached > 0 && byKind.has('contract')) scheduleCpoSealRead(params.id);

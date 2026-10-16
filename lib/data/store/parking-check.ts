@@ -1,5 +1,5 @@
 /**
- * 주차면 대조 결과 (migrations/0100, 한백 지시 2026-10-16).
+ * 건축물대장 대조(주차면·주소) 결과 (migrations/0100, 한백 지시 2026-10-16). 표 이름 parking_checks 는 주차면부터 만들어서다.
  *
  * 현장마다 마지막 하나 — 다시 대조하면 덮는다. 누가 언제 대조했고 몇 건을 짚었는지는 audit_log 에 남는다.
  * 대조 자체(판독·판정)는 lib/parking-run 이 한다.
@@ -31,7 +31,7 @@ export async function loadParkingCheck(projectId: string, tx?: TxLike): Promise<
 
 export const parkingCheckStore: Pick<ProjectRepository, 'saveParkingCheck' | 'acceptParkingCheck'> = {
   async saveParkingCheck(projectId, check, actor): Promise<void> {
-    assertAdmin(actor, '주차면 대조');
+    assertAdmin(actor, '건축물대장 대조');
     await getDb().transaction(async (tx) => {
       await lockProject(tx, projectId);
       const at = new Date(check.checkedAt);
@@ -44,7 +44,7 @@ export const parkingCheckStore: Pick<ProjectRepository, 'saveParkingCheck' | 'ac
       const n = parkingIssueCount(check);
       await writeAudit(tx, {
         projectId, actor,
-        action: '주차면 대조',
+        action: '건축물대장 대조',
         field: 'parkingCheck',
         oldValue: null,
         newValue: n > 0 ? `짚은 것 ${n}건` : `맞음${check.basis ? ` (${check.basis.value}면)` : ''}`,
@@ -58,7 +58,7 @@ export const parkingCheckStore: Pick<ProjectRepository, 'saveParkingCheck' | 'ac
    * 서류가 바뀐 뒤의 결과도 넘기지 않는다 — 확인한 것은 그때의 서류다.
    */
   async acceptParkingCheck(projectId, checkedAt, accept, actor): Promise<void> {
-    assertAdmin(actor, '주차면 대조 확인');
+    assertAdmin(actor, '건축물대장 대조 확인');
     await getDb().transaction(async (tx) => {
       await lockProject(tx, projectId);
       const check = await loadParkingCheck(projectId, tx);
@@ -82,7 +82,7 @@ export const parkingCheckStore: Pick<ProjectRepository, 'saveParkingCheck' | 'ac
         .where(eq(parkingChecks.projectId, projectId));
       await writeAudit(tx, {
         projectId, actor,
-        action: accept ? '주차면 대조 확인' : '주차면 대조 확인 취소',
+        action: accept ? '건축물대장 대조 확인' : '건축물대장 대조 확인 취소',
         field: 'parkingCheckAccepted',
         oldValue: check.accepted ? `${check.accepted.by} ${check.accepted.at}` : null,
         newValue: accepted ? `${accepted.by} ${accepted.at}` : null,

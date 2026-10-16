@@ -1,7 +1,7 @@
 /**
  * 서류 대조가 같이 쓰는 것 — 칸의 파일을 받아 오는 길과 「자동 대조」라는 이름. [서버 전용]
  *
- * 기설치 대조(lib/preinstall-run)와 주차면 대조(lib/parking-run)가 같은 일을 한다: 칸의 파일을 받아 판독에 보내고,
+ * 기설치 대조(lib/preinstall-run)와 건축물대장 대조(lib/parking-run)가 같은 일을 한다: 칸의 파일을 받아 판독에 보내고,
  * 접수 단계에서는 응답 뒤에 저절로 돈다. 두 벌로 적으면 한쪽만 고쳐진다.
  */
 import type { Actor } from '@/lib/data/repository';

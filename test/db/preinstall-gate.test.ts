@@ -38,7 +38,7 @@ async function withSubsidyProject<T>(fn: (id: string) => Promise<T>): Promise<T>
       await repo.uploadDocument({ projectId: id, kind: d.key, filename, blobUrl: urlOf(id, d.key) }, admin);
     }
     await repo.submitContract(id, true, admin);
-    // 주차면 대조는 이 시험의 주제가 아니다 — 맞음으로 남긴다(parking-gate 가 따로 본다)
+    // 건축물대장 대조는 이 시험의 주제가 아니다 — 맞음으로 남긴다(parking-gate 가 따로 본다)
     await passParking(id);
     const ready = await repo.getProject(id, viewerOf(USERS.admin));
     // 픽스처가 맞는지부터 — 대조 말고 다른 것이 막으면 이 시험은 아무것도 말하지 않는다

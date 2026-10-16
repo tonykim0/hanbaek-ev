@@ -405,7 +405,7 @@ export function IntakeTab({
 }: {
   /** 기설치 이력 엑셀 ↔ 증빙의 마지막 대조 — 기설치 조사 구역이 그린다 */
   preinstallCheck?: ProjectDetail['preinstallCheck'];
-  /** 주차면 대조(건축물대장·결과서·신청서)의 마지막 결과 — 서류 묶음 밑에 선다 */
+  /** 건축물대장 대조(건축물대장·결과서·신청서)의 마지막 결과 — 서류 묶음 밑에 선다 */
   parkingCheck?: ProjectDetail['parkingCheck'];
   knownOrgs: string[];
   project: ProjectDetail['project'];
@@ -507,9 +507,9 @@ export function IntakeTab({
    * 않고 서버가 다시 세므로 「단추는 눌리는데 저장이 거절되는」 일이 없다.
    */
   const missing = evaluated.filter((d) => d.req === 'm' && !byKind.get(d.key)?.blobUrl);
-  /* 서류 묶음 — 보이는 것만 센다(빈 묶음을 건너뛰면 1·3 으로 튄다). 주차면 대조가 그다음 번호를 받는다 */
+  /* 서류 묶음 — 보이는 것만 센다(빈 묶음을 건너뛰면 1·3 으로 튄다). 건축물대장 대조가 그다음 번호를 받는다 */
   const shownGroups = DOC_GROUPS.filter((g) => evaluated.some((d) => d.req === g.req && !d.preinstall));
-  /* 주차면 대조가 보는 세 칸(건축물대장·결과서·신청서)의 지금 파일 — 지난 대조와 견준다 */
+  /* 건축물대장 대조가 보는 세 칸(건축물대장·결과서·신청서)의 지금 파일 — 지난 대조와 견준다 */
   const parkingFiles = parkingFilesOf([...byKind.values()]);
   const viewOnly = viewOnlyNow(parkingCheck, parkingFiles);
   /* 지금 서 있는 보완요청 — 파일 없이 반려로 세워진 칸 (되돌릴 수 있어야 한다) */
@@ -840,7 +840,7 @@ export function IntakeTab({
             );
           })}
           {/*
-            * ★주차면 대조는 서류 묶음 밑, 「계약 확인 완료」 바로 위다★ (한백 지시 2026-10-16) — 대조하는 것이 위의 서류
+            * ★건축물대장 대조는 서류 묶음 밑, 「계약 확인 완료」 바로 위다★ (한백 지시 2026-10-16) — 대조하는 것이 위의 서류
             * 칸 셋(건축물대장·결과서·신청서)이고, 막는 것이 그 밑의 단추다. 번호는 서류 묶음 다음이다.
             * 이관 현장은 서류가 콘솔 밖이라 대조하지 않는다(parkingBlocker 의 면제와 같다).
             */}
@@ -915,7 +915,7 @@ export function IntakeTab({
               bundled: bundledAsPdf([...byKind.values()]),
               cpo: project.cpo,
             }) ?? parkingBlocker({
-              // 주차면 대조도 계약 확인의 조건이다(한백 결정 2026-10-16) — 저장소 confirmContract 와 같은 판정
+              // 건축물대장 대조도 계약 확인의 조건이다(한백 결정 2026-10-16) — 저장소 confirmContract 와 같은 판정
               needed: !contract.docsExempt,
               check: parkingCheck,
               currentFiles: parkingFiles,

@@ -336,7 +336,7 @@ export const preinstallChecks = pgTable('preinstall_checks', {
   checkedAt: timestamp('checked_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** 주차면 대조 결과 — 현장마다 마지막 하나 (migrations/0100, lib/parking-check) */
+/** 건축물대장 대조 결과 — 현장마다 마지막 하나 (migrations/0100, lib/parking-check) */
 export const parkingChecks = pgTable('parking_checks', {
   projectId: text('project_id').primaryKey().references(() => projects.id, { onDelete: 'cascade' }),
   result: jsonb('result').notNull(),

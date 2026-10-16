@@ -1,20 +1,24 @@
 /**
- * 주차면 대조의 판정 — 건축물대장(K-apt·공문) = 사전현장컨설팅 결과서 = 설치신청서 · 열람용 아님 (한백 지시 2026-10-16).
+ * 건축물대장 대조의 판정 — 주차면: 건축물대장(K-apt·공문) = 사전현장컨설팅 결과서 = 설치신청서 · 열람용 아님 /
+ * 주소: 설치신청서가 도로명 주소이고 건축물대장 도로명주소와 같음 (한백 지시 2026-10-16).
  * 현장 이름은 판정을 짠 실제 서류다(~/Downloads 의 계약 서류 묶음).
  */
 import { describe, expect, it } from 'vitest';
 import {
-  judgeParking, parkingBlocker, viewOnlyNow, type ParkingCheck, type ParkingRead,
+  isRoadAddress, judgeParking, PARKING_CHECK_VERSION, parkingBlocker, roadKeyOf, viewOnlyNow,
+  type ParkingCheck, type ParkingRead,
 } from '@/lib/parking-check';
 import { parkingReadsOf } from '@/lib/parking-read';
 
+/* 주소는 기본으로 같은 도로명을 단다 — 주차면 시험이 주소 판정에 걸리지 않게(주소는 아래 묶음이 따로 본다) */
 const read = (over: Partial<ParkingRead>): ParkingRead => ({
-  file: 'a.pdf', slot: 'bldgreg', doc: '건축물대장', viewOnly: false, parking: null, ...over,
+  file: 'a.pdf', slot: 'bldgreg', doc: '건축물대장', viewOnly: false, parking: null,
+  address: '전라남도 광양시 광양읍 예구1길 8', ...over,
 });
 const all = { bldgreg: true, consult: true, apply: true };
 const keys = (r: ReturnType<typeof judgeParking>) => r.issues.map((i) => i.key);
 
-describe('주차면 대조 — 판정', () => {
+describe('건축물대장 대조 — 주차면', () => {
   it('영신그린빌 — 건축물대장 249 · 결과서 249 · 신청서 249, 발급용이면 맞음', () => {
     const r = judgeParking([
       read({ parking: 249 }),
@@ -108,16 +112,22 @@ describe('주차면 대조 — 판정', () => {
   });
 });
 
-describe('주차면 대조 — 계약 확인의 조건', () => {
+describe('건축물대장 대조 — 계약 확인의 조건', () => {
   const base: ParkingCheck = {
     checkedAt: '2026-10-16T01:00:00.000Z', files: ['a', 'b'], reads: [], basis: null,
-    consult: null, apply: null, applyChecked: false, issues: [], unread: [],
+    consult: null, apply: null, applyChecked: false, issues: [], unread: [], version: PARKING_CHECK_VERSION,
   };
   const flagged = { ...base, issues: [{ key: 'view-only' as const, text: '열람용' }] };
   it('대조 전 · 서류 바뀜 · 짚을 것 남음은 막고, 넘겼거나 맞으면 연다 · 이관 현장은 보지 않는다', () => {
-    expect(parkingBlocker({ needed: true, check: null, currentFiles: ['a'] })).toBe('주차면 대조 전');
-    expect(parkingBlocker({ needed: true, check: base, currentFiles: ['a'] })).toBe('주차면 서류 바뀜 — 다시 대조');
-    expect(parkingBlocker({ needed: true, check: flagged, currentFiles: ['b', 'a'] })).toBe('주차면 대조 1건 미확인');
+    expect(parkingBlocker({ needed: true, check: null, currentFiles: ['a'] })).toBe('건축물대장 대조 전');
+    expect(parkingBlocker({ needed: true, check: base, currentFiles: ['a'] })).toBe('건축물대장 대조 서류 바뀜 — 다시 대조');
+    expect(parkingBlocker({ needed: true, check: flagged, currentFiles: ['b', 'a'] })).toBe('건축물대장 대조 1건 미확인');
+    // 주소를 견주기 전의 결과는 맞음이어도, 넘겼어도 다시 대조해야 한다
+    expect(parkingBlocker({ needed: true, check: { ...base, version: undefined }, currentFiles: ['a', 'b'] }))
+      .toBe('건축물대장 다시 대조 — 주소 확인 추가');
+    expect(parkingBlocker({
+      needed: true, check: { ...flagged, version: 1, accepted: { by: '한백', at: 'x' } }, currentFiles: ['a', 'b'],
+    })).toBe('건축물대장 다시 대조 — 주소 확인 추가');
     expect(parkingBlocker({ needed: true, check: { ...flagged, accepted: { by: '한백', at: 'x' } }, currentFiles: ['a', 'b'] })).toBeNull();
     expect(parkingBlocker({ needed: true, check: base, currentFiles: ['a', 'b'] })).toBeNull();
     expect(parkingBlocker({ needed: false, check: null, currentFiles: [] })).toBeNull();
@@ -136,17 +146,83 @@ describe('주차면 판독의 답 다듬기', () => {
   ];
   it('이름은 보낸 것 중 하나로 · 종류는 정해진 것 중 하나로 · 열람용은 건축물대장만 · 「249면」은 숫자로', () => {
     expect(parkingReadsOf({ docs: [
-      { originalName: '광혜원_건축물대장+kapt.pdf', doc: '건축물대장', viewOnly: false, parking: null },
-      { originalName: '광혜원_건축물대장+kapt.pdf', doc: 'K-apt', viewOnly: true, parking: '90' },
-      { originalName: '결과서', doc: '결과서', parking: '249면' },
+      {
+        originalName: '광혜원_건축물대장+kapt.pdf', doc: '건축물대장', viewOnly: false, parking: null,
+        address: ' 충청북도 진천군 광혜원면 화랑6길 13 ', otherAddresses: ['충청북도 진천군 광혜원면 화랑6길 15', '', 3],
+      },
+      { originalName: '광혜원_건축물대장+kapt.pdf', doc: 'K-apt', viewOnly: true, parking: '90', address: '광혜원리 418-2' },
+      { originalName: '결과서', doc: '결과서', parking: '249면', address: '광양읍 예구1길 8' },
       { originalName: '모르는.pdf', doc: '건축물대장', parking: 1 },
       { originalName: '결과서.pdf', doc: '등기부', parking: 0 },
     ] }, files)).toEqual([
-      { file: '광혜원_건축물대장+kapt.pdf', slot: 'bldgreg', doc: '건축물대장', viewOnly: false, parking: null },
-      { file: '광혜원_건축물대장+kapt.pdf', slot: 'bldgreg', doc: 'K-apt', viewOnly: null, parking: 90 },
-      { file: '결과서.pdf', slot: 'consult', doc: '결과서', viewOnly: null, parking: 249 },
-      { file: '결과서.pdf', slot: 'consult', doc: '기타', viewOnly: null, parking: null },
+      {
+        file: '광혜원_건축물대장+kapt.pdf', slot: 'bldgreg', doc: '건축물대장', viewOnly: false, parking: null,
+        address: '충청북도 진천군 광혜원면 화랑6길 13', otherAddresses: ['충청북도 진천군 광혜원면 화랑6길 15'],
+      },
+      // 주소는 건축물대장·신청서만 — K-apt·결과서의 주소는 버린다
+      { file: '광혜원_건축물대장+kapt.pdf', slot: 'bldgreg', doc: 'K-apt', viewOnly: null, parking: 90, address: null, otherAddresses: [] },
+      { file: '결과서.pdf', slot: 'consult', doc: '결과서', viewOnly: null, parking: 249, address: null, otherAddresses: [] },
+      { file: '결과서.pdf', slot: 'consult', doc: '기타', viewOnly: null, parking: null, address: null, otherAddresses: [] },
     ]);
     expect(parkingReadsOf(null, files)).toEqual([]);
+  });
+});
+
+describe('건축물대장 대조 — 신청서 주소', () => {
+  it('도로명 주소의 열쇠는 「도로명 + 건물번호」 — 시·도 이름·읍면·참고항목·건물 이름이 달라도 같다', () => {
+    expect(roadKeyOf('전남광주통합특별시 광양시 광양읍 예구1길 8')).toBe('예구1길 8');
+    expect(roadKeyOf('전라남도 광양시 예구1길 8, 영신그린빌')).toBe('예구1길 8');
+    expect(roadKeyOf('전북특별자치도 전주시 완산구 영경1길 20(중화산동2가)')).toBe('영경1길 20');
+    expect(roadKeyOf('경기도 부천시 원미구 길주로411번길 20 (춘의동)')).toBe('길주로411번길 20');
+    expect(roadKeyOf('충청북도 청주시 흥덕구 대농로 47-2')).toBe('대농로 47-2');
+    expect(roadKeyOf('서울특별시 중구 세종대로 지하 2')).toBe('세종대로 2');
+    expect(roadKeyOf('광양읍 예구1길8')).toBe('예구1길 8');
+  });
+  it('지번 주소는 도로명이 아니다', () => {
+    for (const a of ['충청북도 진천군 광혜원면 광혜원리 418-2', '충청북도 청주시 흥덕구 복대동 288-126',
+      '전북특별자치도 전주시 완산구 중화산동2가 232', '경기도 부천시 원미구 춘의동 73-1']) {
+      expect(isRoadAddress(a), a).toBe(false);
+    }
+    expect(isRoadAddress(null)).toBe(false);
+  });
+
+  const reg = (address: string | null, otherAddresses: string[] = []) =>
+    read({ parking: 249, address, otherAddresses });
+  const consult = read({ file: 'c.pdf', slot: 'consult', doc: '결과서', viewOnly: null, parking: 249 });
+  const apply = (address: string | null) =>
+    read({ file: 'p.pdf', slot: 'apply', doc: '신청서', viewOnly: null, parking: 249, address });
+  const judge = (reads: ParkingRead[]) => judgeParking(reads, { applyRequired: true, filed: all });
+
+  it('영신그린빌 — 신청서와 건축물대장의 도로명주소가 같으면 맞음(시·도 이름이 달라도)', () => {
+    const r = judge([reg('전라남도 광양시 광양읍 예구1길 8'), consult, apply('전남광주통합특별시 광양시 광양읍 예구1길 8')]);
+    expect(r.address).toEqual({
+      apply: '전남광주통합특별시 광양시 광양읍 예구1길 8', register: '전라남도 광양시 광양읍 예구1길 8', road: true, match: true,
+    });
+    expect(r.issues).toEqual([]);
+  });
+  it('광혜원원림 — 동별 도로명주소(화랑6길 15)와 같아도 맞음', () => {
+    const r = judge([reg('충청북도 진천군 광혜원면 화랑6길 13', ['충청북도 진천군 광혜원면 화랑6길 15']), consult,
+      apply('충청북도 진천군 광혜원면 화랑6길 15')]);
+    expect(r.address?.match).toBe(true);
+    expect(r.issues).toEqual([]);
+  });
+  it('신청서가 지번 주소면 짚는다 — 건축물대장과 견주지도 않는다', () => {
+    const r = judge([reg('충청북도 진천군 광혜원면 화랑6길 13'), consult, apply('충청북도 진천군 광혜원면 광혜원리 418-2')]);
+    expect(r.issues.map((i) => i.text)).toEqual(['설치신청서 주소가 도로명 주소가 아닙니다 — 「충청북도 진천군 광혜원면 광혜원리 418-2」']);
+    expect(r.address).toMatchObject({ road: false, match: null });
+  });
+  it('도로명이 다르면 어긋남 · 신청서 주소를 못 읽으면 · 건축물대장 도로명주소를 못 읽으면 짚는다', () => {
+    expect(judge([reg('전라남도 광양시 광양읍 예구1길 8'), consult, apply('전라남도 광양시 광양읍 예구1길 10')])
+      .issues.map((i) => i.key)).toEqual(['address-diff']);
+    expect(judge([reg('전라남도 광양시 광양읍 예구1길 8'), consult, apply(null)]).issues.map((i) => i.key))
+      .toEqual(['no-apply-address']);
+    expect(judge([reg(null), consult, apply('전라남도 광양시 광양읍 예구1길 8')]).issues.map((i) => i.key))
+      .toEqual(['no-register-address']);
+  });
+  it('신청서를 견주지 않는 현장은 주소도 보지 않는다 · 신청서가 아예 없으면 「없습니다」 한 번만', () => {
+    expect(judgeParking([reg('예구1길 8'), consult], { applyRequired: false, filed: { bldgreg: true, consult: true, apply: false } }).address)
+      .toBeNull();
+    const noApply = judgeParking([reg('예구1길 8'), consult], { applyRequired: true, filed: { bldgreg: true, consult: true, apply: false } });
+    expect(noApply.issues.map((i) => i.key)).toEqual(['no-apply']);
   });
 });

@@ -25,7 +25,7 @@ export const POST = sessionWrite<{ id: string }, { submitted?: unknown }>(
      * 것까지). 이미 이 서류로 대조했으면 다시 돌지 않는다.
      */
     if (body.submitted) schedulePreInstallCheck(params.id);
-    // 주차면 대조도 같다 — 건축물대장·결과서·신청서로(lib/parking-run, 한백 지시 2026-10-16)
+    // 건축물대장 대조도 같다 — 건축물대장·결과서·신청서로(lib/parking-run, 한백 지시 2026-10-16)
     if (body.submitted) scheduleParkingCheck(params.id);
   }
 );

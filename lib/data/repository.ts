@@ -215,12 +215,12 @@ export interface ProjectRepository {
   acceptPreInstallCheck(projectId: string, checkedAt: string, accept: boolean, actor: Actor): Promise<void>;
 
   /**
-   * 주차면 대조 결과를 남긴다 — 건축물대장(K-apt·공문) = 결과서 = 신청서 · 열람용 여부. [한백 전용]
+   * 건축물대장 대조 결과를 남긴다 — 주차면(건축물대장·K-apt·공문 = 결과서 = 신청서 · 열람용) · 신청서 도로명 주소. [한백 전용]
    * 현장마다 마지막 하나. 대조 자체는 lib/parking-run 이 하고 여기는 저장만 한다. getProject 의 parkingCheck 로 읽힌다.
    */
   saveParkingCheck(projectId: string, check: ParkingCheck, actor: Actor): Promise<void>;
 
-  /** 주차면 대조 결과를 「확인함」으로 넘긴다 · 되돌린다. [한백 전용] — 기설치 대조의 확인함과 같은 꼴 */
+  /** 건축물대장 대조 결과를 「확인함」으로 넘긴다 · 되돌린다. [한백 전용] — 기설치 대조의 확인함과 같은 꼴 */
   acceptParkingCheck(projectId: string, checkedAt: string, accept: boolean, actor: Actor): Promise<void>;
 
   /**

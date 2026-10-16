@@ -125,7 +125,7 @@ export async function POST(
   }
   // 설치이력·증빙이면 기설치 대조를 저절로 — 응답 뒤에 돈다(lib/preinstall-run)
   if (!result.already) schedulePreInstallCheck(params.id, params.kind);
-  // 건축물대장·결과서·신청서면 주차면 대조를 저절로 — 응답 뒤에(lib/parking-run)
+  // 건축물대장·결과서·신청서면 건축물대장 대조를 저절로 — 응답 뒤에(lib/parking-run)
   if (!result.already) scheduleParkingCheck(params.id, params.kind);
   // 현대엔지니어링·SK 계약서면 운영사 직인을 읽어 꼬리표로 단다 — 응답 뒤에(lib/cpo-seal-run)
   if (!result.already) scheduleCpoSealRead(params.id, params.kind);

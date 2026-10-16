@@ -1757,7 +1757,7 @@ export interface ProjectDetail {
    */
   preinstallCheck?: PreInstallCheck | null;
   /**
-   * 주차면 대조(건축물대장·결과서·신청서)의 마지막 결과 — 상세를 열 때만 읽는다.
+   * 건축물대장 대조(건축물대장·결과서·신청서)의 마지막 결과 — 상세를 열 때만 읽는다.
    * 협력사도 본다: 어긋난 서류를 고쳐 다시 내는 것이 협력사의 일이다. 금액이 없다.
    */
   parkingCheck?: ParkingCheck | null;

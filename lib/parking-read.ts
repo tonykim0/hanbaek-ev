@@ -1,7 +1,9 @@
 /**
- * 주차면 대조의 판독 — 건축물대장·K-apt·공문·사전현장컨설팅 결과서·설치신청서에 ★인쇄된 주차면 수★와
- * 건축물대장이 열람용인지만 읽는다. 맞는지는 코드가 가른다(lib/parking-check) — 판독에게 「맞는지 봐 달라」고
- * 묻지 않는다(기설치 대조 lib/legacy-evidence 와 같은 까닭).
+ * 건축물대장 대조의 판독 — 건축물대장·K-apt·공문·사전현장컨설팅 결과서·설치신청서에 ★인쇄된 주차면 수★,
+ * 건축물대장이 열람용인지, 그리고 ★건축물대장의 도로명주소와 설치신청서의 주소★를 읽는다(주소는 한백 지시 2026-10-16
+ * 「설치신청서 주소가 도로명 주소인지 · 건축물대장 도로명 주소와 일치하는지」). 맞는지는 코드가 가른다(lib/parking-check) —
+ * 판독에게 「맞는지 봐 달라」고 묻지 않는다(기설치 대조 lib/legacy-evidence 와 같은 까닭). 주소도 「도로명인가」를 묻지 않고
+ * 적힌 그대로 받아 코드가 가른다.
  *
  * ★한 파일에 문서가 여럿 묶여 온다★ — 「건축물대장+kapt.pdf」처럼 건축물대장 뒤에 K-apt 화면 캡처를 붙여 오는 일이
  * 실제로 있다(충북 진천 광혜원원림 · 전주 새한그린파크). 그래서 파일마다가 아니라 문서마다 한 항목으로 받는다.
@@ -33,7 +35,7 @@ function prompt(files: { name: string; slot: ParkingSlot }[]): string {
 ${files.map((f, i) => `${i + 1}. ${f.name} (${SLOT_NAME[f.slot]})`).join('\n')}
 
 ## 답 모양
-{"docs":[{"originalName":"…","doc":"건축물대장","viewOnly":false,"parking":249}]}
+{"docs":[{"originalName":"…","doc":"건축물대장","viewOnly":false,"parking":249,"address":"전라남도 광양시 광양읍 예구1길 8","otherAddresses":[]}]}
 
 ## 항목
 - 한 파일에 문서가 여럿 묶여 있을 수 있습니다(예: 건축물대장 뒤에 K-apt 화면 캡처). 문서마다 한 항목.
@@ -54,10 +56,20 @@ ${files.map((f, i) => `${i + 1}. ${f.name} (${SLOT_NAME[f.slot]})`).join('\n')}
   K-apt: 「주차대수」의 총 대수(예: 「지상 90 · 지하 0 · 총 90대」 → 90).
   공문: 공문이 확인해 주는 주차면 수.
   결과서: 「3. 주차공간 확보」의 「주차면 수」.
-  신청서: 「보유 주차면수」.`;
+  신청서: 「보유 주차면수」.
+- address: ★적힌 글자 그대로★ 옮겨 적습니다 — 고치거나 바꾸거나 채우지 마세요(지번 주소가 적혀 있으면 지번 그대로,
+  시·도 이름도 적힌 대로). 안 보이면 null.
+  건축물대장: 첫 쪽 위쪽의 「도로명주소」 칸(「대지위치」·「지번」 칸이 아닙니다).
+  신청서: 설치 희망지(설치 장소)의 주소 — 별지 제5호는 「도로명 주소 :」 뒤에 적힌 주소. 다른 양식이면 설치 장소 주소 칸.
+  다른 문서: null.
+- otherAddresses: 건축물대장만. 「건축물 현황」 표의 동마다 「도로명주소」 칸에 적힌 주소 중 위 address 와 다른 것(적힌 그대로).
+  없거나 비어 있으면 []. 다른 문서는 [].`;
 }
 
-interface RawDoc { originalName?: unknown; doc?: unknown; viewOnly?: unknown; parking?: unknown }
+interface RawDoc {
+  originalName?: unknown; doc?: unknown; viewOnly?: unknown; parking?: unknown;
+  address?: unknown; otherAddresses?: unknown;
+}
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const count = (v: unknown): number | null => {
@@ -81,6 +93,11 @@ export function parkingReadsOf(raw: unknown, files: { name: string; slot: Parkin
       doc,
       viewOnly: doc === '건축물대장' && typeof d.viewOnly === 'boolean' ? d.viewOnly : null,
       parking: count(d.parking),
+      // 주소는 건축물대장(도로명주소)과 신청서(설치 장소)만 견준다 — 다른 문서의 주소는 버린다
+      address: doc === '건축물대장' || doc === '신청서' ? str(d.address) : null,
+      otherAddresses: doc === '건축물대장' && Array.isArray(d.otherAddresses)
+        ? d.otherAddresses.flatMap((a) => (str(a) ? [str(a) as string] : []))
+        : [],
     }];
   });
 }
