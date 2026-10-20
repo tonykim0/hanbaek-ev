@@ -469,21 +469,21 @@ describe('패스스루 협업사 — 받은 것을 그대로 내려준다', () =
   });
 });
 
-describe('현장 개별 단가 가감 — 케이스는 그대로, 이 현장만 (한백 지시 2026-10-20)', () => {
+describe('현장 대당 금액 — 케이스는 그대로, 이 현장만 값으로 (한백 지시 2026-10-20)', () => {
   const rule = { id: 'r', salesUnit: 1_200_000, consUnit: 1_100_000, margin: 200_000 };
-  it('가감이 없으면 케이스 그대로 — 같은 물건을 돌려준다', () => {
-    expect(siteRuleOf(rule, { salesUnitAdjust: null, consUnitAdjust: null })).toBe(rule);
-    expect(siteRuleOf(rule, { salesUnitAdjust: 0, consUnitAdjust: 0 })).toBe(rule);
-    expect(siteRuleOf(null, { salesUnitAdjust: 100_000, consUnitAdjust: null })).toBeNull();
+  it('적힌 것이 없거나 케이스와 같으면 케이스 그대로 — 같은 물건을 돌려준다', () => {
+    expect(siteRuleOf(rule, { salesUnitOverride: null, consUnitOverride: null })).toBe(rule);
+    expect(siteRuleOf(rule, { salesUnitOverride: 1_200_000, consUnitOverride: null })).toBe(rule);
+    expect(siteRuleOf(null, { salesUnitOverride: 1_300_000, consUnitOverride: null })).toBeNull();
   });
-  it('군산 디오션시티 — 영업비 1기당 +10만: 영업 130만, 마진 10만, 운영사에게 받는 턴키는 그대로', () => {
-    const r = siteRuleOf(rule, { salesUnitAdjust: 100_000, consUnitAdjust: null })!;
+  it('군산 디오션시티 — 영업비 130만: 마진 10만, 운영사에게 받는 턴키는 그대로', () => {
+    const r = siteRuleOf(rule, { salesUnitOverride: 1_300_000, consUnitOverride: null })!;
     expect(r).toEqual({ id: 'r', salesUnit: 1_300_000, consUnit: 1_100_000, margin: 100_000 });
     expect(turnkeyUnit(r)).toBe(turnkeyUnit(rule));
     expect(payoutUnitOf(r, '영업비', false)).toBe(1_300_000);
   });
-  it('시공비도, 깎는 것도 같다', () => {
-    const r = siteRuleOf(rule, { salesUnitAdjust: -50_000, consUnitAdjust: 30_000 })!;
+  it('시공비도, 낮추는 것도 같다', () => {
+    const r = siteRuleOf(rule, { salesUnitOverride: 1_150_000, consUnitOverride: 1_130_000 })!;
     expect(r).toMatchObject({ salesUnit: 1_150_000, consUnit: 1_130_000, margin: 220_000 });
     expect(turnkeyUnit(r)).toBe(2_500_000);
   });

@@ -486,23 +486,23 @@ export function payoutUnitOf(
 }
 
 /**
- * ★현장 개별 단가 가감★ — 이 현장만 대당 영업비·시공비를 케이스와 다르게 준다 (한백 지시 2026-10-20 「개별적으로
- * 수정해야 할 케이스가 생기니까 케이스별로 수정 필요」 · 첫 현장: 군산 더샵 디오션시티 영업비 1기당 +10만).
+ * ★현장 대당 영업비·시공비★ — 이 현장만 케이스와 다른 값을 준다 (한백 지시 2026-10-20 「개별적으로 수정해야 할 케이스가
+ * 생기니까 케이스별로 수정 필요」 · 「가감 말고 그냥 130 으로」 · 첫 현장: 군산 더샵 디오션시티 영업비 130만).
  *
- * 케이스는 여러 현장이 같이 쓴다(디오션시티의 케이스는 13곳) — 그래서 케이스 값을 고치지 않고, 현장에 적은 대당
- * 가감(Project.salesUnitAdjust·consUnitAdjust)을 여기서 더한다. ★운영사에게 받는 대당 금액(턴키)은 그대로다★ —
- * 더 내려주는 만큼 한백 마진이 준다. 라인에 케이스를 붙이는 자리가 둘이라(assemble toDetail · store/payouts
+ * 케이스는 여러 현장이 같이 쓴다(디오션시티의 케이스는 13곳) — 그래서 케이스 값을 고치지 않고, 현장에 적은 대당 금액
+ * (Project.salesUnitOverride·consUnitOverride)이 있으면 케이스 값 대신 그것을 쓴다. ★운영사에게 받는 대당 금액(턴키)은
+ * 그대로다★ — 더 내려주는 만큼 한백 마진이 준다. 라인에 케이스를 붙이는 자리가 둘이라(assemble toDetail · store/payouts
  * openStepFor) 둘 다 이것을 거친다 — 한쪽만 거치면 표의 금액과 확정이 원장에 박는 금액이 갈린다(payoutUnitOf 와 같은 까닭).
  */
 export function siteRuleOf<R extends { salesUnit: number; consUnit: number; margin: number }>(
   rule: R | null,
-  site: { salesUnitAdjust: number | null; consUnitAdjust: number | null }
+  site: { salesUnitOverride: number | null; consUnitOverride: number | null }
 ): R | null {
   if (!rule) return null;
-  const ds = site.salesUnitAdjust ?? 0;
-  const dc = site.consUnitAdjust ?? 0;
-  if (ds === 0 && dc === 0) return rule;
-  return { ...rule, salesUnit: rule.salesUnit + ds, consUnit: rule.consUnit + dc, margin: rule.margin - ds - dc };
+  const sales = site.salesUnitOverride ?? rule.salesUnit;
+  const cons = site.consUnitOverride ?? rule.consUnit;
+  if (sales === rule.salesUnit && cons === rule.consUnit) return rule;
+  return { ...rule, salesUnit: sales, consUnit: cons, margin: rule.margin - (sales - rule.salesUnit) - (cons - rule.consUnit) };
 }
 
 /**

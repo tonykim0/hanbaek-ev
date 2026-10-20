@@ -285,16 +285,16 @@ export interface Project {
    */
   payoutTermsConfirmedAt: string | null;
   /**
-   * ★현장 개별 단가 가감★ — 이 현장만 대당 영업비·시공비를 단가 케이스와 다르게 준다(원, 음수면 깎음, null 이면 없음).
-   * 한백 지시 2026-10-20 「개별적으로 수정해야 할 케이스가 생기니까 케이스별로」. 케이스(여러 현장 공용)와 계약 라인은
-   * 그대로고, 계산이 케이스 값에 이것을 더한다(lib/settlement siteRuleOf). 운영사에게 받는 대당 금액은 그대로라 한백
-   * 마진이 그만큼 준다. ★화면에 고치는 자리도, 따로 표시하는 자리도 없다★ — 바뀐 금액이 기존 칸에 그대로 나올 뿐이다.
+   * ★현장 대당 영업비·시공비★ — 이 현장만 단가 케이스와 다른 값을 준다(원, ★값 그대로★, null 이면 케이스 값).
+   * 한백 지시 2026-10-20 「개별적으로 수정해야 할 케이스가 생기니까 케이스별로」 · 「가감 말고 그냥 130 으로」.
+   * 케이스(여러 현장 공용)와 계약 라인은 그대로고, 계산이 케이스 값 대신 이것을 쓴다(lib/settlement siteRuleOf).
+   * 운영사에게 받는 대당 금액은 그대로라 한백 마진이 그 차이만큼 준다. ★화면에 고치는 자리도, 따로 표시하는 자리도 없다★ — 바뀐 금액이 기존 칸에 그대로 나올 뿐이다.
    * 한백이 Claude Code 로 요청하면 DB 에 직접 적는다(한백 결정). 협력사에게는 가감·사유가 가지 않는다(redactForViewer).
    */
-  salesUnitAdjust: number | null;
-  consUnitAdjust: number | null;
+  salesUnitOverride: number | null;
+  consUnitOverride: number | null;
   /** 왜 바꿨는가 — 한백만 본다 */
-  unitAdjustNote: string | null;
+  unitOverrideNote: string | null;
   /**
    * 협력사가 계약서 접수를 마쳤다고 누른 날. null 이면 아직 모으는 중이다.
    *
@@ -581,7 +581,7 @@ export type PricingRuleView = Omit<
 
 /** 화면이 받는 조립된 라인 — 참조가 풀려 있다 */
 export interface ContractLineView extends ContractLine {
-  /** 이 현장에 실제로 적용되는 단가 — 현장 개별 가감(Project.salesUnitAdjust 등)이 있으면 그만큼 바뀐 값이다 */
+  /** 이 현장에 실제로 적용되는 단가 — 현장 대당 금액(Project.salesUnitOverride 등)이 적혀 있으면 그 값이다 */
   rule: PricingRuleView | null;
 }
 

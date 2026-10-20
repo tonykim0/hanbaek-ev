@@ -237,13 +237,14 @@ export const projects = pgTable('projects', {
    */
   payoutTermsConfirmedAt: text('payout_terms_confirmed_at'),
   /*
-   * 현장 개별 단가 가감 — 이 현장만 대당 영업비·시공비를 케이스와 다르게(원, 음수면 깎음). 케이스·라인은 그대로다
-   * (migrations/0101, 한백 지시 2026-10-20). 화면에 고치는 자리는 없다 — Claude Code 로 요청받아 직접 적는다.
+   * 현장 대당 영업비·시공비 — ★값 그대로★(원). 비어 있으면 단가 케이스 값이다. 케이스·라인은 그대로다
+   * (migrations/0102, 한백 지시 2026-10-20). 화면에 고치는 자리는 없다 — Claude Code 로 요청받아 직접 적는다.
+   * (0101 의 sales_unit_adjust 등 가감 칸은 DB 에 남아 있으나 읽지 않는다 — 0102 머리말)
    */
-  salesUnitAdjust: integer('sales_unit_adjust'),
-  consUnitAdjust: integer('cons_unit_adjust'),
+  salesUnitOverride: integer('sales_unit_override'),
+  consUnitOverride: integer('cons_unit_override'),
   /** 왜 바꿨는가 — 한백만 본다 */
-  unitAdjustNote: text('unit_adjust_note'),
+  unitOverrideNote: text('unit_override_note'),
   /** 한백이 현장별로 적용하는 정산 규칙 */
   settlementRuleId: text('settlement_rule_id').references(() => settlementRules.id),
   settlementAppliedAt: text('settlement_applied_at'),
