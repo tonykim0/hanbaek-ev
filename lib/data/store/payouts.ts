@@ -21,7 +21,7 @@ import { asProcessStatus, stepsOf } from '@/lib/process';
 import {
   checkPayoutEntry, checkSafetyFee, entryTypeOf, isPassThroughSite, payoutUnitOf,
   payoutPrerequisiteBlockersOf, payoutReleaseOf,
-  payoutSideOf, payoutStepsOf, safetyFeeApplies,
+  payoutSideOf, payoutStepsOf, safetyFeeApplies, siteRuleOf,
 } from '@/lib/settlement';
 import {
   contractStateFor, payoutMilestonesFor, payoutPlansOf, payoutRowsOf, settlementSummaryOf, toDetail,
@@ -892,7 +892,8 @@ function openStepFor(
     throw new Error(`${name} — 받은 만큼 내려주는 현장입니다. 회차 지급 방식이 정해지면 풀립니다.`);
   }
   const plan = r.lines.reduce((n, l) => {
-    const rule = l.pricingRuleId ? rules.get(l.pricingRuleId) ?? null : null;
+    // 현장 개별 단가 가감까지 — 표(assemble toDetail)와 같은 값이어야 확정이 표의 금액을 박는다
+    const rule = siteRuleOf(l.pricingRuleId ? rules.get(l.pricingRuleId) ?? null : null, r.project);
     return n + (payoutUnitOf(rule, kind, pass) ?? 0) * l.qty;
   }, 0);
   const { open } = payoutStepsOf(plan, payoutSideOf(r.payoutEntries ?? [], kind));

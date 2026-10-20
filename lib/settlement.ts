@@ -486,6 +486,26 @@ export function payoutUnitOf(
 }
 
 /**
+ * ★현장 개별 단가 가감★ — 이 현장만 대당 영업비·시공비를 케이스와 다르게 준다 (한백 지시 2026-10-20 「개별적으로
+ * 수정해야 할 케이스가 생기니까 케이스별로 수정 필요」 · 첫 현장: 군산 더샵 디오션시티 영업비 1기당 +10만).
+ *
+ * 케이스는 여러 현장이 같이 쓴다(디오션시티의 케이스는 13곳) — 그래서 케이스 값을 고치지 않고, 현장에 적은 대당
+ * 가감(Project.salesUnitAdjust·consUnitAdjust)을 여기서 더한다. ★운영사에게 받는 대당 금액(턴키)은 그대로다★ —
+ * 더 내려주는 만큼 한백 마진이 준다. 라인에 케이스를 붙이는 자리가 둘이라(assemble toDetail · store/payouts
+ * openStepFor) 둘 다 이것을 거친다 — 한쪽만 거치면 표의 금액과 확정이 원장에 박는 금액이 갈린다(payoutUnitOf 와 같은 까닭).
+ */
+export function siteRuleOf<R extends { salesUnit: number; consUnit: number; margin: number }>(
+  rule: R | null,
+  site: { salesUnitAdjust: number | null; consUnitAdjust: number | null }
+): R | null {
+  if (!rule) return null;
+  const ds = site.salesUnitAdjust ?? 0;
+  const dc = site.consUnitAdjust ?? 0;
+  if (ds === 0 && dc === 0) return rule;
+  return { ...rule, salesUnit: rule.salesUnit + ds, consUnit: rule.consUnit + dc, margin: rule.margin - ds - dc };
+}
+
+/**
  * 협력사 지급 회차 비율 — 1차 70%, 2차 30%.
  *
  * 매트릭스에서 나오는 값이 아니라 관행이다. 그래서 한 곳에만 두고 화면들이 같이 쓴다 —

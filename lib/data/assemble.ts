@@ -32,7 +32,7 @@ import { bizTypeOfRepl } from '@/types/project';
 import { buildDocContext, DOC_KEYS, evaluateDocs, PROCESS_DOCS } from '@/lib/doc-rules';
 import {
   isPassThroughSite, payoutMilestonesOf, payoutUnitOf,
-  entryTypeOf, payoutSideOf, safetyFeeApplies, safetyFeeCollected, settlementForProject,
+  entryTypeOf, payoutSideOf, safetyFeeApplies, safetyFeeCollected, settlementForProject, siteRuleOf,
 } from '@/lib/settlement';
 import { contractStateOf, deriveStage, docsOutsideConsole, stalledDaysSince } from '@/lib/stage';
 import { canEnter, entryOkOf, gateContextOf, nextStatusOf, type GateContext } from '@/lib/process';
@@ -231,10 +231,14 @@ export function payoutMilestonesFor(r: ProjectRecord): PayoutMilestones {
 }
 
 export function toDetail(r: ProjectRecord, rules: RuleMap, settles: SettleMap): ProjectDetail {
-  // 케이스는 불변이라 참조만으로 안전하다 — 값을 복사해 둘 필요가 없다
+  /*
+   * 케이스는 불변이라 참조만으로 안전하다 — 값을 복사해 둘 필요가 없다.
+   * 현장 개별 단가 가감이 있으면 그 값으로 바꿔 싣는다(lib/settlement siteRuleOf) — 이 뒤의 계산(계획·회차·마진·기성)이
+   * 전부 line.rule 을 보므로 여기 한 곳에서 바꾸면 다 따라온다. 따로 표시하지 않는다(한백 지시) — 바뀐 금액만 나온다.
+   */
   const lines: ContractLineView[] = r.lines.map((l) => ({
     ...l,
-    rule: l.pricingRuleId ? rules.get(l.pricingRuleId) ?? null : null,
+    rule: siteRuleOf(l.pricingRuleId ? rules.get(l.pricingRuleId) ?? null : null, r.project),
   }));
   const settlementRule = r.project.settlementRuleId
     ? settles.get(r.project.settlementRuleId) ?? null
@@ -631,6 +635,10 @@ export function redactForViewer(detail: ProjectDetail, vis: Visibility): Project
     payoutEntries: detail.payoutEntries.filter(
       (e) => (e.kind === '영업비' ? vis.sales : vis.cons)
     ),
+    /* 현장 개별 단가 가감과 그 사유는 한백의 사정이다 — 협력사는 적용된 대당 금액만 본다(아래 rule) */
+    project: vis.cost
+      ? detail.project
+      : { ...detail.project, salesUnitAdjust: null, consUnitAdjust: null, unitAdjustNote: null },
     lines: detail.lines.map((l) => ({
       ...l,
       rule: l.rule && {

@@ -10,7 +10,7 @@ import {
   payoutPrerequisiteBlockersOf, payoutUnitOf,
   payoutReleaseOf,
   checkSettlementSteps, payInstallments, payoutStepsOf, stepAmounts, stepUnits,
-  settlementRuleNameOf, settlementStepsKeyOf, turnkeyUnit,
+  settlementRuleNameOf, settlementStepsKeyOf, siteRuleOf, turnkeyUnit,
 } from '@/lib/settlement';
 import type { PayoutMilestones, SettlementRule, SettlementStepRule } from '@/types/project';
 
@@ -466,5 +466,25 @@ describe('패스스루 협업사 — 받은 것을 그대로 내려준다', () =
     const qty = 4;
     expect((payoutUnitOf(hec, '영업비', true)! + payoutUnitOf(hec, '시공비', true)!) * qty)
       .toBe(2_300_000 * qty);
+  });
+});
+
+describe('현장 개별 단가 가감 — 케이스는 그대로, 이 현장만 (한백 지시 2026-10-20)', () => {
+  const rule = { id: 'r', salesUnit: 1_200_000, consUnit: 1_100_000, margin: 200_000 };
+  it('가감이 없으면 케이스 그대로 — 같은 물건을 돌려준다', () => {
+    expect(siteRuleOf(rule, { salesUnitAdjust: null, consUnitAdjust: null })).toBe(rule);
+    expect(siteRuleOf(rule, { salesUnitAdjust: 0, consUnitAdjust: 0 })).toBe(rule);
+    expect(siteRuleOf(null, { salesUnitAdjust: 100_000, consUnitAdjust: null })).toBeNull();
+  });
+  it('군산 디오션시티 — 영업비 1기당 +10만: 영업 130만, 마진 10만, 운영사에게 받는 턴키는 그대로', () => {
+    const r = siteRuleOf(rule, { salesUnitAdjust: 100_000, consUnitAdjust: null })!;
+    expect(r).toEqual({ id: 'r', salesUnit: 1_300_000, consUnit: 1_100_000, margin: 100_000 });
+    expect(turnkeyUnit(r)).toBe(turnkeyUnit(rule));
+    expect(payoutUnitOf(r, '영업비', false)).toBe(1_300_000);
+  });
+  it('시공비도, 깎는 것도 같다', () => {
+    const r = siteRuleOf(rule, { salesUnitAdjust: -50_000, consUnitAdjust: 30_000 })!;
+    expect(r).toMatchObject({ salesUnit: 1_150_000, consUnit: 1_130_000, margin: 220_000 });
+    expect(turnkeyUnit(r)).toBe(2_500_000);
   });
 });
