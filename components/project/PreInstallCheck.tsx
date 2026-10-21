@@ -23,6 +23,7 @@ import {
   type CheckLine, type LineVerdict, type PreInstallCheck,
 } from '@/lib/preinstall-check';
 import { Btn, Err, GroupHead, Tag, TEXT, Td, Th } from '@/components/ui';
+import { CheckRunBtn } from './CheckRunBtn';
 
 type Group = '맞음' | '어긋남' | '확인 필요' | '참고';
 
@@ -143,20 +144,16 @@ export function PreInstallCheckBlock({
             </>
           )}
         {canRun && (
-          <span className="self-center">
-            <Btn
-              kind="side"
-              size="sm"
-              busy={busy}
-              busyLabel="대조 중… (30초쯤)"
-              disabled={!hasSheet}
-              onClick={() => run({ url: `/api/projects/${projectId}/preinstall/check`, fail: '대조하지 못했습니다.' })}
-            >
-              {!hasSheet ? '설치이력 없음 — 대조 불가' : check ? '다시 대조' : '대조'}
-            </Btn>
-          </span>
+          <CheckRunBtn
+            /* 면제(PDF 로 냄 · 보조사업 이력)면 돌릴 까닭이 없다 — 단추는 남기되 곁 단추로 */
+            due={!bundled && !subsidy && (!check || stale || (check.unread.length > 0 && !accepted))}
+            done={!!check}
+            blocked={!hasSheet ? '설치이력 없음 — 대조 불가' : null}
+            busy={busy}
+            error={error}
+            onClick={() => run({ url: `/api/projects/${projectId}/preinstall/check`, fail: '대조하지 못했습니다.' })}
+          />
         )}
-        <Err>{error}</Err>
       </GroupHead>
 
       {docs}

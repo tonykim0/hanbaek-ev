@@ -19,6 +19,7 @@ import {
   outdatedCheck, parkingIssueCount, sameParkingFiles, type ParkingCheck, type ParkingIssueKey, type ParkingRead,
 } from '@/lib/parking-check';
 import { Btn, Err, GroupHead, Tag, TEXT } from '@/components/ui';
+import { CheckRunBtn } from './CheckRunBtn';
 
 const TONE = { ok: 'text-brand-700', diff: 'text-red-700', unknown: 'text-amber-700' } as const;
 
@@ -129,20 +130,15 @@ export function ParkingCheckBlock({
             </>
           )}
         {canRun && (
-          <span className="self-center">
-            <Btn
-              kind="side"
-              size="sm"
-              busy={busy}
-              busyLabel="대조 중… (30초쯤)"
-              disabled={currentFiles.length === 0}
-              onClick={() => run({ url: `/api/projects/${projectId}/parking/check`, fail: '대조하지 못했습니다.' })}
-            >
-              {currentFiles.length === 0 ? '서류 없음 — 대조 불가' : check ? '다시 대조' : '대조'}
-            </Btn>
-          </span>
+          <CheckRunBtn
+            due={!check || stale || outdated || (check.unread.length > 0 && !accepted)}
+            done={!!check}
+            blocked={currentFiles.length === 0 ? '서류 없음 — 대조 불가' : null}
+            busy={busy}
+            error={error}
+            onClick={() => run({ url: `/api/projects/${projectId}/parking/check`, fail: '대조하지 못했습니다.' })}
+          />
         )}
-        <Err>{error}</Err>
       </GroupHead>
 
       {check && (
