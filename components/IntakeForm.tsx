@@ -25,7 +25,7 @@ import { useRouter } from 'next/navigation';
 import type {
   BizType, BuildingType, ContractParty, CpoName, InstallLoc, IntakeDraft, PowerType, PreInstall, ReplType,
 } from '@/types/project';
-import { MAX_DOC_BYTES, MAX_INTAKE_ZIP_BYTES, replLabel, SPLITS_SELF_REPL } from '@/types/project';
+import { CONTRACT_PARTIES, MAX_DOC_BYTES, MAX_INTAKE_ZIP_BYTES, replLabel, SPLITS_SELF_REPL } from '@/types/project';
 import { canShrink, shrink } from '@/lib/shrink';
 import { uploadIntakeFile, uploadIntakeZip } from '@/lib/intake-upload';
 import { buildDocContext, evaluateDocs } from '@/lib/doc-rules';
@@ -41,7 +41,6 @@ import { useFileDragging } from '@/components/DocFiles';
 
 const CPOS: CpoName[] = ['플러그링크', '나이스인프라', '현대엔지니어링', 'SK일렉링크', '에버온'];
 const BLDG: BuildingType[] = ['공동주택', '상업시설'];
-const PARTIES: ContractParty[] = ['입주자대표회의', '관리단', '건설사'];
 const POWERS: PowerType[] = ['한전불입', '모자분리', '한전불입+모자분리'];
 const BIZ: BizType[] = ['환경부', '자체투자', '기설치 연동'];
 const PRE: PreInstall[] = ['없음', '있음'];
@@ -766,7 +765,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
             </select>
           </Field>
           <Field label="계약주체" required auto={auto.has('contractParty')} hint="회의록 종류가 여기서 정해집니다" issue={issueOf('contractParty')} anchor={anchorOf('contractParty')}>
-            <Select value={contractParty ?? ''} onChange={(v) => { setContractParty((v || null) as ContractParty | null); touched('contractParty'); }} options={PARTIES} blank />
+            <Select value={contractParty ?? ''} onChange={(v) => { setContractParty((v || null) as ContractParty | null); touched('contractParty'); }} options={CONTRACT_PARTIES} blank />
           </Field>
           <Field
             label="사업구분"

@@ -108,12 +108,17 @@ const SPECS: DocSpec[] = [
   {
     key: 'minutes',
     name: '회의록',
-    req: (c) => (resolveParty(c) === '건설사' ? 'c' : 'm'),
+    /*
+     * 건설사·일반 법인은 회의를 여는 단체가 없다 — 있으면 받는다(조건부). 일반 법인은 내부 결재 문서(품의서·이사회
+     * 의사록)가 이 칸에 온다(한백 지시 2026-10-21 · 녹동현대병원). 필수로 걸면 낼 수 없는 회의록 때문에 접수가 막힌다.
+     */
+    req: (c) => (resolveParty(c) === '건설사' || resolveParty(c) === '일반 법인' ? 'c' : 'm'),
     label: (c) => {
       const party = resolveParty(c);
       if (party === '입주자대표회의') return '입주자대표회의 회의록';
       if (party === '관리단') return '관리단 회의록';
       if (party === '건설사') return '회의록 (건설사)';
+      if (party === '일반 법인') return '회의록 (일반 법인)';
       return '회의록';
     },
   },

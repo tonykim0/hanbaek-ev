@@ -35,8 +35,12 @@ export const INSTALL_LOCS = ['실내', '실외', '실내·실외'] as const sati
 
 export type BuildingType = '공동주택' | '상업시설';
 export const BUILDING_TYPES = ['공동주택', '상업시설'] as const satisfies readonly BuildingType[];
-/** 노션에 없는 신규 필드. 회의록 종류를 결정한다. */
-export type ContractParty = '입주자대표회의' | '관리단' | '건설사';
+/**
+ * 노션에 없는 신규 필드. 회의록 종류를 결정한다.
+ * 「일반 법인」은 관리단·입대의 없이 회사 한 곳이 건물을 가진 계약이다(한백 지시 2026-10-21) — 회의록 대신 내부 결재
+ * 문서(품의서·이사회 의사록)를 낸다(전남 고흥 녹동현대병원). 회의록 칸은 건설사처럼 조건부다(doc-rules).
+ */
+export type ContractParty = '입주자대표회의' | '관리단' | '건설사' | '일반 법인';
 export type PowerType = '한전불입' | '모자분리' | '한전불입+모자분리';
 
 /** 고를 수 있는 수전방식 — 「한전불입+모자분리」는 섞인 현장이라 접수에서만 쓴다 */
@@ -731,7 +735,7 @@ export type LineFactsPatch = {
 };
 
 /** 계약주체로 고를 수 있는 값 — 화면의 후보와 서버 검사가 같은 목록을 본다 */
-export const CONTRACT_PARTIES = ['입주자대표회의', '관리단', '건설사'] as const satisfies readonly ContractParty[];
+export const CONTRACT_PARTIES = ['입주자대표회의', '관리단', '건설사', '일반 법인'] as const satisfies readonly ContractParty[];
 
 /** 계약연수로 고를 수 있는 값 — 단가 케이스의 축이라 아무 숫자나 받지 않는다 */
 export const TERM_YEARS = [5, 7, 10] as const;

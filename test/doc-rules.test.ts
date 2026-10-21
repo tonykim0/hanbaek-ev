@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { DOC_KEYS, evaluateDocs, PROCESS_DOCS, processDocsFor, type DocContext } from '@/lib/doc-rules';
 import { kindOfCategory } from '@/lib/doc-category-map';
 import { ALL_DOC_KEYS, isKnownDocKind } from '@/lib/data/assemble';
+import { CONTRACT_PARTIES } from '@/types/project';
 
 const 준공서류 = ['completeConfirm', 'costSurvey', 'safety', 'safetyMgr', 'useInspect', 'asBuilt', 'promoStart'] as const;
 
@@ -96,6 +97,29 @@ describe('견적서 (SK) — 계약 서류가 아니라 행위신고에서 받�
 
   it('접수 판독이 견적서를 알아보면 기타 칸으로 간다 — 계약 칸이 없어도 파일을 버리지 않는다', () => {
     expect(kindOfCategory('견적서')).toBe('etc');
+  });
+});
+
+describe('계약주체 「일반 법인」 — 회의록 칸은 조건부 (한백 지시 2026-10-21)', () => {
+  const ctx = (over: Partial<DocContext>): DocContext => ({
+    cpo: null, contractParty: null, bldgType: null,
+    hasMotherSeparation: false, preInstall: '없음', bizType: null,
+    ...over,
+  });
+  const minutes = (c: DocContext) => evaluateDocs(c).find((d) => d.key === 'minutes')!;
+
+  it('회의를 여는 단체가 없어 회의록이 접수를 막지 않는다 — 내부 결재 문서가 오면 이 칸이다', () => {
+    expect(minutes(ctx({ contractParty: '일반 법인' }))).toMatchObject({ req: 'c', label: '회의록 (일반 법인)' });
+  });
+
+  it('다른 계약주체는 그대로다', () => {
+    expect(minutes(ctx({ contractParty: '관리단' }))).toMatchObject({ req: 'm', label: '관리단 회의록' });
+    expect(minutes(ctx({ contractParty: '입주자대표회의' }))).toMatchObject({ req: 'm', label: '입주자대표회의 회의록' });
+    expect(minutes(ctx({ contractParty: '건설사' }))).toMatchObject({ req: 'c', label: '회의록 (건설사)' });
+  });
+
+  it('접수 화면과 현장 정보·서버 검사가 같은 목록을 본다', () => {
+    expect(CONTRACT_PARTIES).toContain('일반 법인');
   });
 });
 
