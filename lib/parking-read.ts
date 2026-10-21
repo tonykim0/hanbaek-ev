@@ -19,6 +19,7 @@
  * 서버 전용.
  */
 import { askPdfJson, preparePdfs } from './vision-ask';
+import { nameOfAnswer, shownName } from './check-kit';
 import { PARKING_DOCS, type ParkingDoc, type ParkingRead, type ParkingSlot } from './parking-check';
 
 const SLOT_NAME: Record<ParkingSlot, string> = {
@@ -32,7 +33,7 @@ function prompt(files: { name: string; slot: ParkingSlot }[]): string {
 판단·추측을 지어내지 마세요. 안 보이면 null 입니다. JSON 외의 글은 쓰지 마세요.
 
 ## 파일 (${files.length}개 — originalName 에 이 이름을 그대로. 괄호는 그 파일이 올라온 칸)
-${files.map((f, i) => `${i + 1}. ${f.name} (${SLOT_NAME[f.slot]})`).join('\n')}
+${files.map((f, i) => `${i + 1}. ${shownName(f.name)} (${SLOT_NAME[f.slot]})`).join('\n')}
 
 ## 답 모양
 {"docs":[{"originalName":"…","doc":"건축물대장","viewOnly":false,"parking":249,"address":"전라남도 광양시 광양읍 예구1길 8","otherAddresses":[]}]}
@@ -82,9 +83,8 @@ export function parkingReadsOf(raw: unknown, files: { name: string; slot: Parkin
   const docs = (raw as { docs?: RawDoc[] } | null)?.docs;
   if (!Array.isArray(docs)) return [];
   return docs.flatMap((d) => {
-    const name = str(d.originalName);
-    const f = files.find((x) => x.name === name)
-      ?? files.find((x) => name && (x.name.includes(name) || name.includes(x.name)));
+    const name = nameOfAnswer(files.map((x) => x.name), str(d.originalName));
+    const f = files.find((x) => x.name === name);
     if (!f) return [];
     const doc: ParkingDoc = PARKING_DOCS.includes(d.doc as ParkingDoc) ? (d.doc as ParkingDoc) : '기타';
     return [{

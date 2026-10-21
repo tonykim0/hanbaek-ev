@@ -9,6 +9,7 @@ import {
   type ParkingCheck, type ParkingRead,
 } from '@/lib/parking-check';
 import { parkingReadsOf } from '@/lib/parking-read';
+import { nameOfAnswer, shownName } from '@/lib/check-kit';
 
 /* 주소는 기본으로 같은 도로명을 단다 — 주차면 시험이 주소 판정에 걸리지 않게(주소는 아래 묶음이 따로 본다) */
 const read = (over: Partial<ParkingRead>): ParkingRead => ({
@@ -165,6 +166,39 @@ describe('주차면 판독의 답 다듬기', () => {
       { file: '결과서.pdf', slot: 'consult', doc: '기타', viewOnly: null, parking: null, address: null, otherAddresses: [] },
     ]);
     expect(parkingReadsOf(null, files)).toEqual([]);
+  });
+
+  /*
+   * 창동서울가든 2026-10-21 — 맥에서 올린 이름은 자모로 풀린 꼴(NFD)이고 판독은 붙은 꼴(NFC)로 답한다. 글자 그대로 견줘
+   * 건축물대장·결과서가 「못 읽은 파일」로 버려지고 콘솔이 만든 신청서(NFC)만 남았다.
+   */
+  it('자모로 풀린 이름(NFD)도 판독이 붙은 꼴로 답한 것과 같은 파일이다 — 되짚는 이름은 저장된 그대로', () => {
+    const nfd = [
+      { name: '서울가든아파트 건축물대장.pdf'.normalize('NFD'), slot: 'bldgreg' as const },
+      { name: '사전현장컨설팅결과서_창동서울가든_아파트.pdf'.normalize('NFD'), slot: 'consult' as const },
+      { name: '설치신청서.pdf', slot: 'apply' as const },
+    ];
+    const reads = parkingReadsOf({ docs: [
+      { originalName: '서울가든아파트 건축물대장.pdf', doc: '건축물대장', viewOnly: false, parking: 310 },
+      { originalName: '사전현장컨설팅결과서_창동서울가든_아파트', doc: '결과서', parking: 310 },
+      { originalName: '설치신청서.pdf', doc: '신청서', parking: 310 },
+    ] }, nfd);
+    expect(reads.map((r) => [r.file, r.slot])).toEqual(nfd.map((f) => [f.name, f.slot]));
+  });
+});
+
+describe('판독이 답한 이름 되짚기', () => {
+  const names = ['서울가든아파트 건축물대장.pdf'.normalize('NFD'), '결과서.pdf'];
+  it('NFC·NFD 를 가리지 않고 · 띄어쓰기를 빼고 · 확장자를 뗀 답도 · 모르는 이름과 빈 답은 null', () => {
+    expect(nameOfAnswer(names, '서울가든아파트 건축물대장.pdf')).toBe(names[0]);
+    expect(nameOfAnswer(names, '서울가든아파트건축물대장.pdf')).toBe(names[0]);
+    expect(nameOfAnswer(names, '결과서')).toBe('결과서.pdf');
+    expect(nameOfAnswer(names, '등기부.pdf')).toBeNull();
+    expect(nameOfAnswer(names, null)).toBeNull();
+    expect(nameOfAnswer(names, '  ')).toBeNull();
+  });
+  it('판독에게는 붙은 꼴로 보인다', () => {
+    expect(shownName(names[0])).toBe('서울가든아파트 건축물대장.pdf'.normalize('NFC'));
   });
 });
 

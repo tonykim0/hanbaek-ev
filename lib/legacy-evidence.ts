@@ -13,6 +13,7 @@
  */
 import type { NormalizedFile } from './files';
 import { askPdfJson, preparePdfs } from './vision-ask';
+import { nameOfAnswer, shownName } from './check-kit';
 import type { EvidenceAct, EvidenceDoc, SheetScan } from './preinstall-check';
 
 /* 판독 호출(모델·거절 처리·나눠 읽기)은 lib/vision-ask 에 있다 — 운영사 직인 읽기(lib/cpo-seal)와 같이 쓴다 */
@@ -25,7 +26,7 @@ function prompt(names: string[]): string {
 판단·추측·계산 결과를 지어내지 마세요. 안 보이면 null 입니다. JSON 외의 글은 쓰지 마세요.
 
 ## 문서 (${names.length}개 — originalName 에 이 이름을 그대로)
-${names.map((n, i) => `${i + 1}. ${n}`).join('\n')}
+${names.map((n, i) => `${i + 1}. ${shownName(n)}`).join('\n')}
 
 ## 답 모양
 {"acts":[{"originalName":"…","doc":"행위신고","title":"행위신고증명서","date":"2021-12-16","number":"2021-공동주택과-행위신고(증설)-116","kind":"신규 설치","before":4,"after":8,"count":4}]}
@@ -70,8 +71,7 @@ export function actsOf(raw: unknown, names: string[]): EvidenceAct[] {
   const list = (raw as { acts?: RawAct[] } | null)?.acts;
   if (!Array.isArray(list)) return [];
   return list.flatMap((a) => {
-    const name = str(a.originalName);
-    const file = names.find((n) => n === name) ?? names.find((n) => name && (n.includes(name) || name.includes(n)));
+    const file = nameOfAnswer(names, str(a.originalName));
     if (!file) return [];
     return [{
       file,
@@ -118,7 +118,7 @@ function scanPrompt(names: string[]): string {
 인쇄된 것과 찍힌 것만 읽어 JSON 으로 답하세요. 추측하지 마세요. JSON 외의 글은 쓰지 마세요.
 
 ## 문서 (${names.length}개 — originalName 에 이 이름을 그대로)
-${names.map((n, i) => `${i + 1}. ${n}`).join('\n')}
+${names.map((n, i) => `${i + 1}. ${shownName(n)}`).join('\n')}
 
 ## 답 모양
 {"files":[{"originalName":"…","form":true,"applicant":{"name":"세경1차아파트관리사무소","seal":true},"operator":{"name":"현대엔지니어링 주식회사","seal":false},"total":0}]}
@@ -140,8 +140,7 @@ export function scansOf(raw: unknown, names: string[]): SheetScan[] {
   const list = (raw as { files?: Record<string, unknown>[] } | null)?.files;
   if (!Array.isArray(list)) return [];
   return list.flatMap((f) => {
-    const name = str(f.originalName);
-    const file = names.find((n) => n === name) ?? names.find((n) => name && (n.includes(name) || name.includes(n)));
+    const file = nameOfAnswer(names, str(f.originalName));
     if (!file) return [];
     const side = (v: unknown) => {
       const s = (v ?? {}) as Record<string, unknown>;

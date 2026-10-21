@@ -17,6 +17,27 @@ export function named<T extends Pick<DocFile, 'name' | 'url'>>(files: T[]): (T &
   });
 }
 
+/** 판독에게 보여 주는 이름 — 자모로 풀린 이름(NFD)을 붙은 꼴로 */
+export const shownName = (name: string): string => name.normalize('NFC');
+
+/**
+ * 판독이 답한 이름(originalName)을 보낸 파일 이름 중 하나로 되짚는다 — 못 찾으면 null.
+ *
+ * ★한글 이름은 NFC 로 맞춰 견준다★ — 맥에서 올린 파일은 이름이 자모로 풀린 꼴(NFD)로 저장되는 일이 많은데, 판독은 붙은
+ * 꼴(NFC)로 답한다. 글자 그대로 견주면 같은 이름이 달라서, 판독이 읽어 답한 파일을 「못 읽은 파일」로 버렸다(창동서울가든
+ * 2026-10-21 — 파일 넷을 한 번에 보내 답이 넷 분량으로 왔는데 설치신청서 하나만 남았다. 콘솔이 만든 신청서만 이름이 붙은
+ * 꼴이었다). 접수 판독(lib/claude-chunked · intake-auto · pdf-sort)은 이미 NFC 로 견준다. 띄어쓰기는 빼고 견준다(파일명
+ * 분류 lib/doc-category-map 과 같다). 같은 이름이 먼저, 없으면 한쪽이 다른 쪽을 품는 이름이다(판독이 확장자를 떼고 답한다).
+ */
+export function nameOfAnswer(names: string[], answer: string | null): string | null {
+  const key = (s: string) => s.normalize('NFC').replace(/\s+/g, '');
+  const a = answer ? key(answer) : '';
+  if (!a) return null;
+  return names.find((n) => key(n) === a)
+    ?? names.find((n) => key(n).includes(a) || a.includes(key(n)))
+    ?? null;
+}
+
 export async function fetchFile(url: string): Promise<Buffer> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`파일을 읽지 못했습니다 (${res.status})`);
