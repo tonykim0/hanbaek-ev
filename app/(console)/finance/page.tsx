@@ -7,7 +7,8 @@ import { isHanbaek } from '@/lib/roles';
 import { safetyFeeApplies, safetyFeeDue, safetyFeeOpen } from '@/lib/settlement';
 import { won, wonCompact } from '@/lib/format';
 import YearTabs from '@/components/YearTabs';
-import { Blank, PANEL, Tag } from '@/components/ui';
+import { Frame } from '@/components/settlement/parts';
+import { Blank, PANEL, Tag, TEXT, Td, Th } from '@/components/ui';
 import type { ReactNode } from 'react';
 
 export const metadata = { title: '정산 현황 — 한백 전기차사업관리시스템' };
@@ -22,7 +23,11 @@ export const metadata = { title: '정산 현황 — 한백 전기차사업관리
  * 지급은 지급일로 센다. 그래서 8월에 접수한 현장의 기성이 11월에 들어오면 11월에 잡힌다.
  * 「이 달에 얼마 들어왔나」를 묻는 화면이라 그것이 맞다.
  *
- * 협력사는 자기가 받는 쪽만 본다 — 기성·마진은 저장소가 애초에 주지 않는다
+ * ★한백 마진 칸은 걷었다★ (한백 지시 2026-10-22 「정산현황에서 한백 마진 없애고 UI를 다시 수정해봐」).
+ * 이 화면은 받는 돈과 주는 돈 두 갈래만 세운다. 걷으면서 패스스루 제외 꼬리표도 같이 갔다(마진에서 빼는 표시였다). 단가 미지정·점검수수료 미기재는
+ * 받을 돈 합계를 실제보다 적게 만드는 사실이라 기성 카드로 옮겼다.
+ *
+ * 협력사는 자기가 받는 쪽만 본다 — 기성은 저장소가 애초에 주지 않는다
  * (listSettlements 는 한백이 아니면 빈 목록이다). 화면에서 가리는 것이 아니다.
  *
  * 두 조회를 쓴다:
@@ -33,6 +38,15 @@ export const metadata = { title: '정산 현황 — 한백 전기차사업관리
 /** 아직 확정하지 않은 지급 = 계획 + 조정 − 확정. 음수는 0 으로 본다(이미 다 나갔다). */
 const restOf = (row: { plan: number; adjust: number; confirmed: number }) =>
   Math.max(0, row.plan + row.adjust - row.confirmed);
+
+/*
+ * 두 갈래의 색 — 카드의 막대와 월별 표의 막대·열 머리가 같은 것을 쓴다(한 곳에 둔다).
+ * 수금 초록 · 지급 하늘. 둘은 색약 시험을 통과한 짝이다(dataviz 검사 — 정상 ΔE 20 · 적록 ΔE 20).
+ * 하늘은 흰 바탕 대비가 3:1 아래라 막대만으로 값을 말하지 않는다 — 금액이 늘 옆에 적힌다.
+ * ★글자는 색을 입지 않는다★ — 값은 검정, 갈래는 옆의 색 막대·점이 말한다.
+ */
+const IN = { fill: 'bg-brand-500', soft: 'bg-brand-300', track: 'bg-brand-100' };
+const OUT = { fill: 'bg-sky-500', track: 'bg-sky-100' };
 
 export default async function FinancePage({
   searchParams,
@@ -51,7 +65,7 @@ export default async function FinancePage({
   /*
    * ★계약중단 현장은 지급 쪽에서도 뺀다★ (한백 지시 2026-09-30) — 기성 목록(listSettlements)은
    * 저장소가 이미 걸렀다. 한백에게는 그 목록이 곧 「센다」는 현장의 명단이라 그것으로 맞춘다 —
-   * 받는 쪽만 빠지고 주는 쪽이 남으면 마진이 그만큼 틀린다.
+   * 받는 쪽만 빠지고 주는 쪽이 남으면 두 갈래가 서로 다른 현장을 센다.
    * 협력사는 기성 목록이 비어 있으므로(위 머리말) 거르지 않는다 — 다 사라진다.
    */
   const counted = new Set(settlements.map((s) => s.id));
@@ -68,9 +82,13 @@ export default async function FinancePage({
 
   // 수금·지급이 일어난 해만 고를 수 있다. 올해는 자료가 없어도 늘 넣는다(탭이 사라지지 않게).
   const collected = settlements.flatMap((s) => [
+    /*
+     * ★받은 돈은 실수금액이다★ — 협의로 계획과 다르게 받은 현장이 있다(익산 예다음아르띠에, migrations/0034).
+     * 계획액으로 세면 아래 「수금 완료」(collectedTotal — 실수금액)와 이 표의 합이 그만큼 벌어진다.
+     */
     ...s.steps
       .filter((step) => step.collectedAt && step.planAmount !== null)
-      .map((step) => ({ at: step.collectedAt!, amount: step.planAmount! })),
+      .map((step) => ({ at: step.collectedAt!, amount: step.collectedAmount ?? step.planAmount! })),
     /*
      * ★전기안전점검수수료 수금도 돈이 움직인 날이다★ (한백 2026-09-06). 안 세면 위
      * 「수금 완료」(collectedTotal)와 이 표의 합이 그만큼 벌어지고, 그 해에 움직인 돈이
@@ -95,32 +113,20 @@ export default async function FinancePage({
   const sumIn = (rows: Array<{ at: string; amount: number }>, prefix: string) =>
     rows.filter((row) => row.at.startsWith(prefix)).reduce((sum, row) => sum + row.amount, 0);
 
-  let accIn = 0;
-  let accOut = 0;
   const months = Array.from({ length: 12 }, (_, index) => {
     const month = `${year}-${String(index + 1).padStart(2, '0')}`;
-    const income = sumIn(collected, month);
-    const outgo = sumIn(paid, month);
-    accIn += income;
-    accOut += outgo;
     return {
-      label: `${index + 1}월`,
-      income,
-      outgo,
-      accIn,
-      accOut,
+      month,
+      income: sumIn(collected, month),
+      outgo: sumIn(paid, month),
       future: month > thisMonth,
       now: month === thisMonth,
     };
   });
 
-  // ── 한 해 합계 ─────────────────────────────────────────────
-  const yearIn = sumIn(collected, year);
-  const yearOut = sumIn(paid, year);
-
   /*
    * 계획·잔여는 해로 자르지 않는다 — 계획에는 날짜가 없다(조건이 채워지면 열린다).
-   * 해로 자른 숫자와 섞어 한 줄에 두면 어느 것이 그 해의 것인지 알 수 없으므로 따로 적는다.
+   * 그래서 위 카드(전체)와 아래 표(고른 해)는 서로 다른 범위다 — 카드는 해 탭을 따라 바뀌지 않는다.
    */
   const planIn = settlements.reduce((sum, s) => sum + s.planTotal, 0);
   const collectedAll = settlements.reduce((sum, s) => sum + s.collectedTotal, 0);
@@ -133,33 +139,25 @@ export default async function FinancePage({
     0
   );
   /*
-   * ★패스스루 현장은 한백 몫에서 뺀다★ (한백 지시 2026-09-23 「패스스루건은 따로 우리
-   * 마진이 없기 때문에 한백 마진에서 제외하자」 · 화두에너지솔루션).
-   *
-   * 셈만으로도 0 이 되지만(기성 − 영업비 − 시공비, 그 현장은 계획이 턴키다) 그것은 우연히
-   * 맞는 것이다 — 협의로 계획과 다르게 받으면 그 차액이 한백 마진으로 새어 들어간다.
-   * 그 돈도 그 회사 것이므로 현장째 뺀다. 뺀 사실은 꼬리표로 적는다: 숫자를 믿고 판단하는
-   * 자리에서 무엇이 빠졌는지 모르는 합계가 가장 위험하다(바로 아래 단가 미지정과 같은 이유).
+   * 조건 대기 — 아직 트리거가 안 찬 차수. 「총 − 수금 − 받을 수 있는」으로 빼서 구하지 않는다:
+   * 수금은 실수금액이라 계획과 다르게 받은 현장이 있으면 그 차액이 대기로 새어 든다(감사 L13 과 같은 꼴).
    */
-  const ours = settlements.filter((s) => !s.passThrough);
-  const passThroughSites = settlements.length - ours.length;
-
-  /*
-   * 마진 안에서 전기안전점검수수료가 얼마인지 따로 센다 — marginTotal 에 이미 들어 있지만
-   * (assemble settlementSummaryOf) 단가에서 유도한 마진과 사람이 적은 청구액을 한 숫자로만
-   * 두면 어느 쪽이 틀렸는지 못 짚는다(한백 2026-09-06).
-   */
-  const safetyFeeIn = ours.reduce((sum, s) => sum + (s.safetyFee ?? 0), 0);
-  /* 청구액을 적어야 하는데 안 적은 현장 — 마진이 그만큼 실제보다 적다(단가 미지정과 같은 꼴) */
+  const waitIn = settlements.reduce(
+    (sum, s) => sum + s.steps
+      .filter((step) => step.state === 'waiting' && step.planAmount !== null)
+      .reduce((stepSum, step) => stepSum + step.planAmount!, 0),
+    0
+  );
+  /* 청구액을 적어야 하는데 안 적은 현장 — 받을 돈 합계가 그만큼 실제보다 적다(단가 미지정과 같은 꼴) */
   const safetyFeeMissing = settlements.filter(
     (s) => safetyFeeApplies(s.cpo) && s.safetyFee === null && safetyFeeDue(s.status)
   ).length;
+  /* 받을 돈이 실제보다 적게 나오는 현장 수 — 단가가 안 붙은 라인은 차수 금액이 없다 */
+  const unpricedSites = settlements.filter((s) => s.unpricedLines > 0).length;
+
   const planOut = overview.plans.reduce((sum, row) => sum + row.plan + row.adjust, 0);
   const paidAll = overview.plans.reduce((sum, row) => sum + row.confirmed, 0);
   const restOut = overview.plans.reduce((sum, row) => sum + restOf(row), 0);
-  const margin = ours.reduce((sum, s) => sum + s.marginTotal, 0);
-  /* 마진이 실제보다 적게 나오는 현장 수 — 단가가 안 붙은 라인은 셀 금액이 없다 */
-  const unpricedSites = settlements.filter((s) => s.unpricedLines > 0).length;
 
   if (collected.length === 0 && paid.length === 0 && overview.plans.length === 0) {
     return (
@@ -176,97 +174,51 @@ export default async function FinancePage({
     <div className="flex flex-col gap-7">
       <PageHeader year={year} years={years} isAdmin={isAdmin} />
 
-      <div className={`grid gap-5 ${isAdmin ? 'lg:grid-cols-3' : 'lg:grid-cols-2'}`}>
+      {/* 카드는 늘 두 칸 폭이다 — 협력사는 하나뿐이지만 넓게 늘이면 막대 길이가 한백 화면과 다른 물건이 된다 */}
+      <div className="grid gap-5 lg:grid-cols-2">
         {isAdmin && (
-          <Panel eyebrow="받는 돈" title="운영사 기성">
-            <Facts
-              rows={[
-                { label: '총 받아야 할 돈', value: planIn },
-                { label: '수금 완료', value: collectedAll, tone: 'in' },
-                { label: '받을 수 있는 돈', value: openIn, tone: 'wait' },
-              ]}
-            />
-          </Panel>
-        )}
-
-        <Panel
-          eyebrow={isAdmin ? '주는 돈' : '받는 돈'}
-          title={isAdmin ? '협력사 지급' : '내 지급'}
-        >
-          <Facts
-            rows={[
-              { label: '계획', value: planOut },
-              { label: isAdmin ? '지급 완료' : '받은 돈', value: paidAll, tone: 'out' },
-              { label: isAdmin ? '남은 지급' : '남은 예정', value: restOut, tone: 'wait' },
+          <Summary
+            eyebrow="받는 돈"
+            title="운영사 기성"
+            total={{ label: '총 받아야 할 돈', value: planIn }}
+            track={IN.track}
+            /*
+              ★합계가 실제보다 적다는 사실만 꼬리표로 남긴다★ (한백 2026-08-29) — 숫자를 믿고 판단하는 자리에서
+              틀린 줄 모르는 숫자가 가장 위험하다. 세어진 것은 꼬리표다(화면 규칙 11).
+            */
+            side={(unpricedSites > 0 || safetyFeeMissing > 0) ? (
+              <>
+                {unpricedSites > 0 && <Tag tone="warn">단가 미지정 {unpricedSites}건</Tag>}
+                {safetyFeeMissing > 0 && <Tag tone="warn">점검수수료 미기재 {safetyFeeMissing}건</Tag>}
+              </>
+            ) : undefined}
+            parts={[
+              { label: '수금 완료', value: collectedAll, fill: IN.fill },
+              { label: '받을 수 있는 돈', value: openIn, fill: IN.soft },
+              { label: '조건 대기', value: waitIn, fill: null },
             ]}
           />
-        </Panel>
-
-        {/*
-          ★곁말을 걷었다 (한백 2026-08-29).★ 「총 받아야 할 돈 − 내려줄 지급」(계산식)과
-          「단가가 붙은 라인만」(범위)이 숫자 하나를 둘러싸고 있었다. 매일 보는 사람에게는
-          다 아는 말이라 숫자를 가릴 뿐이다 — 규칙은 문장이 아니라 동작으로 보이게 만든다
-          (화면 규칙 2). 계산식과 범위는 위 margin 을 세는 자리가 들고 있다.
-
-          ★단가 미지정만 남긴다 — 문장이 아니라 꼬리표로.★ 한 번 걷었다가 되돌렸다
-          (한백 2026-08-29). 계약관리 표의 같은 이름 꼬리표와 겹쳐 보이지만 다른 사실이다:
-          저쪽은 「이 현장에 단가가 없다」이고, 여기 필요한 말은 「그래서 이 합계가 실제보다
-          적다」다. 숫자를 믿고 판단하는 자리에서 틀린 줄 모르는 숫자가 가장 위험하다.
-          두 줄짜리 문장이 숫자를 가렸던 것이지 사실이 군더더기였던 것이 아니다 —
-          세어진 것은 꼬리표다(화면 규칙 11).
-        */}
-        {isAdmin && (
-          <Panel
-            eyebrow="한백 몫"
-            title="한백 마진"
-            side={(unpricedSites > 0 || safetyFeeMissing > 0 || passThroughSites > 0) ? (
-              <span className="flex flex-wrap items-center gap-1.5">
-                {unpricedSites > 0 && <Tag tone="warn">단가 미지정 {unpricedSites}건</Tag>}
-                {/* 단가 미지정과 같은 이유로 남긴다 — 이 합계가 실제보다 적다는 사실이다 */}
-                {safetyFeeMissing > 0 && <Tag tone="warn">점검수수료 미기재 {safetyFeeMissing}건</Tag>}
-                {/*
-                  빠진 것은 잘못이 아니라 사실이다 — 받은 것을 그대로 내려주는 현장이라
-                  우리 몫이 없다. 주황이 아닌 조용한 꼬리표로 둔다(화면 규칙 12).
-                */}
-                {passThroughSites > 0 && <Tag>패스스루 {passThroughSites}건 제외</Tag>}
-              </span>
-            ) : undefined}
-          >
-            {/*
-              수수료가 있으면 두 줄로 가른다 — 단가에서 유도한 마진과 사람이 적은 청구액은
-              틀리는 방식이 다르다(한백 2026-09-06 「정산현황에서는 한백 마진으로 들어가게」).
-              없으면 줄을 만들지 않는다 — 0 원 줄은 「받는데 안 적었다」로 읽힌다.
-            */}
-            {/*
-              ★1기당 마진 줄은 걷었다★ (한백 지시 2026-09-10 「이것만 삭제해」). 하루 전에
-              같은 사람이 넣은 줄인데(49332e6) 보고 나서 뺐다 — 이 화면이 답하는 물음은
-              「달마다 얼마 들어오고 나갔나」이고, 대당 평균은 그 물음이 아니다.
-              대당 값을 보는 자리는 단가 화면이다(케이스마다 마진이 적혀 있다).
-            */}
-            <Facts
-              rows={safetyFeeIn > 0
-                ? [
-                    { label: '단가 마진', value: margin - safetyFeeIn, tone: 'in' as const },
-                    { label: '전기안전점검수수료', value: safetyFeeIn, tone: 'in' as const },
-                    { label: '합계', value: margin, tone: 'in' as const },
-                  ]
-                : [{ label: '합계', value: margin, tone: 'in' as const }]}
-            />
-          </Panel>
         )}
+
+        <Summary
+          eyebrow={isAdmin ? '주는 돈' : '받는 돈'}
+          title={isAdmin ? '협력사 지급' : '내 지급'}
+          total={{ label: '계획', value: planOut }}
+          track={OUT.track}
+          parts={[
+            { label: isAdmin ? '지급 완료' : '받은 돈', value: paidAll, fill: OUT.fill },
+            { label: isAdmin ? '남은 지급' : '남은 예정', value: restOut, fill: null },
+          ]}
+        />
       </div>
 
-      <Panel
-        eyebrow="월별"
-        title={`${year}년 ${isAdmin ? '수금 · 지급' : '받은 돈'}`}
-        side={<span>돈이 움직인 날 기준 · 원</span>}
-      >
-        <MonthTable
-          rows={months}
-          isAdmin={isAdmin}
-          totals={{ income: yearIn, outgo: yearOut }}
-        />
-      </Panel>
+      <section className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h2 className={TEXT.section}>{year}년 {isAdmin ? '수금 · 지급' : '받은 돈'}</h2>
+          <span className={TEXT.meta}>돈이 움직인 날 기준 · 원</span>
+        </div>
+        <MonthTable rows={months} isAdmin={isAdmin} />
+      </section>
     </div>
   );
 }
@@ -293,162 +245,187 @@ function PageHeader({
   );
 }
 
-function Panel({
-  eyebrow,
-  title,
-  side,
-  children,
+type Part = {
+  label: string;
+  value: number;
+  /** 막대 조각의 색 — null 이면 조각을 세우지 않는다(바닥이 그 몫이다) */
+  fill: string | null;
+};
+
+/**
+ * 한 갈래의 전모 — 합계 하나와 그것이 지금 어디까지 왔나.
+ *
+ * ★막대는 한 줄 비율이다★ — 앞에서부터 끝난 돈 · 받을 수 있는 돈을 잇고, 남은 자리(바닥)가 아직 조건이 안 찬
+ * 돈이다. 바닥은 같은 색의 옅은 단계다(초록 위의 초록) — 회색 바닥은 「비었다」로 읽히지만 여기 바닥은 「아직」이다.
+ * 조각 사이는 2px 띄운다 — 붙이면 두 초록이 한 덩어리로 읽힌다.
+ * 비율의 분모는 조각의 합이다(총액이 아니다) — 수금은 실수금액이라 계획과 다르게 받은 현장이 있으면 둘이 갈린다.
+ * 그 차이로 막대가 넘치거나 모자라지 않게 한다.
+ *
+ * 줄마다 막대와 같은 색 점을 단다 — 색만으로 갈래를 말하지 않는다(이름이 옆에 있다). 값은 검정이다.
+ */
+function Summary({
+  eyebrow, title, total, track, parts, side,
 }: {
   eyebrow: string;
   title: string;
+  total: { label: string; value: number };
+  track: string;
+  parts: Part[];
   side?: ReactNode;
-  children: ReactNode;
 }) {
+  const whole = parts.reduce((sum, p) => sum + Math.max(0, p.value), 0);
+  const share = (v: number) => (whole > 0 ? (Math.max(0, v) / whole) * 100 : 0);
+  const done = parts[0];
   return (
-    <section className={`${PANEL} p-5 sm:p-6`}>
-      <div className="mb-5 flex items-start justify-between gap-4">
+    <section className={`${PANEL} flex flex-col gap-4 p-5 sm:p-6`}>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
         <div>
           <p className="mb-1 text-micro font-black tracking-[0.14em] text-brand-700">{eyebrow}</p>
-          <h2 className="text-h3 font-black text-slate-900">{title}</h2>
+          <h2 className={TEXT.section}>{title}</h2>
         </div>
-        {side && <div className="pt-1 text-tiny font-semibold text-slate-400">{side}</div>}
+        {side && <div className="flex flex-wrap items-center gap-1.5">{side}</div>}
       </div>
-      {children}
+
+      <div>
+        <p className={TEXT.label}>{total.label}</p>
+        <p className="mt-0.5 flex items-baseline justify-between gap-3">
+          <span className="text-h1 font-black tabular-nums text-slate-900">
+            {won(total.value)}<span className="ml-1 text-small font-bold text-slate-500">원</span>
+          </span>
+          {whole > 0 && (
+            <span className={`${TEXT.meta} tabular-nums`}>{done.label} {Math.round(share(done.value))}%</span>
+          )}
+        </p>
+      </div>
+
+      <div
+        className={`flex h-2.5 gap-[2px] overflow-hidden rounded-full ${track}`}
+        role="img"
+        aria-label={parts.map((p) => `${p.label} ${won(p.value)}원`).join(', ')}
+      >
+        {parts.filter((p) => p.fill && p.value > 0).map((p) => (
+          <span
+            key={p.label}
+            className={`h-full first:rounded-l-full ${p.fill}`}
+            style={{ width: `${share(p.value)}%` }}
+            title={`${p.label} ${wonCompact(p.value)}`}
+          />
+        ))}
+      </div>
+
+      <dl className="flex flex-col">
+        {parts.map((p) => (
+          <div key={p.label} className="flex items-baseline justify-between gap-3 border-t border-slate-100 py-2 first:border-0 first:pt-0">
+            <dt className={`flex items-center gap-2 ${TEXT.label}`}>
+              <i aria-hidden className={`h-2.5 w-2.5 shrink-0 rounded-[3px] ${p.fill ?? track}`} />
+              {p.label}
+            </dt>
+            <dd className="text-h3 font-black tabular-nums text-slate-900">{won(p.value)}</dd>
+          </div>
+        ))}
+      </dl>
     </section>
   );
 }
 
-/** 금액 몇 줄 — 표가 아니라 사실 목록이다(자릿수를 맞춰 훑을 일이 없다) */
-function Facts({
-  rows,
-}: {
-  rows: Array<{ label: string; value: number; tone?: 'in' | 'out' | 'wait' }>;
-}) {
-  const color = (tone?: 'in' | 'out' | 'wait') =>
-    tone === 'in' ? 'text-brand-800' : tone === 'out' ? 'text-sky-800' : tone === 'wait' ? 'text-amber-700' : 'text-slate-900';
-  return (
-    <dl className="flex flex-col gap-2.5">
-      {rows.map((row) => (
-        <div key={row.label} className="flex items-baseline justify-between gap-3 border-t border-slate-100 pt-2.5 first:border-0 first:pt-0">
-          <dt className="min-w-0 text-base font-bold text-slate-500">{row.label}</dt>
-          <dd className={`shrink-0 text-h3 font-black tabular-nums ${color(row.tone)}`}>{won(row.value)}</dd>
-        </div>
-      ))}
-    </dl>
-  );
-}
-
 /**
- * 달마다 한 줄. 막대 대신 표로 둔다 — 금액은 자릿수를 맞춰 훑는 값이라
- * 막대 위 압축 표기(1.2억)로는 대조가 안 된다. 막대는 칸 안의 띠로 곁들인다.
+ * 달마다 한 줄 — 달 · 막대 · 금액. 열두 줄을 위아래로 훑어 크기를 견주는 자리다.
+ *
+ * 월별 지급표(/statements PayChart)와 같은 얼개다: 막대는 갈래마다 제 줄이고 둘 다 왼쪽에서 시작해 같은 자를
+ * 쓴다(쌓지 않는다 — 뒤 조각은 시작점이 달마다 달라 달끼리 견줄 수 없다). 바닥은 깔지 않는다 — 빈 달이 죄다
+ * 얼룩이 된다. 금액은 표의 칸이라 압축하지 않는다(won) — 대조가 일이다.
+ *
+ * 누적 열 둘은 걷었다(2026-10-22) — 마지막 줄의 누적이 곧 합계 줄이라 같은 값이 두 번이었고(화면 규칙 5), 일곱
+ * 열이 좁은 화면에서 막대를 실오라기로 만들었다. 차액은 남긴다 — 그 달에 돈이 남았나 모자랐나는 이 표만 답한다.
+ * 오지 않은 달은 자리만 지킨다 — 이미 잡힌 지급(지급일이 앞날인 배치)은 옅은 막대로 그린다(감사 M21).
  */
 function MonthTable({
   rows,
   isAdmin,
-  totals,
 }: {
-  rows: Array<{
-    label: string;
-    income: number;
-    outgo: number;
-    accIn: number;
-    accOut: number;
-    future: boolean;
-    now: boolean;
-  }>;
+  rows: Array<{ month: string; income: number; outgo: number; future: boolean; now: boolean }>;
   isAdmin: boolean;
-  totals: { income: number; outgo: number };
 }) {
-  const max = Math.max(...rows.map((row) => Math.max(row.income, row.outgo)), 1);
+  const max = Math.max(1, ...rows.map((row) => Math.max(row.income, row.outgo)));
+  const yearIn = rows.reduce((sum, row) => sum + row.income, 0);
+  const yearOut = rows.reduce((sum, row) => sum + row.outgo, 0);
+  const amount = (v: number, row: { future: boolean }) =>
+    v !== 0 ? won(v) : <span className="text-slate-300">{row.future ? '—' : '0'}</span>;
 
   return (
-    <div className="overflow-x-auto">
-      <table className="text-center w-full min-w-[520px] text-base tabular-nums">
-        <thead>
-          <tr className="border-b border-slate-200 text-tiny font-black text-slate-400">
-            <th className="w-14 whitespace-nowrap py-2">달</th>
-            {isAdmin && <th className="whitespace-nowrap py-2 text-right">수금</th>}
-            <th className="whitespace-nowrap py-2 text-right">{isAdmin ? '지급' : '받은 돈'}</th>
-            {isAdmin && <th className="whitespace-nowrap py-2 text-right">차액</th>}
-            <th className="w-40 whitespace-nowrap py-2 pl-4">크기</th>
-            <th className="whitespace-nowrap py-2 text-right">{isAdmin ? '누적 수금' : '누적'}</th>
-            {isAdmin && <th className="whitespace-nowrap py-2 text-right">누적 지급</th>}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => {
-            const diff = row.income - row.outgo;
-            return (
-              <tr
-                key={row.label}
-                className={`border-b border-slate-100 ${row.now ? 'bg-brand-50/40' : ''} ${row.future ? 'text-slate-300' : ''}`}
-              >
-                <td className={`py-2 font-bold ${row.now ? 'text-brand-800' : ''}`}>{row.label}</td>
-                {isAdmin && (
-                  <td className="py-2 text-right font-semibold">
-                    {row.income ? won(row.income) : <span className="text-slate-300">—</span>}
-                  </td>
-                )}
-                <td className="py-2 text-right font-semibold">
-                  {row.outgo ? won(row.outgo) : <span className="text-slate-300">—</span>}
-                </td>
-                {isAdmin && (
-                  <td className={`py-2 text-right font-bold ${diff < 0 ? 'text-red-700' : diff > 0 ? 'text-brand-800' : ''}`}>
-                    {row.income || row.outgo ? won(diff) : <span className="text-slate-300">—</span>}
-                  </td>
-                )}
-                <td className="py-2 pl-4">
-                  <Bars income={row.income} outgo={row.outgo} max={max} isAdmin={isAdmin} />
-                </td>
-                <td className="py-2 text-right font-semibold text-slate-500">
-                  {won(isAdmin ? row.accIn : row.accOut)}
-                </td>
-                {isAdmin && (
-                  <td className="py-2 text-right font-semibold text-slate-500">{won(row.accOut)}</td>
-                )}
-              </tr>
-            );
-          })}
-          <tr className="text-base font-black">
-            <td className="py-2.5">합계</td>
-            {isAdmin && <td className="py-2.5 text-right">{won(totals.income)}</td>}
-            <td className="py-2.5 text-right">{won(totals.outgo)}</td>
-            {isAdmin && (
-              <td className="py-2.5 text-right">{won(totals.income - totals.outgo)}</td>
-            )}
-            <td />
-            <td />
-            {isAdmin && <td />}
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <Frame min={isAdmin ? '640px' : '420px'}>
+      <thead className="border-b border-slate-100 bg-slate-50 text-tiny font-bold tracking-[0.06em] text-slate-500">
+        <tr>
+          <Th className="w-16">달</Th>
+          <Th className="w-[38%]"><span className="sr-only">크기</span></Th>
+          {isAdmin && (
+            <Th money>
+              <span className="inline-flex items-center gap-1.5">
+                <i aria-hidden className={`h-2 w-2 rounded-[2px] ${IN.fill}`} />수금
+              </span>
+            </Th>
+          )}
+          <Th money>
+            <span className="inline-flex items-center gap-1.5">
+              <i aria-hidden className={`h-2 w-2 rounded-[2px] ${OUT.fill}`} />{isAdmin ? '지급' : '받은 돈'}
+            </span>
+          </Th>
+          {isAdmin && <Th money>차액</Th>}
+        </tr>
+      </thead>
+      <tbody className="divide-y divide-slate-100">
+        {rows.map((row) => {
+          const diff = row.income - row.outgo;
+          const label = `${Number(row.month.slice(5))}월`;
+          return (
+            <tr key={row.month} className={row.now ? 'bg-brand-50/60' : ''}>
+              <Td className={`font-bold ${row.now ? 'text-brand-800' : row.future ? 'text-slate-500' : 'text-slate-700'}`}>
+                {label}
+              </Td>
+              <Td className="align-middle">
+                <span
+                  className="flex flex-col gap-[3px]"
+                  title={`${row.month}${row.future ? ' · 예정' : ''} · ${isAdmin ? `수금 ${wonCompact(row.income)} · ` : ''}${isAdmin ? '지급' : '받은 돈'} ${wonCompact(row.outgo)}`}
+                >
+                  {isAdmin && <Bar value={row.income} max={max} fill={IN.fill} faint={row.future} />}
+                  <Bar value={row.outgo} max={max} fill={OUT.fill} faint={row.future} />
+                </span>
+              </Td>
+              {isAdmin && <Td money className="font-semibold text-slate-800">{amount(row.income, row)}</Td>}
+              <Td money className="font-semibold text-slate-800">{amount(row.outgo, row)}</Td>
+              {isAdmin && (
+                <Td money className={`font-bold ${diff < 0 ? 'text-red-700' : 'text-slate-900'}`}>
+                  {row.income || row.outgo ? won(diff) : <span className="text-slate-300">—</span>}
+                </Td>
+              )}
+            </tr>
+          );
+        })}
+      </tbody>
+      <tfoot className="border-t border-slate-200 bg-slate-50">
+        <tr className="font-black text-slate-900">
+          <Td>합계</Td>
+          <Td />
+          {isAdmin && <Td money>{won(yearIn)}</Td>}
+          <Td money>{won(yearOut)}</Td>
+          {isAdmin && <Td money className={yearIn - yearOut < 0 ? 'text-red-700' : ''}>{won(yearIn - yearOut)}</Td>}
+        </tr>
+      </tfoot>
+    </Frame>
   );
 }
 
-/** 칸 안의 띠 — 수금은 초록, 지급은 파랑. 옆 숫자를 읽지 않고도 큰 달이 눈에 든다. */
-function Bars({
-  income,
-  outgo,
-  max,
-  isAdmin,
-}: {
-  income: number;
-  outgo: number;
-  max: number;
-  isAdmin: boolean;
-}) {
-  const pct = (value: number) => `${Math.round((Math.abs(value) / max) * 100)}%`;
+/** 칸 안의 막대 하나 — 0 이면 자리만 지킨다(높이는 남긴다 — 두 막대의 위아래 자리가 줄마다 같게) */
+function Bar({ value, max, fill, faint }: { value: number; max: number; fill: string; faint: boolean }) {
   return (
-    <div className="flex flex-col gap-1" aria-hidden>
-      {isAdmin && (
-        <div className="h-2 rounded-full bg-slate-100">
-          <div className="h-2 rounded-full bg-brand-500" style={{ width: pct(income) }} title={wonCompact(income)} />
-        </div>
+    <span className="block h-[7px]">
+      {value > 0 && (
+        <span
+          aria-hidden
+          className={`block h-full rounded-full ${fill}${faint ? ' opacity-40' : ''}`}
+          style={{ width: `${Math.max(1.5, (value / max) * 100)}%` }}
+        />
       )}
-      <div className="h-2 rounded-full bg-slate-100">
-        <div className="h-2 rounded-full bg-sky-400" style={{ width: pct(outgo) }} title={wonCompact(outgo)} />
-      </div>
-    </div>
+    </span>
   );
 }
