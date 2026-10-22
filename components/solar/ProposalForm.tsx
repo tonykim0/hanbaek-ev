@@ -19,7 +19,8 @@ import { Btn, Err, FIELD, PANEL, TEXT, Val } from '@/components/ui';
 import { downloadBlob } from '@/lib/download';
 import { eokLabel, kwh, manLabel, pctLabel } from '@/lib/solar/econ';
 import {
-  PROPOSAL_CONST, fillProposal, numbersOf, proposalFileName, regionOf, type ProposalInput,
+  PROPOSAL_CONST, fillProposal, numbersOf, proposalFileName, regionOf, selfUseKwhOf,
+  type ProposalInput,
 } from '@/lib/solar/fill-proposal';
 import { loadTemplate } from '@/lib/solar/template';
 
@@ -34,14 +35,20 @@ export default function ProposalForm() {
   const [address, setAddress] = useState('');
   const [regionEdit, setRegionEdit] = useState<string | null>(null);
   const [capacity, setCapacity] = useState('');
-  const [selfUse, setSelfUse] = useState('');
+  const [selfUseEdit, setSelfUseEdit] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   /* 지역은 주소에서 따라온다 — 손으로 고치면 그 값이 이긴다(화면 규칙 7) */
   const region = regionEdit ?? regionOf(address);
   const capacityKw = num(capacity);
-  const selfUseKwh = num(selfUse);
+
+  /*
+   * 연 소비가능 발전량도 용량에서 따라온다 (한백 지시 2026-10-22 「자동 계산되게 해놔야지」) —
+   * 지역과 같은 결이다. 진짜 사용량을 알면 적어서 덮는다.
+   */
+  const selfUseAuto = capacityKw > 0 ? selfUseKwhOf(capacityKw) : 0;
+  const selfUseKwh = selfUseEdit === null ? selfUseAuto : num(selfUseEdit);
 
   const input: ProposalInput = {
     customer: customer.trim(),
@@ -140,8 +147,8 @@ export default function ProposalForm() {
               <input
                 className={`${FIELD} tabular-nums`}
                 inputMode="numeric"
-                value={selfUse}
-                onChange={(e) => setSelfUse(e.target.value)}
+                value={selfUseEdit ?? (selfUseAuto ? selfUseAuto.toLocaleString('ko-KR') : '')}
+                onChange={(e) => setSelfUseEdit(e.target.value)}
                 placeholder="322,730"
               />
             </Field>
@@ -167,6 +174,7 @@ export default function ProposalForm() {
           <Out label="기존 전력량 단가" v={`${PROPOSAL_CONST.gridRate}원/kWh`} />
           <Out label="상계단가" v={`${PROPOSAL_CONST.offsetRate}원/kWh`} />
           <Out label="발전시간" v={`${PROPOSAL_CONST.hoursPerDay}시간/일`} />
+          <Out label="자가소비율" v={`${PROPOSAL_CONST.selfUseRate * 100}%`} />
           <Out label="전기요금 인상률" v={`연 ${PROPOSAL_CONST.escalation * 100}%`} />
           <Out label="설비효율 감소율" v={`연 ${PROPOSAL_CONST.decay * 100}%`} />
         </dl>

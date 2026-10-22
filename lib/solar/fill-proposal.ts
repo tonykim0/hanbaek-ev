@@ -54,6 +54,18 @@ export const PROPOSAL_CONST = {
   decay: 0.004,
   years: 20,
   moduleWatt: 650,
+  /*
+   * 자가소비율 — 연 발전량 중 고객사가 직접 쓰는 몫. 나머지가 초과발전이고 상계로 간다.
+   *
+   * ★이것도 가정이다★ (한백 지시 2026-10-22 「그럼 자동 계산되게 해놔야지」). 원래는 현장
+   * 전력사용량 분석 결과라 밖에서 오는 값인데, 제안 시점에 그 수를 들고 있는 일이 드물다.
+   * 서식의 무창 현장이 69.59% 였다(322,730 / 463,776) — 실측은 그 한 건뿐이라 70% 로 둔다.
+   * 물리적으로는 소비량이 설비용량에 비례하지 않지만(크게 지어도 쓰는 양은 그대로다),
+   * 지붕 크기에 맞춰 설계하는 이 모델에서는 비율이 대체로 선다.
+   *
+   * ★진짜 사용량을 알면 화면에서 덮어쓴다★ — 연 소비가능 발전량 칸에 적으면 그 값이 이긴다.
+   */
+  selfUseRate: 0.7,
 } as const;
 
 /**
@@ -92,6 +104,16 @@ export function regionOf(address: string): string {
   }
   return '';
 }
+
+/** 연 발전량 — 용량에서 바로 나온다(설비용량 × 발전시간 × 365) */
+export const genKwhOf = (kw: number): number => kw * PROPOSAL_CONST.hoursPerDay * 365;
+
+/**
+ * 연 소비가능 발전량 — 발전량의 자가소비율만큼. ★사람이 적으면 그 값이 이긴다★.
+ * 왜 가정으로 두는지는 PROPOSAL_CONST.selfUseRate 주석에 있다.
+ */
+export const selfUseKwhOf = (kw: number, rate = PROPOSAL_CONST.selfUseRate): number =>
+  Math.round(genKwhOf(kw) * rate);
 
 /** 소수 둘째 자리까지 — 서식이 「352.95」로 적는다 */
 const kwLabel = (kw: number): string => kw.toFixed(2);

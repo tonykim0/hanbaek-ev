@@ -8,7 +8,8 @@ import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   econRowCells, econTotalCells, fillEconTableXml, moduleCountOf,
-  numbersOf, proposalFileName, regionOf, replacementsOf, SAMPLE, type ProposalInput,
+  numbersOf, proposalFileName, regionOf, replacementsOf, SAMPLE, selfUseKwhOf,
+  genKwhOf, PROPOSAL_CONST, type ProposalInput,
 } from '@/lib/solar/fill-proposal';
 import { applyAll, orderOf } from '@/lib/solar/pptx-kit';
 import { eokLabel, thousand } from '@/lib/solar/econ';
@@ -151,6 +152,31 @@ describe('주소에서 지역 뽑기 — 요약 문장이 「<지역> <고객사
   it('못 뽑으면 비운다 — 사람이 적는다(단추가 막는다)', () => {
     expect(regionOf('')).toBe('');
     expect(regionOf('공장 부지')).toBe('');
+  });
+});
+
+describe('★연 소비가능 발전량도 용량에서 따라온다★ (한백 2026-10-22 「자동 계산되게 해놔야지」)', () => {
+  it('발전량의 자가소비율만큼이다', () => {
+    expect(selfUseKwhOf(88.4)).toBe(Math.round(genKwhOf(88.4) * 0.7));
+    expect(selfUseKwhOf(0)).toBe(0);
+  });
+
+  it('★무창의 실측과 0.5%p 안이다★ — 가정을 그 한 건으로 세웠다', () => {
+    const real = SAMPLE.selfUseKwh / genKwhOf(SAMPLE.capacityKw);
+    expect(real).toBeCloseTo(0.6959, 4);
+    expect(Math.abs(real - PROPOSAL_CONST.selfUseRate)).toBeLessThan(0.005);
+  });
+
+  it('비율이 서면 초과발전도 선다 — 제안서의 머리 수치가 늘 같은 값이 된다', () => {
+    for (const kw of [20, 88.4, 352.95, 900]) {
+      const n = numbersOf({ customer: 'x', address: 'y', region: 'z', capacityKw: kw, selfUseKwh: selfUseKwhOf(kw) });
+      expect(n.excessRatio).toBeCloseTo(1 - PROPOSAL_CONST.selfUseRate, 4);
+    }
+  });
+
+  it('적어서 덮으면 그 값으로 간다 — 진짜 사용량을 알 때', () => {
+    const n = numbersOf({ customer: 'x', address: 'y', region: 'z', capacityKw: 88.4, selfUseKwh: 40_000 });
+    expect(n.excessRatio).toBeGreaterThan(0.6);
   });
 });
 
