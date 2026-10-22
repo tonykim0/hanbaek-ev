@@ -141,7 +141,7 @@ export default function DesignPage() {
         </div>
         <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3">
           <GroupHead title="조건부" meta="1/3 · 해당되는 현장만" />
-          <GroupHead step={2} title="서류 · 대조" meta="10-07 14:22 대조"><Tag tone="warn">짚을 것 2</Tag></GroupHead>
+          <GroupHead step={2} title="서류 · 대조" action={<Btn kind="side" size="sm">다시 대조</Btn>} meta="10-07 14:22 대조"><Tag tone="warn">짚을 것 2</Tag></GroupHead>
         </div>
       </Section>
 

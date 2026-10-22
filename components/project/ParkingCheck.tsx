@@ -116,6 +116,16 @@ export function ParkingCheckBlock({
       <GroupHead
         step={step}
         title="건축물대장 대조"
+        action={canRun && (
+          <CheckRunBtn
+            due={!check || stale || outdated || (check.unread.length > 0 && !accepted)}
+            done={!!check}
+            blocked={currentFiles.length === 0 ? '서류 없음 — 대조 불가' : null}
+            busy={busy}
+            error={error}
+            onClick={() => run({ url: `/api/projects/${projectId}/parking/check`, fail: '대조하지 못했습니다.' })}
+          />
+        )}
         meta={check ? `${stampOf(new Date(check.checkedAt))} 대조` : undefined}
       >
         {!check
@@ -129,16 +139,6 @@ export function ParkingCheckBlock({
               {accepted && <Tag tone="ok">확인함 · {accepted.by} {stampOf(new Date(accepted.at))}</Tag>}
             </>
           )}
-        {canRun && (
-          <CheckRunBtn
-            due={!check || stale || outdated || (check.unread.length > 0 && !accepted)}
-            done={!!check}
-            blocked={currentFiles.length === 0 ? '서류 없음 — 대조 불가' : null}
-            busy={busy}
-            error={error}
-            onClick={() => run({ url: `/api/projects/${projectId}/parking/check`, fail: '대조하지 못했습니다.' })}
-          />
-        )}
       </GroupHead>
 
       {check && (

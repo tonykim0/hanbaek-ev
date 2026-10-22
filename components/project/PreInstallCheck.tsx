@@ -123,6 +123,17 @@ export function PreInstallCheckBlock({
       <GroupHead
         step={2}
         title="서류 · 대조"
+        action={canRun && (
+          <CheckRunBtn
+            /* 면제(PDF 로 냄 · 보조사업 이력)면 돌릴 까닭이 없다 — 단추는 남기되 곁 단추로 */
+            due={!bundled && !subsidy && (!check || stale || (check.unread.length > 0 && !accepted))}
+            done={!!check}
+            blocked={!hasSheet ? '설치이력 없음 — 대조 불가' : null}
+            busy={busy}
+            error={error}
+            onClick={() => run({ url: `/api/projects/${projectId}/preinstall/check`, fail: '대조하지 못했습니다.' })}
+          />
+        )}
         // 대조 시각은 상태 곁이다 — 단추 곁에 두면 단추 없는 사람(협력사·열람 전용)에게 시각만 떠 있었다
         meta={check ? `${stampOf(new Date(check.checkedAt))} 대조` : undefined}
       >
@@ -143,17 +154,6 @@ export function PreInstallCheckBlock({
               {accepted && <Tag tone="ok">확인함 · {accepted.by} {stampOf(new Date(accepted.at))}</Tag>}
             </>
           )}
-        {canRun && (
-          <CheckRunBtn
-            /* 면제(PDF 로 냄 · 보조사업 이력)면 돌릴 까닭이 없다 — 단추는 남기되 곁 단추로 */
-            due={!bundled && !subsidy && (!check || stale || (check.unread.length > 0 && !accepted))}
-            done={!!check}
-            blocked={!hasSheet ? '설치이력 없음 — 대조 불가' : null}
-            busy={busy}
-            error={error}
-            onClick={() => run({ url: `/api/projects/${projectId}/preinstall/check`, fail: '대조하지 못했습니다.' })}
-          />
-        )}
       </GroupHead>
 
       {docs}

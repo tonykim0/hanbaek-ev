@@ -72,13 +72,20 @@ export const TEXT = {
  * 묶음 머리 — 묶음 제목 + 곁글(건수·한마디) + 그 묶음의 상태·단추.
  * 「필수 · 조건부 · 선택」과 기설치 조사의 걸음이 같은 모양을 쓴다 — 두 화면에서 같은 층이 다르게 보이지 않게.
  */
-export function GroupHead({ step, title, meta, children }: {
+export function GroupHead({ step, title, action, meta, children }: {
   /** 걸음 번호 — 순서가 있는 묶음(기설치 조사의 1·2·3) */
   step?: number;
   title: ReactNode;
+  /**
+   * 그 묶음에서 하는 일의 단추 — ★제목 바로 뒤★에 선다(곁글·꼬리표보다 앞).
+   * 꼬리표 뒤에 두면 꼬리표의 하나로 읽히고, 줄 오른쪽 끝(ml-auto)에 두면 넓은 화면에서 눈이 거기까지 안 간다 —
+   * 대조 단추가 이틀 사이에 둘 다 겪었다(한백 2026-10-21 「잘 안 보여」 · 10-22 「맨 오른쪽에 있어서 안 보인다」).
+   * 제목을 읽는 눈이 바로 닿는 자리는 여기다.
+   */
+  action?: ReactNode;
   /** 곁글 — 「2/5」·「해당되는 현장만」 */
   meta?: ReactNode;
-  /** 머리 줄에 같이 서는 상태 꼬리표·단추 */
+  /** 머리 줄에 같이 서는 상태 꼬리표 */
   children?: ReactNode;
 }) {
   return (
@@ -91,6 +98,7 @@ export function GroupHead({ step, title, meta, children }: {
         )}
         {title}
       </h3>
+      {action}
       {meta !== undefined && meta !== null && <span className={`${TEXT.meta} tabular-nums`}>{meta}</span>}
       {children}
     </div>
