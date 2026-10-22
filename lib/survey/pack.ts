@@ -8,6 +8,8 @@ import type JSZip from 'jszip';
 const MIME = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  /* 태양광 제안서 — 실사보고서와 같은 길로 묶는다(lib/solar/pptx-kit) */
+  pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
 } as const;
 
 export function packZip(zip: JSZip, kind: keyof typeof MIME): Promise<Blob | Uint8Array> {
