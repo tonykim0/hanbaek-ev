@@ -21,6 +21,11 @@ export const CONSOLE_PATHS = [
   '/construction',
   '/contracts',   // 계약서 작성 — 운영사 양식이 그 아래(/contracts/hec 등). 2026-10-01 포털에서 들였다
   '/survey',      // 실사보고서(사진대지) 작성 — 같은 날 포털에서 들였다
+  /*
+   * 태양광 제안서 만들기 (2026-10-22) — HANBAEK_ONLY 와 WRITER_ONLY 에 같이 있다.
+   * 둘을 합치면 관리자만 남는다: 우리 이름으로 고객에게 나가는 물건이고, 전기차 협력사의 일도 아니다.
+   */
+  '/solar',
   '/reissue',
   '/split',
   '/scan',        // 사진 → 스캔본 (2026-09-09 추가 — 감사 L21: 빠져 있어 로그인 없이 열렸다)
@@ -47,6 +52,6 @@ export const ADMIN_ONLY = ['/admin'] as const;
 /** /admin 아래인데 한백의 눈(열람 전용)에게도 여는 것 — 재무가 지급 전에 보는 협력사 정보 */
 export const ADMIN_READABLE = ['/admin/partners'] as const;
 /** 한백의 눈만(관리자·열람 전용) — (admin) 라우트 그룹의 바깥 문과 같다 */
-export const HANBAEK_ONLY = ['/receivables', '/pricing', '/design'] as const;
+export const HANBAEK_ONLY = ['/receivables', '/pricing', '/design', '/solar'] as const;
 /** 쓰는 사람만 — 열람 전용은 못 들어간다 */
-export const WRITER_ONLY = ['/projects/new', '/contracts', '/settings'] as const;
+export const WRITER_ONLY = ['/projects/new', '/contracts', '/settings', '/solar'] as const;

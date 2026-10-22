@@ -40,6 +40,11 @@ const TOOLS: { href: string; label: string; adminOnly?: boolean; blank?: boolean
 const ADMIN_INTAKE = [
   { href: '/projects/new', label: '서류 접수' },
   { href: '/contracts', label: '계약서 작성' },
+  /*
+   * 태양광 제안서 (2026-10-22) — 전기차가 아니라 솔라쉐어바로 제안이다. 고객사 다섯 값을 적으면
+   * 서식 한 벌이 채워져 내려온다. 계약서 작성과 같은 「우리가 밖으로 내는 문서」라 이 묶음이다.
+   */
+  { href: '/solar', label: '태양광 제안서' },
 ];
 
 /**

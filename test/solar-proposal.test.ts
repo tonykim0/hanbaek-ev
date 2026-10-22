@@ -8,7 +8,7 @@ import { DOMParser, XMLSerializer } from '@xmldom/xmldom';
 import { beforeAll, describe, expect, it } from 'vitest';
 import {
   econRowCells, econTotalCells, fillEconTableXml, moduleCountOf,
-  numbersOf, proposalFileName, replacementsOf, SAMPLE, type ProposalInput,
+  numbersOf, proposalFileName, regionOf, replacementsOf, SAMPLE, type ProposalInput,
 } from '@/lib/solar/fill-proposal';
 import { applyAll, orderOf } from '@/lib/solar/pptx-kit';
 import { eokLabel, thousand } from '@/lib/solar/econ';
@@ -129,6 +129,28 @@ describe('손익표를 자리로 다시 쓴다', () => {
 
   it('줄이 모자라는 서식에서는 있는 만큼만 쓰고 멈춘다', () => {
     expect(fillEconTableXml(econTable(5), n).rows).toBe(5);
+  });
+});
+
+describe('주소에서 지역 뽑기 — 요약 문장이 「<지역> <고객사> 사이트」로 쓴다', () => {
+  it('도 + 시', () => {
+    expect(regionOf(SAMPLE.address)).toBe(SAMPLE.region);
+    expect(regionOf('경기도 광주시 초월읍 현산로 341-32')).toBe('광주');
+  });
+
+  it('군·구도 같다', () => {
+    expect(regionOf('전북 완주군 봉동읍 과학로 1')).toBe('완주');
+    expect(regionOf('서울 강남구 테헤란로 1')).toBe('강남');
+  });
+
+  it('★광역시는 두 글자다★ — 「부산광역시 … 사이트」는 문장이 안 된다', () => {
+    expect(regionOf('부산광역시 강서구 녹산산단로 1')).toBe('부산');
+    expect(regionOf('세종특별자치시 한누리대로 2130')).toBe('세종');
+  });
+
+  it('못 뽑으면 비운다 — 사람이 적는다(단추가 막는다)', () => {
+    expect(regionOf('')).toBe('');
+    expect(regionOf('공장 부지')).toBe('');
   });
 });
 

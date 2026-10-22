@@ -17,7 +17,13 @@
  * 맞춘다. 셋 중 하나만 하면 test/solar-template 이 빨개진다.
  */
 
-/** public/ 아래 경로 — 브라우저는 `/${TEMPLATE_PATH}` 로 받는다 */
+/**
+ * public/ 아래 경로 — 브라우저는 `/${TEMPLATE_PATH}` 로 받는다.
+ *
+ * ★주소를 아는 사람은 로그인 없이 받는다★ — public/ 이 다 그렇다(미들웨어 matcher 가 점 붙은
+ * 경로를 뺀다). 운영사 계약서·사진대지 서식도 같은 자리에 같은 조건으로 있다. 빈 서식이라
+ * 현장 값은 없다 — 값이 든 제안서는 브라우저에서 만들어져 그 사람의 디스크로만 간다.
+ */
 export const TEMPLATE_PATH = 'solar/solarshare-baro.pptx';
 
 /** 브라우저에서 서식을 받아 온다 */

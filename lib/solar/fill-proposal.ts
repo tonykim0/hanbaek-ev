@@ -69,6 +69,30 @@ export const SAMPLE = {
   moduleCount: 543,
 } as const;
 
+/**
+ * 주소에서 지역을 뽑는다 — 「충남 아산시 선장면 …」 → 「아산」.
+ *
+ * 요약 문장이 「<지역> <고객사> 사이트」로 쓰는데 주소에서 거의 늘 나오는 값이라 화면에서
+ * 따라오게 한다(손으로 고치면 그 값이 이긴다). ★광역시는 두 글자다★ — 서식의 샘플이
+ * 「아산」이고 「부산광역시 <고객사> 사이트」는 문장이 안 된다.
+ *
+ * 꼬리는 ★긴 것부터★ 뗀다 — 「부산광역시」에서 「시」를 먼저 떼면 「부산광역」이 남는다.
+ */
+const REGION_TAIL = ['특별자치도', '특별자치시', '광역시', '특별시', '시', '군', '구'] as const;
+
+export function regionOf(address: string): string {
+  /* 앞의 도 이름은 지역이 아니다 — 「충남 아산시」의 지역은 아산이다 */
+  const s = address.trim().replace(/^(충남|충북|전남|전북|경남|경북|강원|경기|제주)\s+/, '');
+  for (const tok of s.split(/\s+/)) {
+    for (const tail of REGION_TAIL) {
+      if (!tok.endsWith(tail)) continue;
+      const name = tok.slice(0, tok.length - tail.length);
+      if (/^[가-힣]{2,}$/.test(name)) return name;
+    }
+  }
+  return '';
+}
+
 /** 소수 둘째 자리까지 — 서식이 「352.95」로 적는다 */
 const kwLabel = (kw: number): string => kw.toFixed(2);
 
