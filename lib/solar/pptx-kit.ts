@@ -114,6 +114,59 @@ export function fillParagraph(p: Element, r: Replacements, keys = orderOf(r)): b
   return touched;
 }
 
+/* ── 표 ────────────────────────────────────────────────────────────────────
+ * ★숫자 표는 글자 찾기로 바꾸지 않는다★ — 3년차 어느 칸과 7년차 다른 칸의 숫자가 우연히
+ * 같으면 엉뚱한 자리가 바뀐다. 20년 손익표는 160칸이라 그런 충돌이 반드시 생긴다.
+ * 자리(몇 번째 줄 몇 번째 칸)로 찾아 쓴다 — docx-kit 이 워드 표에 하는 것과 같은 생각이다.
+ */
+
+export const tablesOf = (doc: Document): Element[] =>
+  Array.from(doc.getElementsByTagNameNS(A_NS, 'tbl'));
+
+export const rowsOf = (tbl: Element): Element[] => {
+  const grid = childrenNamed(tbl, 'tr');
+  return grid.length > 0 ? grid : Array.from(tbl.getElementsByTagNameNS(A_NS, 'tr'));
+};
+
+export const cellsOf = (tr: Element): Element[] => childrenNamed(tr, 'tc');
+
+/** 칸의 글자 — 조각을 이어 붙인다 */
+export const cellText = (tc: Element): string => {
+  const ts = tc.getElementsByTagNameNS(A_NS, 't');
+  let s = '';
+  for (let i = 0; i < ts.length; i += 1) s += ts[i].textContent ?? '';
+  return s;
+};
+
+/**
+ * 칸의 글자를 통째로 바꾼다 — ★첫 문단에 적고 나머지 문단은 비운다★.
+ * 문단 수는 그대로 둔다(칸 높이가 서식대로 남는다). 첫 run 의 모양을 쓴다 —
+ * 표의 글꼴·크기·가운데 맞춤이 그 모양에 들어 있다.
+ */
+export function setCellText(tc: Element, text: string): void {
+  const doc = tc.ownerDocument;
+  const body = childrenNamed(tc, 'txBody')[0];
+  if (!body) return;
+  const ps = childrenNamed(body, 'p');
+  if (ps.length === 0) return;
+
+  const first = ps[0];
+  const rPr = childrenNamed(runsOf(first)[0] ?? first, 'rPr')[0] ?? null;
+
+  for (const p of ps) {
+    for (const run of runsOf(p)) p.removeChild(run);
+  }
+  const run = doc.createElementNS(A_NS, 'a:r');
+  if (rPr) run.appendChild(rPr);
+  const t = doc.createElementNS(A_NS, 'a:t');
+  t.setAttribute('xml:space', 'preserve');
+  t.textContent = text;
+  run.appendChild(t);
+  const end = childrenNamed(first, 'endParaRPr')[0];
+  if (end) first.insertBefore(run, end);
+  else first.appendChild(run);
+}
+
 /** XML 한 장을 바꾼다 — 바꾼 문단 수 */
 export function fillSlideXml(xml: string, r: Replacements): { xml: string; hits: number } {
   const keys = orderOf(r);
