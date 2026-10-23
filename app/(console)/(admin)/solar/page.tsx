@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { canWrite } from '@/lib/roles';
@@ -25,7 +26,13 @@ export default async function SolarPage() {
 
   return (
     <>
-      <h1 className="mb-6 text-h1 font-black text-slate-900">태양광 제안서</h1>
+      <div className="mb-6 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <h1 className="text-h1 font-black text-slate-900">태양광 제안서</h1>
+        {/* 설비용량이 나오는 자리 — 제안서를 쓰기 전에 거기서 집어 온다 */}
+        <Link href="/solar/layout" className="text-base font-bold text-brand-700 transition hover:text-brand-800">
+          패널 배치 →
+        </Link>
+      </div>
       <ProposalForm />
     </>
   );
