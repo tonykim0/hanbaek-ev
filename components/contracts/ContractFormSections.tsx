@@ -16,7 +16,6 @@ import {
   DuplicateInstallFieldset,
   Field,
   PhoneInput,
-  PillButton,
   PillCheckbox,
   PillRadio,
   Section,
@@ -350,7 +349,9 @@ export function ConsultingSection<TFieldValues extends CommonContractFields>({
   dupSlow,
   dupDist,
   dupOutlet,
-  sales,
+  watch,
+  setValue,
+  salesChoices,
 }: {
   register: UseFormRegister<TFieldValues>;
   errors: FieldErrors<TFieldValues>;
@@ -360,39 +361,58 @@ export function ConsultingSection<TFieldValues extends CommonContractFields>({
   dupSlow: boolean;
   dupDist: boolean;
   dupOutlet: boolean;
+  watch: UseFormWatch<TFieldValues>;
+  setValue: UseFormSetValue<TFieldValues>;
   /**
-   * 고를 수 있는 모집 담당자(lib/contract-form salesChoicesFor) — 둘 이상이면 칸 위에 고르는 줄이 선다.
-   * 누르면 대행사·담당자명·연락처 세 칸이 한 번에 찬다. 칸은 그대로 손으로 고칠 수 있다.
+   * 고를 수 있는 모집 담당자(lib/contract-form salesChoicesFor) — 늘 하나 이상이고 첫째가 기본값(폼의 defaultValues)이다.
+   * ★손으로 적지 못한다★ (한백 지시 2026-10-23 「외주모집대행사, 담당자명, 연락처는 수정 못하게 · 선택만 · 다른 회사들도」) —
+   * 둘 이상이면 드롭다운 하나로 고르고(세 칸이 한 번에 찬다), 하나면 글자로 굳힌다. 입력칸이 없으니 값은 폼 값(defaultValues ·
+   * 고를 때의 setValue)에만 있다 — 등록하지 않은 칸도 react-hook-form 이 제출 값에 싣는다(shouldUnregister 기본 false).
    */
-  sales?: { choices: SalesContact[]; current: SalesContact; onPick: (c: SalesContact) => void };
+  salesChoices: SalesContact[];
 }) {
+  const current: SalesContact = {
+    company: String(watch('salesCompany' as Path<TFieldValues>) ?? ''),
+    name: String(watch('salesName' as Path<TFieldValues>) ?? ''),
+    tel: String(watch('salesTel' as Path<TFieldValues>) ?? ''),
+  };
+  const picked = Math.max(0, salesChoices.findIndex(
+    (c) => c.company === current.company && c.name === current.name && c.tel === current.tel
+  ));
+  const pick = (c: SalesContact) => {
+    const set = (key: string, value: string) =>
+      setValue(key as Path<TFieldValues>, value as PathValue<TFieldValues, Path<TFieldValues>>, { shouldDirty: true });
+    set('salesCompany', c.company);
+    set('salesName', c.name);
+    set('salesTel', c.tel);
+  };
+  const only = salesChoices.length === 1 ? salesChoices[0] : null;
+
   return (
     <Section title={title}>
       <SubGroup label="모집 대행">
-        {sales && sales.choices.length > 1 && (
-          <ChoiceGroup label="담당자" inline>
-            {sales.choices.map((c) => (
-              <PillButton
-                key={`${c.company}-${c.name}`}
-                on={c.company === sales.current.company && c.name === sales.current.name && c.tel === sales.current.tel}
-                onClick={() => sales.onPick(c)}
-              >
-                {c.company} · {c.name}
-              </PillButton>
+        {only ? (
+          <dl className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {([['외주모집대행사', only.company], ['담당자명', only.name], ['연락처', only.tel]] as const).map(([label, value]) => (
+              <div key={label}>
+                <dt className="text-sm font-medium text-gray-700 mb-1.5">{label}</dt>
+                <dd className="text-sm font-semibold text-gray-900">{value}</dd>
+              </div>
             ))}
-          </ChoiceGroup>
+          </dl>
+        ) : (
+          <Field label="외주모집 담당자">
+            <select
+              value={picked}
+              onChange={(e) => pick(salesChoices[Number(e.target.value)])}
+              className={`${inputCls} md:max-w-md`}
+            >
+              {salesChoices.map((c, i) => (
+                <option key={`${c.company}-${c.name}`} value={i}>{c.company} · {c.name} · {c.tel}</option>
+              ))}
+            </select>
+          </Field>
         )}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Field label="외주모집대행사">
-            <input {...register('salesCompany' as Path<TFieldValues>)} className={inputCls} />
-          </Field>
-          <Field label="담당자명">
-            <input {...register('salesName' as Path<TFieldValues>)} className={inputCls} />
-          </Field>
-          <Field label="연락처">
-            <PhoneInput register={register} name={'salesTel' as Path<TFieldValues>} />
-          </Field>
-        </div>
       </SubGroup>
 
       <SubGroup label="현장 개요">

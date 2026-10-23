@@ -25,7 +25,10 @@ export type SalesContact = { company: string; name: string; tel: string };
 /**
  * ★업체가 고르는 모집 담당자★ — 기본값(SALES_DEFAULT) 말고 자기 담당자도 쓰는 협력사 (한백 지시 2026-10-23
  * 「에코일렉에서 플러그링크 계약서 작성할 때 한비 김종혁 또는 에코일렉 이용진 선택」). 운영사 → 소속 → 후보이고
- * ★첫째가 기본값★이다(SALES_DEFAULT 와 같은 것). 후보가 없는 소속은 기본값 그대로다 — 고를 칸이 서지 않는다.
+ * ★첫째가 기본값★이다(SALES_DEFAULT 와 같은 것). ★계약서 작성 화면에서 이 칸들은 손으로 못 고친다★(같은 날 지시 —
+ * 모든 업체) — 후보가 둘 이상이면 드롭다운, 아니면 기본값이 글자로 선다(ConsultingSection).
+ * 소속을 아는 것은 서버라, 후보를 더한 운영사의 화면은 서버에서 세션을 봐 넘겨야 한다 — 지금은 플러그링크만 그렇다
+ * (contracts/pluglink/page.tsx). hec·nice·sk 에 후보를 더하면 그 화면도 같은 꼴로 바꾼다.
  * 재발행(CpoDocReissue)은 이 목록을 보지 않는다 — 조사자 칸이 늘 한백 쪽 사람이어서다(SALES_DEFAULT 주석).
  */
 const SALES_CHOICES: Partial<Record<keyof typeof SALES_DEFAULT, Record<string, SalesContact[]>>> = {
@@ -34,9 +37,9 @@ const SALES_CHOICES: Partial<Record<keyof typeof SALES_DEFAULT, Record<string, S
   },
 };
 
-/** 그 소속이 그 운영사 계약서에서 고를 수 있는 담당자 — 둘 이상일 때만 고른다. 없으면 빈 목록 */
-export function salesChoicesFor(cpo: keyof typeof SALES_DEFAULT, org: string | null | undefined): SalesContact[] {
-  return (org && SALES_CHOICES[cpo]?.[org]) || [];
+/** 그 소속이 그 운영사 계약서에서 고를 수 있는 담당자 — 늘 하나 이상, 첫째가 기본값. 후보가 없는 소속은 기본값 하나 */
+export function salesChoicesFor(cpo: keyof typeof SALES_DEFAULT, org?: string | null): SalesContact[] {
+  return (org && SALES_CHOICES[cpo]?.[org]) || [SALES_DEFAULT[cpo]];
 }
 /**
  * 전화번호 입력 시 자동으로 하이픈(-)을 삽입한다.

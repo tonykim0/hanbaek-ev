@@ -1,5 +1,5 @@
 /**
- * 계약서 작성의 모집 담당자 — 소속마다 고를 수 있는 사람 (한백 지시 2026-10-23).
+ * 계약서 작성의 모집 담당자 — 소속마다 고를 수 있는 사람, 손으로는 못 고친다 (한백 지시 2026-10-23).
  * 에코일렉은 플러그링크 계약서에서 한비 김종혁(기본) 또는 에코일렉 이용진을 고른다. 다른 소속·운영사는 기본값 그대로다.
  */
 import { describe, expect, it } from 'vitest';
@@ -15,10 +15,11 @@ describe('salesChoicesFor — 고를 수 있는 모집 담당자', () => {
     expect(choices[0]).toEqual(SALES_DEFAULT.pluglink);
   });
 
-  it('다른 소속·다른 운영사·소속 없음은 고를 것이 없다 — 기본값 그대로', () => {
-    expect(salesChoicesFor('pluglink', '대상')).toEqual([]);
-    expect(salesChoicesFor('pluglink', null)).toEqual([]);
-    expect(salesChoicesFor('hec', '에코일렉')).toEqual([]);
-    expect(salesChoicesFor('sk', '에코일렉')).toEqual([]);
+  it('다른 소속·다른 운영사·소속 없음은 기본값 하나뿐 — 화면에서 글자로 굳는다(손으로 못 고친다)', () => {
+    expect(salesChoicesFor('pluglink', '대상')).toEqual([SALES_DEFAULT.pluglink]);
+    expect(salesChoicesFor('pluglink', null)).toEqual([SALES_DEFAULT.pluglink]);
+    expect(salesChoicesFor('hec', '에코일렉')).toEqual([SALES_DEFAULT.hec]);
+    expect(salesChoicesFor('sk')).toEqual([SALES_DEFAULT.sk]);
+    expect(salesChoicesFor('nice')).toEqual([SALES_DEFAULT.nice]);
   });
 });

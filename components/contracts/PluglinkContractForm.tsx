@@ -78,12 +78,6 @@ export default function PluglinkContractForm({ salesChoices }: { salesChoices: S
   const dupSlow = watch('dupSlow');
   const dupDist = watch('dupDist');
   const dupOutlet = watch('dupOutlet');
-  const salesNow: SalesContact = { company: watch('salesCompany'), name: watch('salesName'), tel: watch('salesTel') };
-  const pickSales = (c: SalesContact) => {
-    setValue('salesCompany', c.company, { shouldDirty: true });
-    setValue('salesName', c.name, { shouldDirty: true });
-    setValue('salesTel', c.tel, { shouldDirty: true });
-  };
 
   const onSubmit = async (data: ContractFormData) => {
     setStatus(null);
@@ -172,7 +166,9 @@ export default function PluglinkContractForm({ salesChoices }: { salesChoices: S
             dupSlow={dupSlow}
             dupDist={dupDist}
             dupOutlet={dupOutlet}
-            sales={{ choices: salesChoices, current: salesNow, onPick: pickSales }}
+            watch={watch}
+            setValue={setValue}
+            salesChoices={salesChoices}
           />
 
           <FormActions

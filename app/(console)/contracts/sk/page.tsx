@@ -20,7 +20,7 @@ import {
   FormActions,
   type SubmitStatus,
 } from '@/components/contracts/PageChrome';
-import { DEFAULT_YEAR, SALES_DEFAULT, formatAdvancedSuccessMessage } from '@/lib/contract-form';
+import { DEFAULT_YEAR, SALES_DEFAULT, salesChoicesFor, formatAdvancedSuccessMessage } from '@/lib/contract-form';
 import { downloadBlob } from '@/lib/download';
 import { SkFormData } from '@/lib/schema-sk';
 import { useInternalModeState } from '@/lib/use-internal-mode';
@@ -168,6 +168,9 @@ export default function SkPage() {
             dupSlow={dupSlow}
             dupDist={dupDist}
             dupOutlet={dupOutlet}
+            watch={watch}
+            setValue={setValue}
+            salesChoices={salesChoicesFor('sk')}
           />
 
           <FormActions

@@ -21,7 +21,7 @@ import {
   FormActions,
   type SubmitStatus,
 } from '@/components/contracts/PageChrome';
-import { DEFAULT_YEAR, SALES_DEFAULT, formatAdvancedSuccessMessage } from '@/lib/contract-form';
+import { DEFAULT_YEAR, SALES_DEFAULT, salesChoicesFor, formatAdvancedSuccessMessage } from '@/lib/contract-form';
 import { downloadBlob } from '@/lib/download';
 import { HecFormData } from '@/lib/schema-hec';
 import { useInternalModeState } from '@/lib/use-internal-mode';
@@ -235,6 +235,9 @@ export default function HecPage() {
             dupSlow={dupSlow}
             dupDist={dupDist}
             dupOutlet={dupOutlet}
+            watch={watch}
+            setValue={setValue}
+            salesChoices={salesChoicesFor('hec')}
           />
 
           <Section title="4. 사전 체크리스트 설치대수 (별지2)">

@@ -20,7 +20,7 @@ import {
   FormActions,
   type SubmitStatus,
 } from '@/components/contracts/PageChrome';
-import { DEFAULT_YEAR, SALES_DEFAULT, formatAdvancedSuccessMessage } from '@/lib/contract-form';
+import { DEFAULT_YEAR, SALES_DEFAULT, salesChoicesFor, formatAdvancedSuccessMessage } from '@/lib/contract-form';
 import { downloadBlob } from '@/lib/download';
 import { NiceFormData } from '@/lib/schema-nice';
 import { useInternalModeState } from '@/lib/use-internal-mode';
@@ -192,6 +192,9 @@ export default function NicePage() {
             dupSlow={dupSlow}
             dupDist={dupDist}
             dupOutlet={dupOutlet}
+            watch={watch}
+            setValue={setValue}
+            salesChoices={salesChoicesFor('nice')}
           />
 
           <FormActions
