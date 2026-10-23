@@ -19,6 +19,25 @@ export const SALES_DEFAULT: Record<
   sk: { company: '한백이엔씨', name: '류승종', tel: '010-8696-0898' },
   pluglink: { company: '한비', name: '김종혁', tel: '010-3627-7047' },
 };
+
+export type SalesContact = { company: string; name: string; tel: string };
+
+/**
+ * ★업체가 고르는 모집 담당자★ — 기본값(SALES_DEFAULT) 말고 자기 담당자도 쓰는 협력사 (한백 지시 2026-10-23
+ * 「에코일렉에서 플러그링크 계약서 작성할 때 한비 김종혁 또는 에코일렉 이용진 선택」). 운영사 → 소속 → 후보이고
+ * ★첫째가 기본값★이다(SALES_DEFAULT 와 같은 것). 후보가 없는 소속은 기본값 그대로다 — 고를 칸이 서지 않는다.
+ * 재발행(CpoDocReissue)은 이 목록을 보지 않는다 — 조사자 칸이 늘 한백 쪽 사람이어서다(SALES_DEFAULT 주석).
+ */
+const SALES_CHOICES: Partial<Record<keyof typeof SALES_DEFAULT, Record<string, SalesContact[]>>> = {
+  pluglink: {
+    에코일렉: [SALES_DEFAULT.pluglink, { company: '에코일렉', name: '이용진', tel: '010-9902-8746' }],
+  },
+};
+
+/** 그 소속이 그 운영사 계약서에서 고를 수 있는 담당자 — 둘 이상일 때만 고른다. 없으면 빈 목록 */
+export function salesChoicesFor(cpo: keyof typeof SALES_DEFAULT, org: string | null | undefined): SalesContact[] {
+  return (org && SALES_CHOICES[cpo]?.[org]) || [];
+}
 /**
  * 전화번호 입력 시 자동으로 하이픈(-)을 삽입한다.
  * - 15xx/16xx/18xx 대표번호: XXXX-XXXX

@@ -161,6 +161,11 @@ const pillClass =
   'peer-checked:border-brand-600 peer-checked:bg-brand-600 peer-checked:text-white peer-checked:font-medium ' +
   'peer-focus-visible:ring-2 peer-focus-visible:ring-brand-500 peer-focus-visible:ring-offset-1';
 
+/** 고른 pill 단추 — peer-checked 와 같은 모양을 radio 없이 */
+const pillOnClass =
+  'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-1.5 text-sm cursor-pointer select-none transition ' +
+  'border-brand-600 bg-brand-600 text-white font-medium focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-1';
+
 /** 단일 선택 pill (라디오) */
 export function PillRadio<TFieldValues extends FieldValues>({
   name,
@@ -178,6 +183,18 @@ export function PillRadio<TFieldValues extends FieldValues>({
       <input type="radio" value={value} {...register(name)} className="peer sr-only" />
       <span className={pillClass}>{label}</span>
     </label>
+  );
+}
+
+/**
+ * 고르는 pill 단추 — 누르면 여러 칸을 한 번에 채운다(모집 담당자: 대행사·이름·연락처). 폼 칸 하나에 묶인 값이
+ * 아니라 radio 로 못 둔다. 고른 것은 지금 칸의 값이 그것과 같은가로 보인다 — 칸을 손으로 고치면 아무것도 안 켜진다.
+ */
+export function PillButton({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" onClick={onClick} aria-pressed={on} className={on ? pillOnClass : pillClass}>
+      {children}
+    </button>
   );
 }
 

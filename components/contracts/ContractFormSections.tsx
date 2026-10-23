@@ -16,12 +16,13 @@ import {
   DuplicateInstallFieldset,
   Field,
   PhoneInput,
+  PillButton,
   PillCheckbox,
   PillRadio,
   Section,
   SubGroup,
 } from '@/components/contracts/FormControls';
-import { YEAR_OPTIONS } from '@/lib/contract-form';
+import { YEAR_OPTIONS, type SalesContact } from '@/lib/contract-form';
 import {
   bizAddressNotice,
   roadAddressError,
@@ -349,6 +350,7 @@ export function ConsultingSection<TFieldValues extends CommonContractFields>({
   dupSlow,
   dupDist,
   dupOutlet,
+  sales,
 }: {
   register: UseFormRegister<TFieldValues>;
   errors: FieldErrors<TFieldValues>;
@@ -358,10 +360,28 @@ export function ConsultingSection<TFieldValues extends CommonContractFields>({
   dupSlow: boolean;
   dupDist: boolean;
   dupOutlet: boolean;
+  /**
+   * 고를 수 있는 모집 담당자(lib/contract-form salesChoicesFor) — 둘 이상이면 칸 위에 고르는 줄이 선다.
+   * 누르면 대행사·담당자명·연락처 세 칸이 한 번에 찬다. 칸은 그대로 손으로 고칠 수 있다.
+   */
+  sales?: { choices: SalesContact[]; current: SalesContact; onPick: (c: SalesContact) => void };
 }) {
   return (
     <Section title={title}>
       <SubGroup label="모집 대행">
+        {sales && sales.choices.length > 1 && (
+          <ChoiceGroup label="담당자" inline>
+            {sales.choices.map((c) => (
+              <PillButton
+                key={`${c.company}-${c.name}`}
+                on={c.company === sales.current.company && c.name === sales.current.name && c.tel === sales.current.tel}
+                onClick={() => sales.onPick(c)}
+              >
+                {c.company} · {c.name}
+              </PillButton>
+            ))}
+          </ChoiceGroup>
+        )}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Field label="외주모집대행사">
             <input {...register('salesCompany' as Path<TFieldValues>)} className={inputCls} />

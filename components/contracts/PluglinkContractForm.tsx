@@ -1,0 +1,186 @@
+'use client';
+
+import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import {
+  ConsultingSection,
+  ContractInfoSection,
+  CustomerInfoSection,
+} from '@/components/contracts/ContractFormSections';
+import { Radio, RadioField, Section } from '@/components/contracts/FormControls';
+import CpoDocReissue from '@/components/contracts/CpoDocReissue';
+import {
+  ContractPageShell,
+  FormActions,
+  type SubmitStatus,
+} from '@/components/contracts/PageChrome';
+import { DEFAULT_YEAR, SALES_DEFAULT, formatBasicSuccessMessage, type SalesContact } from '@/lib/contract-form';
+import { downloadBlob } from '@/lib/download';
+import { ContractFormData } from '@/lib/schema';
+import { useInternalModeState } from '@/lib/use-internal-mode';
+import { useDocScope } from '@/lib/use-doc-scope';
+
+const defaultValues: Partial<ContractFormData> = {
+  businessType: 'subsidy',
+  contractYear: DEFAULT_YEAR,
+  contractMonth: '',
+  contractDay: '',
+  contractTerm: '7',
+  // 모집대행사 기본값은 lib/contract-form 한 곳에 있다 — 재발행의 조사자 칸도 이 값을 쓴다
+  salesCompany: SALES_DEFAULT.pluglink.company,
+  salesName: SALES_DEFAULT.pluglink.name,
+  salesTel: SALES_DEFAULT.pluglink.tel,
+  surveyorCompany: '한백',
+  surveyorName: '',
+  surveyorTel: '',
+  buildingType: 'apartment',
+  buildingTypeEtc: '',
+  installLocIndoor: false,
+  installLocOutdoor: false,
+  ownership: 'own',
+  ownerRelation: 'self',
+  powerMoja: false,
+  powerHanjeon: false,
+  installTypeWall: false,
+  installTypeStand: false,
+  dupFast: false,
+  dupFastQty: '',
+  dupSlow: false,
+  dupSlowQty: '',
+  dupDist: false,
+  dupDistQty: '',
+  dupOutlet: false,
+  dupOutletQty: '',
+  dupKiosk: false,
+};
+
+/**
+ * 플러그링크 계약서 자동생성 폼. 화면(app/(console)/contracts/pluglink/page.tsx)은 서버에서 세션의 소속을 보고
+ * 고를 수 있는 모집 담당자(salesChoices)만 넘긴다 — 폼은 그 전에 page.tsx 자체였다(클라이언트라 소속을 몰랐다).
+ */
+export default function PluglinkContractForm({ salesChoices }: { salesChoices: SalesContact[] }) {
+  const {
+    register,
+    handleSubmit,
+    watch,
+    setValue,
+    formState: { errors, isSubmitting },
+  } = useForm<ContractFormData>({ defaultValues });
+
+  const [status, setStatus] = useState<SubmitStatus | null>(null);
+  // 플러그링크 템플릿에는 사진대지·체크리스트가 없어 토글을 감춥니다.
+  const { finalize } = useDocScope();
+  // 협력사 스캔본 판독은 담당자 전용 — ?import=1 일 때만 노출합니다.
+  const internalMode = useInternalModeState();
+
+  const buildingType = watch('buildingType');
+  const dupFast = watch('dupFast');
+  const dupSlow = watch('dupSlow');
+  const dupDist = watch('dupDist');
+  const dupOutlet = watch('dupOutlet');
+  const salesNow: SalesContact = { company: watch('salesCompany'), name: watch('salesName'), tel: watch('salesTel') };
+  const pickSales = (c: SalesContact) => {
+    setValue('salesCompany', c.company, { shouldDirty: true });
+    setValue('salesName', c.name, { shouldDirty: true });
+    setValue('salesTel', c.tel, { shouldDirty: true });
+  };
+
+  const onSubmit = async (data: ContractFormData) => {
+    setStatus(null);
+    try {
+      const { fillContractTemplate } = await import('@/lib/fillDocx');
+      const result = await fillContractTemplate(data);
+      const output = await finalize(result.blob, {
+        contractYear: data.contractYear,
+        custName: data.custName,
+        documentLabel: '계약서류',
+      });
+      downloadBlob(output.blob, output.filename);
+      setStatus({
+        kind: 'success',
+        msg: formatBasicSuccessMessage(result, output.filename) + output.note,
+      });
+      if (result.unmatchedIds.length > 0) {
+        console.warn('Unmatched SDT IDs (template drift):', result.unmatchedIds);
+      }
+    } catch (err) {
+      setStatus({
+        kind: 'error',
+        msg: err instanceof Error ? err.message : String(err),
+      });
+    }
+  };
+
+  if (internalMode === null) {
+    return (
+      <ContractPageShell title="플러그링크">
+        <div className="rounded-2xl border border-slate-200 bg-white px-5 py-8 text-center text-sm font-semibold text-slate-500">
+          화면을 불러오는 중입니다...
+        </div>
+      </ContractPageShell>
+    );
+  }
+
+  if (internalMode) {
+    return (
+      <ContractPageShell
+        title="플러그링크 서류 재발행"
+        subtitle={null}
+      >
+        <CpoDocReissue cpo="pluglink" />
+      </ContractPageShell>
+    );
+  }
+
+  return (
+    <ContractPageShell
+      title="플러그링크 계약서 자동생성"
+    >
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="space-y-4 pb-2"
+        >
+          <Section title="사업구분">
+            <RadioField label="계약 유형" hint="선택에 따라 생성되는 계약서 양식이 달라집니다 (입력 항목은 동일)">
+              <Radio name="businessType" value="subsidy" register={register} label="보조금사업" />
+              <Radio name="businessType" value="invest" register={register} label="자체투자" />
+            </RadioField>
+          </Section>
+
+          <CustomerInfoSection
+            register={register}
+            errors={errors}
+            watch={watch}
+            addressPlaceholder="광주광역시 광산구 비아로 23"
+            telPlaceholder="062-954-1122"
+          />
+
+          <ContractInfoSection
+            setValue={setValue}
+            watch={watch}
+            register={register}
+            errors={errors}
+            installQtyPlaceholder="7"
+          />
+
+          <ConsultingSection
+            register={register}
+            errors={errors}
+            buildingType={buildingType}
+            title=""
+            dupFast={dupFast}
+            dupSlow={dupSlow}
+            dupDist={dupDist}
+            dupOutlet={dupOutlet}
+            sales={{ choices: salesChoices, current: salesNow, onPick: pickSales }}
+          />
+
+          <FormActions
+            status={status}
+            isSubmitting={isSubmitting}
+          />
+        </form>
+
+    </ContractPageShell>
+  );
+}
