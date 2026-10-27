@@ -78,8 +78,8 @@ export interface NewAccount {
 }
 
 export const SESSION_COOKIE = 'hb_session';
-/** 12시간 */
-export const SESSION_TTL_SEC = 12 * 60 * 60;
+/** 24시간 — 12시간이었다가 한백 요청으로 늘렸다(2026-10-27). 로그인 때 한 번 정해지고 쓰는 동안 늘지 않는다 */
+export const SESSION_TTL_SEC = 24 * 60 * 60;
 
 /**
  * 비밀번호 최소 길이.
