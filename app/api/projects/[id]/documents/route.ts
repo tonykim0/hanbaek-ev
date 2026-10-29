@@ -138,7 +138,7 @@ export async function POST(
   if (attached > 0 && PARKING_SLOTS.some((k) => byKind.has(k))) scheduleParkingCheck(params.id);
   /* 계약서가 들어왔으면 운영사 직인을 읽는다 — 현대엔지니어링·SK 현장만(lib/cpo-seal-run) */
   if (attached > 0 && byKind.has('contract')) scheduleCpoSealRead(params.id);
-  /* 사업자등록증·계약서가 들어왔고 대표자·계약일이 비었으면(접수 판독이 못 읽었으면) 그 파일을 읽는다(lib/fact-read-run) */
+  /* 사업자등록증·계약서·설치신청서가 들어왔고 대표자·계약일·주소 등이 비었으면(접수 판독이 못 읽었으면) 그 파일을 읽는다(lib/fact-read-run) */
   if (attached > 0) scheduleFactRead(params.id, [...byKind.keys()]);
 
   /*

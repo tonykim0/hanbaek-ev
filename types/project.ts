@@ -652,6 +652,21 @@ export interface DocFile {
    * reason 은 그 칸이 받았던 반려 사유 — 반려 없이 같이 고쳐 올린 칸은 null.
    */
   resubmit?: { reason: string | null };
+  /**
+   * ★이 장에서 읽어 현장 정보의 빈 칸에 넣은 값★ (lib/fact-read-run). 이 장이 빠지면 아직 그 값 그대로인 칸을 비우고
+   * 남은 서류에서 다시 읽는다 — 잘못 올렸다 뺀 남의 현장 계약서의 계약일이 그대로 남은 일이 있었다(HB-2026-282, 2026-10-29).
+   */
+  filled?: FilledFacts | null;
+}
+
+/** 서류에서 읽어 현장 정보에 넣는 칸 (lib/fact-read) */
+export type FactField = 'repName' | 'contractDate' | 'addr' | 'parkTotal' | 'mgr' | 'tel' | 'mail';
+
+/** 파일 한 장이 현장 정보에 넣은 값 — DocFile.filled */
+export interface FilledFacts {
+  facts: Partial<Record<FactField, string | number>>;
+  /** 주소를 넣으며 현장명 앞에 지역을 붙였으면 그 앞뒤 이름 — 이 장이 빠지면 되돌린다 */
+  name?: { from: string; to: string };
 }
 
 export interface ProjectDocument {

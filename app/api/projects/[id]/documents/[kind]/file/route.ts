@@ -25,7 +25,8 @@ import { attachDocument } from '@/lib/attach-doc';
 import { schedulePreInstallCheck } from '@/lib/preinstall-run';
 import { scheduleParkingCheck } from '@/lib/parking-run';
 import { scheduleCpoSealRead } from '@/lib/cpo-seal-run';
-import { scheduleFactRead } from '@/lib/fact-read-run';
+import { scheduleFactRead, scheduleFactUndo } from '@/lib/fact-read-run';
+import type { FilledFacts } from '@/types/project';
 
 /*
  * 붙이기 전에 PDF 방향을 본다(lib/attach-doc) — 페이지마다 판정을 불러 수십 초가 걸릴 수
@@ -129,7 +130,7 @@ export async function POST(
   if (!result.already) scheduleParkingCheck(params.id, params.kind);
   // 현대엔지니어링·SK 계약서면 운영사 직인을 읽어 꼬리표로 단다 — 응답 뒤에(lib/cpo-seal-run)
   if (!result.already) scheduleCpoSealRead(params.id, params.kind);
-  // 사업자등록증·계약서면 대표자·계약일이 비었을 때 읽어 현장 정보에 넣는다(lib/fact-read-run)
+  // 사업자등록증·계약서·설치신청서면 대표자·계약일·주소 등이 비었을 때 읽어 현장 정보에 넣는다(lib/fact-read-run)
   if (!result.already) scheduleFactRead(params.id, [params.kind]);
   return NextResponse.json({ ok: true, already: result.already });
 }
@@ -171,8 +172,9 @@ export async function DELETE(
    * 규칙에 걸린 것은 422 다. 여기서 다시 판정하면 두 곳이 갈린다.
    */
   let blobUrl: string | null;
+  let filled: FilledFacts | null;
   try {
-    ({ blobUrl } = await getRepository().deleteDocumentFile(
+    ({ blobUrl, filled } = await getRepository().deleteDocumentFile(
       { projectId: params.id, kind: params.kind, url: body.url },
       actorOf(session)
     ));
@@ -191,5 +193,7 @@ export async function DELETE(
   schedulePreInstallCheck(params.id, params.kind);
   // 세 칸에서 한 장이 빠졌으면 주차면도 남은 것으로 다시 대조한다(lib/parking-run)
   scheduleParkingCheck(params.id, params.kind);
+  // 이 장에서 읽어 현장 정보에 넣은 값이 있으면 걷고 남은 서류에서 다시 읽는다(lib/fact-read-run)
+  scheduleFactUndo(params.id, [filled]);
   return NextResponse.json({ ok: true });
 }

@@ -22,7 +22,7 @@ import { isProcessDocKind } from '../assemble';
 import { reviewKindLabel } from '@/lib/review-labels';
 import { notifyReview, retractReview } from './notifications';
 import { PROCESS_DOCS } from '@/lib/doc-rules';
-import type { DocFile, DocStatus, ProjectDocument, ReviewEvent } from '@/types/project';
+import type { DocFile, DocStatus, FilledFacts, ProjectDocument, ReviewEvent } from '@/types/project';
 import type { Actor, ProjectRepository } from '../repository';
 import { assertAdmin, mergeDocs, PROCESS_DOC_KEYS, recordsOf } from './shared';
 
@@ -229,7 +229,7 @@ export const docStore: Pick<
     });
   },
 
-  async deleteDocument(input, actor): Promise<{ blobUrls: string[] }> {
+  async deleteDocument(input, actor): Promise<{ blobUrls: string[]; filled: FilledFacts[] }> {
     assertAdmin(actor, '서류 삭제');
 
     const db = getDb();
@@ -268,7 +268,8 @@ export const docStore: Pick<
        */
       const urls = ((row.files ?? []) as DocFile[]).map((f) => f?.url).filter(Boolean) as string[];
       if (row.blobUrl && !urls.includes(row.blobUrl)) urls.push(row.blobUrl);
-      return { blobUrls: urls };
+      const filled = ((row.files ?? []) as DocFile[]).map((f) => f?.filled).filter((x): x is FilledFacts => !!x);
+      return { blobUrls: urls, filled };
     });
   },
 
@@ -282,7 +283,7 @@ export const docStore: Pick<
    * 마지막 한 장을 빼면 미제출로 돌린다. 파일 없는 「제출됨」을 남기면 필수 서류가 찬 것으로
    * 세어져(lib/stage) 파일 한 장 없는 계약이 확인 가능해진다.
    */
-  async deleteDocumentFile(input, actor): Promise<{ blobUrl: string | null }> {
+  async deleteDocumentFile(input, actor): Promise<{ blobUrl: string | null; filled: FilledFacts | null }> {
     if (!canWrite(actor.role)) throw new Error('열람 전용 계정은 파일을 지울 수 없습니다.');
 
     const db = getDb();
@@ -352,7 +353,7 @@ export const docStore: Pick<
         newValue: files.length === 0 ? null : `남은 ${files.length}장`,
       });
 
-      return { blobUrl: gone.url };
+      return { blobUrl: gone.url, filled: ('filled' in gone ? gone.filled : null) ?? null };
     });
   },
 

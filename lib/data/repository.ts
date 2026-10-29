@@ -18,7 +18,7 @@ import type {
   ChargerModel, RecvPreset,
   PayoutPlanRow, ProcessInfo, ProcessStatus, ProjectDetail, ProjectSummary, Settlement, SettlementRule, SettlementSummary, BatchFinal, TaxInvoice,
   Notice, NoticeFile, ReviewEvent, ProjectFactsPatch, LineFactsPatch, ProjectAxesPatch, NewContractLine,
-  NoteNotification, NoticeMessage, DocFile,
+  NoteNotification, NoticeMessage, DocFile, FilledFacts,
 } from '@/types/project';
 import type { Actor, Viewer } from '@/lib/auth/types';
 import type { DraftFull, DraftSummary, PhotoRef } from '@/lib/survey/draft-shape';
@@ -167,12 +167,13 @@ export interface ProjectRepository {
    *
    * 지운 파일 주소들을 돌려준다 — 한 칸에 여러 장이 붙을 수 있다(migrations/0021).
    * 파일 자체를 지우는 것은 부르는 쪽(라우트)이 한다: 저장소 계층이 Blob 을 직접 만지면
-   * 파일 저장소·DB 저장소 두 곳에 같은 코드가 생긴다.
+   * 파일 저장소·DB 저장소 두 곳에 같은 코드가 생긴다. filled 는 그 장들이 현장 정보에 넣었던 값이다(lib/fact-read-run
+   * scheduleFactUndo 가 걷는다).
    */
   deleteDocument(
     input: { projectId: string; kind: string },
     actor: Actor
-  ): Promise<{ blobUrls: string[] }>;
+  ): Promise<{ blobUrls: string[]; filled: FilledFacts[] }>;
 
   /**
    * 그 칸의 파일 한 장을 뺀다. [그 현장의 협력사 · 한백]
@@ -182,11 +183,12 @@ export interface ProjectRepository {
    * 다르다: 칸의 상태(반려 사유 등)는 그대로 두고 파일 한 장만 뺀다.
    *
    * 마지막 한 장을 빼면 그 칸은 미제출로 돌아간다 — 파일 없는 「제출됨」을 만들지 않는다.
+   * filled 는 그 장이 현장 정보에 넣었던 값이다(deleteDocument 와 같다).
    */
   deleteDocumentFile(
     input: { projectId: string; kind: string; url: string },
     actor: Actor
-  ): Promise<{ blobUrl: string | null }>;
+  ): Promise<{ blobUrl: string | null; filled: FilledFacts | null }>;
 
   /**
    * 파일 한 장에 판독이 읽은 사실을 단다 — 지금은 계약서의 운영사 직인(cpoSeal, lib/cpo-seal). [시스템 · 한백]
@@ -195,7 +197,7 @@ export interface ProjectRepository {
    * 아무것도 안 한다(false). 올리기와 같은 칸 잠금을 잡는다 — 겹친 업로드의 새 파일을 덮지 않게.
    */
   setDocFileFacts(
-    input: { projectId: string; kind: string; url: string; facts: Pick<DocFile, 'cpoSeal'> },
+    input: { projectId: string; kind: string; url: string; facts: Pick<DocFile, 'cpoSeal' | 'filled'> },
     actor: Actor
   ): Promise<boolean>;
 

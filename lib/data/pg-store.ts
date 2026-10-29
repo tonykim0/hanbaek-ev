@@ -20,7 +20,7 @@ import { allSlots } from './db-slot';
 import { dayOf, stampOf, today } from '@/lib/date';
 import {
   chargerModels, contractLines, documents, payoutEntries, pricingRules, processDocuments, processes,
-  batchFinals, projectNotes, projects, settlementRules, settlements, taxInvoices,
+  auditLog, batchFinals, projectNotes, projects, settlementRules, settlements, taxInvoices,
 } from '@/lib/db/schema';
 import type {
   BizType, BuildingType, ChargerModel, ContractLine, ContractParty, Court, CpoName, DocFile, DocStatus,
@@ -104,7 +104,17 @@ async function maxSeqIn(tx: TxLike): Promise<number> {
    * 이걸 0 으로 떨어뜨리면 이미 057 이 있는데 001 을 발급하는 사고가 난다 — 실제로 겪었다.
    */
   if (!row) throw new Error('현장 번호를 읽지 못했습니다. 다시 시도해주세요.');
-  return row.maxSeq ?? 0;
+
+  /*
+   * ★지운 현장의 번호도 센다★ — 지금 있는 현장만 세면 맨 끝 현장을 지운 뒤의 접수가 그 번호를 다시 받는다. 두 현장의
+   * 감사 기록이 한 번호에 섞이고, 파일 자리(projects/<번호>/)도 겹친다(HB-2026-282 — 한백이 지운 3분 뒤 같은
+   * 협력사의 새 접수가 282 를 다시 받았다, 2026-10-29). 한 번이라도 쓰인 번호는 audit_log 에 남는다(접수가 첫 줄을 쓴다).
+   */
+  const [gone] = await tx
+    .select({ maxSeq: sql<number | null>`max(substring(${auditLog.projectId} from '^HB-2026-([0-9]+)$')::int)` })
+    .from(auditLog)
+    .where(sql`${auditLog.projectId} like 'HB-2026-%'`);
+  return Math.max(row.maxSeq ?? 0, gone?.maxSeq ?? 0);
 }
 
 

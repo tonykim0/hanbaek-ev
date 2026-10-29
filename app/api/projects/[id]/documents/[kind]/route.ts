@@ -8,6 +8,7 @@
 import { getRepository } from '@/lib/data';
 import { adminWrite, BadRequest } from '@/lib/api/write-route';
 import { dropBlob, pathnameOfBlobUrl } from '@/lib/intake-stage';
+import { scheduleFactUndo } from '@/lib/fact-read-run';
 
 type Params = { id: string; kind: string };
 
@@ -41,7 +42,7 @@ export const PATCH = adminWrite<Params, { status?: string; reason?: string | nul
 export const DELETE = adminWrite<Params, undefined>(
   '한백 관리자만 서류를 지울 수 있습니다.',
   async ({ params, actor }) => {
-    const { blobUrls } = await getRepository().deleteDocument(
+    const { blobUrls, filled } = await getRepository().deleteDocument(
       { projectId: params.id, kind: params.kind },
       actor
     );
@@ -59,5 +60,7 @@ export const DELETE = adminWrite<Params, undefined>(
         await dropBlob(blobUrl);
       }
     }
+    // 그 장들에서 읽어 현장 정보에 넣은 값이 있으면 걷는다(lib/fact-read-run)
+    scheduleFactUndo(params.id, filled);
   }
 );
