@@ -25,7 +25,8 @@ import { useRouter } from 'next/navigation';
 import type {
   BizType, BuildingType, ContractParty, CpoName, InstallLoc, IntakeDraft, PowerType, PreInstall, ReplType,
 } from '@/types/project';
-import { CONTRACT_PARTIES, MAX_DOC_BYTES, MAX_INTAKE_ZIP_BYTES, replLabel, SPLITS_SELF_REPL } from '@/types/project';
+import { CONTRACT_PARTIES, MAX_DOC_BYTES, MAX_INTAKE_ZIP_BYTES, replLabel } from '@/types/project';
+import { carryQty, cellKey, cellsOf, linesOf, powerColsOf, replRowsOf } from '@/lib/intake-qty';
 import { canShrink, shrink } from '@/lib/shrink';
 import { uploadIntakeFile, uploadIntakeZip } from '@/lib/intake-upload';
 import { buildDocContext, evaluateDocs } from '@/lib/doc-rules';
@@ -52,25 +53,6 @@ interface Line {
   powerType: Exclude<PowerType, '한전불입+모자분리'> | null;
   replType: ReplType | null;
   memo: string | null;
-}
-
-/** 자체투자 현장에서 갈리는 교체유형 두 가지 */
-const SELF_REPLS = ['자체투자 (제자리교체)', '자체투자 (신규위치)'] as const satisfies readonly ReplType[];
-
-/**
- * 대수 칸의 줄 — 이 사업구분·운영사에서 고를 수 있는 교체유형.
- *
- * ★자동채움과 화면이 같은 답을 봐야 한다★ — 갈라져 있던 탓에 판독이 읽은 대수가 갈 곳을
- * 잃었다(한백 지적 2026-09-22 「계약서에 다 나와있는데 왜 그냥 내보낸거야」).
- * 자동채움은 「자체투자면 모른다」로 뭉뚱그리고 칸 이름도 「환경부 신규」로 박아 두었는데,
- *   · 플러그링크·나이스·현대엔지니어링은 자체투자를 안 가른다 — 칸이 하나뿐인데 비웠다
- *   · 기설치 연동은 칸이 하나인데 「환경부 신규」라는 없는 칸에 적어 그대로 사라졌다
- * 둘 다 조용히 0 대가 됐다.
- */
-function replRowsOf(bizType: BizType | null, cpo: CpoName): ReplType[] {
-  if (bizType === '자체투자') return SPLITS_SELF_REPL.has(cpo) ? [...SELF_REPLS] : [SELF_REPLS[0]];
-  if (bizType === '기설치 연동') return ['기설치 연동'];
-  return ['환경부 신규'];
 }
 
 /** 임시 자리에 올라간 파일 한 장 — 칸 하나에 여러 장이 붙는다 */
@@ -282,11 +264,14 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
        * 박아 두었던 탓에 기설치 연동의 대수가 없는 칸으로 들어가 사라졌다.
        * ★못 채웠으면 말한다★ — 조용히 비워 두면 사람이 그대로 접수한다(HB-2026-184).
        */
-      const rows = replRowsOf(f.bizType ?? null, (f.cpo ?? cpo) as CpoName);
-      const onePower = f.powerType !== '한전불입+모자분리';
-      const col = f.powerType === '모자분리' || f.powerType === '한전불입' ? f.powerType : null;
+      /* 판독이 못 읽은 축은 화면의 지금 값이다 — fill 이 그 칸을 바꾸지 않는다. 옛 코드는 못 읽으면 환경부·미지정으로 봐서
+         사람이 이미 고른 수전방식과 다른 칸 이름에 대수를 넣었다(2026-10-29) */
+      const power = f.powerType ?? powerType;
+      const rows = replRowsOf(f.bizType ?? bizType, (f.cpo ?? cpo) as CpoName);
+      const onePower = power !== '한전불입+모자분리';
+      const col = power === '모자분리' || power === '한전불입' ? power : null;
       if (f.qty && rows.length === 1 && onePower) {
-        setQty({ [`${rows[0]}|${col ?? ''}`]: f.qty });
+        setQty({ [cellKey(rows[0], col)]: f.qty });
         filled.add('qty');
       } else {
         setQty({});
@@ -386,35 +371,23 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
     }
   }
 
-  const mixed = powerType === '한전불입+모자분리';
-  /**
-   * 대수 칸의 행 — 사업구분이 정하고, 자체투자는 운영사가 한 번 더 정한다.
-   *
-   * ★교체유형을 가르는 운영사만 두 행이다★ (2026-08-26) — 에버온(140/150/160 대
-   * 170/180/190만)·SK일렉링크(위치변경 190~210만)는 제자리교체와 신규위치의 단가가 실제로
-   * 다르다. 나머지는 같은 금액이라 케이스도 한 칸으로 합쳤다(플러그링크와 같은 방식).
-   * 안 가르는 운영사에 두 행을 펴 두었더니 한 현장의 11기가 「10대 + 1대」 두 라인으로
-   * 갈렸다 — 강원 강릉 일송아파트가 그것이다(한백 확인).
-   */
+  /** 대수 칸의 줄(교체유형)·열(수전방식) — 규칙은 lib/intake-qty(판독 자동채움과 같은 답) */
   const replRows: ReplType[] = replRowsOf(bizType, cpo);
-  /** 대수 칸의 열 — 수전방식이 정한다 */
-  const powerCols: Array<Exclude<PowerType, '한전불입+모자분리'> | null> = mixed
-    ? ['한전불입', '모자분리']
-    : [(powerType as Exclude<PowerType, '한전불입+모자분리'> | null) ?? null];
+  const powerCols = powerColsOf(powerType);
 
-  const cellKey = (r: ReplType, p: string | null) => `${r}|${p ?? ''}`;
+  /*
+   * ★적어 둔 대수를 지금 칸으로 옮겨 보인다★ (한백 지적 2026-10-29 「전력인입을 바꾸면 입력된 계약대수가 사라지는 오류」) —
+   * 대수는 「교체유형|수전방식」 칸 이름에 붙어 있어 수전방식·사업구분·운영사를 바꾸면 새 칸이 비었다. 갈 곳이 여럿이라 못
+   * 옮긴 수는 대수 칸이 말한다. 축을 바꾸는 단추는 바꾸기 전에 지금 보이는 값을 상태로 굳힌다(settleQty) — 그래야 다음
+   * 변경이 처음 적은 칸이 아니라 보이던 칸에서 옮긴다.
+   */
+  const carried = useMemo(() => carryQty(qty, cellsOf(bizType, cpo, powerType)), [qty, bizType, cpo, powerType]);
+  const settleQty = () => setQty({ ...carried.qty, ...carried.rest });
 
   /** 대수가 들어간 칸만 계약 라인이 된다 */
   const lines: Line[] = useMemo(
-    () =>
-      replRows.flatMap((r) =>
-        powerCols
-          .map((p) => ({ r, p, n: qty[cellKey(r, p)] ?? 0 }))
-          .filter((c) => c.n > 0)
-          .map((c) => ({ termYears, qty: c.n, powerType: c.p, replType: c.r, memo: null }))
-      ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [bizType, powerType, termYears, qty]
+    () => linesOf(carried.qty, bizType, cpo, powerType, termYears),
+    [carried, bizType, cpo, powerType, termYears]
   );
 
   /*
@@ -728,7 +701,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
       <Card title="현장정보">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="운영사" required auto={auto.has('cpo')} issue={issueOf('cpo')} anchor={anchorOf('cpo')}>
-            <Select value={cpo} onChange={(v) => { setCpo(v as CpoName); touched('cpo'); }} options={CPOS} />
+            <Select value={cpo} onChange={(v) => { settleQty(); setCpo(v as CpoName); touched('cpo'); }} options={CPOS} />
           </Field>
           <Field label="현장명" required auto={auto.has('name')} issue={issueOf('name')} anchor={anchorOf('name')}>
             <input value={name} onChange={(e) => { setName(e.target.value); touched('name'); }} placeholder="서울 강남 행복아파트" className={FIELD} />
@@ -778,20 +751,23 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
           >
             <Select
               value={bizType ?? ''}
-              onChange={(v) => { setBizType((v || null) as BizType | null); touched('bizType'); }}
+              onChange={(v) => { settleQty(); setBizType((v || null) as BizType | null); touched('bizType'); }}
               options={BIZ}
               blank
             />
           </Field>
           <Field label="수전방식" required auto={auto.has('powerType')} issue={issueOf('powerType')} anchor={anchorOf('powerType')}>
-            <Select value={powerType ?? ''} onChange={(v) => { setPowerType((v || null) as PowerType | null); touched('powerType'); }} options={POWERS} blank />
+            <Select value={powerType ?? ''} onChange={(v) => { settleQty(); setPowerType((v || null) as PowerType | null); touched('powerType'); }} options={POWERS} blank />
           </Field>
           <Field
             label="대수"
             required
             span
             auto={auto.has('qty')}
-            issue={issueOf('qty')}
+            /* 못 옮긴 대수는 사람이 축을 바꾼 바로 그 순간의 일이라 reveal 을 기다리지 않는다(화면 규칙 9) */
+            issue={carried.unplaced > 0
+              ? `앞서 적은 ${carried.unplaced}기 — 칸이 바뀌어 어느 칸인지 모릅니다. 칸마다 몇 기인지 다시 적어주세요`
+              : issueOf('qty')}
             anchor={anchorOf('qty')}
             hint={
               replRows.length > 1 || powerCols.length > 1
@@ -803,9 +779,9 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
               rows={replRows}
               rowLabel={(r) => replLabel(cpo, r)}
               cols={powerCols}
-              value={qty}
+              value={carried.qty}
               keyOf={cellKey}
-              onChange={(k, n) => { setQty({ ...qty, [k]: n }); touched('qty'); }}
+              onChange={(k, n) => { setQty({ ...carried.qty, [k]: n }); touched('qty'); }}
             />
           </Field>
         </div>
