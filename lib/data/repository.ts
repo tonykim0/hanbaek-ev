@@ -11,6 +11,7 @@
  *  2. 권한은 화면이 아니라 이 계층에서 건다. 협력사에게는 자기 현장만 나가야지,
  *     전부 보내놓고 화면에서 가리면 안 된다.
  */
+import type { RetouchLog } from '@/lib/retouch/types';
 import type {
   NoteScope,
   Court, DocStatus, HoldState, IntakeDraft, LineAxes, NewPayoutEntry, NewPricingRule, PayoutKind, PayoutRow, PreInstall, PricingRule,
@@ -471,6 +472,12 @@ export interface ProjectRepository {
 
   /** 자주 쓰는 수령지 빼기 [한백 관리자 · 그 협력사] — 현장에 이미 적힌 값은 그대로 남는다 */
   removeRecvPreset(id: string, actor: Actor): Promise<void>;
+
+  /**
+   * 서류 문구 수정으로 PDF 를 받았다는 기록 [한백 관리자] (store/retouch) — audit_log 한 줄.
+   * 파일은 남기지 않는다. 직인사용동의로 고쳐 낸 서류의 근거다.
+   */
+  logRetouch(entry: RetouchLog, actor: Actor): Promise<void>;
 
   /** 실사보고서 임시 저장본 — 그 계정의 것만, 최근이 위 [본인] (store/survey-drafts) */
   listSurveyDrafts(cpo: string, actor: Actor): Promise<DraftSummary[]>;

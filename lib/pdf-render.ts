@@ -147,3 +147,43 @@ export async function pdfPages(
     void doc.destroy();
   }
 }
+
+/**
+ * PDF 를 열어 두고 장마다 원하는 배율로 굽는다 — 서류 문구 수정이 쓴다.
+ *
+ * pdfPages 는 1쪽부터 차례로 같은 배율로 다 굽는다. 문구 수정은 판독에 보낼 작은 그림(전 쪽)과 고칠 쪽만의
+ * 원본 해상도 그림이 따로 필요하다 — 열 쪽짜리를 300dpi 로 다 구우면 화면이 수백 MB 를 쥔다.
+ * ★받은 버퍼는 pdf.js 가 일꾼에게 넘기며 비운다★ — 같은 바이트가 또 필요하면(pdf-lib) 부르는 쪽이 먼저 베낀다.
+ */
+export async function openPdf(data: ArrayBuffer): Promise<{
+  total: number;
+  /** 그 쪽의 크기 — pt, 회전·자르기를 반영한 보이는 그대로 */
+  sizeOf(n: number): Promise<{ width: number; height: number }>;
+  render(n: number, scale: number): Promise<RenderedPage>;
+  close(): void;
+}> {
+  const pdfjs = await lib();
+  const doc = await pdfjs.getDocument({ data }).promise;
+  return {
+    total: doc.numPages,
+    async sizeOf(n) {
+      const v = (await doc.getPage(n)).getViewport({ scale: 1 });
+      return { width: v.width, height: v.height };
+    },
+    async render(n, scale) {
+      const page = await doc.getPage(n);
+      const viewport = page.getViewport({ scale });
+      const cv = document.createElement('canvas');
+      cv.width = Math.round(viewport.width);
+      cv.height = Math.round(viewport.height);
+      const ctx = cv.getContext('2d');
+      if (!ctx) throw new Error('그림판을 만들지 못했습니다.');
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      await page.render({ canvasContext: ctx, viewport }).promise;
+      const img = ctx.getImageData(0, 0, cv.width, cv.height);
+      return { width: img.width, height: img.height, data: img.data };
+    },
+    close() { void doc.destroy(); },
+  };
+}
