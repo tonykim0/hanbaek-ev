@@ -60,8 +60,13 @@ async function main() {
 
   console.log(`■ ${p.name} (${p.mgmtNo ?? 'mgmt_no 없음'})`);
   console.log(`   현장 수전방식 ${p.powerType ?? '미지정'} → ${TO}`);
+  /*
+   * ★겸용은 라인에 쓰지 않는다★ (2026-10-29) — 라인은 한 수전이다(ContractLine.powerType). 겸용으로 고치면 라인은 그대로 두고,
+   * 다른 수전의 대수는 현장 상세의 「묶음 더하기」가 수전을 골라 단다(저장소 setProjectAxes·addContractLine 과 같은 규칙).
+   */
+  const touchLines = TO !== '한전불입+모자분리';
   for (const l of lines) {
-    console.log(`   라인 ${l.id} ${l.powerType ?? '미지정'} → ${TO}  (${l.qty}기)`);
+    console.log(`   라인 ${l.id} ${l.powerType ?? '미지정'} → ${touchLines ? TO : '그대로 (겸용은 라인에 안 쓴다)'}  (${l.qty}기)`);
   }
   /* 지급조건이 확정되면 저장소가 단가 변경을 거절한다 — 수전은 그 축이라 먼저 본다 */
   if (p.payoutTermsConfirmedAt) {
@@ -80,7 +85,7 @@ async function main() {
       projectId: ID!, actor: ACTOR, action: '수전방식 정정',
       field: 'powerType', oldValue: p.powerType, newValue: TO,
     });
-    for (const l of lines) {
+    for (const l of touchLines ? lines : []) {
       await tx.update(contractLines).set({ powerType: TO }).where(eq(contractLines.id, l.id));
       await writeAudit(tx, {
         projectId: ID!, actor: ACTOR, action: '수전방식 정정',

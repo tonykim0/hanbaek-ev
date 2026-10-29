@@ -144,6 +144,44 @@ describe('단가·흐름의 축 고치기', () => {
     });
   });
 
+  /*
+   * ★겸용은 라인에 쓰지 않는다 · 단가는 축이 움직인 묶음만 푼다★ (2026-10-29). 예전에는 겸용으로 바꾸면 모든 묶음이
+   * 「한전불입+모자분리」가 되어 어느 케이스와도 안 맞았고, 한전불입 3 · 모자분리 10 으로 나눠 둔 것이 사라졌다.
+   */
+  const activeRule = async (power: string) => {
+    const rules = (await repo.listPricingRules(admin)).filter((r) => r.active);
+    return (rules.find((r) => r.cpo === '플러그링크' && r.powerType === power) ?? rules[0]).id;
+  };
+  const linesOf = async (id: string) => (await repo.getProject(id, { role: 'admin', org: null }))!.lines
+    .map((l) => [l.qty, l.powerType, l.pricingRuleId]);
+
+  it('★겸용으로 바꿔도 묶음의 수전·단가는 그대로★ — 다른 수전의 대수는 묶음 더하기로', async () => {
+    await withProject(async (id) => {
+      const rule = await activeRule('한전불입');
+      await repo.setLinePricing((await lineOf(id)).id, rule, admin);
+      await repo.setProjectAxes(id, { powerType: '한전불입+모자분리' }, admin);
+      expect((await factOf(id)).powerType).toBe('한전불입+모자분리');
+      expect(await linesOf(id)).toEqual([[7, '한전불입', rule]]);
+    }, { powerType: '한전불입', lines: [{ termYears: 5, qty: 7, powerType: '한전불입', replType: null, memo: null }] });
+  });
+
+  it('겸용에서 한 수전으로 — 묶음이 그 값이 되고, 수전이 바뀐 묶음만 단가가 풀린다', async () => {
+    await withProject(async (id) => {
+      const [kepco, mother] = [await activeRule('한전불입'), await activeRule('모자분리')];
+      const [a, b] = (await repo.getProject(id, { role: 'admin', org: null }))!.lines;
+      await repo.setLinePricing(a.id, kepco, admin);
+      await repo.setLinePricing(b.id, mother, admin);
+      await repo.setProjectAxes(id, { powerType: '한전불입' }, admin);
+      expect(await linesOf(id)).toEqual([[3, '한전불입', kepco], [10, '한전불입', null]]);
+    }, {
+      powerType: '한전불입+모자분리',
+      lines: [
+        { termYears: 5, qty: 3, powerType: '한전불입', replType: null, memo: null },
+        { termYears: 5, qty: 10, powerType: '모자분리', replType: null, memo: null },
+      ],
+    });
+  });
+
   it('★축이 움직이면 단가 지정이 풀린다★ — 붙어 있던 케이스가 이 현장과 안 맞는다', async () => {
     await withPayableProject(async ({ id, lineId }) => {
       expect((await lineOf(id)).pricingRuleId).not.toBeNull();

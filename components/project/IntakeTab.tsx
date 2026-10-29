@@ -141,10 +141,12 @@ function SiteFacts(
       {/*
         * ★묶음이 하나면 여기 두지 않는다★ (한백 지시 2026-10-07 「현장정보에 계약대수·계약연수는 없애」) — 상세 머리
         * (DetailView)에 같은 값이 있고 거기서 바로 고친다(같은 값을 두 번 두지 않는다, 화면 규칙 5).
-        * 남는 것은 머리가 할 수 없는 일 둘이다: 대수가 아직 없는 현장에 넣기(0 묶음 — 머리는 「넣는 자리는 계약 탭」),
-        * 조건이 다른 묶음마다 고치기(2 묶음 이상 — 머리는 합계만 보인다).
+        * 남는 것은 머리가 할 수 없는 일 셋이다: 대수가 아직 없는 현장에 넣기(0 묶음 — 머리는 「넣는 자리는 계약 탭」),
+        * 조건이 다른 묶음마다 고치기(2 묶음 이상 — 머리는 합계만 보인다), ★겸용인데 묶음이 하나인 현장에 다른 수전의
+        * 묶음 달기★(2026-10-29 — 이 구역이 없으면 그 현장은 한전불입·모자분리로 나눌 길이 없다. 수전방식을 겸용으로 바꾼
+        * 직후나, 나눠 둔 묶음 하나를 뗀 뒤가 그렇다).
         */}
-      {canEdit && lines.length !== 1 && (
+      {canEdit && (lines.length !== 1 || project.powerType === '한전불입+모자분리') && (
         <ContractLineFacts projectId={projectId} project={project} lines={lines} termsLocked={termsLocked} />
       )}
 
@@ -188,6 +190,8 @@ function ContractLineFacts(
   }
 ) {
   const many = lines.length > 1;
+  /* 겸용 현장은 묶음이 하나여도 그 묶음의 수전을 보인다 — 「겸용인데 한 수전뿐」이 눈에 띄어야 나머지를 단다 */
+  const labelled = many || project.powerType === '한전불입+모자분리';
   return (
     <section className="mt-4">
       <div className="mb-1.5">
@@ -208,7 +212,7 @@ function ContractLineFacts(
                 key={l.id}
                 className="grid grid-cols-1 gap-x-5 gap-y-1 border-t border-slate-100 pt-1.5 first:border-0 first:pt-0 sm:grid-cols-2"
               >
-                {many && (
+                {labelled && (
                   <p className="col-span-full flex items-baseline gap-2 text-micro font-bold text-slate-400">
                     {i + 1}번째 묶음
                     {[l.replType && replLabel(project.cpo, l.replType), l.powerType]
@@ -267,8 +271,10 @@ function ContractLineFacts(
  * 묶음 하나를 새로 단다.
  *
  * 축(수전방식·교체유형)은 묻지 않는다 — 안 적으면 현장 값을 따른다(저장소). 묶음이 하나인
- * 현장에서 같은 값을 두 번 묻지 않기 위해서다. 조건이 갈리는 현장은 단 뒤에 그 묶음의
- * 축을 고친다(머리말의 수전방식·교체유형은 현장 값이다).
+ * 현장에서 같은 값을 두 번 묻지 않기 위해서다.
+ *
+ * ★겸용(한전불입+모자분리) 현장만 수전방식을 묻는다★ (2026-10-29) — 라인은 한 수전이고 단가가 수전별로 갈린다. 예전에는
+ * 묻지 않아 새 묶음에 「한전불입+모자분리」가 들어가 맞는 단가 케이스가 없었다. 저장소도 고르지 않으면 거절한다.
  */
 function NewLine(
   { projectId, project, locked, empty = false }:
@@ -278,15 +284,17 @@ function NewLine(
   const [open, setOpen] = useState(false);
   const [qty, setQty] = useState('');
   const [term, setTerm] = useState('10');
+  const mixed = project.powerType === '한전불입+모자분리';
+  const [power, setPower] = useState<'' | '한전불입' | '모자분리'>('');
 
   const save = async () => {
     const ok = await run({
       url: `/api/projects/${projectId}/lines`,
       method: 'POST',
-      body: { qty: Number(qty), termYears: Number(term) },
+      body: { qty: Number(qty), termYears: Number(term), ...(mixed ? { powerType: power } : {}) },
       fail: '계약대수를 넣지 못했습니다.',
     });
-    if (ok) { setOpen(false); setQty(''); }
+    if (ok) { setOpen(false); setQty(''); setPower(''); }
   };
 
   if (locked) return null;
@@ -325,15 +333,25 @@ function NewLine(
           {TERM_YEARS.map((y) => <option key={y} value={y}>{y}년</option>)}
         </select>
       </label>
-      {/* 축은 현장 값을 따른다 — 무엇이 붙는지 그 자리에 적는다 */}
+      {mixed && (
+        <label className="flex items-center gap-1.5 text-tiny font-bold text-slate-400">
+          수전방식
+          <select value={power} onChange={(e) => setPower(e.target.value as typeof power)} className={`${FIELD} w-28`}>
+            <option value="">고르세요</option>
+            <option value="한전불입">한전불입</option>
+            <option value="모자분리">모자분리</option>
+          </select>
+        </label>
+      )}
+      {/* 축은 현장 값을 따른다 — 무엇이 붙는지 그 자리에 적는다(겸용의 수전은 위에서 고른다) */}
       <span className="text-micro font-semibold text-slate-400">
-        {[project.powerType, project.replType && replLabel(project.cpo, project.replType)]
+        {[mixed ? null : project.powerType, project.replType && replLabel(project.cpo, project.replType)]
           .filter(Boolean).join(' · ') || '축은 현장 값을 따릅니다'}
       </span>
-      <Btn size="sm" busy={busy} busyLabel="넣는 중…" disabled={!qty} onClick={() => void save()}>
-        넣기
+      <Btn size="sm" busy={busy} busyLabel="넣는 중…" disabled={!qty || (mixed && !power)} onClick={() => void save()}>
+        {mixed && !power ? '수전방식 미지정 — 넣기 불가' : '넣기'}
       </Btn>
-      <Btn size="sm" kind="quiet" disabled={busy} onClick={() => { setOpen(false); setQty(''); }}>
+      <Btn size="sm" kind="quiet" disabled={busy} onClick={() => { setOpen(false); setQty(''); setPower(''); }}>
         취소
       </Btn>
       <Err>{error}</Err>

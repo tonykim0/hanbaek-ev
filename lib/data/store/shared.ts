@@ -327,7 +327,8 @@ export async function recordsOf(rows: ProjectRow[]): Promise<ProjectRecord[]> {
 
   // 여섯 방을 한꺼번에 던지면 풀보다 많아 큐가 막힌다 — 슬롯 안에서 돈다(db-slot)
   const [lineRows, docRows, procRows, procDocRows, settlementRows, payoutRows, rejectRows] = await allSlots([
-    () => db.select().from(contractLines).where(inArray(contractLines.projectId, ids)),
+    // 단 순서대로 — 순서 없이 읽으면 「n번째 묶음」 번호가 DB 가 돌려주는 대로 뒤바뀐다(묶음을 더하자마자 새 것이 1번째가 됐다)
+    () => db.select().from(contractLines).where(inArray(contractLines.projectId, ids)).orderBy(contractLines.id),
     () => db.select().from(documents).where(inArray(documents.projectId, ids)),
     () => db.select().from(processes).where(inArray(processes.projectId, ids)),
     () => db.select().from(processDocuments).where(inArray(processDocuments.projectId, ids)),

@@ -38,12 +38,25 @@ describe('계약 라인 달기', () => {
     }, { lines: [], powerType: '모자분리' });
   });
 
-  it('적으면 그 값이 이긴다 — 조건이 갈리는 현장은 묶음마다 축이 다르다', async () => {
+  /*
+   * ★라인은 한 수전이다★ (2026-10-29) — 예전 이 자리는 「적으면 그 값이 이긴다」였다. 화면은 수전을 보낸 적이 없고, 그 길로
+   * 모자분리 현장에 한전불입 묶음이 붙으면 현장(한 수전)과 라인이 갈린다. 다른 수전의 대수는 현장을 겸용으로 바꾼 뒤 단다.
+   */
+  it('겸용이 아닌 현장은 현장 값만 받는다', async () => {
     await withProject(async (id) => {
-      await repo.addContractLine(id, { qty: 2, termYears: 7, powerType: '한전불입', replType: null }, admin);
-      const [l] = await linesOf(id);
-      expect(l.powerType).toBe('한전불입');
+      await expect(repo.addContractLine(id, { qty: 2, termYears: 7, powerType: '한전불입', replType: null }, admin))
+        .rejects.toThrow('이 현장의 수전방식은 모자분리입니다');
+      expect(await linesOf(id)).toHaveLength(0);
     }, { lines: [], powerType: '모자분리' });
+  });
+
+  it('★겸용 현장은 묶음마다 수전을 고른다★ — 안 고르면 「한전불입+모자분리」가 라인에 들어가 맞는 케이스가 없었다', async () => {
+    await withProject(async (id) => {
+      await expect(repo.addContractLine(id, { qty: 4, termYears: 7, powerType: null, replType: null }, admin))
+        .rejects.toThrow('이 묶음의 수전방식을 고르세요');
+      await repo.addContractLine(id, { qty: 4, termYears: 7, powerType: '모자분리', replType: null }, admin);
+      expect((await linesOf(id)).map((l) => [l.qty, l.powerType])).toEqual([[4, '모자분리']]);
+    }, { lines: [], powerType: '한전불입+모자분리' });
   });
 
   it('★번호가 겹치지 않는다★ — 가운데를 뗐다가 다시 달아도 기본키가 안 부딪힌다', async () => {

@@ -143,21 +143,28 @@ export const payoutStore: Pick<
       /*
        * ★수전방식은 라인에도 산다★ — 단가 매칭은 라인의 값을 본다. 한쪽만 고치면
        * 화면(현장)과 매칭(라인)이 갈린다. 교체유형도 같이 눕힌다.
-       * ★단가 지정은 푼다★ — 축이 움직였으니 붙어 있던 케이스가 이 현장과 안 맞는다.
+       *
+       * ★겸용(한전불입+모자분리)은 라인에 쓰지 않는다★ (2026-10-29) — 라인은 한 수전이다(ContractLine.powerType 의 타입).
+       * 겸용으로 바꾸면 라인은 그대로 두고, 다른 수전의 대수는 「묶음 더하기」가 수전을 골라 단다. 예전에는 현장 값을 그대로
+       * 라인에 써서 어느 케이스와도 안 맞았고, 한전불입 3 · 모자분리 10 처럼 나눠 둔 것이 사라졌다.
+       *
+       * ★단가 지정은 축이 움직인 라인만 푼다★ — 운영사·사업구분이 바뀌면 전부(붙어 있던 케이스가 이 현장과 안 맞는다),
+       * 그 밖에는 라인의 수전·교체유형이 실제로 바뀐 라인만. 겸용으로 바꿔 라인이 그대로면 단가도 그대로다.
        */
       const lines = await tx
-        .select({ id: contractLines.id, replType: contractLines.replType })
+        .select({ id: contractLines.id, powerType: contractLines.powerType, replType: contractLines.replType })
         .from(contractLines)
         .where(eq(contractLines.projectId, projectId));
+      const allMoved = cpo !== row.cpo || bizType !== row.bizType;
+      let released = 0;
       for (const l of lines) {
+        const nextPower = powerType !== row.powerType && powerType !== '한전불입+모자분리' ? powerType : l.powerType;
+        const nextRepl = normalizeRepl(cpo, l.replType as ReplType | null);
+        if (!allMoved && nextPower === l.powerType && nextRepl === l.replType) continue;
+        released += 1;
         await tx
           .update(contractLines)
-          .set({
-            ...(powerType !== row.powerType ? { powerType } : {}),
-            replType: normalizeRepl(cpo, l.replType as ReplType | null),
-            pricingRuleId: null,
-            pricedAt: null,
-          })
+          .set({ powerType: nextPower, replType: nextRepl, pricingRuleId: null, pricedAt: null })
           .where(eq(contractLines.id, l.id));
       }
 
@@ -171,10 +178,12 @@ export const payoutStore: Pick<
           newValue: after === null ? null : String(after),
         });
       }
-      await writeAudit(tx, {
-        projectId, actor, action: '단가 케이스 지정 해제 (축 변경)',
-        field: `라인 ${lines.length}건`, oldValue: null, newValue: null,
-      });
+      if (released > 0) {
+        await writeAudit(tx, {
+          projectId, actor, action: '단가 케이스 지정 해제 (축 변경)',
+          field: `라인 ${released}건`, oldValue: null, newValue: null,
+        });
+      }
     });
   },
 
@@ -202,8 +211,23 @@ export const payoutStore: Pick<
       /*
        * 안 적은 축은 현장 값을 따른다 — 라인이 하나인 현장(162 중 160)에서 같은 값을 두 번
        * 묻지 않기 위해서다. 안 가르는 운영사의 「신규위치」는 눕힌다(normalizeRepl).
+       *
+       * ★라인의 수전은 한 가지다★ (2026-10-29) — 겸용 현장은 묶음마다 한전불입·모자분리를 고른다(단가가 갈린다).
+       * 겸용이 아닌 현장은 현장 값만 받는다 — 다른 값을 받으면 현장(한 수전)과 라인이 갈린다. 다른 수전의 대수가 있으면
+       * 현장 수전방식을 겸용으로 바꾼 뒤 단다. 예전에는 겸용 현장의 새 묶음에 「한전불입+모자분리」가 그대로 들어가
+       * 맞는 케이스가 하나도 없었다.
        */
-      const powerType = input.powerType ?? row.powerType;
+      const mixed = row.powerType === '한전불입+모자분리';
+      if (mixed && input.powerType !== '한전불입' && input.powerType !== '모자분리') {
+        throw new Error('한전불입·모자분리가 섞인 현장입니다 — 이 묶음의 수전방식을 고르세요.');
+      }
+      if (!mixed && input.powerType && input.powerType !== row.powerType) {
+        throw new Error(
+          `이 현장의 수전방식은 ${row.powerType ?? '미지정'}입니다`
+          + ' — 다른 수전의 묶음은 현장 수전방식을 「한전불입+모자분리」로 바꾼 뒤 다세요.'
+        );
+      }
+      const powerType = mixed ? input.powerType : row.powerType;
       const replType = normalizeRepl(
         row.cpo as CpoName,
         (input.replType ?? row.replType) as ReplType | null

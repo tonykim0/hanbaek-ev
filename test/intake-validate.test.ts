@@ -115,3 +115,32 @@ describe('checkDraft — 막는 문제는 어느 칸의 것인지 함께 말한�
     expect(checkDraft(basic()).issues).toEqual([]);
   });
 });
+
+/**
+ * ★라인은 한 수전이다 · 겸용이면 두 수전 모두★ (2026-10-29). 결과서 「전력인입」에 둘 다 체크된 현장은 실제로 둘 다 있다 —
+ * 결과서에는 몇 기씩인지가 없어 협력사가 나눠 적는데, 한 칸만 적으면 대수 전부가 한쪽 단가로 계산됐다.
+ */
+describe('checkDraft — 수전방식', () => {
+  const line = (powerType: IntakeDraft['lines'][number]['powerType'], qty = 3) =>
+    ({ termYears: 7, qty, powerType, replType: null, memo: null });
+  const MIXED = '한전불입+모자분리' as const;
+
+  it('겸용인데 한 칸만 적으면 막는다', () => {
+    const r = checkDraft(basic({ powerType: MIXED, lines: [line('한전불입', 7)] }));
+    expect(r.issues).toEqual([{ field: 'qty', message: '한전불입·모자분리가 섞인 현장입니다 — 두 칸 모두 몇 기인지 적어주세요.' }]);
+  });
+
+  it('겸용이고 두 칸 다 적으면 통과', () => {
+    expect(checkDraft(basic({ powerType: MIXED, lines: [line('한전불입', 9), line('모자분리', 2)] })).errors).toEqual([]);
+  });
+
+  it('라인에 겸용 값은 받지 않는다 — 어느 단가 케이스와도 안 맞는다', () => {
+    const r = checkDraft(basic({ powerType: MIXED, lines: [line(MIXED as never), line('모자분리')] }));
+    expect(r.errors.some((e) => e.includes('한전불입·모자분리 중 하나'))).toBe(true);
+  });
+
+  it('겸용이 아닌 현장의 라인은 현장 값과 같아야 한다', () => {
+    const r = checkDraft(basic({ powerType: '모자분리', lines: [line('한전불입')] }));
+    expect(r.errors).toEqual(['계약 라인 1: 현장 수전방식(모자분리)과 다릅니다.']);
+  });
+});
