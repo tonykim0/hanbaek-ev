@@ -4,17 +4,26 @@ import { join, relative } from 'path';
 
 export const ROOT = process.cwd();
 
-export function findFiles(dir: string, name: string): string[] {
+function walkFiles(dir: string, keep: (name: string) => boolean): string[] {
   const out: string[] = [];
   const walk = (d: string) => {
     for (const e of readdirSync(d)) {
       const p = join(d, e);
       if (statSync(p).isDirectory()) walk(p);
-      else if (e === name) out.push(relative(ROOT, p));
+      else if (keep(e)) out.push(relative(ROOT, p));
     }
   };
   walk(join(ROOT, dir));
   return out.sort();
+}
+
+export function findFiles(dir: string, name: string): string[] {
+  return walkFiles(dir, (e) => e === name);
+}
+
+/** dir 아래 .ts·.tsx 전부 */
+export function findSources(dir: string): string[] {
+  return walkFiles(dir, (e) => /\.tsx?$/.test(e));
 }
 
 /** app/(console)/(admin)/admin/(write)/accounts/page.tsx → ['admin', 'accounts'] — 라우트 그룹 (…) 은 주소에 없다 */

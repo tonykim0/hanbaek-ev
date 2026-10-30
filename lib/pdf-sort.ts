@@ -71,7 +71,7 @@ export async function sortPdf(
 
   onProgress({ phase: 'classify', message: `${Math.min(sourcePages, MAX_PAGES)}장을 읽는 중` });
   const file = { name: sourceName, buffer: upright, hash: createHash('sha256').update(upright).digest('hex'), mimeType: 'application/pdf' };
-  const metadata = await classifyAndExtract([file]).catch((err) => {
+  const metadata = await classifyAndExtract([file], 'pdf-sort').catch((err) => {
     console.error('[pdf-sort] 판독 실패:', err);
     return null;
   });

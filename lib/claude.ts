@@ -6,6 +6,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { buildExtractionPrompt } from './prompts';
+import { logLlmCall } from './llm-usage';
 import type { ExtractedMetadata } from '@/types/intake';
 import type { NormalizedFile } from './files';
 
@@ -50,9 +51,12 @@ const RETRY_NUDGE =
  *
  * 일시적 실패(응답 지연·과부하·JSON 파싱 실패)에 대비해 시간 예산 내에서 1회 재시도한다.
  * 재시도까지 실패하면 throw → 호출부에서 metadata=null 로 폴백.
+ *
+ * @param tag 부르는 곳 이름 (intake · pdf-sort) — 비용 한 줄이 classify:<tag> 로 남는다
  */
 export async function classifyAndExtract(
-  pdfs: NormalizedFile[]
+  pdfs: NormalizedFile[],
+  tag: string
 ): Promise<ExtractedMetadata> {
   // 방어적으로 PDF만 전송 (Claude vision은 xlsx/pptx 등을 처리하지 못함)
   const pdfOnly = pdfs.filter((p) => p.mimeType === 'application/pdf');
@@ -87,6 +91,7 @@ export async function classifyAndExtract(
        * 재시도가 뜻을 가지려면 무언가 달라야 한다 — 「JSON 만」을 한 번 더 못 박는다.
        */
       const ask = attempt === 1 ? content : [...content, { type: 'text' as const, text: RETRY_NUDGE }];
+      const at = Date.now();
       const message = await anthropic.messages.create(
         {
           model,
@@ -96,6 +101,8 @@ export async function classifyAndExtract(
         },
         { timeout: CALL_TIMEOUT_MS }
       );
+      // 거절·빈 답도 입력 토큰은 냈다 — 답을 보기 전에 남긴다
+      logLlmCall({ route: `classify:${tag}`, model, ms: Date.now() - at, usage: message.usage });
       if (message.stop_reason === 'refusal') {
         lastError = new Error(`${model} 이 판독을 거절했습니다(stop_reason: refusal).`);
         if (model !== REFUSAL_FALLBACK_MODEL) {

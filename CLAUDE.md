@@ -772,6 +772,12 @@ bulletpoint는 다 왼쪽정렬로」). 단가표의 조건 행(설치조건·�
   없었다. 서버에서 「사람이 봐야 할」 일이 생기면 `[db]`·`[auth]`·`[api]` 처럼 대괄호 태그로 console.error 를
   남긴다 — 감시(아래 「운영 감시」)가 그 태그를 본다. ★lint 가 잡는다★(2026-09-09, `lib/**`·`app/api/**`·
   `middleware.ts` 의 console.error 첫 인자가 `[태그]` 로 시작하지 않으면 오류).
+- **판독(Claude API)을 부르면 비용 한 줄을 남긴다** (2026-10-30) — `logLlmCall`(`lib/llm-usage`)이
+  `[llm] 경로 model ms in out ~$` 를 찍는다(console.log 라 감시는 울리지 않는다). 방향 판정은 파일 하나에 한 줄
+  (`orient:<부른 곳>`), 접수 분류는 시도마다(`classify:<부른 곳>`). 그전에는 이 둘이 한 줄도 안 남겨, 비용 검토에서
+  판독비의 절반쯤으로 추정됐는데도 로그로는 0원이었다. 단가표에 없는 모델은 opus 값으로 센다 — 모델을 바꾸면 단가도
+  넣는다. ★시험이 잡는다★(`test/conventions/llm-usage.test.ts` — API 를 부르는 파일의 logLlmCall · 코드에 적힌
+  모델의 단가). 경로별로 모아 보는 법: `npx vercel logs --environment production --since 7d --query llm --json`.
 - `next build` 를 `next dev` 가 돌고 있는 중에 실행하지 않는다. `.next` 가 깨진다.
 - 비밀번호·접속 문자열을 대화에 남기지 않는다. `.env.local` 에 직접 넣는다.
 - **함수 지역은 `icn1`(서울) 이다** — `vercel.json` 의 `regions`. DB(Supabase `ap-northeast-2`)와

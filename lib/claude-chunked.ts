@@ -225,7 +225,7 @@ export async function classifyInChunks(
 ): Promise<ExtractedMetadata> {
   const total = pdfs.reduce((n, f) => n + f.buffer.length, 0);
   if (total > READ_MAX_TOTAL_BYTES) throw new Error(tooLargeMessage(total));
-  if (total <= READ_BUDGET_BYTES) return classifyAndExtract(pdfs);
+  if (total <= READ_BUDGET_BYTES) return classifyAndExtract(pdfs, 'intake');
 
   const { bins, parts } = await packBins(pdfs);
   console.info(`[intake] PDF ${mb(total)}MB 를 ${bins.length}번에 나눠 읽습니다`);
@@ -238,7 +238,7 @@ export async function classifyInChunks(
        * 그 묶음의 서류는 판독 결과가 없어 기타로 떨어지고, 파일은 그대로 올라간다.
        */
       try {
-        results[i + k] = await classifyAndExtract(bin);
+        results[i + k] = await classifyAndExtract(bin, 'intake');
       } catch (err) {
         console.warn(`[intake] ${i + k + 1}/${bins.length}번째 묶음 판독 실패:`, err);
       }

@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
             message: `AI 분류 중... (PDF ${pdfFiles.length}개)`,
           });
           try {
-            metadata = await classifyAndExtract(pdfFiles);
+            metadata = await classifyAndExtract(pdfFiles, 'portal-intake');
           } catch (err) {
             console.error('[intake] Claude 추출 실패:', err);
             warnings.push('AI 분류에 실패했습니다. 담당자가 수동으로 검수합니다.');

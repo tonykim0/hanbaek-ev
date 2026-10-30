@@ -6,7 +6,7 @@
  * 보낸 뒤 「자동 분류 실패」로 떨어져, 통합 PDF 한 개가 통째로 기타로 들어갔다.
  * SDK 를 흉내 내 그 길을 못 박는다 — 실제 API 는 부르지 않는다.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 
 const create = vi.fn();
 vi.mock('@anthropic-ai/sdk', () => ({
@@ -23,15 +23,27 @@ const ok = {
 };
 
 describe('classifyAndExtract — 거절이면 다른 모델로', () => {
+  let log: MockInstance<typeof console.log>;
   beforeEach(() => {
     create.mockReset();
     vi.spyOn(console, 'warn').mockImplementation(() => {});
+    log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    log.mockClear(); // 앞 시험의 줄이 같은 흉내에 쌓여 있다
+  });
+
+  it('거절된 시도도 비용 한 줄을 남긴다 — 입력 토큰은 냈다', async () => {
+    create.mockResolvedValueOnce(refusal).mockResolvedValueOnce(ok);
+    const { classifyAndExtract } = await import('@/lib/claude');
+    await classifyAndExtract([pdf as never], 'test');
+    const lines = log.mock.calls.map((c) => String(c[0])).filter((s) => s.startsWith('[llm] classify:test '));
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toMatch(/ in=10 out=0 /);
   });
 
   it('★거절되면 곧바로 다른 모델로 다시 읽어 결과를 낸다★', async () => {
     create.mockResolvedValueOnce(refusal).mockResolvedValueOnce(ok);
     const { classifyAndExtract } = await import('@/lib/claude');
-    const r = await classifyAndExtract([pdf as never]);
+    const r = await classifyAndExtract([pdf as never], 'test');
     expect(r.현장명).toBe('시험');
     expect(create).toHaveBeenCalledTimes(2);
     const [first, second] = create.mock.calls.map((c) => c[0].model);
@@ -41,7 +53,7 @@ describe('classifyAndExtract — 거절이면 다른 모델로', () => {
   it('같은 모델에 거절을 되풀이해 보내지 않는다 — 다시 보내면 또 거절한다', async () => {
     create.mockResolvedValueOnce(refusal).mockResolvedValueOnce(ok);
     const { classifyAndExtract } = await import('@/lib/claude');
-    await classifyAndExtract([pdf as never]);
+    await classifyAndExtract([pdf as never], 'test');
     const models = create.mock.calls.map((c) => c[0].model);
     expect(new Set(models).size).toBe(models.length);
   });
@@ -49,14 +61,14 @@ describe('classifyAndExtract — 거절이면 다른 모델로', () => {
   it('다른 모델도 거절하면 거기서 멈추고 까닭을 던진다 — 세 번째를 보내지 않는다', async () => {
     create.mockResolvedValue(refusal);
     const { classifyAndExtract } = await import('@/lib/claude');
-    await expect(classifyAndExtract([pdf as never])).rejects.toThrow(/거절/);
+    await expect(classifyAndExtract([pdf as never], 'test')).rejects.toThrow(/거절/);
     expect(create).toHaveBeenCalledTimes(2);
   });
 
   it('거절이 아니면 모델을 바꾸지 않는다 — 판독 품질은 모델마다 다르다', async () => {
     create.mockResolvedValueOnce(ok);
     const { classifyAndExtract } = await import('@/lib/claude');
-    await classifyAndExtract([pdf as never]);
+    await classifyAndExtract([pdf as never], 'test');
     expect(create).toHaveBeenCalledTimes(1);
   });
 });

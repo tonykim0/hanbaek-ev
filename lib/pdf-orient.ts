@@ -32,6 +32,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { PDFDocument, degrees } from 'pdf-lib';
 import type { NormalizedFile } from './files';
+import { logLlmCall } from './llm-usage';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -59,6 +60,9 @@ const ROTATION_CANDIDATES = [
 ] as const;
 
 type RotationFix = { page: number; targetRotation: number };
+
+/** 파일 하나의 방향 판정에 쓴 토큰 — 쪽마다 부른 것을 모은다 */
+type Spent = { pages: number; input: number; output: number };
 
 /**
  * PDF 한 개를 바로 세운다. 고칠 페이지가 없으면 원본 버퍼를 그대로 돌려준다
@@ -130,6 +134,8 @@ async function detectRotationFixes(doc: PDFDocument, tag: string): Promise<Rotat
 
   const pages = doc.getPages();
   const fixes: RotationFix[] = [];
+  const started = Date.now();
+  const spent: Spent = { pages: 0, input: 0, output: 0 };
 
   for (let from = 0; from < limit; from += PAGE_CONCURRENCY) {
     const batch = Array.from(
@@ -151,7 +157,7 @@ async function detectRotationFixes(doc: PDFDocument, tag: string): Promise<Rotat
             console.warn(`[${tag}] ${pageIndex + 1}p 가 ${Math.round(bytes / 1024 / 1024)}MB 라 방향을 묻지 않습니다 — 원본 방향 유지`);
             return null;
           }
-          const upright = await selectUprightRotation(candidates);
+          const upright = await selectUprightRotation(candidates, spent);
           /*
            * 후보는 원래 회전을 덮어쓴 절대값이다 — 똑바르게 보인 후보의 값이 곧 목표값이다.
            * (원래 값에 더하면 두 번 돌아간다)
@@ -166,6 +172,18 @@ async function detectRotationFixes(doc: PDFDocument, tag: string): Promise<Rotat
     for (const fix of found) {
       if (fix && pages[fix.page - 1]) fixes.push(fix);
     }
+  }
+  /*
+   * ★파일 하나에 한 줄★ (2026-10-30) — 쪽마다 남기면 60쪽 스캔이 60줄이다. 이 단계는 그동안 아무것도
+   * 남기지 않아, 비용 검토에서 판독비의 절반쯤으로 추정됐는데도 로그로는 0원이었다. 경로에 부른 곳을
+   * 붙인다(orient:intake · orient:parking-check …) — 올릴 때 세운 파일을 대조가 다시 세우는 것이 보인다.
+   * pages 는 판정한 쪽 수다(쪽마다 네 장으로 보낸다).
+   */
+  if (spent.pages > 0) {
+    logLlmCall({
+      route: `orient:${tag}`, model: ORIENTATION_MODEL, ms: Date.now() - started, pages: spent.pages,
+      usage: { input_tokens: spent.input, output_tokens: spent.output },
+    });
   }
   return fixes;
 }
@@ -196,7 +214,7 @@ async function buildRotationCandidates(
  * 같은 페이지를 네 방향으로 보여주고 똑바른 것을 고르게 한다.
  * 「몇 도 돌아갔나」를 절대값으로 묻는 것보다 안정적이다 — 위 실측표를 보라.
  */
-async function selectUprightRotation(candidates: RotationCandidate[]): Promise<number> {
+async function selectUprightRotation(candidates: RotationCandidate[], spent: Spent): Promise<number> {
   const content: Anthropic.ContentBlockParam[] = [
     {
       type: 'text',
@@ -231,6 +249,10 @@ async function selectUprightRotation(candidates: RotationCandidate[]): Promise<n
     },
     { timeout: ORIENTATION_TIMEOUT_MS }
   );
+  // 답을 못 읽어도 낸 토큰은 센다 — 고르기 전에 더한다
+  spent.pages += 1;
+  spent.input += message.usage?.input_tokens ?? 0;
+  spent.output += message.usage?.output_tokens ?? 0;
 
   const parsed = parseJson(message) as { candidate?: unknown };
   const selectedId = String(parsed.candidate ?? '').trim().toUpperCase();

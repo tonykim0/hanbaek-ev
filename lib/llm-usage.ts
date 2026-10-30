@@ -23,18 +23,30 @@ interface UsageLike {
 }
 
 /**
- * 눈대중용 단가 (100만 토큰당 달러) — claude-opus-5 는 2026-08-27, claude-opus-5-5 는 2026-10-02 기준.
+ * 눈대중용 단가 (100만 토큰당 달러) — claude-opus-5 는 2026-08-27, claude-opus-5-5 는 2026-10-02,
+ * 나머지는 2026-10-30 기준.
  *
  * ★청구서가 아니다★ — 어느 경로가 비싼지 견주는 데만 쓴다. 캐시 읽기는 입력의 0.1배(5.5 는 0.05배),
  * 캐시 쓰기는 1.25배다. 단가가 바뀌면 이 숫자도 바뀌므로 날짜를 같이 적어 둔다. 모르는 모델은 opus-5 값.
+ * ★코드에 적힌 모델은 다 여기 있어야 한다★ — 방향 판정의 하이쿠가 빠져 있어 opus 값(다섯 배)으로 셀 뻔했다
+ * (2026-10-30 비용 검토). test/conventions/llm-usage.test.ts 가 본다.
  */
-const PRICES: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
+type Price = { input: number; output: number; cacheRead: number; cacheWrite: number };
+const PRICES: Record<string, Price> = {
   'claude-opus-5': { input: 5, output: 25, cacheRead: 0.5, cacheWrite: 6.25 },
   'claude-opus-5-5': { input: 4, output: 20, cacheRead: 0.2, cacheWrite: 5 },
+  'claude-sonnet-5': { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
+  'claude-sonnet-4-6': { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
+  'claude-haiku-4-5': { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
 };
 
+/** 날짜가 붙은 이름(claude-haiku-4-5-20251001)도 같은 단가다. 없으면 undefined */
+export function priceOf(model: string): Price | undefined {
+  return PRICES[model] ?? PRICES[model.replace(/-\d{8}$/, '')];
+}
+
 export interface LlmCallLog {
-  /** 어느 경로인가 — 로그에서 이 이름으로 묶어 본다 (claude-import · partner-doc · intake-review) */
+  /** 어느 경로인가 — 로그에서 이 이름으로 묶어 본다 (claude-import · partner-doc · classify:intake · orient:parking-check) */
   route: string;
   model: string;
   /** 걸린 시간(ms) — 타임아웃을 늘릴지 판단하는 값이다 */
@@ -53,7 +65,7 @@ export function logLlmCall({ route, model, ms, pages, usage }: LlmCallLog): void
     const output = usage?.output_tokens ?? 0;
     const cacheRead = usage?.cache_read_input_tokens ?? 0;
     const cacheWrite = usage?.cache_creation_input_tokens ?? 0;
-    const PRICE = PRICES[model] ?? PRICES['claude-opus-5'];
+    const PRICE = priceOf(model) ?? PRICES['claude-opus-5'];
     const usd =
       (input * PRICE.input
         + output * PRICE.output
