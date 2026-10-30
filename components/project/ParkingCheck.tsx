@@ -1,9 +1,10 @@
 'use client';
 
 /**
- * 건축물대장 대조 — 주차면과 주소 (한백 지시 2026-10-16 「계약단계에서 건축물대장에 대한 에이전트를 하나 더」).
+ * 건축물대장 대조 — 주차면·주소·발급일 (한백 지시 2026-10-16 「계약단계에서 건축물대장에 대한 에이전트를 하나 더」).
  *   주차면: 건축물대장(K-apt·공문) = 사전현장컨설팅 결과서 = 설치신청서 · 열람용 아님
  *   주소:   설치신청서 주소가 도로명 주소 · 건축물대장 도로명주소와 같음
+ *   발급일: 건축물대장이 계약접수일로부터 3개월 안에 발급한 것 (2026-10-30)
  *
  * 계약 탭 서류 묶음 밑에 선다 — 대조하는 것이 그 위의 서류 칸 셋이고, 그 밑이 「계약 확인 완료」다(막는 자리 바로 위).
  * 기설치 대조(PreInstallCheck)와 같은 꼴이다: 머리(상태·대조 시각·다시 대조) → 서류마다 읽은 값 → 짚을 것 → 넘기기.
@@ -16,7 +17,8 @@
 import { useAction } from '@/lib/use-action';
 import { stampOf } from '@/lib/date';
 import {
-  outdatedCheck, parkingIssueCount, sameParkingFiles, type ParkingCheck, type ParkingIssueKey, type ParkingRead,
+  ISSUED_WITHIN_MONTHS, missedOf, outdatedCheck, parkingIssueCount, redatedCheck, sameParkingFiles,
+  type ParkingCheck, type ParkingIssueKey, type ParkingRead,
 } from '@/lib/parking-check';
 import { Btn, Err, GroupHead, Tag, TEXT } from '@/components/ui';
 import { CheckRunBtn } from './CheckRunBtn';
@@ -36,7 +38,9 @@ function Count({ value, basis }: { value: number | null; basis: number | null })
 }
 
 /** 어긋남(빨강) — 서류가 서로 다르거나 받을 수 없는 서류다. 나머지(못 읽음·빠짐)는 확인 필요(주황) */
-const DIFF_KEYS: ParkingIssueKey[] = ['consult-diff', 'apply-diff', 'view-only', 'split', 'address-diff', 'apply-not-road'];
+const DIFF_KEYS: ParkingIssueKey[] = [
+  'consult-diff', 'apply-diff', 'view-only', 'split', 'address-diff', 'apply-not-road', 'issued-old',
+];
 
 /**
  * 신청서 주소 줄 — 도로명인가 · 건축물대장과 같은가. 같으면 주소 한 번만 적는다(규칙 5), 다르면 건축물대장 것을 밑에 같이.
@@ -62,6 +66,24 @@ function Address({ check }: { check: ParkingCheck }) {
   );
 }
 
+/**
+ * 건축물대장 발급일 줄 — 계약접수일로부터 3개월 안인가. 장마다 따로 뗐으면 가장 이른 것이 정한다(lib/parking-check 6번 규칙).
+ * 견줄 발급용 건축물대장이 없으면(없음·열람용은 위 줄이 말한다) · 발급일을 보기 전의 결과(버전 3 전)면 「—」다.
+ */
+function Issued({ check }: { check: ParkingCheck }) {
+  const at = check.issued;
+  if (!at) return <span className="text-slate-500">—</span>;
+  if (!at.oldest) return <b className={TONE.unknown}>못 읽음</b>;
+  return (
+    <span className="tabular-nums">
+      <b className="whitespace-nowrap">{at.oldest}</b>{' '}
+      <b className={`whitespace-nowrap ${at.ok ? TONE.ok : TONE.diff}`}>
+        {ISSUED_WITHIN_MONTHS}개월 {at.ok ? '이내' : '넘음'}
+      </b>
+    </span>
+  );
+}
+
 /** 건축물대장 줄 — 발급용·열람용과, 주차면이 없으면 받친 것(K-apt·공문) */
 function Register({ check }: { check: ParkingCheck }) {
   const regs = check.reads.filter((r) => r.slot === 'bldgreg' && r.doc === '건축물대장');
@@ -81,12 +103,14 @@ function Register({ check }: { check: ParkingCheck }) {
 }
 
 export function ParkingCheckBlock({
-  projectId, check, currentFiles, canRun, step,
+  projectId, check, currentFiles, receivedOn, canRun, step,
 }: {
   projectId: string;
   check: ParkingCheck | null | undefined;
   /** 지금 세 칸(건축물대장·결과서·신청서)의 파일 주소 — 지난 대조와 다르면 「서류가 바뀜」 */
   currentFiles: string[];
+  /** 지금 계약접수일 — 대조가 발급일을 견준 날짜와 다르면 「계약접수일 바뀜」 */
+  receivedOn: string;
   /** 대조를 돌릴 수 있는가 — 한백 관리자 */
   canRun: boolean;
   /** 서류 묶음 번호 다음 — 계약 탭의 걸음 번호 */
@@ -96,8 +120,10 @@ export function ParkingCheckBlock({
   const accepting = useAction();
 
   const stale = !!check && !sameParkingFiles(check.files, currentFiles);
-  /* 견주는 것이 늘기 전의 결과(주소 없음) — 다시 돌려야 계약 확인이 열린다(parkingBlocker) */
+  /* 견주는 것이 늘기 전의 결과(주소·발급일 없음) — 다시 돌려야 계약 확인이 열린다(parkingBlocker) */
   const outdated = !!check && !stale && outdatedCheck(check);
+  /* 발급일을 견준 계약접수일을 그 뒤에 고쳤다 — 그 날짜로 다시 대조해야 계약 확인이 열린다(parkingBlocker) */
+  const redated = !!check && !stale && !outdated && redatedCheck(check, receivedOn);
   const n = check ? parkingIssueCount(check) : 0;
   /* 넘긴 것은 그 결과의 일이다 — 서류가 바뀌면 넘긴 것도 같이 무효다(parkingBlocker) */
   const accepted = check && !stale ? check.accepted ?? null : null;
@@ -118,7 +144,7 @@ export function ParkingCheckBlock({
         title="건축물대장 대조"
         action={canRun && (
           <CheckRunBtn
-            due={!check || stale || outdated || (check.unread.length > 0 && !accepted)}
+            due={!check || stale || outdated || redated || (check.unread.length > 0 && !accepted)}
             done={!!check}
             blocked={currentFiles.length === 0 ? '서류 없음 — 대조 불가' : null}
             busy={busy}
@@ -131,7 +157,8 @@ export function ParkingCheckBlock({
         {!check
           ? <Tag tone={canRun ? 'warn' : 'mute'}>대조 전</Tag>
           : stale ? <Tag tone="warn">서류가 바뀜 — 다시 대조</Tag>
-          : outdated ? <Tag tone="warn">주소 확인 추가 — 다시 대조</Tag>
+          : outdated ? <Tag tone="warn">{missedOf(check)} 확인 추가 — 다시 대조</Tag>
+          : redated ? <Tag tone="warn">계약접수일 바뀜 — 다시 대조</Tag>
           : n === 0 ? <Tag tone="ok">맞음{basis !== null ? ` · ${basis}면` : ''}</Tag>
           : (
             <>
@@ -145,6 +172,8 @@ export function ParkingCheckBlock({
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
           <dt className={TEXT.label}>건축물대장</dt>
           <dd className={TEXT.body}><Register check={check} /></dd>
+          <dt className={TEXT.label}>건축물대장 발급일</dt>
+          <dd className={TEXT.body}><Issued check={check} /></dd>
           <dt className={TEXT.label}>사전현장컨설팅 결과서</dt>
           <dd className={TEXT.body}><Count value={check.consult} basis={basis} /></dd>
           <dt className={TEXT.label}>설치신청서</dt>
@@ -187,6 +216,7 @@ export function ParkingCheckBlock({
               <li key={i} className="break-all">
                 {r.file} — {r.doc}
                 {r.viewOnly === true && ' · 열람용'}
+                {r.issued && ` · 발급 ${r.issued}`}
                 {r.parking !== null ? ` · ${r.parking}면` : ' · 주차면 없음'}
                 {r.address && ` · ${r.address}`}
               </li>
@@ -196,7 +226,7 @@ export function ParkingCheckBlock({
       )}
 
       {/* 넘기는 자리는 결과 밑이다 — 남은 것이 없으면 이미 통과라 자리가 없고, 서류가 바뀐 결과는 넘길 수 없다 */}
-      {check && canRun && !stale && !outdated && n > 0 && (
+      {check && canRun && !stale && !outdated && !redated && n > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           {accepted ? (
             <Btn kind="quiet" size="sm" busy={accepting.busy} busyLabel="취소 중…" onClick={() => accept(false)}>

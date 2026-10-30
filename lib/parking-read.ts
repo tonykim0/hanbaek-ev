@@ -1,7 +1,8 @@
 /**
  * 건축물대장 대조의 판독 — 건축물대장·K-apt·공문·사전현장컨설팅 결과서·설치신청서에 ★인쇄된 주차면 수★,
- * 건축물대장이 열람용인지, 그리고 ★건축물대장의 도로명주소와 설치신청서의 주소★를 읽는다(주소는 한백 지시 2026-10-16
- * 「설치신청서 주소가 도로명 주소인지 · 건축물대장 도로명 주소와 일치하는지」). 맞는지는 코드가 가른다(lib/parking-check) —
+ * 건축물대장이 열람용인지, ★건축물대장의 도로명주소와 설치신청서의 주소★, 그리고 ★건축물대장의 발급일★을 읽는다(주소는
+ * 한백 지시 2026-10-16 「설치신청서 주소가 도로명 주소인지 · 건축물대장 도로명 주소와 일치하는지」, 발급일은 2026-10-30
+ * 「건축물대장 발급일자가 계약접수일로부터 3개월이내인지」). 맞는지는 코드가 가른다(lib/parking-check) —
  * 판독에게 「맞는지 봐 달라」고 묻지 않는다(기설치 대조 lib/legacy-evidence 와 같은 까닭). 주소도 「도로명인가」를 묻지 않고
  * 적힌 그대로 받아 코드가 가른다.
  *
@@ -16,10 +17,17 @@
  *   ③ 둘 다 없으면 같은 칸의 K-apt·지자체 공문.
  *   미확인 하나: 「전기차」 줄이 자주식·기계식 대수에 이미 든 수인지(그러면 더하면 겹친다) — 샘플 7곳 모두 그 줄이 비어 있었다.
  *
+ * ★발급일은 첫 쪽 아래에 있다★ — 「이 등(초)본은 건축물대장의 원본내용과 틀림없음을 증명합니다」 줄 오른쪽의 「발급일: 2026년
+ * 10월 7일」(이 Mac 의 실제 건축물대장 PDF 622개 중 글자층에 발급일이 잡히는 302개가 다 「발급일:」이고(「발급일자」 하나),
+ * 299개는 첫 쪽이었다 · 글자층 없는 스캔본도 눈으로 본 것은 같은 자리였다).
+ * 맨 위의 「발급확인번호」는 날짜가 아니다. 「2쪽 중 제2쪽」만 떼어 온 파일에는 발급일이 없다 — 그때는 null 이다. 열람용에도
+ * 출력한 날이 「발급일」로 찍히지만(덕암아파트) 열람용은 따로 짚으니 판정이 그 날짜를 보지 않는다(lib/parking-check).
+ *
  * 서버 전용.
  */
 import { askPdfJson, preparePdfs } from './vision-ask';
 import { nameOfAnswer, shownName } from './check-kit';
+import { dayOf } from './fact-read';
 import { PARKING_DOCS, type ParkingDoc, type ParkingRead, type ParkingSlot } from './parking-check';
 
 const SLOT_NAME: Record<ParkingSlot, string> = {
@@ -36,7 +44,7 @@ function prompt(files: { name: string; slot: ParkingSlot }[]): string {
 ${files.map((f, i) => `${i + 1}. ${shownName(f.name)} (${SLOT_NAME[f.slot]})`).join('\n')}
 
 ## 답 모양
-{"docs":[{"originalName":"…","doc":"건축물대장","viewOnly":false,"parking":249,"address":"전라남도 광양시 광양읍 예구1길 8","otherAddresses":[]}]}
+{"docs":[{"originalName":"…","doc":"건축물대장","viewOnly":false,"parking":249,"address":"전라남도 광양시 광양읍 예구1길 8","otherAddresses":[],"issued":"2026-10-07"}]}
 
 ## 항목
 - 한 파일에 문서가 여럿 묶여 있을 수 있습니다(예: 건축물대장 뒤에 K-apt 화면 캡처). 문서마다 한 항목.
@@ -64,12 +72,17 @@ ${files.map((f, i) => `${i + 1}. ${shownName(f.name)} (${SLOT_NAME[f.slot]})`).j
   신청서: 설치 희망지(설치 장소)의 주소 — 별지 제5호는 「도로명 주소 :」 뒤에 적힌 주소. 다른 양식이면 설치 장소 주소 칸.
   다른 문서: null.
 - otherAddresses: 건축물대장만. 「건축물 현황」 표의 동마다 「도로명주소」 칸에 적힌 주소 중 위 address 와 다른 것(적힌 그대로).
-  없거나 비어 있으면 []. 다른 문서는 [].`;
+  없거나 비어 있으면 []. 다른 문서는 [].
+- issued: 건축물대장만. ★발급일★ — 첫 쪽 아래 「이 등(초)본은 건축물대장의 원본내용과 틀림없음을 증명합니다」 줄 오른쪽(또는
+  그 아래)의 「발급일: 2026년 10월 7일」을 YYYY-MM-DD 로 적습니다(→ "2026-10-07").
+  맨 위의 「발급확인번호」·「발급번호」는 날짜가 아닙니다. 건축물 현황·변동사항 표의 날짜(허가일·사용승인일·변동일)도 발급일이
+  아닙니다. 한 항목에 따로 발급한 장이 여럿 묶여 발급일이 여럿이면 가장 이른 날짜.
+  「발급일」이 안 보이면 null 입니다(뒤쪽 장만 있는 파일 등). 다른 문서는 null.`;
 }
 
 interface RawDoc {
   originalName?: unknown; doc?: unknown; viewOnly?: unknown; parking?: unknown;
-  address?: unknown; otherAddresses?: unknown;
+  address?: unknown; otherAddresses?: unknown; issued?: unknown;
 }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
@@ -98,6 +111,8 @@ export function parkingReadsOf(raw: unknown, files: { name: string; slot: Parkin
       otherAddresses: doc === '건축물대장' && Array.isArray(d.otherAddresses)
         ? d.otherAddresses.flatMap((a) => (str(a) ? [str(a) as string] : []))
         : [],
+      // 발급일은 건축물대장만 — 달력에 없는 날·먼 앞날은 잘못 읽은 것이라 버린다(fact-read dayOf)
+      issued: doc === '건축물대장' ? dayOf(str(d.issued)) : null,
     }];
   });
 }

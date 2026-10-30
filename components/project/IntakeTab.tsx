@@ -14,7 +14,7 @@ import { contractDocsLockedWhy, gateContextOf, nextStatusOf, prevStatusOf } from
 import { HANDOFF_STATUS } from '@/lib/board';
 import { evaluateDocs, needsPreInstallCheck, type DocReq } from '@/lib/doc-rules';
 import { bundledAsPdf, checkedFilesOf, preCheckBlocker } from '@/lib/preinstall-check';
-import { parkingBlocker, parkingFilesOf, VIEW_ONLY_REASON, viewOnlyNow } from '@/lib/parking-check';
+import { parkingBlocker, parkingFilesOf, registerRejectOf } from '@/lib/parking-check';
 import { ParkingCheckBlock } from './ParkingCheck';
 import { needsCpoSeal } from '@/lib/cpo-seal';
 import { DocDelete, DocFileActions, DocUpload, DownloadAll } from '@/components/DocFiles';
@@ -534,7 +534,8 @@ export function IntakeTab({
   const shownGroups = DOC_GROUPS.filter((g) => evaluated.some((d) => d.req === g.req && !d.preinstall));
   /* 건축물대장 대조가 보는 세 칸(건축물대장·결과서·신청서)의 지금 파일 — 지난 대조와 견준다 */
   const parkingFiles = parkingFilesOf([...byKind.values()]);
-  const viewOnly = viewOnlyNow(parkingCheck, parkingFiles);
+  /* 대조가 열람용이나 오래된 발급일을 짚었으면 건축물대장 칸의 반려가 그 사유를 들고 연다(기설치의 직인 없음과 같다) */
+  const registerReject = registerRejectOf(parkingCheck, parkingFiles, project.createdAt);
   /* 지금 서 있는 보완요청 — 파일 없이 반려로 세워진 칸 (되돌릴 수 있어야 한다) */
   const asked = evaluated.filter((d) => {
     const doc = byKind.get(d.key);
@@ -836,8 +837,7 @@ export function IntakeTab({
                               kind={d.key}
                               status={doc?.status ?? 'none'}
                               hasFile={(doc?.files.length ?? 0) > 0}
-                              /* 대조가 열람용을 짚었으면 건축물대장 칸의 반려가 그 사유를 들고 연다(기설치의 직인 없음과 같다) */
-                              suggest={d.key === 'bldgreg' && viewOnly ? { label: '열람용', reason: VIEW_ONLY_REASON } : null}
+                              suggest={d.key === 'bldgreg' ? registerReject : null}
                             />
                           )}
                           {/*
@@ -873,6 +873,7 @@ export function IntakeTab({
                 projectId={projectId}
                 check={parkingCheck}
                 currentFiles={parkingFiles}
+                receivedOn={project.createdAt}
                 canRun={canReview}
                 step={shownGroups.length + 1}
               />
@@ -942,6 +943,7 @@ export function IntakeTab({
               needed: !contract.docsExempt,
               check: parkingCheck,
               currentFiles: parkingFiles,
+              receivedOn: project.createdAt,
             })}
           />
         )}

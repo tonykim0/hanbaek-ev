@@ -1,5 +1,5 @@
 /**
- * 건축물대장 대조(주차면·주소)가 계약 확인을 막는다 (한백 결정 2026-10-16 「막는다」).
+ * 건축물대장 대조(주차면·주소·발급일)가 계약 확인을 막는다 (한백 결정 2026-10-16 「막는다」 · 발급일 2026-10-30).
  *
  * 판독은 돌리지 않는다 — 결과를 저장소에 바로 넣고, 계약 확인(confirmContract)과 「확인함」 라우트가 그것을 어떻게
  * 보는지만 본다. 판정 자체는 test/parking-check.test.ts 가 본다. 현장은 money-kit 의 「계약 확인 직전」 현장이다
@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { POST as ACCEPT } from '@/app/api/projects/[id]/parking/check/accept/route';
 import { getRepository } from '@/lib/data';
+import { shiftMonths } from '@/lib/date';
 import { getDb } from '@/lib/db/client';
 import { parkingChecks } from '@/lib/db/schema';
 import { PARKING_CHECK_VERSION, parkingFilesOf, type ParkingCheck } from '@/lib/parking-check';
@@ -56,9 +57,16 @@ describe('건축물대장 대조 — 계약 확인의 조건', () => {
       await expect(repo.confirmContract(id, true, admin)).rejects.toThrow(/건축물대장 대조 서류 바뀜/);
       await expect(repo.acceptParkingCheck(id, left.checkedAt, true, admin)).rejects.toThrow(/서류가 바뀌었습니다/);
 
-      // 주소를 견주기 전(버전 1)의 결과는 맞음이어도 다시 대조해야 한다 — 그 항목을 안 봤다
+      // 주소·발급일을 견주기 전(버전 1)의 결과는 맞음이어도 다시 대조해야 한다 — 그 항목을 안 봤다
       await repo.saveParkingCheck(id, checkOf(await filesNow(id), { version: undefined }), admin);
-      await expect(repo.confirmContract(id, true, admin)).rejects.toThrow(/건축물대장 다시 대조 — 주소 확인 추가/);
+      await expect(repo.confirmContract(id, true, admin)).rejects.toThrow(/건축물대장 다시 대조 — 주소·발급일 확인 추가/);
+
+      // 발급일을 견준 뒤 한백이 계약접수일을 고치면 다시 대조해야 한다 — 그 결과는 옛 날짜로 본 것이다
+      const receivedOn = (await repo.getProject(id, viewerOf(USERS.admin)))!.project.createdAt;
+      const issued = { receivedOn, from: shiftMonths(receivedOn, -3), oldest: receivedOn, ok: true };
+      await repo.saveParkingCheck(id, checkOf(await filesNow(id), { issued }), admin);
+      await repo.setProjectFacts(id, { createdAt: shiftMonths(receivedOn, -1) }, admin);
+      await expect(repo.confirmContract(id, true, admin)).rejects.toThrow(/건축물대장 다시 대조 — 계약접수일 바뀜/);
 
       await repo.saveParkingCheck(id, checkOf(await filesNow(id)), admin);
       await expect(repo.confirmContract(id, true, admin)).resolves.toBeUndefined();

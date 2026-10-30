@@ -1,9 +1,9 @@
 /**
- * 건축물대장 대조(주차면·주소)를 돌린다 — 한 곳 (서버 전용).
+ * 건축물대장 대조(주차면·주소·발급일)를 돌린다 — 한 곳 (서버 전용).
  *
  * 한백 지시 2026-10-16 「계약단계에서 건축물대장에 대한 에이전트를 하나 더」. 건축물대장 칸(K-apt·공문이 같이 온다)·
- * 사전현장컨설팅 결과서·설치신청서의 주차면·열람용 여부·주소를 판독이 읽고(lib/parking-read), 맞는지는 코드가 가른다
- * (lib/parking-check). 부르는 곳 둘 — 기설치 대조(lib/preinstall-run)와 같다:
+ * 사전현장컨설팅 결과서·설치신청서의 주차면·열람용 여부·주소와 건축물대장 발급일을 판독이 읽고(lib/parking-read), 맞는지는
+ * 코드가 가른다(lib/parking-check — 발급일은 현장의 계약접수일에 견준다). 부르는 곳 둘 — 기설치 대조(lib/preinstall-run)와 같다:
  *   · 한백이 「대조」를 누를 때 — app/api/projects/[id]/parking/check
  *   · ★접수 단계에서 저절로★ — 세 칸에 파일이 들고 날 때와 협력사가 「계약서 접수」를 누를 때(scheduleParkingCheck).
  *     판독이 수십 초라 접수를 기다리게 하지 않고 응답 뒤에 돈다(lib/background).
@@ -17,7 +17,7 @@ import { loadParkingCheck } from '@/lib/data/store/parking-check';
 import { evaluateDocs, buildDocContext } from '@/lib/doc-rules';
 import { readParking } from '@/lib/parking-read';
 import {
-  judgeParking, outdatedCheck, PARKING_CHECK_VERSION, PARKING_SLOTS, parkingFilesOf, sameParkingFiles,
+  judgeParking, outdatedCheck, PARKING_CHECK_VERSION, PARKING_SLOTS, parkingFilesOf, redatedCheck, sameParkingFiles,
   type ParkingCheck, type ParkingSlot,
 } from '@/lib/parking-check';
 import { background } from '@/lib/background';
@@ -47,7 +47,8 @@ export async function runParkingCheck(detail: ProjectDetail): Promise<ParkingChe
     checkedAt: new Date().toISOString(),
     files: all.map((f) => f.url),
     reads,
-    ...judgeParking(reads, { applyRequired, filed }),
+    // 발급일은 계약접수일(머리말의 그 칸 · createdAt)에 견준다 — 6번 규칙
+    ...judgeParking(reads, { applyRequired, filed, receivedOn: p.createdAt }),
     unread: [...failed, ...unread],
     version: PARKING_CHECK_VERSION,
   };
@@ -78,11 +79,12 @@ export function scheduleParkingCheck(projectId: string, kind?: string, settleMs 
     const now = await currentFiles(projectId);
     if (!sameParkingFiles(before, now) || now.length === 0) return;
     const prev = await loadParkingCheck(projectId);
-    // 같은 서류로 이미 대조했으면 다시 안 돈다 — 견주는 것이 늘기 전의 결과(주소 없음)면 다시 돈다
-    if (prev && sameParkingFiles(prev.files, now) && !outdatedCheck(prev)) return;
     const repo = getRepository();
     const detail = await repo.getProject(projectId, { role: AUTO.role, org: null });
     if (!detail) return;
+    // 같은 서류로 이미 대조했으면 다시 안 돈다 — 견주는 것이 늘기 전의 결과거나 그 뒤 계약접수일을 고쳤으면 다시 돈다
+    if (prev && sameParkingFiles(prev.files, now) && !outdatedCheck(prev)
+      && !redatedCheck(prev, detail.project.createdAt)) return;
     const check = await runParkingCheck(detail);
     if (!sameParkingFiles(check.files, await currentFiles(projectId))) return;
     await repo.saveParkingCheck(projectId, check, AUTO);

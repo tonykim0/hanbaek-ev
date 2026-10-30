@@ -53,6 +53,16 @@ export function monthShift(month: string, delta: number): string {
 }
 
 /**
+ * `2026-10-30` 에서 delta 달 옮긴 날. 옮긴 달에 같은 날이 없으면 그 달의 끝날이다 — 5월 31일의 석 달 전은 2월 28일
+ * (3월 3일로 넘치지 않는다). monthShift 처럼 글자를 쪼개 세므로 시간대와 무관하다.
+ */
+export function shiftMonths(day: string, delta: number): string {
+  const [y, m, d] = day.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m + delta, 0)).getUTCDate(); // 옮긴 달의 끝날 — 다음 달의 0일
+  return new Date(Date.UTC(y, m - 1 + delta, Math.min(d, last))).toISOString().slice(0, 10);
+}
+
+/**
  * 마지막 진척 후 경과일.
  *
  * 저장된 날짜도 한국 달력이고 오늘도 한국 달력이라 둘을 같은 자로 센다. 예전에는 오늘만

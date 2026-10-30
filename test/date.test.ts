@@ -3,7 +3,7 @@
  * 러너가 도는지 확인하는 첫 파일이기도 하다.
  */
 import { describe, expect, it } from 'vitest';
-import { dayOf, daysSince, elapsedLabel, monthShift, stampOf, thisMonth, today } from '@/lib/date';
+import { dayOf, daysSince, elapsedLabel, monthShift, shiftMonths, stampOf, thisMonth, today } from '@/lib/date';
 
 /** 한국 시각 t 를 UTC Date 로 — 테스트가 시간대에 안 흔들리게 직접 만든다 */
 const kst = (iso: string) => new Date(Date.parse(`${iso}+09:00`));
@@ -32,6 +32,19 @@ describe('thisMonth · monthShift', () => {
   it('해를 넘어가도 센다', () => {
     expect(monthShift('2026-01', -1)).toBe('2025-12');
     expect(monthShift('2026-12', 1)).toBe('2027-01');
+  });
+});
+
+describe('shiftMonths — 날에서 달 옮기기 (건축물대장 발급일 3개월)', () => {
+  it('같은 날로 옮긴다 · 해를 넘어가도 센다', () => {
+    expect(shiftMonths('2026-10-30', -3)).toBe('2026-07-30');
+    expect(shiftMonths('2027-01-15', -3)).toBe('2026-10-15');
+    expect(shiftMonths('2026-11-30', 3)).toBe('2027-02-28');
+  });
+  it('그 달에 같은 날이 없으면 그 달의 끝날이다 — 다음 달로 넘치지 않는다', () => {
+    expect(shiftMonths('2026-05-31', -3)).toBe('2026-02-28');
+    expect(shiftMonths('2028-05-31', -3)).toBe('2028-02-29');
+    expect(shiftMonths('2026-12-31', -3)).toBe('2026-09-30');
   });
 });
 

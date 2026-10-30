@@ -134,13 +134,14 @@ export const contractStore: Pick<
         if (blocker) throw new Error(`${blocker} — 기설치 대조가 끝나야 계약을 확인할 수 있습니다.`);
         /*
          * ★건축물대장 대조도 조건이다★ (한백 결정 2026-10-16 「막는다」) — 주차면: 건축물대장(K-apt·공문) = 결과서 =
-         * 신청서 · 열람용 아님 / 주소: 신청서가 도로명이고 건축물대장 도로명주소와 같음. 화면의 단추와 같은 판정
-         * (parkingBlocker)이고, 이관 현장은 같이 면제한다.
+         * 신청서 · 열람용 아님 / 주소: 신청서가 도로명이고 건축물대장 도로명주소와 같음 / 발급일: 계약접수일로부터 3개월
+         * 안(2026-10-30). 화면의 단추와 같은 판정(parkingBlocker)이고, 이관 현장은 같이 면제한다.
          */
         const parking = parkingBlocker({
           needed: !state.docsExempt,
           check: await loadParkingCheck(projectId, tx),
           currentFiles: parkingFilesOf(record.documents),
+          receivedOn: record.project.createdAt,
         });
         if (parking) throw new Error(`${parking} — 건축물대장 대조가 끝나야 계약을 확인할 수 있습니다.`);
       }
