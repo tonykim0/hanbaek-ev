@@ -482,9 +482,8 @@ export function IntakeTab({
    * 가리킨다 — 시공 탭은 이미 nextStatusOf 로 묻는다(ConstructionTab).
    */
   const gate = gateContextOf(project);
-  const nextStep = status === '계약완료' || status === HANDOFF_STATUS
-    ? nextStatusOf(status, gate)
-    : null;
+  const pushesFrom = (st: ProcessStatus | null) => st === '계약완료' || st === HANDOFF_STATUS;
+  const nextStep = pushesFrom(status) ? nextStatusOf(status, gate) : null;
 
   /*
    * ★밀었으면 되돌릴 자리도 같이 둔다★ (한백 지적 2026-09-01, 화면 규칙 7).
@@ -494,10 +493,16 @@ export function IntakeTab({
    * 확인하는 수밖에 없었다(한 걸음 되돌리려고 두 걸음을 무른다). 되돌리는 자리는 시공
    * 탭에 있었는데, 계약 보드를 보고 있는 사람이 시공 탭을 열어 볼 이유가 없다.
    *
-   * 「운영사 계약서 제출」일 때만이다 — 그 칸에서는 미는 단추(행위신고 로 넘기기)와 나란히
-   * 선다. 행위신고부터는 시공 탭 스테퍼가 밀고 되돌린다(화면 규칙 5).
+   * ★이 탭이 밀어 들어간 칸마다 선다 — 앞 칸이 미는 자리(pushesFrom)면 되돌린다★ (한백 지적 2026-10-30
+   * 「운영사 계약제출에서 행위신고 넘어갔다가 취소하면 … 계약검토로 넘어가네」). 되돌리기를 「운영사 계약서 제출일
+   * 때」로 따로 적어 두었더니, 2026-09-22 에 「행위신고 로 넘기기」를 더할 때 행위신고에서 되돌리는 자리가 같이
+   * 안 생겨 위와 같은 일이 그 칸에서 다시 났다 — 남은 「취소」가 확인 취소뿐이었다. 확인 취소는 공정 칸을 그대로
+   * 둔다(착공 뒤 서류를 고치게 계약을 다시 여는 단추라 공정을 지우면 안 된다) — 그래서 다시 확인하면 행위신고로
+   * 돌아갔다. 미는 자리에서 끌어내므로 미는 칸이 늘면 되돌리기도 같이 는다. 그 뒤 칸은 이 탭이 밀지 않으니 시공
+   * 탭 스테퍼가 밀고 되돌린다(화면 규칙 5).
    */
-  const backStep = status === HANDOFF_STATUS ? prevStatusOf(status, gate) : null;
+  const prevStep = prevStatusOf(status, gate);
+  const backStep = pushesFrom(prevStep) ? prevStep : null;
 
   const requiredHere = evaluated.filter((d) => d.req === 'm' && !d.preinstall);
   const requiredDone = requiredHere.filter((d) => {
