@@ -36,14 +36,37 @@ import { logLlmCall } from './llm-usage';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-/** 방향만 보면 되므로 빠르고 싼 모델을 쓴다 */
-const ORIENTATION_MODEL = 'claude-haiku-4-5-20251001';
+/** effort 는 이 SDK(0.52)의 타입에 없다 — 본문은 받은 그대로 실려 간다 */
+type CreateWithOutputConfig = Anthropic.MessageCreateParamsNonStreaming & {
+  output_config?: { effort?: 'low' | 'medium' | 'high' };
+};
+
+/**
+ * 방향만 보면 되므로 빠르고 싼 모델을 쓴다.
+ *
+ * ★Haiku 5.5 (2026-10-30, 4.5 에서 옮김)★ — 같은 요청에 토큰도 같고(쪽당 ~8.8천) 단가가 1/10 이다. 바로 선 실제 쪽
+ * 77장(스캔 54 · 가로 16 · 옆으로 누운 스캔 포함)을 네 방향으로 돌려 두 번 물었더니 616번 중 611번 맞았다 — 틀리거나
+ * 답을 못 낸 4번은 가로로 스캔한 건축 도면 한 장이고(나머지 하나는 연결 오류), 그 쪽은 4.5 도 틀렸다. 같은 15쪽에서는
+ * 둘 다 58/60 이었고, 실제 여러 쪽 파일 넷(34쪽)은 두 모델의 답이 한 쪽도 안 갈렸다.
+ * ★생각은 끄지 않고 effort low★ — 끄면 같은 시험에서 7번 틀렸다(계약서 · 가로 표 · 도면). 생각도 max_tokens 에
+ * 들어가므로 넉넉히 둔다(200 이면 생각하다 답 없이 끝난다). 답을 못 내면 그 쪽은 원본 방향으로 남는다(아래).
+ */
+const ORIENTATION_MODEL = 'claude-haiku-5-5';
+const ORIENTATION_MAX_TOKENS = 1024;
 const ORIENTATION_TIMEOUT_MS = 60_000;
 
-/** 한 파일 안에서 동시에 판정할 페이지 수 — API 를 한꺼번에 두드리지 않는다 */
-const PAGE_CONCURRENCY = 6;
-/** 한 ZIP 안에서 동시에 다룰 파일 수 (페이지 동시 수와 곱해져 실제 동시 호출이 된다) */
-const FILE_CONCURRENCY = 2;
+/**
+ * 한꺼번에 날아가는 방향 판정 요청의 상한 — 파일을 가리지 않고 같이 쓴다.
+ *
+ * ★쪽을 묶음으로 기다리지 않는다★ (2026-10-30) — 5.5 는 한 번 묻는 데 4.5 의 두 배쯤 걸린다(중앙 2.4초 · p90 6초).
+ * 여섯 쪽씩 묶어 묶음마다 기다리면 13쪽 계약서가 9초에서 13.5초가 됐고, 쪽을 한꺼번에 물으니 8.5초로 지금과 같았다.
+ * 그래서 쪽마다 자리가 나는 대로 묻는다. 상한을 정하는 것은 메모리다 — 요청 하나가 쪽을 네 장으로 싣는다(실측 중앙
+ * 1MB · p99 10MB, base64 와 본문까지 세 배쯤). 전에는 파일 둘 × 여섯 쪽 = 12 였다. API 한도(분당 1만 요청 ·
+ * 입력 500만 토큰)는 멀다.
+ */
+const MAX_IN_FLIGHT = 16;
+/** 한 ZIP 안에서 동시에 여는 파일 수 — 한두 쪽짜리 파일 여럿이 차례를 기다리지 않게. 요청 수는 위 상한이 막는다 */
+const FILE_CONCURRENCY = 4;
 /**
  * 여기까지만 판정한다. 페이지마다 한 번씩 부르므로 아주 긴 스캔은 접수 시간을 잡아먹는다.
  * 넘는 페이지는 원본 방향으로 남는다 — 잘못 돌리는 것보다 그대로 두는 편이 안전하다.
@@ -63,6 +86,21 @@ type RotationFix = { page: number; targetRotation: number };
 
 /** 파일 하나의 방향 판정에 쓴 토큰 — 쪽마다 부른 것을 모은다 */
 type Spent = { pages: number; input: number; output: number };
+
+/* 모든 방향 판정이 같이 쓰는 자리 MAX_IN_FLIGHT 개 — 끝난 것이 기다리던 다음 것에 자리를 바로 넘긴다 */
+let inFlight = 0;
+const waiting: Array<() => void> = [];
+async function inSlot<T>(work: () => Promise<T>): Promise<T> {
+  if (inFlight < MAX_IN_FLIGHT) inFlight += 1;
+  else await new Promise<void>((resolve) => waiting.push(resolve));
+  try {
+    return await work();
+  } finally {
+    const next = waiting.shift();
+    if (next) next();
+    else inFlight -= 1;
+  }
+}
 
 /**
  * PDF 한 개를 바로 세운다. 고칠 페이지가 없으면 원본 버퍼를 그대로 돌려준다
@@ -137,41 +175,36 @@ async function detectRotationFixes(doc: PDFDocument, tag: string): Promise<Rotat
   const started = Date.now();
   const spent: Spent = { pages: 0, input: 0, output: 0 };
 
-  for (let from = 0; from < limit; from += PAGE_CONCURRENCY) {
-    const batch = Array.from(
-      { length: Math.min(PAGE_CONCURRENCY, limit - from) },
-      (_, k) => from + k
-    );
-    const found = await Promise.all(
-      batch.map(async (pageIndex) => {
-        try {
-          const candidates = await buildRotationCandidates(doc, pageIndex);
-          /*
-           * ★한 쪽이 너무 크면 묻지 않는다★ (2026-10-01) — 같은 쪽을 네 장으로 실어 보내므로
-           * 사진 한 장이 27MB 인 쪽은 요청이 100MB 를 넘는다. 거절만 당하는 게 아니라 그 연결
-           * 오류(HTTP/2 ENHANCE_YOUR_CALM)가 같은 클라이언트의 판독 호출까지 끊었다.
-           * 그 쪽은 원본 방향으로 둔다 — 잘못 돌리는 것보다 그대로 두는 편이 안전하다(머리말).
-           */
-          const bytes = candidates.reduce((n, c) => n + c.pdf.length, 0);
-          if (bytes > ORIENT_REQUEST_BUDGET) {
-            console.warn(`[${tag}] ${pageIndex + 1}p 가 ${Math.round(bytes / 1024 / 1024)}MB 라 방향을 묻지 않습니다 — 원본 방향 유지`);
-            return null;
-          }
-          const upright = await selectUprightRotation(candidates, spent);
-          /*
-           * 후보는 원래 회전을 덮어쓴 절대값이다 — 똑바르게 보인 후보의 값이 곧 목표값이다.
-           * (원래 값에 더하면 두 번 돌아간다)
-           */
-          return { page: pageIndex + 1, targetRotation: upright };
-        } catch (err) {
-          console.warn(`[${tag}] ${pageIndex + 1}p 회전 감지 실패 — 원본 방향 유지:`, err);
+  // 쪽마다 자리가 나는 대로 — 후보도 자리 안에서 만든다(날아가는 것만 메모리에 있게)
+  const found = await Promise.all(
+    Array.from({ length: limit }, (_, pageIndex) => inSlot(async () => {
+      try {
+        const candidates = await buildRotationCandidates(doc, pageIndex);
+        /*
+         * ★한 쪽이 너무 크면 묻지 않는다★ (2026-10-01) — 같은 쪽을 네 장으로 실어 보내므로
+         * 사진 한 장이 27MB 인 쪽은 요청이 100MB 를 넘는다. 거절만 당하는 게 아니라 그 연결
+         * 오류(HTTP/2 ENHANCE_YOUR_CALM)가 같은 클라이언트의 판독 호출까지 끊었다.
+         * 그 쪽은 원본 방향으로 둔다 — 잘못 돌리는 것보다 그대로 두는 편이 안전하다(머리말).
+         */
+        const bytes = candidates.reduce((n, c) => n + c.pdf.length, 0);
+        if (bytes > ORIENT_REQUEST_BUDGET) {
+          console.warn(`[${tag}] ${pageIndex + 1}p 가 ${Math.round(bytes / 1024 / 1024)}MB 라 방향을 묻지 않습니다 — 원본 방향 유지`);
           return null;
         }
-      })
-    );
-    for (const fix of found) {
-      if (fix && pages[fix.page - 1]) fixes.push(fix);
-    }
+        const upright = await selectUprightRotation(candidates, spent);
+        /*
+         * 후보는 원래 회전을 덮어쓴 절대값이다 — 똑바르게 보인 후보의 값이 곧 목표값이다.
+         * (원래 값에 더하면 두 번 돌아간다)
+         */
+        return { page: pageIndex + 1, targetRotation: upright };
+      } catch (err) {
+        console.warn(`[${tag}] ${pageIndex + 1}p 회전 감지 실패 — 원본 방향 유지:`, err);
+        return null;
+      }
+    }))
+  );
+  for (const fix of found) {
+    if (fix && pages[fix.page - 1]) fixes.push(fix);
   }
   /*
    * ★파일 하나에 한 줄★ (2026-10-30) — 쪽마다 남기면 60쪽 스캔이 60줄이다. 이 단계는 그동안 아무것도
@@ -241,14 +274,13 @@ async function selectUprightRotation(candidates: RotationCandidate[], spent: Spe
       + '내용은 추출하지 말고 JSON 하나만 출력하세요: {"candidate":"A"}',
   });
 
-  const message = await anthropic.messages.create(
-    {
-      model: ORIENTATION_MODEL,
-      max_tokens: 200,
-      messages: [{ role: 'user', content }],
-    },
-    { timeout: ORIENTATION_TIMEOUT_MS }
-  );
+  const params: CreateWithOutputConfig = {
+    model: ORIENTATION_MODEL,
+    max_tokens: ORIENTATION_MAX_TOKENS,
+    output_config: { effort: 'low' },
+    messages: [{ role: 'user', content }],
+  };
+  const message = await anthropic.messages.create(params, { timeout: ORIENTATION_TIMEOUT_MS });
   // 답을 못 읽어도 낸 토큰은 센다 — 고르기 전에 더한다
   spent.pages += 1;
   spent.input += message.usage?.input_tokens ?? 0;

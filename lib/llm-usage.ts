@@ -38,6 +38,8 @@ const PRICES: Record<string, Price> = {
   'claude-sonnet-5': { input: 2, output: 10, cacheRead: 0.2, cacheWrite: 2.5 },
   'claude-sonnet-4-6': { input: 3, output: 15, cacheRead: 0.3, cacheWrite: 3.75 },
   'claude-haiku-4-5': { input: 1, output: 5, cacheRead: 0.1, cacheWrite: 1.25 },
+  // 프롬프트 10만 토큰까지의 값 — 넘으면 다섯 배다. 방향 판정은 한 번에 ~9천이라 안 넘는다
+  'claude-haiku-5-5': { input: 0.1, output: 0.5, cacheRead: 0.01, cacheWrite: 0.125 },
 };
 
 /** 날짜가 붙은 이름(claude-haiku-4-5-20251001)도 같은 단가다. 없으면 undefined */

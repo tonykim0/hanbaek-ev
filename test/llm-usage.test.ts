@@ -50,7 +50,7 @@ describe('방향 판정 — 파일 하나에 한 줄', () => {
     await uprightPdf(await pdfOf(3), 'parking-check');
     expect(create).toHaveBeenCalledTimes(3);
     expect(lines()).toHaveLength(1);
-    expect(lines()[0]).toMatch(/^\[llm\] orient:parking-check model=claude-haiku-4-5\S* ms=\d+ pages=3 in=300 out=21 /);
+    expect(lines()[0]).toMatch(/^\[llm\] orient:parking-check model=claude-haiku-5-5 ms=\d+ pages=3 in=300 out=21 /);
   });
 
   it('답을 못 읽은 쪽도 낸 토큰은 센다', async () => {
