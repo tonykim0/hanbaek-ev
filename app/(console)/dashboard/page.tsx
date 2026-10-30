@@ -38,7 +38,14 @@ export default async function DashboardPage({
   const session = await getSessionUser();
   if (!session) redirect('/login?next=/dashboard');
 
-  const all = await getRepository().listProjects(viewerOf(session));
+  /*
+   * ★계약중단 현장은 세지 않는다★ (한백 지시 2026-10-30 「수주현황에서는 빼줘」).
+   * 패스스루는 실제로 깔리는 대수라 빼지 않고 회색으로 쌓지만(아래 byMonth), 멈춘 계약은 깔리지 않는 대수다 —
+   * 넣으면 합계부터 사실이 아니다. 여기서 한 번 거르므로 월별·누적·수주 구성·연도 탭이 같은 답을 한다.
+   * 멈춘 현장은 계약 보드의 계약중단 칸에 그대로 서고, 「현장 재개」하면 저절로 다시 센다.
+   * 기성관리·정산현황도 같은 이유로 뺀다(store/payouts).
+   */
+  const all = (await getRepository().listProjects(viewerOf(session))).filter((p) => !p.holdState);
   // 업체별 쪼개기는 「전 현장을 보는 눈」의 것이다 — 열람 전용도 본다
   const isAdmin = isHanbaek(session.role);
   const thisMonth = seoulMonth();
