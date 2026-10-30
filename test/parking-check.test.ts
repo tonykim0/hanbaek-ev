@@ -6,8 +6,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  isRoadAddress, judgeParking, PARKING_CHECK_VERSION, parkingBlocker, registerRejectOf, roadKeyOf, VIEW_ONLY_REASON,
-  type ParkingCheck, type ParkingRead,
+  isRoadAddress, judgeParking, PARKING_CHECK_VERSION, parkingBlocker, registerRejectOf, reusableReads, roadKeyOf,
+  VIEW_ONLY_REASON, type ParkingCheck, type ParkingRead,
 } from '@/lib/parking-check';
 import { parkingReadsOf } from '@/lib/parking-read';
 import { nameOfAnswer, shownName } from '@/lib/check-kit';
@@ -275,6 +275,67 @@ describe('주차면 판독의 답 다듬기', () => {
       { originalName: '설치신청서.pdf', doc: '신청서', parking: 310 },
     ] }, nfd);
     expect(reads.map((r) => [r.file, r.slot])).toEqual(nfd.map((f) => [f.name, f.slot]));
+  });
+
+  it('파일 주소를 주면 판독마다 같이 남긴다 — 다음 자동 대조가 그 파일을 다시 읽지 않게', () => {
+    const reads = parkingReadsOf({ docs: [
+      { originalName: '건축물대장+kapt.pdf', doc: '건축물대장', parking: null },
+      { originalName: '건축물대장+kapt.pdf', doc: 'K-apt', parking: 90 },
+    ] }, [{ name: '건축물대장+kapt.pdf', slot: 'bldgreg', url: 'https://blob/r1.pdf' }]);
+    expect(reads.map((r) => r.url)).toEqual(['https://blob/r1.pdf', 'https://blob/r1.pdf']);
+  });
+});
+
+/*
+ * 지난 7일 이 대조 127번 중 110번이 서류가 들고 날 때 저절로 돈 것이었고, 그때마다 세 칸을 전부 다시 읽었다(2026-10-30 비용 검토).
+ * 파일은 올릴 때마다 새 주소라 주소가 같으면 같은 파일이다 — 그 판독은 다시 쓴다.
+ */
+describe('자동 대조는 바뀐 파일만 읽는다', () => {
+  const reg = { name: '건축물대장.pdf', url: 'https://blob/r1.pdf', slot: 'bldgreg' as const };
+  const consult = { name: '결과서.pdf', url: 'https://blob/c1.pdf', slot: 'consult' as const };
+  const apply = { name: '신청서.pdf', url: 'https://blob/a1.pdf', slot: 'apply' as const };
+  const prev: ParkingCheck = {
+    checkedAt: '2026-10-30T01:00:00.000Z', files: [reg.url, consult.url], basis: null, consult: null, apply: null,
+    applyChecked: false, issued: null, issues: [], unread: [], version: PARKING_CHECK_VERSION,
+    reads: [
+      read({ file: reg.name, url: reg.url, parking: 249 }),
+      read({ file: reg.name, url: reg.url, doc: 'K-apt', viewOnly: null, parking: 249 }),
+      read({ file: consult.name, url: consult.url, slot: 'consult', doc: '결과서', viewOnly: null, parking: 249 }),
+    ],
+  };
+
+  it('★신청서 한 장이 새로 오면 그 한 장만 읽는다★ — 건축물대장(문서 둘)·결과서의 판독은 그대로', () => {
+    const { kept, toRead } = reusableReads(prev, [reg, consult, apply]);
+    expect(toRead).toEqual([apply]);
+    expect(kept).toEqual(prev.reads);
+  });
+
+  it('한 장을 빼면 읽을 것이 없다 — 남은 파일의 판독만 다시 가른다', () => {
+    const { kept, toRead } = reusableReads(prev, [reg]);
+    expect(toRead).toEqual([]);
+    expect(kept.map((r) => r.doc)).toEqual(['건축물대장', 'K-apt']);
+  });
+
+  it('같은 칸에 새로 올린 파일은 새 주소라 다시 읽는다', () => {
+    const again = { ...reg, url: 'https://blob/r2.pdf' };
+    expect(reusableReads(prev, [again, consult]).toRead).toEqual([again]);
+  });
+
+  it('주소가 같아도 다른 칸이면 다시 읽는다 — 판독이 칸을 보고 문서를 가린다', () => {
+    const moved = { ...consult, slot: 'apply' as const };
+    expect(reusableReads(prev, [reg, moved]).toRead).toEqual([moved]);
+  });
+
+  it('이름은 지금 것으로 — 같은 이름의 파일이 들고 나면 뒤 번호가 바뀐다', () => {
+    const { kept } = reusableReads(prev, [{ ...consult, name: '결과서 (2).pdf' }]);
+    expect(kept.map((r) => r.file)).toEqual(['결과서 (2).pdf']);
+  });
+
+  it('쓰지 않는다 — 지난 결과가 없거나 · 견주는 것이 늘기 전의 결과거나 · 주소가 안 남은 판독(이 고침 전)', () => {
+    expect(reusableReads(null, [reg]).toRead).toEqual([reg]);
+    expect(reusableReads({ ...prev, version: PARKING_CHECK_VERSION - 1 }, [reg]).toRead).toEqual([reg]);
+    const before = { ...prev, reads: prev.reads.map(({ url: _url, ...r }) => r) };
+    expect(reusableReads(before, [reg, consult]).toRead).toEqual([reg, consult]);
   });
 });
 

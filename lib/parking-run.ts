@@ -6,7 +6,7 @@
  * 코드가 가른다(lib/parking-check — 발급일은 현장의 계약접수일에 견준다). 부르는 곳 둘 — 기설치 대조(lib/preinstall-run)와 같다:
  *   · 한백이 「대조」를 누를 때 — app/api/projects/[id]/parking/check
  *   · ★접수 단계에서 저절로★ — 세 칸에 파일이 들고 날 때와 협력사가 「계약서 접수」를 누를 때(scheduleParkingCheck).
- *     판독이 수십 초라 접수를 기다리게 하지 않고 응답 뒤에 돈다(lib/background).
+ *     판독이 수십 초라 접수를 기다리게 하지 않고 응답 뒤에 돈다(lib/background). 이때는 바뀐 파일만 읽는다(reusableReads).
  * 반려(열람용 등)는 결과를 보고 사람이 누른다 — 판독이 틀린 반려가 협력사에게 저절로 가지 않게.
  */
 import { and, eq, inArray } from 'drizzle-orm';
@@ -17,14 +17,18 @@ import { loadParkingCheck } from '@/lib/data/store/parking-check';
 import { evaluateDocs, buildDocContext } from '@/lib/doc-rules';
 import { readParking } from '@/lib/parking-read';
 import {
-  judgeParking, outdatedCheck, PARKING_CHECK_VERSION, PARKING_SLOTS, parkingFilesOf, redatedCheck, sameParkingFiles,
-  type ParkingCheck, type ParkingSlot,
+  judgeParking, outdatedCheck, PARKING_CHECK_VERSION, PARKING_SLOTS, parkingFilesOf, redatedCheck, reusableReads,
+  sameParkingFiles, type ParkingCheck, type ParkingSlot,
 } from '@/lib/parking-check';
 import { background } from '@/lib/background';
 import { AUTO, fetchAll, named, SETTLE_MS } from '@/lib/check-kit';
 import type { DocFile, ProjectDetail } from '@/types/project';
 
-export async function runParkingCheck(detail: ProjectDetail): Promise<ParkingCheck> {
+/**
+ * @param reuse 지난 결과 — 주면 같은 파일의 판독을 그대로 쓰고 바뀐 파일만 읽는다(자동 대조 · parking-check reusableReads).
+ *   한백의 「다시 대조」는 주지 않는다 — 전부 새로 읽는다.
+ */
+export async function runParkingCheck(detail: ProjectDetail, reuse?: ParkingCheck | null): Promise<ParkingCheck> {
   const p = detail.project;
   const filesOf = (slot: ParkingSlot) => detail.documents.find((d) => d.kind === slot)?.files ?? [];
   const bySlot = PARKING_SLOTS.map((slot) => ({ slot, files: filesOf(slot) }));
@@ -39,8 +43,12 @@ export async function runParkingCheck(detail: ProjectDetail): Promise<ParkingChe
   });
   const applyRequired = evaluateDocs(ctx).some((d) => d.key === 'apply' && d.req === 'm');
 
-  const { got, failed } = await fetchAll(all);
-  const { reads, unread } = got.length > 0 ? await readParking(got) : { reads: [], unread: [] };
+  const { kept, toRead } = reusableReads(reuse, all);
+  const { got, failed } = await fetchAll(toRead);
+  const { reads: fresh, unread } = got.length > 0 ? await readParking(got) : { reads: [], unread: [] };
+  // 칸·파일 차례로 — 다시 쓴 판독과 새로 읽은 판독이 섞여도 늘 같은 순서로 보인다
+  const order = new Map(all.map((f, i) => [f.name, i]));
+  const reads = [...kept, ...fresh].sort((a, b) => (order.get(a.file) ?? 0) - (order.get(b.file) ?? 0));
   const filed = Object.fromEntries(bySlot.map(({ slot, files }) => [slot, files.length > 0])) as Record<ParkingSlot, boolean>;
 
   return {
@@ -85,7 +93,8 @@ export function scheduleParkingCheck(projectId: string, kind?: string, settleMs 
     // 같은 서류로 이미 대조했으면 다시 안 돈다 — 견주는 것이 늘기 전의 결과거나 그 뒤 계약접수일을 고쳤으면 다시 돈다
     if (prev && sameParkingFiles(prev.files, now) && !outdatedCheck(prev)
       && !redatedCheck(prev, detail.project.createdAt)) return;
-    const check = await runParkingCheck(detail);
+    // 바뀐 파일만 읽는다 — 계약접수일만 바뀐 것이면 판독 없이 다시 가른다
+    const check = await runParkingCheck(detail, prev);
     if (!sameParkingFiles(check.files, await currentFiles(projectId))) return;
     await repo.saveParkingCheck(projectId, check, AUTO);
   })(), `parking-auto ${projectId}`);

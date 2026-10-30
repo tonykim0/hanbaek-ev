@@ -48,6 +48,8 @@ export interface ParkingRead {
    * 발급일을 읽기 전(버전 3 전)의 결과에는 없다.
    */
   issued?: string | null;
+  /** 읽은 파일의 주소 — 다음 자동 대조가 같은 파일을 다시 읽지 않게(reusableReads). 2026-10-30 전의 결과에는 없다 */
+  url?: string;
 }
 
 export type ParkingIssueKey =
@@ -298,6 +300,30 @@ export function parkingIssueCount(c: ParkingCheck): number {
 /** 대조에 쓴 파일과 지금 칸의 파일이 같은가 — 다르면 지난 결과를 믿지 않는다(「서류가 바뀜」) */
 export function sameParkingFiles(a: string[], b: string[]): boolean {
   return a.length === b.length && [...a].sort().join('\n') === [...b].sort().join('\n');
+}
+
+/**
+ * ★자동 대조는 바뀐 파일만 읽는다★ (2026-10-30 비용 검토) — 지난 결과에서 같은 파일(주소)·같은 칸의 판독을 그대로 쓴다.
+ *
+ * 파일은 올릴 때마다 새 주소라(lib/attach-doc) 주소가 같으면 같은 파일이고, 판독은 파일마다 따로 읽으니(lib/parking-read)
+ * 다시 읽어도 같은 것을 읽는다. 그런데 서류가 들고 날 때마다 세 칸을 전부 다시 읽고 있었다 — 지난 7일 이 대조 127번 중
+ * 110번이 그렇게 저절로 돈 것이었다(바뀐 것만 읽었으면 $7.25 → 약 $4.6). 한 장을 뺀 대조는 읽을 것이 없다.
+ * 쓰지 않는 것: 견주는 것이 늘기 전의 결과(낮은 판 — 그 항목을 안 읽었다) · 주소가 안 남은 판독(2026-10-30 전).
+ * ★한백의 「다시 대조」는 이것을 거치지 않는다★ — 잘못 읽었다고 볼 때 누르는 단추라 전부 새로 읽는다.
+ */
+export function reusableReads<F extends { name: string; url: string; slot: ParkingSlot }>(
+  prev: ParkingCheck | null | undefined, files: F[]
+): { kept: ParkingRead[]; toRead: F[] } {
+  if (!prev || outdatedCheck(prev)) return { kept: [], toRead: files };
+  const kept: ParkingRead[] = [];
+  const toRead: F[] = [];
+  for (const f of files) {
+    const reads = prev.reads.filter((r) => r.url === f.url && r.slot === f.slot);
+    if (reads.length === 0) toRead.push(f);
+    // 이름은 지금 것으로 — 같은 이름의 파일이 들고 나면 뒤 번호(check-kit named)가 바뀐다
+    else kept.push(...reads.map((r) => ({ ...r, file: f.name })));
+  }
+  return { kept, toRead };
 }
 
 /** 세 칸의 지금 파일 주소 — 화면과 저장소(계약 확인)가 같은 값을 만든다 */

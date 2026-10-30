@@ -91,8 +91,8 @@ const count = (v: unknown): number | null => {
   return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
 };
 
-/** 판독의 답을 다듬는다 — 이름은 보낸 것 중 하나로, 종류는 정해진 것 중 하나로 */
-export function parkingReadsOf(raw: unknown, files: { name: string; slot: ParkingSlot }[]): ParkingRead[] {
+/** 판독의 답을 다듬는다 — 이름은 보낸 것 중 하나로, 종류는 정해진 것 중 하나로. 파일 주소가 있으면 같이 남긴다 */
+export function parkingReadsOf(raw: unknown, files: { name: string; slot: ParkingSlot; url?: string }[]): ParkingRead[] {
   const docs = (raw as { docs?: RawDoc[] } | null)?.docs;
   if (!Array.isArray(docs)) return [];
   return docs.flatMap((d) => {
@@ -113,19 +113,23 @@ export function parkingReadsOf(raw: unknown, files: { name: string; slot: Parkin
         : [],
       // 발급일은 건축물대장만 — 달력에 없는 날·먼 앞날은 잘못 읽은 것이라 버린다(fact-read dayOf)
       issued: doc === '건축물대장' ? dayOf(str(d.issued)) : null,
+      // 다음 자동 대조가 이 파일을 다시 읽지 않게(parking-check reusableReads)
+      ...(f.url ? { url: f.url } : {}),
     }];
   });
 }
 
 /** 세 칸의 파일을 읽는다 — 못 읽은 파일은 unread 로(조용히 빠지지 않게) */
 export async function readParking(
-  files: { name: string; slot: ParkingSlot; buffer: Buffer }[]
+  files: { name: string; slot: ParkingSlot; url: string; buffer: Buffer }[]
 ): Promise<{ reads: ParkingRead[]; unread: string[] }> {
-  const slotOf = new Map(files.map((f) => [f.name, f.slot]));
+  const byName = new Map(files.map((f) => [f.name, f]));
   const { batches, unread } = await preparePdfs(files, 'parking-check');
   const reads: ParkingRead[] = [];
   for (const batch of batches) {
-    const named = batch.map((f) => ({ name: f.name, slot: slotOf.get(f.name) ?? 'bldgreg' as ParkingSlot }));
+    const named = batch.map((f) => ({
+      name: f.name, slot: byName.get(f.name)?.slot ?? 'bldgreg' as ParkingSlot, url: byName.get(f.name)?.url,
+    }));
     const raw = await askPdfJson(batch, prompt(named), 'parking-check');
     const got = parkingReadsOf(raw, named);
     reads.push(...got);
