@@ -29,6 +29,12 @@ const PASSTHROUGH_TYPES: Record<string, string> = {
   xls: 'application/vnd.ms-excel',
   pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
   ppt: 'application/vnd.ms-powerpoint',
+  /*
+   * 워드 — 나이스인프라 계약서 초안(워드) 칸이 받는다(2026-10-31). 그전에는 여기 없어서 ZIP 안의 워드를 꺼내지 않았다 —
+   * 낸 파일이 소리 없이 빠졌다. 칸은 doc-category-map wordCategory 가 정한다.
+   */
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  doc: 'application/msword',
 };
 
 const ZIP_SIGNATURES = [
@@ -176,6 +182,7 @@ export function buildStandardName(
   // 파일명용 카테고리 줄임말
   const categoryShort: Record<string, string> = {
     '계약서': '계약서',
+    '계약서 초안': '계약서초안',
     '합의서': '합의서',
     '직인사용 동의서': '직인동의서',
     '행위신고 업무대행 동의서': '행위신고동의서',

@@ -23,7 +23,7 @@ import { isPassThroughSite, safetyFeeApplies } from '@/lib/settlement';
 import { useAction } from '@/lib/use-action';
 import { DatePicker } from '@/components/DatePicker';
 import { Badge, Btn, Confirm, Empty, Err, FIELD, Tag, type Tone, Val } from '@/components/ui';
-import { buildDocContext, evaluateDocs, processDocsFor, PROCESS_DOCS } from '@/lib/doc-rules';
+import { buildDocContext, evaluateDocs, processDocsFor, PROCESS_DOCS, submittedOnOf } from '@/lib/doc-rules';
 import { BAND_TONE, bandOfColumn, boardColumnOf, phaseOfProject } from '@/lib/board';
 import type { BoardBand, BoardColumn } from '@/lib/board';
 import { gateContextOf, statusIndex, type ProcessEdit } from '@/lib/process';
@@ -151,6 +151,7 @@ export default function ProjectDetailView({
         linePowerTypes: lines.map((l) => l.powerType),
         preInstall: project.preInstall,
         bizType: project.bizType,
+        submittedOn: submittedOnOf(project),
       }),
     [project, lines]
   );

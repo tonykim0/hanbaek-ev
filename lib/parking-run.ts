@@ -14,7 +14,7 @@ import { getDb } from '@/lib/db/client';
 import { documents } from '@/lib/db/schema';
 import { getRepository } from '@/lib/data';
 import { loadParkingCheck } from '@/lib/data/store/parking-check';
-import { evaluateDocs, buildDocContext } from '@/lib/doc-rules';
+import { evaluateDocs, buildDocContext, submittedOnOf } from '@/lib/doc-rules';
 import { readParking } from '@/lib/parking-read';
 import {
   judgeParking, outdatedCheck, PARKING_CHECK_VERSION, PARKING_SLOTS, parkingFilesOf, redatedCheck, reusableReads,
@@ -39,7 +39,7 @@ export async function runParkingCheck(detail: ProjectDetail, reuse?: ParkingChec
   const ctx = buildDocContext({
     cpo: p.cpo, contractParty: p.contractParty, bldgType: p.bldgType,
     projectPowerType: p.powerType, linePowerTypes: detail.lines.map((l) => l.powerType),
-    preInstall: p.preInstall, bizType: p.bizType,
+    preInstall: p.preInstall, bizType: p.bizType, submittedOn: submittedOnOf(p),
   });
   const applyRequired = evaluateDocs(ctx).some((d) => d.key === 'apply' && d.req === 'm');
 

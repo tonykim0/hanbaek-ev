@@ -108,6 +108,8 @@ export function checkDraft(draft: IntakeDraft): IntakeCheck {
     linePowerTypes: lines.map((l) => l.powerType),
     preInstall: draft?.preInstall,
     bizType: draft?.bizType,
+    // 아직 안 낸 계약이다 — 지금 생긴 필수 칸까지 다 받는다
+    submittedOn: null,
   });
   const evaluated = evaluateDocs(ctx);
   const attached = new Set(documents.map((d) => d.kind));

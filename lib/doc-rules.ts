@@ -43,6 +43,11 @@ export interface DocContext {
    * 자체투자는 조사할 이유가 없으므로 그 서류도 해당없음이다(2026-08-20 한백 확인).
    */
   bizType: BizType | null;
+  /**
+   * 계약서를 접수한 날 — 접수 없이 확인만 찍힌 옛 현장은 확인일. 아직 안 냈으면(접수 화면 · 접수 전 현장) null.
+   * 나중에 생긴 필수 칸을 그전에 낸 현장에 소급해 걸지 않으려고 본다(나이스인프라 계약서 초안).
+   */
+  submittedOn: string | null;
 }
 
 interface DocSpec {
@@ -83,6 +88,22 @@ const AGREEMENT_CPOS: CpoName[] = ['플러그링크', '나이스인프라'];
  */
 const envOnly = (c: DocContext): DocReq => (c.bizType === '환경부' ? 'm' : 'o');
 
+/**
+ * ★나이스인프라는 계약서 초안을 워드로 따로 받는다★ (한백 지시 2026-10-31 「계약서 접수할 때 계약서 초안 워드파일 올릴 수
+ * 있도록 따로 칸 만들어주고 필수값으로」).
+ *
+ * ★이 칸이 생긴 뒤에 내는 계약만 필수다★ — 그전에 접수한 현장은 낼 때 이 칸이 없었다. 소급해 필수로 걸면 계약 확인과
+ * 영업비 지급조건(lib/stage payoutDocsMissing)이 한꺼번에 막히고, 착공한 현장은 협력사가 올릴 수도 없다
+ * (PARTNER_DOCS_CLOSED_AT) — 문이 아니라 벽이다. 그 현장들은 조건부(있으면 받는다)다. 접수를 무르거나 반려로 접수가
+ * 풀린 현장은 다시 낼 때 이 칸까지 낸다.
+ * 넣은 날(10-31) 접수분은 조건부 쪽이다 — 배포 전에 낸 것과 가를 수 없다. 배포 뒤에 낸 것은 접수 문(docsFilled)이 이미 받았다.
+ */
+const NICE_DRAFT_FROM = '2026-11-01';
+const niceDraft = (c: DocContext): DocReq => {
+  if (c.cpo !== '나이스인프라') return 'o';
+  return c.submittedOn === null || c.submittedOn >= NICE_DRAFT_FROM ? 'm' : 'c';
+};
+
 const SPECS: DocSpec[] = [
   /*
    * 「전기차충전 토탈솔루션 계약서」였다 (한백 2026-08-28) — 운영사가 그 양식에 붙인
@@ -90,6 +111,8 @@ const SPECS: DocSpec[] = [
    * 것은 계약서 하나뿐이고, 운영사 이름은 이미 현장에 적혀 있다.
    */
   { key: 'contract', name: '계약서', req: () => 'm' },
+  // 계약서 바로 밑 — 같은 계약의 고칠 수 있는 판이다. 확장자는 안내일 뿐 형식을 막지 않는다(한백 지시 2026-09-02)
+  { key: 'contractDraft', name: '계약서 초안 (워드)', ext: '.docx', req: niceDraft },
   {
     key: 'agreement',
     name: '프로모션 요금 합의서',
@@ -264,6 +287,7 @@ export function buildDocContext(input: {
   linePowerTypes: Array<PowerType | null>;
   preInstall: PreInstall;
   bizType: BizType | null;
+  submittedOn: string | null;
 }): DocContext {
   const all = [input.projectPowerType, ...input.linePowerTypes];
   return {
@@ -273,8 +297,13 @@ export function buildDocContext(input: {
     hasMotherSeparation: all.some((p) => p === '모자분리' || p === '한전불입+모자분리'),
     preInstall: input.preInstall,
     bizType: input.bizType,
+    submittedOn: input.submittedOn,
   };
 }
+
+/** 현장의 「계약서를 낸 날」 — 접수 선언이 없는 옛 현장(이관분 등)은 확인일로 받친다(lib/settlement payoutMilestonesOf 와 같다) */
+export const submittedOnOf = (p: { contractSubmittedAt: string | null; contractConfirmedAt: string | null }): string | null =>
+  p.contractSubmittedAt ?? p.contractConfirmedAt;
 
 /**
  * 이 현장에 기설치 조사가 필요한가.

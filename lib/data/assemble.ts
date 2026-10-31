@@ -29,7 +29,7 @@ import type {
   SettlementSummary,
 } from '@/types/project';
 import { bizTypeOfRepl } from '@/types/project';
-import { buildDocContext, DOC_KEYS, evaluateDocs, PROCESS_DOCS } from '@/lib/doc-rules';
+import { buildDocContext, DOC_KEYS, evaluateDocs, PROCESS_DOCS, submittedOnOf } from '@/lib/doc-rules';
 import {
   isPassThroughSite, payoutMilestonesOf, payoutUnitOf,
   entryTypeOf, payoutSideOf, safetyFeeApplies, safetyFeeCollected, settlementForProject, siteRuleOf,
@@ -192,6 +192,7 @@ function docCtxOf(r: ProjectRecord) {
     linePowerTypes: r.lines.map((l) => l.powerType),
     preInstall: r.project.preInstall,
     bizType: r.project.bizType,
+    submittedOn: submittedOnOf(r.project),
   });
 }
 

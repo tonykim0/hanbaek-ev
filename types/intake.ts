@@ -1,6 +1,8 @@
 // 분류 카테고리 (HANDOFF.md §4)
 export type FileCategory =
   | '계약서'
+  /* 나이스인프라가 따로 받는 워드 판 — 판독을 타지 않고 확장자·운영사로만 온다(doc-category-map wordCategory) */
+  | '계약서 초안'
   | '합의서'
   | '직인사용 동의서'
   | '전기차충전시설 설치신청서'

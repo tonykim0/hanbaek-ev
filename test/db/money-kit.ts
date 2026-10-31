@@ -50,7 +50,7 @@ export async function withPayableProject<T>(
     await repo.setLinePricing(lineId, rule.id, admin);
     const required = evaluateDocs({
       cpo: '플러그링크', contractParty: null, bldgType: '공동주택',
-      hasMotherSeparation: true, preInstall: '없음', bizType: '자체투자',
+      hasMotherSeparation: true, preInstall: '없음', bizType: '자체투자', submittedOn: null,
     }).filter((d) => d.req === 'm');
     for (const d of required) {
       await repo.uploadDocument({ projectId: id, kind: d.key, filename: `${d.key}.pdf`, blobUrl: `https://test.local/${RUN}/${id}/${d.key}.pdf` }, admin);

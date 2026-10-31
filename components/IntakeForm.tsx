@@ -404,7 +404,8 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
       evaluateDocs(
         buildDocContext({
           cpo, contractParty, bldgType, projectPowerType: powerType,
-          linePowerTypes: lines.map((l) => l.powerType), preInstall, bizType,
+          // 아직 안 낸 계약이다 — 지금 생긴 필수 칸까지 다 받는다
+          linePowerTypes: lines.map((l) => l.powerType), preInstall, bizType, submittedOn: null,
         })
       ),
     [cpo, contractParty, bldgType, powerType, lines, preInstall, bizType]

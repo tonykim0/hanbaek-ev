@@ -33,7 +33,7 @@ const REQ_LABEL: Record<string, string> = { m: '필수', o: '선택', c: '조건
 
 async function main() {
   const { getRepository } = await import('../lib/data');
-  const { buildDocContext, evaluateDocs } = await import('../lib/doc-rules');
+  const { buildDocContext, evaluateDocs, submittedOnOf } = await import('../lib/doc-rules');
   const repo = getRepository();
   const viewer = { role: 'admin' as const, org: null };
 
@@ -59,6 +59,7 @@ async function main() {
       linePowerTypes: d.lines.map((l) => l.powerType),
       preInstall: d.project.preInstall,
       bizType: d.project.bizType,
+      submittedOn: submittedOnOf(d.project),
     }));
     const byKind = new Map(d.documents.map((x) => [x.kind, x]));
     const hit = (k: string) => (byKind.get(k)?.files?.length ?? 0) > 0;

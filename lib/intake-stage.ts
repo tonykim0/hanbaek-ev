@@ -99,6 +99,8 @@ const CONTENT_TYPE: Record<string, string> = {
   png: 'image/png',
   xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   xls: 'application/vnd.ms-excel',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  doc: 'application/msword',
 };
 export const contentTypeOf = (pathname: string): string =>
   CONTENT_TYPE[(pathname.split('.').pop() ?? '').toLowerCase()] ?? 'application/octet-stream';

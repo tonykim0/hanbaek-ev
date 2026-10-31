@@ -15,6 +15,7 @@ import type { ClassifiedFileInfo, FileCategory } from '@/types/intake';
 /** null = 서류 칸이 없는 카테고리. 지금은 전부 칸이 있다(기타 칸을 만들었다). */
 export const CATEGORY_TO_KIND: Record<FileCategory, string | null> = {
   '계약서': 'contract',
+  '계약서 초안': 'contractDraft',
   '합의서': 'agreement',
   '직인사용 동의서': 'sealuse',
   '개인정보 동의서': 'privacy',
@@ -159,6 +160,17 @@ export function excelCategory(fileName: string): FileCategory {
   if (/견적|estimate|quotation/.test(n)) return '견적서';
   if (/설치이력|기설치|이력서?\b|history/.test(n)) return '기설치 충전기 설치이력';
   return '실사보고서';
+}
+
+/**
+ * 워드 파일의 칸 — ★나이스인프라 계약서 초안(워드)★ (한백 지시 2026-10-31).
+ *
+ * 판독은 워드를 못 읽는다(PDF 만 넘긴다) — 이름 규칙에 안 걸린 워드는 운영사로 정한다. 나이스 접수에 오는 워드가
+ * 그 초안이다. 다른 운영사에는 그 칸이 없어(해당없음) 기타로 둔다 — 버리지 않는다. 운영사를 못 읽었으면 기타다
+ * (모르는 것으로 칸을 정하지 않는다 — 사람이 칸을 고른다).
+ */
+export function wordCategory(cpos: readonly string[] | null | undefined): FileCategory {
+  return cpos?.includes('나이스인프라') ? '계약서 초안' : '기타';
 }
 
 /**

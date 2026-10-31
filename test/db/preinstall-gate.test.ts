@@ -30,7 +30,7 @@ async function withSubsidyProject<T>(fn: (id: string) => Promise<T>): Promise<T>
     await repo.setLinePricing(detail!.lines[0].id, rule.id, admin);
     const required = evaluateDocs({
       cpo: '플러그링크', contractParty: null, bldgType: '공동주택',
-      hasMotherSeparation: true, preInstall: '없음', bizType: '환경부',
+      hasMotherSeparation: true, preInstall: '없음', bizType: '환경부', submittedOn: null,
     }).filter((d) => d.req === 'm');
     for (const d of required) {
       // 설치이력은 엑셀로 — PDF 로 내면 대조가 면제된다(bundledAsPdf, 2026-10-07). 그 길은 따로 본다
@@ -142,7 +142,7 @@ describe('기설치 대조 — 계약 확인의 조건', () => {
     // money-kit 의 자체투자 현장이 늘 이 길이다 — 그 시험들이 대조 없이 확인을 찍는다
     const sub = evaluateDocs({
       cpo: '플러그링크', contractParty: null, bldgType: '공동주택',
-      hasMotherSeparation: true, preInstall: '없음', bizType: '자체투자',
+      hasMotherSeparation: true, preInstall: '없음', bizType: '자체투자', submittedOn: null,
     });
     expect(sub.some((d) => d.preinstall && d.req === 'm')).toBe(false);
   });

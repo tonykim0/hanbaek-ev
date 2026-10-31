@@ -78,7 +78,7 @@ describe('PROCESS_DOCS — 종류 목록', () => {
 describe('견적서 (SK) — 계약 서류가 아니라 행위신고에서 받는다 (한백 지시 2026-10-13)', () => {
   const ctx = (over: Partial<DocContext>): DocContext => ({
     cpo: null, contractParty: null, bldgType: null,
-    hasMotherSeparation: false, preInstall: '없음', bizType: null,
+    hasMotherSeparation: false, preInstall: '없음', bizType: null, submittedOn: null,
     ...over,
   });
 
@@ -103,7 +103,7 @@ describe('견적서 (SK) — 계약 서류가 아니라 행위신고에서 받�
 describe('계약주체 「일반 법인」 — 회의록 칸은 조건부 (한백 지시 2026-10-21)', () => {
   const ctx = (over: Partial<DocContext>): DocContext => ({
     cpo: null, contractParty: null, bldgType: null,
-    hasMotherSeparation: false, preInstall: '없음', bizType: null,
+    hasMotherSeparation: false, preInstall: '없음', bizType: null, submittedOn: null,
     ...over,
   });
   const minutes = (c: DocContext) => evaluateDocs(c).find((d) => d.key === 'minutes')!;
@@ -135,7 +135,7 @@ describe('계약주체 「일반 법인」 — 회의록 칸은 조건부 (한�
 describe('서류 종류 목록 — 정의와 저장소가 같은 것을 본다', () => {
   const ctx: DocContext = {
     cpo: null, contractParty: null, bldgType: null,
-    hasMotherSeparation: false, preInstall: '없음', bizType: null,
+    hasMotherSeparation: false, preInstall: '없음', bizType: null, submittedOn: null,
   };
 
   it('★화면에 서는 칸은 전부 올릴 수 있다★', () => {
