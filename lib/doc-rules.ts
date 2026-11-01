@@ -96,9 +96,9 @@ const envOnly = (c: DocContext): DocReq => (c.bizType === '환경부' ? 'm' : 'o
  * 영업비 지급조건(lib/stage payoutDocsMissing)이 한꺼번에 막히고, 착공한 현장은 협력사가 올릴 수도 없다
  * (PARTNER_DOCS_CLOSED_AT) — 문이 아니라 벽이다. 그 현장들은 조건부(있으면 받는다)다. 접수를 무르거나 반려로 접수가
  * 풀린 현장은 다시 낼 때 이 칸까지 낸다.
- * 넣은 날(10-31) 접수분은 조건부 쪽이다 — 배포 전에 낸 것과 가를 수 없다. 배포 뒤에 낸 것은 접수 문(docsFilled)이 이미 받았다.
+ * 배포한 날(11-01) 접수분까지 조건부 쪽이다 — 배포 전에 낸 것과 가를 수 없다. 배포 뒤에 낸 것은 접수 문(docsFilled)이 이미 받았다.
  */
-const NICE_DRAFT_FROM = '2026-11-01';
+const NICE_DRAFT_FROM = '2026-11-02';
 const niceDraft = (c: DocContext): DocReq => {
   if (c.cpo !== '나이스인프라') return 'o';
   return c.submittedOn === null || c.submittedOn >= NICE_DRAFT_FROM ? 'm' : 'c';

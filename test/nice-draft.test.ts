@@ -45,9 +45,10 @@ describe('칸 — 나이스인프라만, 계약서 바로 밑', () => {
 });
 
 describe('★그전에 낸 현장에 소급하지 않는다★', () => {
-  it('11월 1일부터 낸 계약은 필수 · 그전에 낸 계약은 조건부(있으면 받는다)', () => {
-    expect(draftOf(ctx({ submittedOn: '2026-11-01' })).req).toBe('m');
+  it('배포 다음 날(11-02)부터 낸 계약은 필수 · 배포한 날까지 낸 계약은 조건부(있으면 받는다)', () => {
+    expect(draftOf(ctx({ submittedOn: '2026-11-02' })).req).toBe('m');
     expect(draftOf(ctx({ submittedOn: '2026-11-20' })).req).toBe('m');
+    expect(draftOf(ctx({ submittedOn: '2026-11-01' })).req).toBe('c');
     expect(draftOf(ctx({ submittedOn: '2026-10-31' })).req).toBe('c');
     expect(draftOf(ctx({ submittedOn: '2026-09-02' })).req).toBe('c');
   });
