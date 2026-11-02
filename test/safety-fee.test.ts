@@ -8,8 +8,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  checkSafetyFee, collectionRate, SAFETY_FEE_CPOS, safetyFeeApplies, safetyFeeCollected,
-  safetyFeeDue, safetyFeeOpen, safetyFeeReceiptState,
+  checkSafetyFee, collectionRate, SAFETY_FEE_CPOS, safetyFeeApplies, safetyFeeClaimed, safetyFeeCollected,
+  safetyFeeDue, safetyFeeOpen, safetyFeeReceiptState, safetyFeeStateOf,
 } from '@/lib/settlement';
 import { CPO_NAMES } from '@/types/project';
 import type { CpoName } from '@/types/project';
@@ -36,55 +36,77 @@ describe('게이트 — 어느 운영사에게서 따로 받나', () => {
   });
 });
 
-describe('셈 — 받을 돈과 받은 돈으로 갈린다', () => {
+describe('셈 — 청구 가능 · 미수 · 수금 완료로 갈린다 (2026-11-02)', () => {
+  const fee = (claimed: string | null, collected: string | null, amount: number | null = 450_000) =>
+    ({ safetyFee: amount, safetyFeeClaimedAt: claimed, safetyFeeCollectedAt: collected });
+
   it('금액이 없으면 청구할 것도 받은 것도 없다', () => {
-    const none = { safetyFee: null, safetyFeeCollectedAt: null };
-    expect(safetyFeeOpen(none)).toBe(0);
-    expect(safetyFeeCollected(none)).toBe(0);
+    const none = fee(null, null, null);
+    expect(safetyFeeStateOf(none)).toBe('none');
+    expect(safetyFeeOpen(none) + safetyFeeClaimed(none) + safetyFeeCollected(none)).toBe(0);
   });
 
-  /* 트리거가 없다 — 청구액을 적은 순간부터 받을 수 있다(기성 차수와 다른 점) */
-  it('금액만 있으면 전액이 「받을 수 있는 돈」이다', () => {
-    const open = { safetyFee: 450_000, safetyFeeCollectedAt: null };
-    expect(safetyFeeOpen(open)).toBe(450_000);
-    expect(safetyFeeCollected(open)).toBe(0);
+  /* 트리거가 없다 — 청구액을 적은 순간부터 청구할 수 있다(기성 차수와 다른 점 · 익월 규칙도 없다) */
+  it('금액만 있으면 전액이 「청구 가능」이다', () => {
+    expect(safetyFeeStateOf(fee(null, null))).toBe('open');
+    expect(safetyFeeOpen(fee(null, null))).toBe(450_000);
   });
 
-  it('수금일이 찍히면 「받을 수 있는 돈」에서 빠지고 「수금 완료」로 옮긴다', () => {
-    const done = { safetyFee: 450_000, safetyFeeCollectedAt: '2026-09-06' };
-    expect(safetyFeeOpen(done)).toBe(0);
-    expect(safetyFeeCollected(done)).toBe(450_000);
+  it('청구일이 찍히면 「미수」로 옮긴다', () => {
+    expect(safetyFeeStateOf(fee('2026-11-02', null))).toBe('claimed');
+    expect(safetyFeeOpen(fee('2026-11-02', null))).toBe(0);
+    expect(safetyFeeClaimed(fee('2026-11-02', null))).toBe(450_000);
   });
 
-  /* 「총액 = 수금 완료 + 미수금」이 유지되려면 두 함수가 겹치지 않아야 한다 */
-  it('두 함수의 합은 언제나 청구액이다 — 겹치거나 새지 않는다', () => {
-    for (const at of [null, '2026-09-06']) {
-      const s = { safetyFee: 450_000, safetyFeeCollectedAt: at };
-      expect(safetyFeeOpen(s) + safetyFeeCollected(s)).toBe(450_000);
+  it('수금일이 찍히면 「수금 완료」로 옮긴다', () => {
+    expect(safetyFeeCollected(fee('2026-11-02', '2026-11-20'))).toBe(450_000);
+  });
+
+  /* 옛 기록 — 청구를 기록하지 않던 때는 수금일만 있다. 그래도 받은 돈이다 */
+  it('청구일 없이 수금일만 있는 옛 기록도 수금 완료다', () => {
+    expect(safetyFeeStateOf(fee(null, '2026-09-06'))).toBe('collected');
+  });
+
+  /* 「총 기성액 = 수주잔고 + 미수금 + 수금 완료」가 유지되려면 셋이 겹치지 않아야 한다 */
+  it('세 함수의 합은 언제나 청구액이다 — 겹치거나 새지 않는다', () => {
+    for (const [c, d] of [[null, null], ['2026-11-02', null], ['2026-11-02', '2026-11-20'], [null, '2026-09-06']] as const) {
+      const s = fee(c, d);
+      expect(safetyFeeOpen(s) + safetyFeeClaimed(s) + safetyFeeCollected(s)).toBe(450_000);
     }
   });
 });
 
 describe('저장 전 검사 — 라우트와 저장소가 같은 규칙을 본다', () => {
   it('빈 값은 통과다 — 아직 청구액을 안 적은 현장이 정상이다', () => {
-    expect(checkSafetyFee(null, null)).toEqual([]);
+    expect(checkSafetyFee(null, null, null)).toEqual([]);
   });
 
   it('0 보다 큰 원 단위 정수만 받는다', () => {
-    expect(checkSafetyFee(450_000, null)).toEqual([]);
-    expect(checkSafetyFee(0, null).join(' ')).toMatch(/0 보다 큰/);
-    expect(checkSafetyFee(-1, null).join(' ')).toMatch(/0 보다 큰/);
-    expect(checkSafetyFee(1_000.5, null).join(' ')).toMatch(/정수/);
+    expect(checkSafetyFee(450_000, null, null)).toEqual([]);
+    expect(checkSafetyFee(0, null, null).join(' ')).toMatch(/0 보다 큰/);
+    expect(checkSafetyFee(-1, null, null).join(' ')).toMatch(/0 보다 큰/);
+    expect(checkSafetyFee(1_000.5, null, null).join(' ')).toMatch(/정수/);
   });
 
-  it('수금일은 YYYY-MM-DD 다', () => {
-    expect(checkSafetyFee(450_000, '2026-09-06')).toEqual([]);
-    expect(checkSafetyFee(450_000, '2026/09/06').join(' ')).toMatch(/YYYY-MM-DD/);
+  it('청구일·수금일은 YYYY-MM-DD 다', () => {
+    expect(checkSafetyFee(450_000, '2026-09-01', '2026-09-06')).toEqual([]);
+    expect(checkSafetyFee(450_000, null, '2026/09/06').join(' ')).toMatch(/YYYY-MM-DD/);
+    expect(checkSafetyFee(450_000, '2026/09/01', null).join(' ')).toMatch(/YYYY-MM-DD/);
   });
 
-  /* 금액 없는 수금일은 「얼마 받았는지 모르는 수금」이다 — 그 상태를 만들 수 없어야 한다 */
-  it('금액 없이 수금일만 있으면 막는다', () => {
-    expect(checkSafetyFee(null, '2026-09-06').join(' ')).toMatch(/금액을 먼저/);
+  /* 금액 없는 수금일·청구일은 「얼마인지 모르는 수금·청구」다 — 그 상태를 만들 수 없어야 한다 */
+  it('금액 없이 청구일·수금일만 있으면 막는다', () => {
+    expect(checkSafetyFee(null, null, '2026-09-06').join(' ')).toMatch(/금액을 먼저/);
+    expect(checkSafetyFee(null, '2026-09-06', null).join(' ')).toMatch(/금액을 먼저/);
+  });
+
+  it('수금일이 청구일보다 앞서면 막는다', () => {
+    expect(checkSafetyFee(450_000, '2026-09-10', '2026-09-06').join(' ')).toMatch(/앞설 수 없/);
+  });
+
+  /* 옛 기록(청구일 없이 수금일만)의 금액 고치기를 막지 않는다 — 순서는 저장소가 「새로 적을 때」만 본다 */
+  it('청구일 없는 수금일은 여기서 막지 않는다', () => {
+    expect(checkSafetyFee(450_000, null, '2026-09-06')).toEqual([]);
   });
 });
 
@@ -100,7 +122,7 @@ describe('청구할 때 — 준공 정산이라 준공완료 전에는 금액을
 describe('수금률 — 차수만 센다 (한백 2026-09-06 「수금률에 포함시키지마」)', () => {
   const step = (o: Partial<SettlementStep>): SettlementStep => ({
     no: 1, trigger: '착공', basisLabel: '고정', planAmount: 3_000_000,
-    state: 'waiting', openedAt: null, collectedAt: null, collectedAmount: null, ...o,
+    state: 'waiting', openedAt: null, claimableFrom: null, claimedAt: null, collectedAt: null, collectedAmount: null, ...o,
   });
   const 다받음 = [1, 2, 3].map((no) => step({
     no: no as 1 | 2 | 3, state: 'collected', collectedAt: '2026-09-01',
@@ -135,7 +157,7 @@ describe('할 일 — 트리거가 없는 돈이라 여기서 재촉한다', () 
     ruleName: '착공 800,000원 → 준공마감 잔액',
     steps: [], planTotal: 0, collectedTotal: 0, cpoCloseDate: null,
     passThrough: false,
-    safetyFee: null, safetyFeeCollectedAt: null,
+    safetyFee: null, safetyFeeClaimedAt: null, safetyFeeCollectedAt: null,
     safetyFeeReceiptCount: 0, safetyFeeReceiptStatus: 'none',
     salesOrg: null, gcOrg: null,
     payoutMilestones: { contractSubmittedAt: null, installCompletedAt: null, completedAt: null },
@@ -144,15 +166,28 @@ describe('할 일 — 트리거가 없는 돈이라 여기서 재촉한다', () 
     consAdjust: 0, consPaid: 0, consLastPaidAt: null,
     payNote: null, ...over,
   } as SettlementSummary);
-  const kinds = (r: SettlementSummary) => receivableTodos([r]).map((t) => t.kind);
+  const 오늘 = new Date('2026-11-02T10:00:00+09:00');
+  const kinds = (r: SettlementSummary) => receivableTodos([r], 오늘).map((t) => t.kind);
 
-  it('청구액을 적었는데 안 들어오면 「점검수수료 수금」이 선다', () => {
-    expect(kinds(row({ safetyFee: 450_000 }))).toContain('점검수수료 수금');
+  it('청구액을 적었는데 청구하지 않았으면 「점검수수료 청구」가 선다', () => {
+    expect(kinds(row({ safetyFee: 450_000 }))).toContain('점검수수료 청구');
+  });
+
+  /* 청구한 뒤 한 달은 기다리는 동안이다 — 할 일이 아니다 (한백 결정 2026-11-02) */
+  it('청구한 지 30일 전에는 아무 카드도 안 선다', () => {
+    const k = kinds(row({ safetyFee: 450_000, safetyFeeClaimedAt: '2026-10-10' }));
+    expect(k).not.toContain('점검수수료 청구');
+    expect(k).not.toContain('점검수수료 미수');
+  });
+
+  it('청구한 지 30일이 지나도 안 들어오면 「점검수수료 미수」가 선다', () => {
+    expect(kinds(row({ safetyFee: 450_000, safetyFeeClaimedAt: '2026-10-03' }))).toContain('점검수수료 미수');
   });
 
   it('수금까지 되면 사라진다', () => {
-    expect(kinds(row({ safetyFee: 450_000, safetyFeeCollectedAt: '2026-09-06' })))
-      .not.toContain('점검수수료 수금');
+    const k = kinds(row({ safetyFee: 450_000, safetyFeeClaimedAt: '2026-09-01', safetyFeeCollectedAt: '2026-09-06' }));
+    expect(k).not.toContain('점검수수료 청구');
+    expect(k).not.toContain('점검수수료 미수');
   });
 
   /* ★이 판정이 assemble 의 null→0 붕괴로 한 번 죽었다★ — 그래서 여기서 못 박는다 */
@@ -167,7 +202,7 @@ describe('할 일 — 트리거가 없는 돈이라 여기서 재촉한다', () 
   it('안 받는 운영사는 두 카드 모두 안 선다', () => {
     const 에버온 = kinds(row({ cpo: '에버온', status: '준공완료', safetyFee: 450_000 }));
     expect(에버온).not.toContain('점검수수료 미기재');
-    expect(에버온).not.toContain('점검수수료 수금');
+    expect(에버온).not.toContain('점검수수료 청구');
   });
 });
 

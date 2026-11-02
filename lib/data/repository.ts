@@ -617,7 +617,7 @@ export interface ProjectRepository {
    */
   setSafetyFee(
     projectId: string,
-    patch: { amount?: number | null; collectedAt?: string | null },
+    patch: { amount?: number | null; claimedAt?: string | null; collectedAt?: string | null },
     actor: Actor
   ): Promise<void>;
 
@@ -636,7 +636,7 @@ export interface ProjectRepository {
    * 다르면 그 금액을 같이 적는다(협의로 턴키단가와 다르게 받는 현장이 있다).
    * amount 가 null 이면 계획액대로 받은 것이다. value 가 null 이면 수금을 되돌린다.
    *
-   * 차수가 열리지 않았으면(트리거 미충족) 받을 수 없다 — 저장소가 막는다.
+   * ★청구한 차수만 받을 수 있다★ (한백 결정 2026-11-02) — 저장소가 막는다(lib/settlement stepCollectBlock).
    */
   setSettlementCollected(
     projectId: string,
@@ -644,6 +644,24 @@ export interface ProjectRepository {
     value: { at: string; amount: number | null } | null,
     actor: Actor
   ): Promise<void>;
+
+  /**
+   * 기성 한 차수의 청구일. [한백 전용] (한백 지시 2026-11-02)
+   *
+   * 한백은 운영사에 기성을 청구한다 — 조건이 찬 달의 다음 달 1일부터 적을 수 있다
+   * (lib/settlement stepClaimBlock). null 은 청구 취소다 — 수금된 차수는 수금을 먼저 되돌린다.
+   */
+  setSettlementClaimed(projectId: string, no: 1 | 2 | 3, at: string | null, actor: Actor): Promise<void>;
+
+  /**
+   * 청구 기록 한꺼번에 — 기성관리 표에서 체크한 차수·점검수수료를 청구일 하나로. [한백 전용]
+   * 전부 되거나 전부 안 된다. 이미 청구한 것은 거절한다(날 고치기는 setSettlementClaimed).
+   */
+  claimReceivables(
+    items: Array<{ projectId: string; part: 1 | 2 | 3 | 'fee' }>,
+    at: string,
+    actor: Actor
+  ): Promise<{ count: number; total: number }>;
 
   /**
    * 회차 지급 확정 — 지금 지급할 회차(1차/2차)를 모아서 한 지급일로 기록한다. [한백 전용]

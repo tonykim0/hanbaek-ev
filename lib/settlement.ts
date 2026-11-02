@@ -16,6 +16,7 @@ import type {
 } from '@/types/project';
 import { PAYOUT_CATEGORIES, PAYOUT_KINDS } from '@/types/project';
 import { normalizeOrg } from '@/lib/roles';
+import { monthShift, today as todayOf } from '@/lib/date';
 
 /** 턴키 = 영업비 + 시공비 + 한백마진. 매트릭스 28행 전부 검산됨. */
 /**
@@ -124,25 +125,42 @@ export function safetyFeeApplies(cpo: CpoName): boolean {
   return SAFETY_FEE_CPOS.has(cpo);
 }
 
-/** 수수료 한 쌍 — 금액과 수금일. 금액이 없으면 이 현장은 아직 청구액을 안 적은 것이다 */
+/** 수수료 셋 — 금액·청구일·수금일. 금액이 없으면 이 현장은 아직 청구액을 안 적은 것이다 */
 export interface SafetyFeePair {
   safetyFee: number | null;
+  safetyFeeClaimedAt: string | null;
   safetyFeeCollectedAt: string | null;
 }
 
 /**
- * 아직 안 받은 수수료 — 「받을 수 있는 돈」에 드는 몫.
+ * 수수료의 자리 — 차수(StepState)와 같은 말을 쓴다. 금액이 없으면 'none'.
  *
- * 기성 차수와 달리 트리거가 없다: ★금액을 적은 순간부터 받을 수 있다★. 그래서
- * 「조건 대기」로 서는 일이 없고, 적히지 않았으면 청구할 것 자체가 없어 0 이다.
+ * 기성 차수와 달리 트리거가 없다: ★금액을 적은 순간부터 청구할 수 있다★(익월 규칙도 없다 —
+ * 한백 2026-11-02, 조건이 차는 사건이 없는 돈이다). 그 뒤는 차수와 같다 — 청구일을 적으면
+ * 미수, 수금일을 적으면 수금 완료. 옛 기록은 청구일 없이 수금일만 있을 수 있다(그때는 청구를
+ * 기록하지 않았다) — 수금일이 먼저 이긴다.
  */
+export type SafetyFeeState = 'none' | 'open' | 'claimed' | 'collected';
+export function safetyFeeStateOf(s: SafetyFeePair): SafetyFeeState {
+  if (s.safetyFee === null) return 'none';
+  if (s.safetyFeeCollectedAt !== null) return 'collected';
+  if (s.safetyFeeClaimedAt !== null) return 'claimed';
+  return 'open';
+}
+
+/** 청구할 수 있는데 아직 청구하지 않은 수수료 — 「청구 가능」·수주잔고에 드는 몫 */
 export function safetyFeeOpen(s: SafetyFeePair): number {
-  return s.safetyFee !== null && s.safetyFeeCollectedAt === null ? s.safetyFee : 0;
+  return safetyFeeStateOf(s) === 'open' ? s.safetyFee ?? 0 : 0;
+}
+
+/** 청구했는데 아직 안 들어온 수수료 — 미수금에 드는 몫 */
+export function safetyFeeClaimed(s: SafetyFeePair): number {
+  return safetyFeeStateOf(s) === 'claimed' ? s.safetyFee ?? 0 : 0;
 }
 
 /** 이미 받은 수수료 — 수금 완료에 드는 몫 */
 export function safetyFeeCollected(s: SafetyFeePair): number {
-  return s.safetyFee !== null && s.safetyFeeCollectedAt !== null ? s.safetyFee : 0;
+  return safetyFeeStateOf(s) === 'collected' ? s.safetyFee ?? 0 : 0;
 }
 
 /**
@@ -183,18 +201,34 @@ export function closeDateNeeded(status: ProcessStatus, steps: SettlementStep[]):
   return status === '준공완료' && closingSteps(steps).length > 0;
 }
 
-/** 저장 전 검사 — 라우트와 저장소가 같은 규칙을 봐야 한다 */
-export function checkSafetyFee(amount: number | null, collectedAt: string | null): string[] {
+/**
+ * 저장 전 검사 — 라우트와 저장소가 같은 규칙을 봐야 한다.
+ *
+ * ★「수금은 청구 뒤에」는 여기서 보지 않는다★ — 옛 기록은 청구일 없이 수금일만 있어서, 금액만
+ * 고치는 요청까지 거절하게 된다. 그 순서는 저장소가 「수금일을 새로 적을 때」만 본다(setSafetyFee).
+ */
+export function checkSafetyFee(
+  amount: number | null, claimedAt: string | null, collectedAt: string | null
+): string[] {
   const bad: string[] = [];
   if (amount !== null && (!Number.isInteger(amount) || amount <= 0)) {
     bad.push('전기안전점검수수료는 0 보다 큰 원 단위 정수여야 합니다.');
   }
+  if (claimedAt !== null && !/^\d{4}-\d{2}-\d{2}$/.test(claimedAt)) {
+    bad.push('청구일은 YYYY-MM-DD 형식이어야 합니다.');
+  }
   if (collectedAt !== null && !/^\d{4}-\d{2}-\d{2}$/.test(collectedAt)) {
     bad.push('수금일은 YYYY-MM-DD 형식이어야 합니다.');
   }
-  /* 금액 없이 수금일만 있으면 「얼마를 받았는지 모르는 수금」이 남는다 */
+  /* 금액 없이 청구·수금만 있으면 「얼마를 청구했는지 모르는 청구」가 남는다 */
+  if (amount === null && claimedAt !== null) {
+    bad.push('금액을 먼저 적어야 청구일을 기록할 수 있습니다.');
+  }
   if (amount === null && collectedAt !== null) {
     bad.push('금액을 먼저 적어야 수금일을 기록할 수 있습니다.');
+  }
+  if (claimedAt !== null && collectedAt !== null && collectedAt < claimedAt) {
+    bad.push(`수금일(${collectedAt})이 청구일(${claimedAt})보다 앞설 수 없습니다.`);
   }
   return bad;
 }
@@ -352,22 +386,100 @@ export function checkSettlementSteps(steps: SettlementStepRule[], turnkey: numbe
  * 이미 「조건 대기」로 쓰고 있다(payout-board 의 WorkState) — 같은 개념에 같은 말을 쓴다.
  * 무엇을 기다리는지는 차수 칸의 부기가 적는다(「660,000 · 준공마감」).
  *
- * ★말을 네 마디로 통일했다★ (한백 지시 2026-08-28) — 총 받아야 할 돈 · 받을 수 있는 돈 ·
- * 수금 완료 · 미수금. 「청구 가능」은 그 넷에 없던 다섯째 말이라 「받을 수 있음」으로 바꿨다
- * (차수 하나의 상태라 형용형이다). 같은 것을 두 말로 부르면 화면마다 다른 말이 뜬다.
+ * ★말은 회계 말을 쓴다★ (한백 지시 2026-11-02) — 한백은 운영사에 기성을 실제로 청구한다.
+ * 그래서 차수의 자리와 기성관리의 합계가 같은 낱말로 짝을 이룬다:
+ *   청구 가능 ↔ 청구 가능 · 미수 ↔ 미수금 · 수금 완료 ↔ 수금 완료,
+ *   조건 대기 + 청구 예정 + 청구 가능 = 수주잔고(아직 청구하지 않은 돈).
+ * 예전 말(받을 수 있음 · 받을 수 있는 돈 · 총 받아야 할 돈)은 청구를 기록하지 않던 때의 것이다 —
+ * 그때 「미수금」은 아직 조건도 안 찬 돈까지 담고 있어서 회계 뜻과 달랐다.
  */
 export const STEP_LABEL: Record<StepState, string> = {
   na: '해당없음',
   waiting: '조건 대기',
-  open: '받을 수 있음',
+  scheduled: '청구 예정',
+  open: '청구 가능',
+  claimed: '미수',
   collected: '수금 완료',
 };
 
 export const STEP_TONE = {
   waiting: 'mute',
+  scheduled: 'mute',
   open: 'warn',
+  claimed: 'stage',
   collected: 'ok',
 } as const satisfies Record<Exclude<StepState, 'na'>, string>;
+
+/**
+ * 청구할 수 있는 첫날 — ★조건이 찬 달의 다음 달 1일★ (한백 2026-11-02 「조건이 차면 익월에 기성을
+ * 청구할 수 있음」). 10월 15일 착공이면 11월 1일부터다. 판정은 이 함수 하나다 — 차수의 자리·
+ * 청구 단추·저장소의 거절이 같은 날을 본다.
+ */
+export function claimableFromOf(openedAt: string): string {
+  return `${monthShift(openedAt.slice(0, 7), 1)}-01`;
+}
+
+/** 「2026-12-01」 → 「12월」 — 청구 예정 차수가 언제부터인지 말할 때 */
+export const claimMonthLabel = (day: string): string => `${Number(day.slice(5, 7))}월`;
+
+/**
+ * 이 차수에 청구일을 적을 수 있나 — 안 되면 그 이유(단추 이름·저장소 거절이 같은 말을 쓴다).
+ *
+ * 이미 청구한 차수의 날을 고치는 것은 받는다(잘못 찍은 날 바로잡기). 수금된 차수는 수금을 먼저
+ * 되돌린다 — 청구일만 바꾸면 수금일이 청구일보다 앞서는 기록이 생길 수 있다.
+ */
+export function stepClaimBlock(
+  step: Pick<SettlementStep, 'no' | 'state' | 'trigger' | 'claimableFrom'> | undefined,
+  at: string,
+  today: string
+): string | null {
+  if (!step || step.state === 'na') return `${step?.no ?? ''}차는 이 현장의 정산 규칙에 없습니다.`;
+  if (step.state === 'collected') return `${step.no}차는 이미 수금됐습니다 — 수금을 되돌린 뒤 청구일을 고치세요.`;
+  if (step.state === 'waiting' || !step.claimableFrom) {
+    return `${step.no}차(${step.trigger})는 아직 조건이 차지 않았습니다.`;
+  }
+  if (at < step.claimableFrom) {
+    return `${step.no}차는 ${step.claimableFrom}부터 청구할 수 있습니다 — 조건이 찬 다음 달부터입니다.`;
+  }
+  if (at > today) return '앞으로 올 날짜로는 청구를 기록할 수 없습니다.';
+  return null;
+}
+
+/**
+ * 이 차수에 수금을 적을 수 있나 — ★청구한 차수에만★ (한백 결정 2026-11-02). 그래야 미수금(청구했는데
+ * 안 들어온 돈)이 맞는다. 이미 수금된 차수를 다시 적는 것(금액·날 고치기)은 받는다 — 옛 수금은
+ * 청구일이 없으므로 그때는 날의 앞뒤를 보지 않는다.
+ */
+export function stepCollectBlock(
+  step: Pick<SettlementStep, 'no' | 'state' | 'trigger' | 'claimedAt'> | undefined,
+  at: string
+): string | null {
+  if (!step || step.state === 'na') return `${step?.no ?? ''}차는 이 현장의 정산 규칙에 없습니다.`;
+  if (step.state === 'waiting') return `${step.no}차(${step.trigger})는 아직 조건이 차지 않았습니다.`;
+  if (step.state === 'scheduled' || step.state === 'open') {
+    return `${step.no}차는 청구를 먼저 기록해야 수금을 적을 수 있습니다.`;
+  }
+  if (step.claimedAt && at < step.claimedAt) {
+    return `수금일(${at})이 청구일(${step.claimedAt})보다 앞설 수 없습니다.`;
+  }
+  return null;
+}
+
+/**
+ * 차수 하나의 자리 — 기록(청구일·수금일)이 먼저 이기고, 없으면 조건과 오늘로 정한다.
+ * 옛 수금 기록은 청구일이 없어도 수금 완료다(그때는 청구를 기록하지 않았다).
+ */
+export function stepStateOf(input: {
+  openedAt: string | null;
+  claimedAt: string | null;
+  collectedAt: string | null;
+  today: string;
+}): Exclude<StepState, 'na'> {
+  if (input.collectedAt) return 'collected';
+  if (input.claimedAt) return 'claimed';
+  if (!input.openedAt) return 'waiting';
+  return input.today >= claimableFromOf(input.openedAt) ? 'open' : 'scheduled';
+}
 
 const EMPTY_STEP = (no: 1 | 2 | 3): SettlementStep => ({
   no,
@@ -376,6 +488,8 @@ const EMPTY_STEP = (no: 1 | 2 | 3): SettlementStep => ({
   planAmount: null,
   state: 'na',
   openedAt: null,
+  claimableFrom: null,
+  claimedAt: null,
   collectedAt: null,
   collectedAmount: null,
 });
@@ -390,7 +504,11 @@ export function settlementForProject(
   process: ProcessInfo,
   closeDate: string | null,
   /** 차수별 수금 기록 — 날짜와 실수금액은 한 사실이라 같이 온다 */
-  collected: Partial<Record<1 | 2 | 3, { at: string; amount: number | null }>> = {}
+  collected: Partial<Record<1 | 2 | 3, { at: string; amount: number | null }>> = {},
+  /** 차수별 청구일 (2026-11-02) */
+  claimed: Partial<Record<1 | 2 | 3, string>> = {},
+  /** 오늘(한국 달력) — 청구 예정과 청구 가능을 가른다. 시험이 날을 고정할 수 있게 받는다 */
+  today: string = todayOf()
 ): SettlementStep[] {
   const steps: SettlementStep[] = [EMPTY_STEP(1), EMPTY_STEP(2), EMPTY_STEP(3)];
   if (!rule) return steps;
@@ -410,7 +528,8 @@ export function settlementForProject(
     const collectedAt = got?.at ?? null;
     /* 조건이 찬 날 — 수금했더라도 남긴다. 언제부터 받을 수 있었는지가 사실이다 */
     const openedAt = triggerDate(stepRule.trigger, process, closeDate);
-    const state: StepState = collectedAt ? 'collected' : openedAt ? 'open' : 'waiting';
+    const claimedAt = claimed[no] ?? null;
+    const state: StepState = stepStateOf({ openedAt, claimedAt, collectedAt, today });
 
     steps[i] = {
       no,
@@ -419,6 +538,8 @@ export function settlementForProject(
       planAmount: priced.length > 0 ? amount : null,
       state,
       openedAt,
+      claimableFrom: openedAt ? claimableFromOf(openedAt) : null,
+      claimedAt,
       collectedAt,
       collectedAmount: got?.amount ?? null,
     };
@@ -844,3 +965,81 @@ export function collectionRate(steps: SettlementStep[]): number | null {
   return Math.round((got / plan) * 1000) / 10;
 }
 
+
+/**
+ * ── 운영사 기성의 돈 토막 — 판정은 이 함수 하나다 (한백 지시 2026-11-02) ─────────────
+ *
+ * 기성관리 표·정산현황 카드·할 일이 같은 셈을 본다. 화면마다 따로 세던 때(기성관리는 표 안에서,
+ * 정산현황은 페이지 안에서) 같은 이름이 다른 돈을 가리킨 적이 있다.
+ *
+ *   총 기성액 = 수주잔고 + 미수금 + 수금 완료
+ *   수주잔고  = 아직 청구하지 않은 돈 = 조건 대기 + 청구 예정 + 청구 가능
+ *   청구 가능 = 수주잔고 중 지금 청구할 수 있는 돈 (조건이 찬 다음 달부터 · 점검수수료는 금액을 적은 뒤)
+ *   미수금    = 청구했는데 아직 안 들어온 돈 + 실수금 차액
+ *   수금 완료 = 실제로 받은 돈 (실수금액)
+ *
+ * 실수금 차액: 계획액보다 적게 받고 수금 완료로 닫은 차수의 모자란 몫 — 청구한 돈 중 못 받은 것이라
+ * 미수금에 든다(감사 L13: 「조건 대기」로 부기하면 조건이 이미 찬 돈을 기다리는 돈이라 부르게 된다).
+ * 많이 받은 현장(실수금 > 계획)은 그만큼 세 토막의 합이 총 기성액을 넘는다 — ★상계하지 않는다★:
+ * 한 차수의 초과분이 다른 돈의 미수를 지우면 미수금이 0 으로 뜬다(감사 때 실제로 그랬다).
+ *
+ * 안 받는 운영사의 수수료는 0 으로 본다 — 조립도 null 로 보내지만 판정하는 자리마다 cpo 를 같이 본다.
+ */
+export interface ReceivableMoney {
+  /** 총 기성액 — 차수 계획액 전부 + 점검수수료 (받은 것 포함) */
+  plan: number;
+  /** 수주잔고 — 아직 청구하지 않은 돈 */
+  backlog: number;
+  /** 청구 가능 — 수주잔고 중 지금 청구할 수 있는 돈 */
+  claimable: number;
+  /** 청구 예정 — 조건이 이번 달에 차서 다음 달부터 청구할 돈 */
+  scheduled: number;
+  /** 조건 대기 — 트리거가 아직 안 찬 돈 */
+  waiting: number;
+  /** 미수금 — 청구했는데 안 들어온 돈 + 실수금 차액 */
+  unpaid: number;
+  /** 그중 실수금 차액 */
+  shortfall: number;
+  /** 수금 완료 — 실제로 받은 돈 */
+  collected: number;
+  /** 청구 가능 중 점검수수료 몫 — 차수가 안 열린 현장에서도 금액이 서는 이유 */
+  feeClaimable: number;
+  /** 총 기성액 중 점검수수료 몫 — 수금률에서 뺀다 */
+  feePlan: number;
+  /** 수금 완료 중 점검수수료 몫 */
+  feeCollected: number;
+}
+
+export function receivableMoneyOf(r: {
+  cpo: CpoName;
+  steps: SettlementStep[];
+  planTotal: number;
+  collectedTotal: number;
+} & SafetyFeePair): ReceivableMoney {
+  const fee: SafetyFeePair = safetyFeeApplies(r.cpo)
+    ? r
+    : { safetyFee: null, safetyFeeClaimedAt: null, safetyFeeCollectedAt: null };
+  const sumOf = (state: StepState) =>
+    r.steps.filter((s) => s.state === state).reduce((n, s) => n + (s.planAmount ?? 0), 0);
+  const shortfall = r.steps
+    .filter((s) => s.state === 'collected' && s.collectedAmount !== null && s.planAmount !== null
+      && s.collectedAmount < s.planAmount)
+    .reduce((n, s) => n + ((s.planAmount ?? 0) - (s.collectedAmount ?? 0)), 0);
+  const waiting = sumOf('waiting');
+  const scheduled = sumOf('scheduled');
+  const feeClaimable = safetyFeeOpen(fee);
+  const claimable = sumOf('open') + feeClaimable;
+  return {
+    plan: r.planTotal,
+    backlog: waiting + scheduled + claimable,
+    claimable,
+    scheduled,
+    waiting,
+    unpaid: sumOf('claimed') + safetyFeeClaimed(fee) + shortfall,
+    shortfall,
+    collected: r.collectedTotal,
+    feeClaimable,
+    feePlan: fee.safetyFee ?? 0,
+    feeCollected: safetyFeeCollected(fee),
+  };
+}

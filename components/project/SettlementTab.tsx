@@ -20,7 +20,7 @@ import { PAYOUT_CATEGORIES, replLabel } from '@/types/project';
 import {
   adjustEntriesOf, collectionRate, distributionUnit, entryTypeOf, payoutSideOf, payoutStepsOf,
   STEP_LABEL, STEP_TONE, triggerSource, turnkeyUnit,
-  safetyFeeApplies, safetyFeeDue, safetyFeeReceiptState,
+  claimMonthLabel, safetyFeeApplies, safetyFeeDue, safetyFeeReceiptState, safetyFeeStateOf,
 } from '@/lib/settlement';
 import type { Visibility } from '@/lib/roles';
 import type { RuleOptions } from '@/lib/pricing-match';
@@ -42,7 +42,9 @@ import { RejectReason } from '@/components/project/parts';
 const STEP_STYLE: Record<SettlementStep['state'], string> = {
   na: 'border-l-slate-200 bg-white',
   waiting: 'border-l-slate-300 bg-white',
+  scheduled: 'border-l-slate-400 bg-white',
   open: 'border-l-amber-500 bg-amber-50/70',
+  claimed: 'border-l-sky-500 bg-sky-50/60',
   collected: 'border-l-brand-500 bg-brand-50/60',
 };
 
@@ -207,6 +209,7 @@ export function ReceivableTab({
           applies={safetyFeeApplies(detail.project.cpo)}
           due={safetyFeeDue(detail.process.status)}
           fee={admin?.safetyFee ?? null}
+          claimedAt={admin?.safetyFeeClaimedAt ?? null}
           collectedAt={admin?.safetyFeeCollectedAt ?? null}
           receipts={admin?.safetyFeeReceipts ?? []}
           receiptStatus={admin?.safetyFeeReceiptStatus ?? 'none'}
@@ -230,11 +233,11 @@ export function ReceivableTab({
  * 준공완료 뒤에 비어 있으면 「미지정」(노랑, 넣어야 하는데 안 넣음). 안 가르면 대상 현장
  * 116곳이 접수 직후부터 내내 노랑으로 선다.
  *
- * 두 사실을 한 줄에서 받는다: ★청구액★과 ★받은 날★. 금액이 없으면 받을 것이 없으니
- * 수금 자리가 아예 없다.
+ * 세 사실을 한 줄에서 받는다: ★청구액★ · ★청구한 날★ · ★받은 날★ (청구일은 2026-11-02 — 수금은 청구 뒤에).
+ * 금액이 없으면 받을 것이 없으니 청구·수금 자리가 아예 없다.
  */
 function SafetyFeeFact({
-  projectId, applies, due, fee, collectedAt, receipts, receiptStatus, receiptReason, canEdit,
+  projectId, applies, due, fee, claimedAt, collectedAt, receipts, receiptStatus, receiptReason, canEdit,
 }: {
   projectId: string;
   /** 이 운영사에게서 따로 받는가 — 아니면 「해당없음」 */
@@ -242,6 +245,8 @@ function SafetyFeeFact({
   /** 청구액을 적을 때가 됐나 (준공완료) */
   due: boolean;
   fee: number | null;
+  /** 운영사에 청구한 날 (2026-11-02) */
+  claimedAt: string | null;
   collectedAt: string | null;
   /** 협력사가 공정에서 낸 영수증 — 여기서는 읽기만 한다(정본은 시공 탭의 그 서류 칸) */
   receipts: DocFile[];
@@ -255,7 +260,7 @@ function SafetyFeeFact({
   const [asking, setAsking] = useState(false);
   const [draft, setDraft] = useState(fee === null ? '' : String(fee));
 
-  const save = (body: { amount?: number | null; collectedAt?: string | null }) =>
+  const save = (body: { amount?: number | null; claimedAt?: string | null; collectedAt?: string | null }) =>
     run({
       url: `/api/projects/${projectId}/settlement`,
       body: { safetyFee: body },
@@ -264,27 +269,29 @@ function SafetyFeeFact({
 
   /* 값이 남아 있으면 대상이 아니어도 보여 준다 — 안 보이면 지울 수도 없다 */
   const showValue = applies || fee !== null;
-  const state = collectedAt !== null ? 'collected' : fee !== null ? 'open' : 'waiting';
+  /* 차수와 같은 판정·같은 말이다 — 수수료만 따로 세면 표와 이 탭이 갈린다 */
+  const state = safetyFeeStateOf({ safetyFee: fee, safetyFeeClaimedAt: claimedAt, safetyFeeCollectedAt: collectedAt });
   /* 「수정」을 열 때 지금 값으로 되맞춘다 — 다른 탭이 고친 뒤라면 옛 값이 남아 있다 */
   const openEdit = () => { setDraft(fee === null ? '' : String(fee)); setEditing(true); };
+  /* 금액을 지우면 청구·수금 기록도 같이 지워진다 — 되돌릴 수 없어 그 자리에서 묻는다 */
+  const wipes = draft === '' && (claimedAt !== null || collectedAt !== null);
 
   return (
     <div
-      className={`flex flex-wrap items-center gap-x-4 gap-y-1 rounded-box border border-slate-200 border-l-[3px] px-4 py-3 ${showValue ? STEP_STYLE[state] : STEP_STYLE.na}`}
+      className={`flex flex-wrap items-center gap-x-4 gap-y-1 rounded-box border border-slate-200 border-l-[3px] px-4 py-3 ${showValue ? STEP_STYLE[state === 'none' ? 'waiting' : state] : STEP_STYLE.na}`}
     >
       <span className="w-10 shrink-0 text-tiny font-bold text-slate-400">수수료</span>
       <div className="min-w-0 flex-1">
         <p className="text-lead font-bold text-slate-800">전기안전점검수수료</p>
+        {/* 자리는 배지가 말한다 — 여기는 무슨 돈인지만 (같은 말을 두 번 두지 않는다, 화면 규칙 5) */}
         <p className="text-tiny text-slate-500">
           {!applies ? '이 운영사에게서는 따로 받지 않는다'
-            : collectedAt !== null ? '수금 완료'
-              : fee !== null ? '미수금'
-                : due ? '준공 정산 — 청구액을 적는다' : '준공 정산'}
+            : fee === null && due ? '준공 정산 — 청구액을 적는다' : '준공 정산'}
         </p>
       </div>
       {!showValue ? (
         <Empty kind="na" />
-      ) : fee === null ? (
+      ) : state === 'none' ? (
         /* 준공 전 빈 값은 「아직 올 때가 아님」, 준공 뒤 빈 값은 「미지정」 (화면 규칙 10) */
         <Empty kind={due ? 'miss' : 'wait'} />
       ) : (
@@ -302,17 +309,12 @@ function SafetyFeeFact({
             aria-label="전기안전점검수수료"
             className={`${FIELD} w-36 text-right tabular-nums`}
           />
-          {/*
-            이미 수금이 찍혀 있는데 금액을 지우면 그 수금 기록도 같이 사라진다 —
-            되돌릴 수 없는 것을 확정하는 자리라 그 자리에서 묻는다(화면 규칙 7·12).
-          */}
           <Btn
             size="sm"
             busy={busy}
             busyLabel="저장 중…"
             onClick={() => {
-              /* 수금이 찍힌 값을 지우는 것은 되돌릴 수 없다 — 그 자리에서 한 번 묻는다 */
-              if (draft === '' && collectedAt !== null) { setAsking(true); return; }
+              if (wipes) { setAsking(true); return; }
               void save({ amount: draft === '' ? null : Number(draft) })
                 .then((ok) => { if (ok) setEditing(false); });
             }}
@@ -323,7 +325,10 @@ function SafetyFeeFact({
           <Confirm
             open={asking}
             title="청구액을 지웁니다"
-            detail={`${collectedAt} 수금 기록도 같이 사라집니다`}
+            detail={[
+              claimedAt && `${claimedAt} 청구`,
+              collectedAt && `${collectedAt} 수금`,
+            ].filter(Boolean).join(' · ') + ' 기록도 같이 사라집니다'}
             confirmLabel="지우기"
             busy={busy}
             error={error}
@@ -336,22 +341,18 @@ function SafetyFeeFact({
       ) : (
         applies && <Btn size="sm" kind="quiet" onClick={openEdit}>{fee === null ? '입력' : '수정'}</Btn>
       ))}
-      {canEdit && applies && fee !== null && !editing && (
-        collectedAt === null ? (
-          <DatePicker
-            value={null}
-            onChange={(v) => void save({ collectedAt: v })}
-            disabled={busy}
-            ariaLabel="수수료 수금일"
-          />
-        ) : (
-          <span className="flex flex-wrap items-center gap-2 text-tiny font-bold text-slate-500">
-            <span className="tabular-nums text-slate-800">{collectedAt} 수금</span>
-            <Btn size="sm" kind="quiet" busy={busy} busyLabel="되돌리는 중…" onClick={() => void save({ collectedAt: null })}>
-              되돌리기
-            </Btn>
-          </span>
-        )
+      {applies && fee !== null && !editing && (
+        <MoneySteps
+          claimedAt={claimedAt}
+          collectedAt={collectedAt}
+          canEdit={canEdit}
+          busy={busy}
+          name="수수료"
+          onClaim={state === 'open' ? (at) => save({ claimedAt: at }) : null}
+          onUnclaim={state === 'claimed' ? () => save({ claimedAt: null }) : null}
+          onCollect={state === 'claimed' ? (at) => save({ collectedAt: at }) : null}
+          onUncollect={state === 'collected' ? () => save({ collectedAt: null }) : null}
+        />
       )}
       <Err>{error}</Err>
       {/* 협력사가 낸 영수증 — 청구 근거가 와 있나. 올리는 자리는 시공 탭이다 */}
@@ -362,6 +363,96 @@ function SafetyFeeFact({
         wanted={applies && fee !== null}
       />
     </div>
+  );
+}
+
+/**
+ * 청구 → 수금 두 사실을 한 줄에서 적는다 — 차수와 점검수수료가 같이 쓴다 (한백 지시 2026-11-02).
+ *
+ * 지나온 기록(「11-05 청구 · 11-28 수금」)을 먼저 적고, 지금 할 수 있는 동작 하나를 붙인다:
+ * 청구 가능이면 「청구 기록」, 미수면 「수금 기록」(+ 청구 취소), 수금 완료면 「되돌리기」.
+ * 단추를 누르면 그 자리에서 날짜 칸이 열린다 — 늘 열린 칸은 지나가는 클릭에 값이 바뀐다(화면 규칙 4).
+ * 수금은 금액을 같이 받을 수 있다(차수만 — 협의로 계획과 다르게 받는 현장, migrations/0034).
+ */
+function MoneySteps({
+  claimedAt, collectedAt, canEdit, busy, name, onClaim, onUnclaim, onCollect, onUncollect, collectAmount,
+}: {
+  claimedAt: string | null;
+  collectedAt: string | null;
+  canEdit: boolean;
+  busy: boolean;
+  /** 날짜 칸의 이름에 붙는다 — 「1차 청구일」 · 「수수료 수금일」 */
+  name: string;
+  onClaim: ((at: string) => Promise<boolean>) | null;
+  onUnclaim: (() => Promise<boolean>) | null;
+  onCollect: ((at: string, amount: number | null) => Promise<boolean>) | null;
+  onUncollect: (() => Promise<boolean>) | null;
+  /** 받은 금액 칸의 자리글 — 주면 수금 때 금액 칸이 선다(차수) */
+  collectAmount?: string;
+}) {
+  const [mode, setMode] = useState<'claim' | 'collect' | null>(null);
+  const [at, setAt] = useState<string | null>(today());
+  const [amount, setAmount] = useState('');
+  const close = () => { setMode(null); setAmount(''); };
+  const open = (m: 'claim' | 'collect') => { setAt(today()); setAmount(''); setMode(m); };
+
+  const record = (
+    <>
+      {claimedAt && <span className="tabular-nums text-slate-700">{claimedAt} 청구</span>}
+      {claimedAt && collectedAt && <span className="text-slate-300">·</span>}
+      {collectedAt && <span className="tabular-nums text-brand-800">{collectedAt} 수금</span>}
+    </>
+  );
+
+  if (mode !== null && canEdit) {
+    const isClaim = mode === 'claim';
+    return (
+      <span className="flex shrink-0 flex-wrap items-center gap-2 text-tiny font-bold">
+        {record}
+        <DatePicker value={at} onChange={setAt} disabled={busy} ariaLabel={`${name} ${isClaim ? '청구일' : '수금일'}`} />
+        {!isClaim && collectAmount !== undefined && (
+          <input
+            type="text"
+            inputMode="numeric"
+            value={amount}
+            disabled={busy}
+            onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ''))}
+            placeholder={collectAmount}
+            aria-label={`${name} 받은 금액`}
+            className={`${FIELD} w-52 text-right tabular-nums`}
+          />
+        )}
+        <Btn
+          size="sm" busy={busy} busyLabel="저장 중…" disabled={!at}
+          onClick={() => {
+            if (!at) return;
+            const done = isClaim ? onClaim?.(at) : onCollect?.(at, amount === '' ? null : Number(amount));
+            void done?.then((ok) => { if (ok) close(); });
+          }}
+        >
+          {at ? '저장' : isClaim ? '청구일을 고르세요' : '수금일을 고르세요'}
+        </Btn>
+        <Btn size="sm" kind="quiet" disabled={busy} onClick={close}>취소</Btn>
+      </span>
+    );
+  }
+
+  return (
+    <span className="flex shrink-0 flex-wrap items-center gap-2 text-tiny font-bold">
+      {record}
+      {canEdit && onClaim && <Btn size="sm" onClick={() => open('claim')}>청구 기록</Btn>}
+      {canEdit && onCollect && <Btn size="sm" onClick={() => open('collect')}>수금 기록</Btn>}
+      {canEdit && onUnclaim && (
+        <Btn size="sm" kind="quiet" busy={busy} busyLabel="되돌리는 중…" onClick={() => void onUnclaim()}>
+          청구 취소
+        </Btn>
+      )}
+      {canEdit && onUncollect && (
+        <Btn size="sm" kind="quiet" busy={busy} busyLabel="되돌리는 중…" onClick={() => void onUncollect()}>
+          수금 되돌리기
+        </Btn>
+      )}
+    </span>
   );
 }
 
@@ -469,11 +560,13 @@ function CloseDateFact({ date }: { date: string | null }) {
 }
 
 /**
- * 기성 한 차수의 수금 기록.
+ * 기성 한 차수의 청구·수금 기록 (한백 지시 2026-11-02 — 청구가 수금 앞에 선다).
  *
- * ★날짜와 금액을 같이 받는다.★ 「받았다」는 날짜로 표시하고, 받은 금액이 계획액과
- * 다르면 그 금액을 적는다 — 협의로 턴키단가와 다르게 받는 현장이 있다(예: 케이스는
- * 150만/기인데 190만/기로 협의). 금액을 비우면 계획액대로 받은 것이다.
+ * ★청구는 조건이 찬 다음 달부터★ — 그 전(청구 예정)에는 단추 이름이 그 날을 말한다(화면 규칙 3).
+ * 여러 현장을 한꺼번에 청구하는 자리는 기성관리 표의 체크다 — 여기는 한 차수(날 고치기·취소)다.
+ *
+ * ★수금은 날짜와 금액을 같이 받는다.★ 받은 금액이 계획액과 다르면 그 금액을 적는다 — 협의로
+ * 턴키단가와 다르게 받는 현장이 있다(예: 케이스는 150만/기인데 190만/기로 협의). 비우면 계획액대로다.
  *
  * 조건이 안 찬 차수(waiting)에는 단추를 두지 않는다 — 무엇을 기다리는지는 같은 줄의
  * 배지와 트리거가 이미 말한다(화면 규칙 2·3).
@@ -486,74 +579,44 @@ function CollectControl({
   canEdit: boolean;
 }) {
   const { busy, error, run } = useAction();
-  const [open, setOpen] = useState(false);
-  const [at, setAt] = useState<string | null>(today());
-  const [amount, setAmount] = useState('');
 
-  if (step.state === 'na') return null;
+  if (step.state === 'na' || step.state === 'waiting') return null;
 
   const send = (body: unknown, fail: string) =>
-    void run({ url: `/api/projects/${projectId}/settlement`, body, fail })
-      .then((ok) => { if (ok) { setOpen(false); setAmount(''); } });
+    run({ url: `/api/projects/${projectId}/settlement`, body, fail });
 
-  if (step.state === 'collected') {
-    return (
-      <span className="flex shrink-0 flex-wrap items-center gap-2">
-        <span className="text-tiny font-bold tabular-nums text-brand-800">
-          {step.collectedAt}
-          {step.collectedAmount !== null && step.collectedAmount !== step.planAmount && (
-            <span className="ml-1 text-slate-600">받은 금액 {won(step.collectedAmount)}</span>
-          )}
-        </span>
-        {canEdit && (
-          <Btn
-            size="sm" kind="quiet" busy={busy} busyLabel="되돌리는 중…"
-            onClick={() => send({ collected: { no: step.no, at: null } }, '수금을 되돌리지 못했습니다.')}
-          >
-            되돌리기
-          </Btn>
-        )}
-        <Err>{error}</Err>
-      </span>
-    );
-  }
-
-  if (!canEdit || step.state !== 'open') return null;
-
-  if (!open) {
-    return (
-      <span className="flex shrink-0 items-center gap-2">
-        <Btn size="sm" onClick={() => setOpen(true)}>수금 기록</Btn>
-      </span>
-    );
+  if (step.state === 'scheduled') {
+    /* 청구할 수 있는 날이 오지 않았다 — 못 누르는 이유를 단추 이름에 적는다(화면 규칙 3) */
+    return canEdit && step.claimableFrom ? (
+      <Btn size="sm" disabled>{claimMonthLabel(step.claimableFrom)}부터 청구 가능</Btn>
+    ) : null;
   }
 
   return (
     <span className="flex shrink-0 flex-wrap items-center gap-2">
-      <DatePicker value={at} onChange={setAt} disabled={busy} ariaLabel={`${step.no}차 수금일`} />
-      <input
-        type="text"
-        inputMode="numeric"
-        value={amount}
-        disabled={busy}
-        onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ''))}
-        placeholder={step.planAmount === null ? '받은 금액' : `${won(step.planAmount)} (계획대로면 비움)`}
-        aria-label={`${step.no}차 받은 금액`}
-        className={`${FIELD} w-52 text-right tabular-nums`}
+      <MoneySteps
+        claimedAt={step.claimedAt}
+        collectedAt={step.collectedAt}
+        canEdit={canEdit}
+        busy={busy}
+        name={`${step.no}차`}
+        collectAmount={step.planAmount === null ? '받은 금액' : `${won(step.planAmount)} (계획대로면 비움)`}
+        onClaim={step.state === 'open'
+          ? (at) => send({ claimed: { no: step.no, at } }, '청구를 기록하지 못했습니다.')
+          : null}
+        onUnclaim={step.state === 'claimed'
+          ? () => send({ claimed: { no: step.no, at: null } }, '청구를 취소하지 못했습니다.')
+          : null}
+        onCollect={step.state === 'claimed'
+          ? (at, amount) => send({ collected: { no: step.no, at, amount } }, '수금을 기록하지 못했습니다.')
+          : null}
+        onUncollect={step.state === 'collected'
+          ? () => send({ collected: { no: step.no, at: null } }, '수금을 되돌리지 못했습니다.')
+          : null}
       />
-      <Btn
-        size="sm" busy={busy} busyLabel="저장 중…"
-        disabled={!at}
-        onClick={() => send(
-          { collected: { no: step.no, at, amount: amount === '' ? null : Number(amount) } },
-          '수금을 기록하지 못했습니다.'
-        )}
-      >
-        {at ? '저장' : '수금일을 고르세요'}
-      </Btn>
-      <Btn size="sm" kind="quiet" disabled={busy} onClick={() => { setOpen(false); setAmount(''); }}>
-        취소
-      </Btn>
+      {step.state === 'collected' && step.collectedAmount !== null && step.collectedAmount !== step.planAmount && (
+        <span className="text-tiny font-bold tabular-nums text-slate-600">받은 금액 {won(step.collectedAmount)}</span>
+      )}
       <Err>{error}</Err>
     </span>
   );

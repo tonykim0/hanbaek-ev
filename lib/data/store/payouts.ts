@@ -21,7 +21,8 @@ import { asProcessStatus, stepsOf } from '@/lib/process';
 import {
   checkPayoutEntry, checkSafetyFee, entryTypeOf, isPassThroughSite, payoutUnitOf,
   payoutPrerequisiteBlockersOf, payoutReleaseOf,
-  payoutSideOf, payoutStepsOf, safetyFeeApplies, siteRuleOf,
+  payoutSideOf, payoutStepsOf, safetyFeeApplies, safetyFeeStateOf, siteRuleOf,
+  stepClaimBlock, stepCollectBlock,
 } from '@/lib/settlement';
 import {
   contractStateFor, payoutMilestonesFor, payoutPlansOf, payoutRowsOf, settlementSummaryOf, toDetail,
@@ -30,7 +31,7 @@ import type { ProjectRecord, RuleMap } from '../assemble';
 import type { Viewer } from '@/lib/auth/types';
 import type {
   BizType, CpoName, NewPayoutEntry, NoticeFile, PayoutCategory, PayoutKind, PayoutRow,
-  ReplType, SettlementSummary,
+  ReplType, SettlementStep, SettlementSummary,
 } from '@/types/project';
 import { BIZ_TYPES, CPO_NAMES, normalizeRepl, POWER_TYPES, TERM_YEARS } from '@/types/project';
 import type { Actor, PaymentPatch, ProjectRepository } from '../repository';
@@ -39,13 +40,28 @@ import {
 } from './shared';
 import type { TxLike } from './shared';
 
+/*
+ * ── 기성 청구·수금의 칸 (2026-11-02) ──────────────────────────────────────────
+ * 차수 번호(1·2·3)로 칸을 고른다. 청구·수금은 같은 현장의 같은 줄을 읽고 판정한 뒤 쓴다 —
+ * 청구 취소와 수금 기록이 엇갈려 「청구 없는 수금」이 남지 않게 현장 단위 자문 잠금을 쥔다.
+ */
+const CLAIM_KEY = { 1: 'claimed1At', 2: 'claimed2At', 3: 'claimed3At' } as const;
+const lockReceivable = (tx: TxLike, projectId: string) =>
+  tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hb_receivable:${projectId}`}))`);
+
+/** 지금 이 현장의 차수 — 조건·청구·수금 판정의 정본(조립)을 그대로 쓴다 */
+async function stepsNow(row: typeof projects.$inferSelect): Promise<SettlementStep[]> {
+  const [record] = await recordsOf([row]);
+  return toDetail(record, await ruleMap(), await settleMap()).admin?.steps ?? [];
+}
+
 /** pgRepository 가 펼쳐 담는 조각 — 이름과 시그니처는 인터페이스가 정한다 */
 export const payoutStore: Pick<
   ProjectRepository,
   'listSettlements' | 'listPayouts' | 'listPayoutOverview' | 'setLinePricing' | 'setLineFacts'
   | 'setProjectAxes' | 'addContractLine' | 'deleteContractLine' | 'setPayment'
   | 'setPayoutTermsConfirmed' | 'setSettlementRule' | 'setCpoCloseDate' | 'setSettlementCollected'
-  | 'setSafetyFee'
+  | 'setSettlementClaimed' | 'claimReceivables' | 'setSafetyFee'
   | 'runPayoutBatch' | 'addPayoutEntry' | 'addPayoutEntries' | 'deletePayoutEntry'
 > = {
   async listSettlements(viewer: Viewer): Promise<SettlementSummary[]> {
@@ -511,13 +527,21 @@ export const payoutStore: Pick<
        * 그 번호가 다른 정의로 옮겨 가고 없는 번호의 수금은 화면에서 사라졌다. 수금을 먼저 지운다.
        */
       const [collected] = await tx
-        .select({ c1: settlements.collected1At, c2: settlements.collected2At, c3: settlements.collected3At })
+        .select({
+          c1: settlements.collected1At, c2: settlements.collected2At, c3: settlements.collected3At,
+          q1: settlements.claimed1At, q2: settlements.claimed2At, q3: settlements.claimed3At,
+        })
         .from(settlements)
         .where(eq(settlements.projectId, projectId))
         .limit(1);
       const recorded = [collected?.c1, collected?.c2, collected?.c3].filter(Boolean).length;
       if (recorded > 0) {
         throw new Error(`기성 수금 기록이 ${recorded}건 있는 현장입니다 — 수금을 먼저 해제한 뒤 규칙을 바꾸세요.`);
+      }
+      /* 청구일도 차수 번호에 붙어 있다 — 수금과 같은 까닭으로 막는다 (2026-11-02) */
+      const claimedCount = [collected?.q1, collected?.q2, collected?.q3].filter(Boolean).length;
+      if (claimedCount > 0) {
+        throw new Error(`기성 청구 기록이 ${claimedCount}건 있는 현장입니다 — 청구를 먼저 취소한 뒤 규칙을 바꾸세요.`);
       }
 
       // lastProgressAt 은 건드리지 않는다 — 규칙을 고르는 것은 설정이지 현장의 진척이 아니다
@@ -573,8 +597,11 @@ export const payoutStore: Pick<
         .where(eq(projects.id, projectId))
         .limit(1);
       if (!row) throw new Error('현장을 찾을 수 없습니다.');
+      await lockReceivable(tx, projectId);
       const [before] = await tx
-        .select({ fee: settlements.safetyFee, at: settlements.safetyFeeCollectedAt })
+        .select({
+          fee: settlements.safetyFee, claimed: settlements.safetyFeeClaimedAt, at: settlements.safetyFeeCollectedAt,
+        })
         .from(settlements)
         .where(eq(settlements.projectId, projectId))
         .limit(1);
@@ -599,12 +626,30 @@ export const payoutStore: Pick<
       const collectedAt = patch.amount === null
         ? null
         : patch.collectedAt === undefined ? before?.at ?? null : patch.collectedAt;
+      /* 청구일도 같은 규칙이다 — 금액을 지우면 같이 지운다 (2026-11-02) */
+      const claimedAt = patch.amount === null
+        ? null
+        : patch.claimedAt === undefined ? before?.claimed ?? null : patch.claimedAt;
+      const was = { claimed: before?.claimed ?? null, at: before?.at ?? null };
 
-      const bad = checkSafetyFee(amount, collectedAt);
+      const bad = checkSafetyFee(amount, claimedAt, collectedAt);
+      /*
+       * ★수금은 청구 뒤에★ (한백 결정 2026-11-02) — ★수금일을 새로 적을 때만★ 본다. 옛 기록은 청구일 없이
+       * 수금일만 있어서, 늘 보면 그 현장의 금액 고치기까지 거절된다(checkSafetyFee 주석).
+       */
+      if (collectedAt !== null && collectedAt !== was.at && claimedAt === null) {
+        bad.push('청구일을 먼저 기록해야 수금을 적을 수 있습니다.');
+      }
+      if (patch.amount !== null && claimedAt === null && was.claimed !== null && collectedAt !== null) {
+        bad.push('수금을 먼저 되돌려야 청구를 취소할 수 있습니다.');
+      }
+      if (claimedAt !== null && claimedAt !== was.claimed && claimedAt > today()) {
+        bad.push('앞으로 올 날짜로는 청구를 기록할 수 없습니다.');
+      }
       if (bad.length > 0) throw new Error(bad.join(' '));
-      if ((before?.fee ?? null) === amount && (before?.at ?? null) === collectedAt) return;
+      if ((before?.fee ?? null) === amount && was.claimed === claimedAt && was.at === collectedAt) return;
 
-      const set = { safetyFee: amount, safetyFeeCollectedAt: collectedAt };
+      const set = { safetyFee: amount, safetyFeeClaimedAt: claimedAt, safetyFeeCollectedAt: collectedAt };
       await tx
         .insert(settlements)
         .values({ projectId, ...set })
@@ -616,10 +661,16 @@ export const payoutStore: Pick<
           field: 'safetyFee', oldValue: String(before?.fee ?? ''), newValue: String(amount ?? ''),
         });
       }
-      if ((before?.at ?? null) !== collectedAt) {
+      if (was.claimed !== claimedAt) {
+        await writeAudit(tx, {
+          projectId, actor, action: claimedAt === null ? '전기안전점검수수료 청구 취소' : '전기안전점검수수료 청구',
+          field: 'safetyFeeClaimedAt', oldValue: was.claimed, newValue: claimedAt,
+        });
+      }
+      if (was.at !== collectedAt) {
         await writeAudit(tx, {
           projectId, actor, action: collectedAt === null ? '전기안전점검수수료 수금 취소' : '전기안전점검수수료 수금',
-          field: 'safetyFeeCollectedAt', oldValue: before?.at ?? null, newValue: collectedAt,
+          field: 'safetyFeeCollectedAt', oldValue: was.at, newValue: collectedAt,
         });
       }
     });
@@ -644,6 +695,7 @@ export const payoutStore: Pick<
 
     const db = getDb();
     await db.transaction(async (tx) => {
+      await lockReceivable(tx, projectId);
       const [row] = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
       if (!row) throw new Error('현장을 찾을 수 없습니다.');
 
@@ -654,19 +706,15 @@ export const payoutStore: Pick<
         .limit(1);
 
       /*
-       * ★열리지 않은 차수는 받을 수 없다.★
-       * 조건(환경부 승인·착공·준공마감)이 차야 청구가 열린다 — 그 전에 수금이 찍히면
-       * 계획에 없던 돈이 들어온 것으로 보이고, 차수 상태(대기/청구가능/수금)도 뒤집힌다.
+       * ★청구한 차수만 받을 수 있다★ (한백 결정 2026-11-02 — 그 전에는 「조건이 찬 차수」였다).
+       * 조건 전에 수금이 찍히면 계획에 없던 돈이 들어온 것으로 보이고, 청구 없이 찍히면
+       * 미수금(청구했는데 안 들어온 돈)이 거짓이 된다. 판정은 lib/settlement stepCollectBlock 하나다.
        * 되돌리는 것(value === null)은 언제나 열어 둔다.
        */
       if (value) {
-        const [record] = await recordsOf([row]);
-        const steps = toDetail(record, await ruleMap(), await settleMap()).admin?.steps ?? [];
-        const step = steps.find((x) => x.no === no);
-        if (!step || step.state === 'na') throw new Error(`${no}차는 이 현장의 정산 규칙에 없습니다.`);
-        if (step.state === 'waiting') {
-          throw new Error(`${no}차(${step.trigger})는 아직 조건이 차지 않았습니다.`);
-        }
+        const step = (await stepsNow(row)).find((x) => x.no === no);
+        const why = stepCollectBlock(step ?? { no, state: 'na', trigger: '해당없음', claimedAt: null }, value.at);
+        if (why) throw new Error(why);
       }
 
       await tx
@@ -684,6 +732,110 @@ export const payoutStore: Pick<
         oldValue: before?.at ?? null,
         newValue: value ? `${value.at}${value.amount === null ? '' : ` · ${value.amount}원`}` : null,
       });
+    });
+  },
+
+  /**
+   * 기성 한 차수의 청구일 — 기성 탭에서 하나씩(날 고치기·취소). 여러 현장을 한 번에는 claimReceivables.
+   */
+  async setSettlementClaimed(projectId, no: 1 | 2 | 3, at: string | null, actor): Promise<void> {
+    assertAdmin(actor, '기성 청구 기록');
+    if (at !== null && !/^\d{4}-\d{2}-\d{2}$/.test(at)) {
+      throw new Error('청구일은 YYYY-MM-DD 형식이어야 합니다.');
+    }
+    const key = CLAIM_KEY[no];
+    await getDb().transaction(async (tx) => {
+      await lockReceivable(tx, projectId);
+      const [row] = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+      if (!row) throw new Error('현장을 찾을 수 없습니다.');
+      const step = (await stepsNow(row)).find((x) => x.no === no);
+      const was = step?.claimedAt ?? null;
+      if (at !== null) {
+        const why = stepClaimBlock(step, at, today());
+        if (why) throw new Error(why);
+      } else if (step?.state === 'collected' && was !== null) {
+        /* 수금이 남은 채 청구를 지우면 「청구 없는 수금」이 된다 — 수금을 먼저 되돌린다 */
+        throw new Error(`${no}차는 이미 수금됐습니다 — 수금을 먼저 되돌려야 청구를 취소할 수 있습니다.`);
+      }
+      if (was === at) return;
+
+      await tx
+        .insert(settlements)
+        .values({ projectId, [key]: at })
+        .onConflictDoUpdate({ target: settlements.projectId, set: { [key]: at } });
+      await writeAudit(tx, {
+        projectId, actor,
+        action: at ? `기성 ${no}차 청구` : `기성 ${no}차 청구 취소`,
+        field: key, oldValue: was, newValue: at,
+      });
+    });
+  },
+
+  /**
+   * 청구 기록 한꺼번에 — 기성관리 표에서 체크한 줄들을 청구일 하나로 (한백 2026-11-02).
+   *
+   * 운영사 청구는 달마다 모아서 한다(조건이 찬 다음 달). 지급 가확정과 같은 꼴이다 — 체크 → 날짜
+   * 하나 → N건. ★전부 되거나 전부 안 된다★: 반쯤 기록된 청구는 어디까지 했는지 알 수 없다.
+   * 금액은 받지 않는다 — 청구액은 그 차수의 계획액(수수료는 적어 둔 금액)이다.
+   * 이미 청구한 것은 거절한다 — 날을 고치는 일은 기성 탭에서 그 차수 하나로 한다.
+   */
+  async claimReceivables(items, at: string, actor): Promise<{ count: number; total: number }> {
+    assertAdmin(actor, '기성 청구 기록');
+    if (items.length === 0) throw new Error('청구할 항목이 없습니다.');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(at)) throw new Error('청구일은 YYYY-MM-DD 형식이어야 합니다.');
+    const unique = [...new Map(items.map((i) => [`${i.projectId}:${i.part}`, i])).values()];
+    const ids = [...new Set(unique.map((i) => i.projectId))].sort();
+    const now = today();
+
+    return getDb().transaction(async (tx) => {
+      /* 잠금은 정한 순서로 — 두 사람이 겹치는 묶음을 동시에 보내도 서로 기다리다 막히지 않게 */
+      for (const id of ids) await lockReceivable(tx, id);
+      const rows = await tx.select().from(projects).where(inArray(projects.id, ids));
+      if (rows.length !== ids.length) throw new Error('현장을 찾을 수 없습니다.');
+      const [records, rules, settles] = [await recordsOf(rows), await ruleMap(), await settleMap()];
+      const details = new Map(records.map((r) => [r.project.id, toDetail(r, rules, settles)]));
+
+      let total = 0;
+      for (const item of unique) {
+        const d = details.get(item.projectId)!;
+        const admin = d.admin!;
+        const name = d.project.name;
+        if (item.part === 'fee') {
+          const state = safetyFeeApplies(d.project.cpo) ? safetyFeeStateOf(admin) : 'none';
+          if (state === 'none') throw new Error(`${name} — 점검수수료 금액이 없습니다.`);
+          if (state !== 'open') {
+            throw new Error(`${name} — 점검수수료는 이미 ${state === 'claimed' ? `청구됐습니다(${admin.safetyFeeClaimedAt})` : '수금됐습니다'}.`);
+          }
+          if (at > now) throw new Error('앞으로 올 날짜로는 청구를 기록할 수 없습니다.');
+          await tx
+            .insert(settlements)
+            .values({ projectId: item.projectId, safetyFeeClaimedAt: at })
+            .onConflictDoUpdate({ target: settlements.projectId, set: { safetyFeeClaimedAt: at } });
+          await writeAudit(tx, {
+            projectId: item.projectId, actor, action: '전기안전점검수수료 청구',
+            field: 'safetyFeeClaimedAt', oldValue: null, newValue: at,
+          });
+          total += admin.safetyFee ?? 0;
+          continue;
+        }
+        const step = admin.steps.find((x) => x.no === item.part);
+        if (step?.state === 'claimed') {
+          throw new Error(`${name} ${item.part}차는 이미 청구됐습니다(${step.claimedAt}).`);
+        }
+        const why = stepClaimBlock(step, at, now);
+        if (why) throw new Error(`${name} — ${why}`);
+        const key = CLAIM_KEY[item.part];
+        await tx
+          .insert(settlements)
+          .values({ projectId: item.projectId, [key]: at })
+          .onConflictDoUpdate({ target: settlements.projectId, set: { [key]: at } });
+        await writeAudit(tx, {
+          projectId: item.projectId, actor, action: `기성 ${item.part}차 청구`,
+          field: key, oldValue: null, newValue: at,
+        });
+        total += step?.planAmount ?? 0;
+      }
+      return { count: unique.length, total };
     });
   },
 

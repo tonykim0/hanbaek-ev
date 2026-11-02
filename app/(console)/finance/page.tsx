@@ -4,7 +4,7 @@ import { getRepository } from '@/lib/data';
 import { allSlots } from '@/lib/data/db-slot';
 import { getSessionUser, viewerOf } from '@/lib/auth/session';
 import { isHanbaek } from '@/lib/roles';
-import { safetyFeeApplies, safetyFeeDue, safetyFeeOpen } from '@/lib/settlement';
+import { receivableMoneyOf, safetyFeeApplies, safetyFeeDue } from '@/lib/settlement';
 import { won, wonCompact } from '@/lib/format';
 import YearTabs from '@/components/YearTabs';
 import { Frame } from '@/components/settlement/parts';
@@ -128,26 +128,17 @@ export default async function FinancePage({
    * 계획·잔여는 해로 자르지 않는다 — 계획에는 날짜가 없다(조건이 채워지면 열린다).
    * 그래서 위 카드(전체)와 아래 표(고른 해)는 서로 다른 범위다 — 카드는 해 탭을 따라 바뀌지 않는다.
    */
-  const planIn = settlements.reduce((sum, s) => sum + s.planTotal, 0);
-  const collectedAll = settlements.reduce((sum, s) => sum + s.collectedTotal, 0);
-  /* 받을 수 있는 돈 — 조건이 찬 차수 + 아직 안 받은 전기안전점검수수료(트리거가 없다) */
-  const openIn = settlements.reduce(
-    (sum, s) => sum + s.steps
-      .filter((step) => step.state === 'open' && step.planAmount !== null)
-      .reduce((stepSum, step) => stepSum + step.planAmount!, 0)
-      + safetyFeeOpen(s),
-    0
-  );
   /*
-   * 조건 대기 — 아직 트리거가 안 찬 차수. 「총 − 수금 − 받을 수 있는」으로 빼서 구하지 않는다:
-   * 수금은 실수금액이라 계획과 다르게 받은 현장이 있으면 그 차액이 대기로 새어 든다(감사 L13 과 같은 꼴).
+   * 돈 토막은 기성관리와 같은 함수로 센다(lib/settlement receivableMoneyOf) — 두 화면이 같은 이름에 같은 돈을
+   * 둔다(한백 2026-11-02 · 회계 말). 「총 − 수금 − …」으로 빼서 구하지 않는다: 수금은 실수금액이라 계획과
+   * 다르게 받은 현장이 있으면 그 차액이 다른 토막으로 새어 든다(감사 L13 과 같은 꼴).
    */
-  const waitIn = settlements.reduce(
-    (sum, s) => sum + s.steps
-      .filter((step) => step.state === 'waiting' && step.planAmount !== null)
-      .reduce((stepSum, step) => stepSum + step.planAmount!, 0),
-    0
-  );
+  const inMoney = settlements.map(receivableMoneyOf);
+  const inTotal = (f: (m: (typeof inMoney)[number]) => number) => inMoney.reduce((sum, m) => sum + f(m), 0);
+  const planIn = inTotal((m) => m.plan);
+  const collectedAll = inTotal((m) => m.collected);
+  const unpaidIn = inTotal((m) => m.unpaid);
+  const backlogIn = inTotal((m) => m.backlog);
   /* 청구액을 적어야 하는데 안 적은 현장 — 받을 돈 합계가 그만큼 실제보다 적다(단가 미지정과 같은 꼴) */
   const safetyFeeMissing = settlements.filter(
     (s) => safetyFeeApplies(s.cpo) && s.safetyFee === null && safetyFeeDue(s.status)
@@ -180,7 +171,7 @@ export default async function FinancePage({
           <Summary
             eyebrow="받는 돈"
             title="운영사 기성"
-            total={{ label: '총 받아야 할 돈', value: planIn }}
+            total={{ label: '총 기성액', value: planIn }}
             track={IN.track}
             /*
               ★합계가 실제보다 적다는 사실만 꼬리표로 남긴다★ (한백 2026-08-29) — 숫자를 믿고 판단하는 자리에서
@@ -194,8 +185,8 @@ export default async function FinancePage({
             ) : undefined}
             parts={[
               { label: '수금 완료', value: collectedAll, fill: IN.fill },
-              { label: '받을 수 있는 돈', value: openIn, fill: IN.soft },
-              { label: '조건 대기', value: waitIn, fill: null },
+              { label: '미수금', value: unpaidIn, fill: IN.soft },
+              { label: '수주잔고', value: backlogIn, fill: null },
             ]}
           />
         )}
@@ -255,8 +246,8 @@ type Part = {
 /**
  * 한 갈래의 전모 — 합계 하나와 그것이 지금 어디까지 왔나.
  *
- * ★막대는 한 줄 비율이다★ — 앞에서부터 끝난 돈 · 받을 수 있는 돈을 잇고, 남은 자리(바닥)가 아직 조건이 안 찬
- * 돈이다. 바닥은 같은 색의 옅은 단계다(초록 위의 초록) — 회색 바닥은 「비었다」로 읽히지만 여기 바닥은 「아직」이다.
+ * ★막대는 한 줄 비율이다★ — 앞에서부터 끝난 돈 · 청구했는데 안 들어온 돈(미수금)을 잇고, 남은 자리(바닥)가 아직
+ * 청구하지 않은 돈(수주잔고)이다. 바닥은 같은 색의 옅은 단계다(초록 위의 초록) — 회색 바닥은 「비었다」로 읽히지만 여기 바닥은 「아직」이다.
  * 조각 사이는 2px 띄운다 — 붙이면 두 초록이 한 덩어리로 읽힌다.
  * 비율의 분모는 조각의 합이다(총액이 아니다) — 수금은 실수금액이라 계획과 다르게 받은 현장이 있으면 둘이 갈린다.
  * 그 차이로 막대가 넘치거나 모자라지 않게 한다.

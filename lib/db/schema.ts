@@ -507,6 +507,14 @@ export const settlements = pgTable('settlements', {
   collected2Amount: integer('collected_2_amount'),
   collected3Amount: integer('collected_3_amount'),
   /*
+   * 운영사에 청구한 날 (한백 지시 2026-11-02, migrations/0104). 조건이 찬 다음 달부터 적을 수 있고,
+   * 수금은 이 날이 있는 차수에만 적는다 — 그래서 「청구했는데 아직 안 들어온 돈」(미수금)이 선다.
+   * 옛 수금 기록은 이 칸이 비어 있다(그때는 청구를 기록하지 않았다).
+   */
+  claimed1At: text('claimed_1_at'),
+  claimed2At: text('claimed_2_at'),
+  claimed3At: text('claimed_3_at'),
+  /*
    * ★전기안전점검수수료 — 운영사에게서 따로 받는 돈★ (한백 2026-09-06, migrations/0061).
    * 대상은 SK일렉링크·나이스인프라·현대엔지니어링이고 수전방식과 무관하다(lib/settlement
    * SAFETY_FEE_CPOS 가 정본). 기성 차수에 못 얹는 돈이라 현장 단위로 받는다 — 차수 합은
@@ -517,7 +525,9 @@ export const settlements = pgTable('settlements', {
    * 적혀 있었다 — 방향이 반대인 말이었다. 값이 없는 칸이라 뜻을 여기서 확정한다.
    */
   safetyFee: integer('safety_fee'),
-  /** 그 수수료를 받은 날. null 이면 아직 미수금이다 */
+  /** 그 수수료를 운영사에 청구한 날 — 트리거가 없는 돈이라 금액을 적은 뒤 언제든 (migrations/0104) */
+  safetyFeeClaimedAt: text('safety_fee_claimed_at'),
+  /** 그 수수료를 받은 날 */
   safetyFeeCollectedAt: text('safety_fee_collected_at'),
   /** 지급 관련 메모 — 감액·보류 사유 등 금액만으로 설명되지 않는 것 */
   payNote: text('pay_note'),

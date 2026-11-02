@@ -10,19 +10,26 @@ import { phaseOfProject } from '@/lib/board';
 import { won } from '@/lib/format';
 import { daysSince } from '@/lib/date';
 import {
-  closeDateNeeded, closingSteps, safetyFeeApplies, safetyFeeDue, safetyFeeOpen,
+  closeDateNeeded, closingSteps, safetyFeeApplies, safetyFeeDue, safetyFeeStateOf,
 } from '@/lib/settlement';
 import type { SettlementStep, SettlementSummary } from '@/types/project';
 import type { TodoItem } from '@/lib/todo-types';
 
 /**
- * 기성 할 일 다섯 — 운영사에게서 받을 돈이 지금 어디서 걸려 있나.
+ * 기성 할 일 일곱 — 운영사에게서 받을 돈이 지금 어디서 걸려 있나.
  *
- *   기성 수금        조건이 찼는데 아직 안 들어온 차수 — ★이것이 본디 할 일이다★
+ *   기성 청구        청구할 수 있는데(조건이 찬 다음 달부터) 아직 청구를 기록하지 않은 차수 — ★본디 할 일이다★
+ *   기성 미수        청구한 지 30일이 지났는데 안 들어온 차수
  *   준공마감일 지정   공정은 끝났는데 마지막 기성이 열리지 않았다 (그 날짜가 트리거다)
  *   정산 규칙 미지정  규칙이 없어 기성이 계산조차 안 된다
- *   점검수수료 수금   청구액을 적었는데 아직 안 들어왔다 — ★여는 사건이 없는 돈이다★
+ *   점검수수료 청구   금액을 적었는데 아직 청구하지 않았다 — ★여는 사건이 없는 돈이다★
+ *   점검수수료 미수   청구한 지 30일이 지났는데 안 들어왔다
  *   점검수수료 미기재 준공완료인데 청구액을 안 적었다 (적지 않으면 청구 자체가 없다)
+ *
+ * ★청구한 뒤 30일까지는 할 일이 아니다★ (한백 결정 2026-11-02) — 운영사가 돈을 보내기를 기다리는 동안은
+ * 우리가 할 일이 없다(「운영사 계약서 제출」을 할 일에 세우지 않은 것과 같은 까닭). 한 달이 지나도
+ * 안 들어오면 그때부터 물어볼 일이다. 기다리는 동안의 미수는 기성관리 표의 「미수금」이 보여 준다.
+ * ★청구 예정(조건이 이번 달에 찬 차수)도 넣지 않는다★ — 다음 달 1일에 「기성 청구」로 선다.
  *
  * ★점검수수료 영수증 미제출은 할 일이 아니다★ (한백 지시 2026-09-08 「이건 할일관리에
  * 없어도 돼」). 2026-09-08 아침에 「청구 근거가 안 왔다」로 세웠던 것을 그날 걷었다 —
@@ -42,27 +49,47 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
     if (open.length > 0) {
       /*
        * 한 현장에 두 차수가 같이 열리면 카드도 하나다 — 같은 운영사에게 한 번에 청구하는
-       * 일이고, 눌러서 가는 자리(기성 탭)도 하나다. 차수는 문구가 적는다.
+       * 일이고, 눌러서 가는 자리(기성관리 표의 체크 · 기성 탭)도 하나다. 차수는 문구가 적는다.
        */
       const amount = open.reduce((n, s) => n + (s.planAmount ?? 0), 0);
       const priced = open.some((s) => s.planAmount !== null);
-      /* 가장 오래 열려 있는 차수로 잰다 — 여러 차수가 걸렸으면 오래된 쪽이 급함이다 */
-      const days = open.map((s) => (s.openedAt ? daysSince(s.openedAt, now) : null))
+      /* 가장 오래 청구 가능했던 차수로 잰다 — 여러 차수가 걸렸으면 오래된 쪽이 급함이다 */
+      const days = open.map((s) => (s.claimableFrom ? daysSince(s.claimableFrom, now) : null))
         .filter((n): n is number => n !== null);
       const waited = days.length > 0 ? Math.max(...days) : 0;
       items.push({
-        id: `receive|${r.id}`,
+        id: `claim|${r.id}`,
         href: `/projects/${r.id}?tab=receivable`,
         name: r.name,
         what: `${nosOf(open)} ${priced ? `${won(amount)}원` : '금액 미정'} · ${triggersOf(open)} 충족`,
         group: '기성',
-        kind: '기성 수금',
+        kind: '기성 청구',
         stalledDays: 0,
-        /* 받을 수 있게 된 뒤 지난 날 — 정체일과 같은 자다(하루 = 1) */
+        /* 청구할 수 있게 된 뒤 지난 날 — 정체일과 같은 자다(하루 = 1) */
         urgency: waited,
         urgencyLabel: days.length === 0 ? null
-          : waited > 0 ? `받을 수 있게 된 지 ${waited}일` : '오늘부터 받을 수 있음',
+          : waited > 0 ? `청구 가능해진 지 ${waited}일` : '오늘부터 청구 가능',
         overdue: waited >= 7,
+      });
+    }
+
+    /* 청구한 지 한 달이 지나도 안 들어온 차수 — 그때부터 물어볼 일이다 (위 머리말) */
+    const late = r.steps.filter((s) => s.state === 'claimed' && s.claimedAt
+      && daysSince(s.claimedAt, now) >= UNPAID_LATE_DAYS);
+    if (late.length > 0) {
+      const amount = late.reduce((n, s) => n + (s.planAmount ?? 0), 0);
+      const waited = Math.max(...late.map((s) => daysSince(s.claimedAt!, now)));
+      items.push({
+        id: `unpaid|${r.id}`,
+        href: `/projects/${r.id}?tab=receivable`,
+        name: r.name,
+        what: `${nosOf(late)} ${won(amount)}원 · ${late.map((s) => s.claimedAt).sort()[0]} 청구`,
+        group: '기성',
+        kind: '기성 미수',
+        stalledDays: 0,
+        urgency: waited,
+        urgencyLabel: `청구한 지 ${waited}일`,
+        overdue: true,
       });
     }
 
@@ -127,8 +154,8 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
      * ── 전기안전점검수수료 (한백 지시 2026-09-06) ──────────────────────────
      *
      * ★여는 사건이 없는 돈이라 여기 서야 한다.★ 차수는 트리거가 차면 할 일이 서서 사람을
-     * 밀어주는데, 이 수수료는 청구액을 적은 순간부터 받을 수 있다 — 적어 놓고 잊으면
-     * 아무 데서도 재촉하지 않아 영구히 미수금으로 남는다.
+     * 밀어주는데, 이 수수료는 청구액을 적은 순간부터 청구할 수 있다 — 적어 놓고 잊으면
+     * 아무 데서도 재촉하지 않아 영구히 청구되지 않는다.
      *
      * 차수 카드에 합치지 않는다: 그 카드의 말은 「N차 기성 · 착공 충족」 꼴이라 트리거가
      * 없는 이 돈을 담으면 문장이 거짓이 된다.
@@ -138,14 +165,31 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
      * settlementSummaryOf), 그 불변식에 네 자리가 기대고 있어서 한 번 깨졌을 때 전부 같이
      * 죽었다. 판정하는 자리마다 cpo 를 같이 본다.
      */
-    if (safetyFeeApplies(r.cpo) && safetyFeeOpen(r) > 0) {
+    const feeState = safetyFeeApplies(r.cpo) ? safetyFeeStateOf(r) : 'none';
+    if (feeState === 'claimed' && r.safetyFeeClaimedAt
+      && daysSince(r.safetyFeeClaimedAt, now) >= UNPAID_LATE_DAYS) {
+      const waited = daysSince(r.safetyFeeClaimedAt, now);
+      items.push({
+        id: `safetyfee-unpaid|${r.id}`,
+        href: `/projects/${r.id}?tab=receivable`,
+        name: r.name,
+        what: `전기안전점검수수료 ${won(r.safetyFee ?? 0)}원 · ${r.safetyFeeClaimedAt} 청구`,
+        group: '기성',
+        kind: '점검수수료 미수',
+        stalledDays: 0,
+        urgency: waited,
+        urgencyLabel: `청구한 지 ${waited}일`,
+        overdue: true,
+      });
+    }
+    if (feeState === 'open') {
       items.push({
         id: `safetyfee|${r.id}`,
         href: `/projects/${r.id}?tab=receivable`,
         name: r.name,
         what: `전기안전점검수수료 ${won(r.safetyFee ?? 0)}원`,
         group: '기성',
-        kind: '점검수수료 수금',
+        kind: '점검수수료 청구',
         stalledDays: 0,
         /*
          * 열린 날을 기록하지 않으므로 날수로 잴 근거가 없다 — 정산 규칙 미지정과 같은 자리에
@@ -181,6 +225,9 @@ export function receivableTodos(rows: SettlementSummary[], now: Date = new Date(
 
   return items;
 }
+
+/** 청구한 뒤 이만큼 지나도 안 들어오면 할 일로 선다 (한백 결정 2026-11-02 「청구 후 30일」) */
+export const UNPAID_LATE_DAYS = 30;
 
 /** 「1차」 · 「1·2차」 — 차수를 사람 말로 */
 const nosOf = (steps: SettlementStep[]): string => `${steps.map((s) => s.no).join('·')}차 기성`;

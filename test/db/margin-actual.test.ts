@@ -20,10 +20,11 @@ const sumOf = async (id: string) => {
   return rows.find((s) => s.id === id)!;
 };
 
-/* 1차(착공)를 연다 — 열린 차수에만 수금을 찍을 수 있다(store 가 막는다) */
+/* 1차(착공)를 연다 — 9월에 찼으니 10월부터 청구할 수 있다(익월). 수금은 청구한 차수에만(store 가 막는다) */
 const openFirst = async (id: string) => {
   await repo.updateProcess(id, { startActualDate: '2026-09-01' }, admin);
 };
+const claim = (id: string, no: 1 | 2 | 3) => repo.setSettlementClaimed(id, no, '2026-10-05', admin);
 
 describe('한백 몫 = 받을 기성 − 내려줄 지급', () => {
   it('★수금이 없으면 계획 마진 그대로다★ — 이 개편으로 숫자가 안 움직인다', async () => {
@@ -40,9 +41,10 @@ describe('한백 몫 = 받을 기성 − 내려줄 지급', () => {
       const before = await sumOf(id);
       const step = before.steps.find((x) => x.state === 'open')!;
       const extra = 400_000;
+      await claim(id, step.no);
 
       await repo.setSettlementCollected(
-        id, step.no, { at: '2026-09-18', amount: (step.planAmount ?? 0) + extra }, admin
+        id, step.no, { at: '2026-10-18', amount: (step.planAmount ?? 0) + extra }, admin
       );
 
       const after = await sumOf(id);
@@ -59,8 +61,9 @@ describe('한백 몫 = 받을 기성 − 내려줄 지급', () => {
       const before = await sumOf(id);
       const step = before.steps.find((x) => x.state === 'open' && (x.planAmount ?? 0) > 200_000)
         ?? before.steps.find((x) => x.state === 'open')!;
+      await claim(id, step.no);
       await repo.setSettlementCollected(
-        id, step.no, { at: '2026-09-18', amount: Math.max(0, (step.planAmount ?? 0) - 200_000) }, admin
+        id, step.no, { at: '2026-10-18', amount: Math.max(0, (step.planAmount ?? 0) - 200_000) }, admin
       );
       const drop = (step.planAmount ?? 0) - Math.max(0, (step.planAmount ?? 0) - 200_000);
       expect((await sumOf(id)).marginTotal).toBe(before.marginTotal - drop);
@@ -72,7 +75,8 @@ describe('한백 몫 = 받을 기성 − 내려줄 지급', () => {
       await openFirst(id);
       const before = await sumOf(id);
       const step = before.steps.find((x) => x.state === 'open')!;
-      await repo.setSettlementCollected(id, step.no, { at: '2026-09-18', amount: null }, admin);
+      await claim(id, step.no);
+      await repo.setSettlementCollected(id, step.no, { at: '2026-10-18', amount: null }, admin);
       expect((await sumOf(id)).marginTotal).toBe(before.marginTotal);
     });
   });

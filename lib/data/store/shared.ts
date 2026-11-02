@@ -279,6 +279,7 @@ export function toSettlementRaw(projectId: string, r: SettlementRow | undefined)
     projectId,
     cpoCloseDate: r?.closeDate ?? null,
     safetyFee: r?.safetyFee ?? null,
+    safetyFeeClaimedAt: r?.safetyFeeClaimedAt ?? null,
     safetyFeeCollectedAt: r?.safetyFeeCollectedAt ?? null,
     payNote: r?.payNote ?? null,
   };
@@ -307,6 +308,15 @@ export function toCollected(
   if (r?.collected1At) out[1] = { at: r.collected1At, amount: r.collected1Amount ?? null };
   if (r?.collected2At) out[2] = { at: r.collected2At, amount: r.collected2Amount ?? null };
   if (r?.collected3At) out[3] = { at: r.collected3At, amount: r.collected3Amount ?? null };
+  return out;
+}
+
+/** 차수별 청구일 (2026-11-02, migrations/0104) — 날짜가 곧 「청구했다」는 표시다 */
+export function toClaimed(r: SettlementRow | undefined): Partial<Record<1 | 2 | 3, string>> {
+  const out: Partial<Record<1 | 2 | 3, string>> = {};
+  if (r?.claimed1At) out[1] = r.claimed1At;
+  if (r?.claimed2At) out[2] = r.claimed2At;
+  if (r?.claimed3At) out[3] = r.claimed3At;
   return out;
 }
 
@@ -380,6 +390,7 @@ export async function recordsOf(rows: ProjectRow[]): Promise<ProjectRecord[]> {
       lastRejectedAt: rejectedAtBy.get(row.id) ?? null,
       settlementRaw: toSettlementRaw(row.id, settlementRow),
       collected: toCollected(settlementRow),
+      claimed: toClaimed(settlementRow),
       payoutEntries: (payoutsBy.get(row.id) ?? []).map(toPayoutEntry),
       court: row.court as Court,
       lastProgressAt: row.lastProgressAt,

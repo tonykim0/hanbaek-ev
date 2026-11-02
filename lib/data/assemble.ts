@@ -118,6 +118,8 @@ export interface ProjectRecord {
   process: ProcessInfo;
   settlementRaw: Omit<Settlement, 'steps'>;
   collected: Partial<Record<1 | 2 | 3, { at: string; amount: number | null }>>;
+  /** 차수별 청구일 (2026-11-02) */
+  claimed: Partial<Record<1 | 2 | 3, string>>;
   court: Court;
   lastProgressAt: string;
   /**
@@ -178,6 +180,7 @@ export const emptySettlement = (projectId: string): Omit<Settlement, 'steps'> =>
   projectId,
   cpoCloseDate: null,
   safetyFee: null,
+  safetyFeeClaimedAt: null,
   safetyFeeCollectedAt: null,
   payNote: null,
 });
@@ -246,7 +249,7 @@ export function toDetail(r: ProjectRecord, rules: RuleMap, settles: SettleMap): 
     : null;
 
   const steps = settlementForProject(
-    lines, settlementRule, r.process, r.settlementRaw.cpoCloseDate, r.collected
+    lines, settlementRule, r.process, r.settlementRaw.cpoCloseDate, r.collected, r.claimed
   );
   const settlement: Settlement = { ...r.settlementRaw, steps };
   /*
@@ -286,6 +289,7 @@ export function toDetail(r: ProjectRecord, rules: RuleMap, settles: SettleMap): 
       steps,
       cpoCloseDate: settlement.cpoCloseDate,
       safetyFee: settlement.safetyFee,
+      safetyFeeClaimedAt: settlement.safetyFeeClaimedAt,
       safetyFeeCollectedAt: settlement.safetyFeeCollectedAt,
       /*
        * ★영수증은 협력사가 공정에서 내는 서류다★ (한백 2026-09-06) — settlements 의 칸이
@@ -417,6 +421,7 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
    */
   const fee = {
     safetyFee: applies ? admin.safetyFee : null,
+    safetyFeeClaimedAt: applies ? admin.safetyFeeClaimedAt : null,
     safetyFeeCollectedAt: applies ? admin.safetyFeeCollectedAt : null,
   };
   const sales = payoutSideOf(d.payoutEntries, '영업비');
@@ -447,6 +452,7 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
       + safetyFeeCollected(fee),
     cpoCloseDate: admin.cpoCloseDate,
     safetyFee: fee.safetyFee,
+    safetyFeeClaimedAt: fee.safetyFeeClaimedAt,
     safetyFeeCollectedAt: fee.safetyFeeCollectedAt,
     /* 표는 장수만 센다 — 파일 목록을 전 현장에 실어 보내면 응답이 통째로 무거워진다 */
     safetyFeeReceiptCount: applies ? admin.safetyFeeReceipts.length : 0,

@@ -82,7 +82,9 @@ describe('지급·정산 원장의 문', () => {
     await withPayableProject(async ({ id }) => {
       // 단가 지정이 정산 규칙(착공 → 준공마감)을 붙였다. 실착공일을 적으면 1차 조건이 찬다.
       await repo.updateProcess(id, { startActualDate: '2026-09-01' }, admin);
-      await repo.setSettlementCollected(id, 1, { at: '2026-09-05', amount: 200000 }, admin);
+      // 수금은 청구한 차수에만 적는다 — 9월에 찼으니 10월부터 청구할 수 있다 (2026-11-02)
+      await repo.setSettlementClaimed(id, 1, '2026-10-05', admin);
+      await repo.setSettlementCollected(id, 1, { at: '2026-10-06', amount: 200000 }, admin);
       await expect(repo.setSettlementRule(id, null, admin)).rejects.toThrow(/수금/);
       const other = (await repo.listSettlementRules(admin)).find((r) => r.active && r.id !== (null as unknown));
       const detail = await repo.getProject(id, adminView);
@@ -90,8 +92,11 @@ describe('지급·정산 원장의 문', () => {
       const another = (await repo.listSettlementRules(admin)).find((r) => r.active && r.id !== current);
       if (another) await expect(repo.setSettlementRule(id, another.id, admin)).rejects.toThrow(/수금/);
       void other;
-      // 수금을 지우면 바꿀 수 있다
+      // 수금을 지워도 청구가 남아 있으면 못 바꾼다 — 청구일도 차수 번호에 붙어 있다
       await repo.setSettlementCollected(id, 1, null, admin);
+      await expect(repo.setSettlementRule(id, null, admin)).rejects.toThrow(/청구/);
+      // 청구까지 지우면 바꿀 수 있다
+      await repo.setSettlementClaimed(id, 1, null, admin);
       await expect(repo.setSettlementRule(id, null, admin)).resolves.toBeUndefined();
     }, { confirm: false });
   });

@@ -1,5 +1,8 @@
 /**
- * POST /api/projects/[id]/settlement — 준공마감일 · 기성 수금 · 전기안전점검수수료 [한백 전용]
+ * POST /api/projects/[id]/settlement — 준공마감일 · 기성 청구·수금 · 전기안전점검수수료 [한백 전용]
+ *
+ * ★청구가 수금 앞에 선다★ (한백 지시 2026-11-02) — 조건이 찬 다음 달부터 청구일을 적고, 수금은
+ * 청구한 차수에만 적는다. 여러 현장을 한꺼번에 청구하는 길은 POST /api/receivables/claim 이다.
  *
  * 한 라우트에서 받는다: 준공마감일은 마지막 차수를 여는 조건이고, 수금은 그 차수의 끝이고,
  * 점검수수료는 차수 밖에서 따로 받는 돈이다. 셋 다 같은 화면(기성 탭)의 같은 구역에서
@@ -15,7 +18,7 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export const POST = adminWrite<
   { id: string },
-  { closeDate?: unknown; collected?: unknown; safetyFee?: unknown }
+  { closeDate?: unknown; claimed?: unknown; collected?: unknown; safetyFee?: unknown }
 >(
   '한백 관리자만 기성을 기록할 수 있습니다.',
   async ({ body, params, actor }) => {
@@ -40,13 +43,19 @@ export const POST = adminWrite<
     if ('safetyFee' in (body ?? {})) {
       const raw = body?.safetyFee;
       if (!raw || typeof raw !== 'object') throw new BadRequest('전기안전점검수수료 값이 올바르지 않습니다.');
-      const { amount, collectedAt } = raw as { amount?: unknown; collectedAt?: unknown };
-      const patch: { amount?: number | null; collectedAt?: string | null } = {};
+      const { amount, claimedAt, collectedAt } = raw as { amount?: unknown; claimedAt?: unknown; collectedAt?: unknown };
+      const patch: { amount?: number | null; claimedAt?: string | null; collectedAt?: string | null } = {};
       if (amount !== undefined) {
         if (amount === null || amount === '') patch.amount = null;
         else if (typeof amount !== 'number' || !Number.isInteger(amount) || amount <= 0) {
           throw new BadRequest('전기안전점검수수료는 0 보다 큰 원 단위 정수여야 합니다.');
         } else patch.amount = amount;
+      }
+      if (claimedAt !== undefined) {
+        if (claimedAt === null || claimedAt === '') patch.claimedAt = null;
+        else if (typeof claimedAt !== 'string' || !DATE_RE.test(claimedAt)) {
+          throw new BadRequest('청구일은 YYYY-MM-DD 형식이어야 합니다.');
+        } else patch.claimedAt = claimedAt;
       }
       if (collectedAt !== undefined) {
         if (collectedAt === null || collectedAt === '') patch.collectedAt = null;
@@ -56,6 +65,21 @@ export const POST = adminWrite<
       }
       if (Object.keys(patch).length === 0) throw new BadRequest('바꿀 값이 없습니다.');
       await repo.setSafetyFee(params.id, patch, actor);
+      return;
+    }
+
+    /* 청구일 — at 이 비면 청구 취소다(화면 규칙 7) */
+    if ('claimed' in (body ?? {})) {
+      const raw = body?.claimed;
+      if (!raw || typeof raw !== 'object') throw new BadRequest('청구 값이 올바르지 않습니다.');
+      const { no, at } = raw as { no?: unknown; at?: unknown };
+      if (no !== 1 && no !== 2 && no !== 3) throw new BadRequest('차수는 1·2·3 중 하나여야 합니다.');
+      if (at === null || at === '' || at === undefined) {
+        await repo.setSettlementClaimed(params.id, no, null, actor);
+        return;
+      }
+      if (typeof at !== 'string' || !DATE_RE.test(at)) throw new BadRequest('청구일은 YYYY-MM-DD 형식이어야 합니다.');
+      await repo.setSettlementClaimed(params.id, no, at, actor);
       return;
     }
 

@@ -212,6 +212,9 @@ async function seedProjects() {
         collected1Amount: r.collected[1]?.amount ?? null,
         collected2Amount: r.collected[2]?.amount ?? null,
         collected3Amount: r.collected[3]?.amount ?? null,
+        claimed1At: r.claimed[1] ?? null,
+        claimed2At: r.claimed[2] ?? null,
+        claimed3At: r.claimed[3] ?? null,
         safetyFee: s.safetyFee,
       });
 

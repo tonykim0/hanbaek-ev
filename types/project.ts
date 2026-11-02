@@ -939,7 +939,18 @@ export interface ProcessInfo {
 }
 
 // ── 정산 ────────────────────────────────────────────────────────
-export type StepState = 'na' | 'waiting' | 'open' | 'collected';
+/**
+ * 기성 차수의 자리 (한백 지시 2026-11-02 — 한백은 운영사에 기성을 실제로 청구한다):
+ *
+ *   waiting    조건 대기 — 트리거(환경부 승인·착공·준공마감)가 아직 안 찼다
+ *   scheduled  청구 예정 — 조건이 이번 달에 찼다. ★다음 달 1일부터★ 청구할 수 있다
+ *   open       청구 가능 — 청구할 수 있는데 아직 청구를 기록하지 않았다
+ *   claimed    미수 — 청구했는데 아직 안 들어왔다
+ *   collected  수금 완료
+ *
+ * 수주잔고 = waiting + scheduled + open(아직 청구하지 않은 돈) · 미수금 = claimed.
+ */
+export type StepState = 'na' | 'waiting' | 'scheduled' | 'open' | 'claimed' | 'collected';
 
 export interface SettlementStep {
   no: 1 | 2 | 3;
@@ -956,6 +967,10 @@ export interface SettlementStep {
    * 할 일 목록이 이 날로 급함을 잰다 — 받을 수 있게 된 지 오래된 것이 위로 선다.
    */
   openedAt: string | null;
+  /** 청구할 수 있는 첫날 — 조건이 찬 달의 다음 달 1일. 조건이 안 찼으면 null */
+  claimableFrom: string | null;
+  /** 운영사에 청구한 날 — 수금은 이 날이 있는 차수에만 적는다. 옛 수금 기록은 비어 있다 */
+  claimedAt: string | null;
   collectedAt: string | null;
   /**
    * 실제로 받은 금액. null 이면 계획액(planAmount)대로 받은 것이다.
@@ -980,7 +995,9 @@ export interface Settlement {
    * 받는 운영사는 lib/settlement 의 SAFETY_FEE_CPOS 가 정한다.
    */
   safetyFee: number | null;
-  /** 그 수수료를 받은 날. null 이면 미수금 */
+  /** 그 수수료를 운영사에 청구한 날 — 수금은 이 날이 있어야 적는다 (2026-11-02) */
+  safetyFeeClaimedAt: string | null;
+  /** 그 수수료를 받은 날 */
   safetyFeeCollectedAt: string | null;
   /** 지급 비고 */
   payNote: string | null;
@@ -1017,6 +1034,8 @@ export interface AdminOnlyDetail {
   cpoCloseDate: string | null;
   /** 전기안전점검수수료 — 운영사에게서 따로 받는 돈. 받을 돈 합계와 마진에 든다 */
   safetyFee: number | null;
+  /** 그 수수료를 운영사에 청구한 날 — 수금은 이 날이 있어야 적는다 (2026-11-02) */
+  safetyFeeClaimedAt: string | null;
   /** 그 수수료를 받은 날 */
   safetyFeeCollectedAt: string | null;
   /**
@@ -1387,6 +1406,8 @@ export interface SettlementSummary {
    * 다를 수 있고, 화면은 그 차이를 「점검수수료 N 포함」으로 적어야 한다.
    */
   safetyFee: number | null;
+  /** 그 수수료를 운영사에 청구한 날 — 수금은 이 날이 있어야 적는다 (2026-11-02) */
+  safetyFeeClaimedAt: string | null;
   safetyFeeCollectedAt: string | null;
   /** 영수증 장수 — 표에서는 몇 장인지만 세고, 파일은 현장 상세에서 본다 */
   safetyFeeReceiptCount: number;
