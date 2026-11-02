@@ -7,21 +7,22 @@
 import { useState } from 'react';
 import type { AgentDuty } from '@/types/agents';
 import { useAction } from '@/lib/use-action';
-import { HUD_DIVIDE, HUD_FIELD, HUD_PANEL, HudBtn, HudErr, HudLabel } from './hud';
+import { Btn, Err, FIELD, PANEL } from '@/components/ui';
+import { AgentHead } from './kit';
 
 export function AgentDuties({ agentId, duties }: { agentId: string; duties: AgentDuty[] }) {
   const [adding, setAdding] = useState(false);
   return (
-    <section className={`${HUD_PANEL} flex flex-col gap-3 p-4`}>
-      <HudLabel
+    <section className={`${PANEL} flex flex-col gap-3 p-5`}>
+      <AgentHead
         meta={`${duties.length}건`}
-        action={!adding && <HudBtn size="sm" kind="quiet" onClick={() => setAdding(true)}>추가</HudBtn>}
+        action={!adding && <Btn size="sm" kind="quiet" onClick={() => setAdding(true)}>추가</Btn>}
       >
         업무 정의
-      </HudLabel>
+      </AgentHead>
       {adding && <DutyForm agentId={agentId} onDone={() => setAdding(false)} />}
       {duties.length > 0 && (
-        <ol className={`flex flex-col divide-y ${HUD_DIVIDE}`}>
+        <ol className="flex flex-col divide-y divide-slate-100">
           {duties.map((d, i) => <DutyItem key={d.id} agentId={agentId} duty={d} n={i + 1} />)}
         </ol>
       )}
@@ -41,11 +42,11 @@ function DutyItem({ agentId, duty, n }: { agentId: string; duty: AgentDuty; n: n
   return (
     <li className="flex flex-col gap-1 py-2.5">
       <div className="flex items-baseline gap-2">
-        <span className="font-mono text-tiny tabular-nums text-brand-300">{String(n).padStart(2, '0')}</span>
-        <p className="min-w-0 flex-1 break-keep text-base font-bold text-slate-100">{duty.title}</p>
-        <HudBtn size="sm" kind="quiet" onClick={() => setEditing(true)}>수정</HudBtn>
+        <span className="font-mono text-tiny font-bold tabular-nums text-brand-600">{String(n).padStart(2, '0')}</span>
+        <p className="min-w-0 flex-1 break-keep text-base font-bold text-slate-900">{duty.title}</p>
+        <Btn size="sm" kind="quiet" onClick={() => setEditing(true)}>수정</Btn>
       </div>
-      {duty.body.trim() && <p className="whitespace-pre-wrap break-keep pl-6 text-small leading-relaxed text-slate-300">{duty.body}</p>}
+      {duty.body.trim() && <p className="whitespace-pre-wrap break-keep pl-6 text-small leading-relaxed text-slate-600">{duty.body}</p>}
     </li>
   );
 }
@@ -79,7 +80,7 @@ function DutyForm({ agentId, duty, onDone }: { agentId: string; duty?: AgentDuty
         onChange={(e) => setTitle(e.target.value)}
         maxLength={60}
         placeholder="업무 이름"
-        className={HUD_FIELD}
+        className={FIELD}
         autoFocus
       />
       <textarea
@@ -87,23 +88,23 @@ function DutyForm({ agentId, duty, onDone }: { agentId: string; duty?: AgentDuty
         onChange={(e) => setBody(e.target.value)}
         rows={5}
         placeholder="정의 — 무엇을, 언제, 어떤 기준으로, 결과는 어떤 모양으로"
-        className={`${HUD_FIELD} resize-y leading-relaxed`}
+        className={`${FIELD} resize-y leading-relaxed`}
       />
       <div className="flex flex-wrap items-center gap-2">
-        <HudBtn size="sm" disabled={!title.trim() || busyKey !== null} busy={busyKey === 'save'} busyLabel="저장 중…" onClick={() => void save()}>
+        <Btn size="sm" disabled={!title.trim() || busyKey !== null} busy={busyKey === 'save'} busyLabel="저장 중…" onClick={() => void save()}>
           {duty ? '저장' : '추가'}
-        </HudBtn>
-        <HudBtn size="sm" kind="quiet" disabled={busyKey !== null} onClick={onDone}>취소</HudBtn>
-        <HudErr>{error}</HudErr>
+        </Btn>
+        <Btn size="sm" kind="quiet" disabled={busyKey !== null} onClick={onDone}>취소</Btn>
+        <Err>{error}</Err>
         {duty && (
           <span className="ml-auto flex items-center gap-1">
             {asking ? (
               <>
-                <HudBtn size="sm" kind="undo" busy={busyKey === 'del'} busyLabel="삭제 중…" onClick={() => void remove()}>삭제합니다</HudBtn>
-                <HudBtn size="sm" kind="quiet" disabled={busyKey !== null} onClick={() => setAsking(false)}>취소</HudBtn>
+                <Btn size="sm" kind="undo" busy={busyKey === 'del'} busyLabel="삭제 중…" onClick={() => void remove()}>삭제합니다</Btn>
+                <Btn size="sm" kind="quiet" disabled={busyKey !== null} onClick={() => setAsking(false)}>취소</Btn>
               </>
             ) : (
-              <HudBtn size="sm" kind="undo" onClick={() => setAsking(true)}>삭제</HudBtn>
+              <Btn size="sm" kind="undo" onClick={() => setAsking(true)}>삭제</Btn>
             )}
           </span>
         )}

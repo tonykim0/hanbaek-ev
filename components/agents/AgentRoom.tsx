@@ -7,12 +7,13 @@
  *   보내기        지시를 남기고 에이전트를 부른다(/messages → /reply). 답을 쓰는 동안 단추가 「답 쓰는 중…」이다.
  *   기록만 남기기  에이전트를 부르지 않는다 — 운영사 담당자와 통화한 내용 같은 것. 다음 대화에서 에이전트가 근거로 읽는다.
  * 답이 실패해도 지시는 남아 있다 — 마지막 말이 답 없는 지시면 「다시 묻기」가 선다(화면 규칙 9: 무엇이 되었는지 그 자리에).
- * 모양은 components/agents/hud(관제 화면) — 말의 머리는 터미널처럼 시각 · 누가(◆ 에이전트 · ▸ 지시 · ✎ 기록)다.
+ * 말은 띠 모양이다(ui.tsx Note 처럼 왼쪽 선 — 판 안이라 사방 테두리를 두르지 않는다). 에이전트의 말만 초록 바탕에 반짝이를 단다.
  */
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { AgentMessage } from '@/types/agents';
-import { Chip, HUD_FIELD, HUD_LINK, HUD_PANEL, HUD_RULE, HudBtn, HudErr, HudLabel } from './hud';
+import { Btn, Err, FIELD, PANEL, Tag } from '@/components/ui';
+import { AgentHead, LINK, Spark } from './kit';
 
 type Phase = 'idle' | 'sending' | 'thinking';
 
@@ -88,21 +89,23 @@ export function AgentRoom({ agentId, agentName, messages }: { agentId: string; a
   const unanswered = phase === 'idle' && last?.role === 'user';
 
   return (
-    <section className={`${HUD_PANEL} flex min-w-0 flex-col`}>
-      <div className="px-4 pb-2.5 pt-3">
-        <HudLabel meta={`${list.length}건`}>대화</HudLabel>
+    <section className={`${PANEL} flex min-w-0 flex-col`}>
+      <div className="px-5 pb-3 pt-4">
+        <AgentHead meta={`${list.length}건`}>대화</AgentHead>
       </div>
 
-      <ol ref={scroller} className={`flex max-h-[62vh] min-h-[220px] flex-col overflow-y-auto border-t ${HUD_RULE} px-4 py-1`}>
+      <ol ref={scroller} className="flex max-h-[62vh] min-h-[220px] flex-col gap-2 overflow-y-auto border-t border-slate-100 px-5 py-3">
         {list.map((m) => <Said key={m.id} message={m} />)}
         {phase === 'thinking' && (
-          <li className="my-1.5 border-l-2 border-brand-400/70 py-2 pl-3">
-            <p className="text-tiny font-bold text-brand-300">◆ {agentName}</p>
-            <p className="mt-1 flex items-center gap-2 text-small text-slate-300">
+          <li className="rounded-box border-l-[3px] border-brand-400 bg-brand-50/70 px-3.5 py-2.5">
+            <p className="flex items-center gap-1.5 text-tiny font-bold text-brand-800">
+              <Spark className="h-3 w-3 animate-pulse text-brand-500" />{agentName}
+            </p>
+            <p className="mt-1 flex items-center gap-2 text-small text-slate-600">
               답 쓰는 중
               <span className="inline-flex gap-1" aria-hidden>
                 {[0, 1, 2].map((i) => (
-                  <span key={i} className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand-300" style={{ animationDelay: `${i * 0.2}s` }} />
+                  <span key={i} className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand-500" style={{ animationDelay: `${i * 0.2}s` }} />
                 ))}
               </span>
             </p>
@@ -110,11 +113,11 @@ export function AgentRoom({ agentId, agentName, messages }: { agentId: string; a
         )}
       </ol>
 
-      <div className={`flex flex-col gap-2 border-t ${HUD_RULE} px-4 py-3`}>
+      <div className="flex flex-col gap-2 border-t border-slate-100 px-5 py-3">
         {unanswered && (
           <div className="flex flex-wrap items-center gap-2">
-            <Chip tone="warn">답 없음</Chip>
-            <HudBtn size="sm" kind="side" onClick={() => void ask()}>다시 묻기</HudBtn>
+            <Tag tone="warn">답 없음</Tag>
+            <Btn size="sm" kind="side" onClick={() => void ask()}>다시 묻기</Btn>
           </div>
         )}
         <textarea
@@ -126,10 +129,10 @@ export function AgentRoom({ agentId, agentName, messages }: { agentId: string; a
           rows={3}
           disabled={phase !== 'idle'}
           placeholder={`${agentName}에게`}
-          className={`${HUD_FIELD} resize-y leading-relaxed`}
+          className={`${FIELD} resize-y leading-relaxed`}
         />
         <div className="flex flex-wrap items-center gap-2">
-          <HudBtn
+          <Btn
             size="sm"
             disabled={!body.trim() || phase !== 'idle'}
             busy={phase === 'thinking'}
@@ -137,12 +140,12 @@ export function AgentRoom({ agentId, agentName, messages }: { agentId: string; a
             onClick={() => void send(false)}
           >
             보내기
-          </HudBtn>
-          <HudBtn size="sm" kind="side" disabled={!body.trim() || phase !== 'idle'} busy={phase === 'sending'} busyLabel="남기는 중…" onClick={() => void send(true)}>
+          </Btn>
+          <Btn size="sm" kind="side" disabled={!body.trim() || phase !== 'idle'} busy={phase === 'sending'} busyLabel="남기는 중…" onClick={() => void send(true)}>
             기록만 남기기
-          </HudBtn>
-          <span className="hidden text-tiny text-slate-500 sm:inline"><span className="font-mono">⌘↵</span> 보내기</span>
-          <HudErr>{error}</HudErr>
+          </Btn>
+          <span className="hidden text-tiny font-semibold text-slate-500 sm:inline"><span className="font-mono">⌘↵</span> 보내기</span>
+          <Err>{error}</Err>
         </div>
       </div>
     </section>
@@ -160,41 +163,47 @@ function Linked({ text }: { text: string }) {
   return (
     <>
       {parts.map((p, i) => (i % 2 === 1 ? (
-        <a key={i} href={p} target="_blank" rel="noreferrer" className={`break-all ${HUD_LINK}`}>{p}</a>
+        <a key={i} href={p} target="_blank" rel="noreferrer" className={`break-all ${LINK}`}>{p}</a>
       ) : p))}
     </>
   );
 }
 
+/* 말의 모양 — 누가 말했는지는 띠의 선과 바탕, 머리의 표시(반짝이 에이전트 · ▸ 지시 · ✎ 기록)로 가른다 */
 const ROLE_LOOK = {
-  agent: { bar: 'border-brand-400/70', who: 'text-brand-300', mark: '◆', text: 'text-slate-100' },
-  user: { bar: 'border-white/40', who: 'text-slate-100', mark: '▸', text: 'text-slate-200' },
-  note: { bar: 'border-dashed border-white/20', who: 'text-slate-400', mark: '✎ 기록 ·', text: 'text-slate-300' },
+  agent: { band: 'border-brand-400 bg-brand-50/70', who: 'text-brand-800', text: 'text-slate-800' },
+  user: { band: 'border-slate-300', who: 'text-slate-800', text: 'text-slate-800' },
+  note: { band: 'border-dashed border-slate-300 bg-slate-50', who: 'text-slate-500', text: 'text-slate-600' },
 } as const;
 
 function Said({ message: m }: { message: AgentMessage }) {
   const look = ROLE_LOOK[m.role];
   const secs = m.meta?.ms ? Math.max(1, Math.round(m.meta.ms / 1000)) : null;
   return (
-    <li className={`my-1.5 border-l-2 py-2 pl-3 ${look.bar}`}>
+    <li className={`rounded-box border-l-[3px] px-3.5 py-2.5 ${look.band}`}>
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-tiny">
         <span className="font-mono tabular-nums text-slate-500">{m.at}</span>
-        <span className={`font-bold ${look.who}`}>{look.mark} {m.author}</span>
+        <span className={`inline-flex items-center gap-1 font-bold ${look.who}`}>
+          {m.role === 'agent' && <Spark className="h-3 w-3 self-center text-brand-500" />}
+          {m.role === 'user' && <span aria-hidden>▸</span>}
+          {m.role === 'note' && <span aria-hidden>✎ 기록 ·</span>}
+          {m.author}
+        </span>
         {(secs !== null || m.meta?.usd !== undefined) && (
           <span className="font-mono tabular-nums text-slate-500">
             {secs !== null && `${secs}s`}
             {m.meta?.usd !== undefined && ` · $${m.meta.usd.toFixed(2)}`}
           </span>
         )}
-        {m.meta?.added?.length ? <Chip tone="info">할 일 {m.meta.added.length}건 적음</Chip> : null}
-        {m.meta?.done?.length ? <Chip tone="info">할 일 {m.meta.done.length}건 끝냄</Chip> : null}
+        {m.meta?.added?.length ? <Tag tone="ok">할 일 {m.meta.added.length}건 적음</Tag> : null}
+        {m.meta?.done?.length ? <Tag tone="ok">할 일 {m.meta.done.length}건 끝냄</Tag> : null}
       </div>
       <p className={`mt-1 whitespace-pre-wrap break-keep text-base leading-relaxed ${look.text}`}><Linked text={m.body} /></p>
       {m.meta?.sources?.length ? (
         <ul className="mt-2 flex flex-col gap-0.5">
           {m.meta.sources.map((s) => (
             <li key={s.url} className="min-w-0 truncate text-small">
-              <a href={s.url} target="_blank" rel="noreferrer" className={HUD_LINK}>{s.title || s.url}</a>
+              <a href={s.url} target="_blank" rel="noreferrer" className={LINK}>{s.title || s.url}</a>
             </li>
           ))}
         </ul>

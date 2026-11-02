@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 할 일 — 한백이 적거나, 대화 중에 에이전트가 적는다(에이전트가 적은 것은 이름 꼬리표가 붙는다).
+ * 할 일 — 한백이 적거나, 대화 중에 에이전트가 적는다(에이전트가 적은 것은 반짝이와 이름 꼬리표가 붙는다).
  *
  * ★콘솔이 이미 세는 할 일(반려 보완 · 확정 누락 · 기성 수금 …)은 여기 베끼지 않는다★ — 그것은 /todos 와 보드가 정본이고,
  * 에이전트는 그 정본을 그때그때 읽는다. 여기는 그 밖의 일이다: 운영사 담당자에게 회신 받기, 다음 주에 다시 확인하기 같은 것.
@@ -11,7 +11,8 @@ import Link from 'next/link';
 import { useState } from 'react';
 import type { AgentTask } from '@/types/agents';
 import { useAction } from '@/lib/use-action';
-import { Chip, HUD_DIVIDE as DIVIDE, HUD_FIELD, HUD_FIELD_BASE, HUD_LINK, HUD_PANEL, HUD_RULE, HudBtn, HudErr, HudLabel } from './hud';
+import { Btn, Err, FIELD, FIELD_BASE, PANEL, Tag, TEXT } from '@/components/ui';
+import { AgentHead, LINK, Spark } from './kit';
 
 export function AgentTasks({ agentId, agentName, tasks, sites, today }: {
   agentId: string;
@@ -26,21 +27,21 @@ export function AgentTasks({ agentId, agentName, tasks, sites, today }: {
   const [showClosed, setShowClosed] = useState(false);
 
   return (
-    <section className={`${HUD_PANEL} flex flex-col gap-3 p-4`}>
-      <HudLabel meta={`열린 ${open.length}건`}>할 일</HudLabel>
+    <section className={`${PANEL} flex flex-col gap-3 p-5`}>
+      <AgentHead meta={`열린 ${open.length}건`}>할 일</AgentHead>
       <TaskForm agentId={agentId} sites={sites} />
       {open.length > 0 && (
-        <ul className={`flex flex-col divide-y ${DIVIDE}`}>
+        <ul className="flex flex-col divide-y divide-slate-100">
           {open.map((t) => <TaskItem key={t.id} agentId={agentId} agentName={agentName} task={t} today={today} />)}
         </ul>
       )}
       {closed.length > 0 && (
-        <div className={`flex flex-col gap-1 border-t ${HUD_RULE} pt-2`}>
-          <HudBtn size="sm" kind="quiet" className="self-start" onClick={() => setShowClosed((v) => !v)}>
+        <div className="flex flex-col gap-1 border-t border-slate-100 pt-2">
+          <Btn size="sm" kind="quiet" className="self-start" onClick={() => setShowClosed((v) => !v)}>
             끝낸 일 {closed.length}건 {showClosed ? '접기' : '보기'}
-          </HudBtn>
+          </Btn>
           {showClosed && (
-            <ul className={`flex flex-col divide-y ${DIVIDE}`}>
+            <ul className="flex flex-col divide-y divide-slate-100">
               {closed.map((t) => <TaskItem key={t.id} agentId={agentId} agentName={agentName} task={t} today={today} />)}
             </ul>
           )}
@@ -77,18 +78,18 @@ function TaskForm({ agentId, sites }: { agentId: string; sites: Array<{ id: stri
         onKeyDown={(e) => { if (e.key === 'Enter' && title.trim() && !busy) void add(); }}
         maxLength={120}
         placeholder="할 일"
-        className={HUD_FIELD}
+        className={FIELD}
       />
       <div className="flex flex-wrap items-center gap-2">
-        <input type="date" value={due} onChange={(e) => setDue(e.target.value)} aria-label="기한" className={`${HUD_FIELD_BASE} w-40`} />
+        <input type="date" value={due} onChange={(e) => setDue(e.target.value)} aria-label="기한" className={`${FIELD_BASE} w-40`} />
         {sites.length > 0 && (
-          <select value={site} onChange={(e) => setSite(e.target.value)} aria-label="현장" className={`${HUD_FIELD_BASE} min-w-0 max-w-full flex-1`}>
+          <select value={site} onChange={(e) => setSite(e.target.value)} aria-label="현장" className={`${FIELD_BASE} min-w-0 max-w-full flex-1`}>
             <option value="">현장 없음</option>
             {sites.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         )}
-        <HudBtn size="sm" disabled={!title.trim()} busy={busy} busyLabel="적는 중…" onClick={() => void add()}>적기</HudBtn>
-        <HudErr>{error}</HudErr>
+        <Btn size="sm" disabled={!title.trim()} busy={busy} busyLabel="적는 중…" onClick={() => void add()}>적기</Btn>
+        <Err>{error}</Err>
       </div>
     </div>
   );
@@ -114,36 +115,38 @@ function TaskItem({ agentId, agentName, task: t, today }: { agentId: string; age
             disabled={busyKey !== null}
             onChange={toggle}
             aria-label={`${t.title} 끝냄`}
-            className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-brand-400 [color-scheme:dark]"
+            className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-brand-600"
           />
         )}
         <div className="min-w-0 flex-1">
-          <p className={`break-keep text-base font-semibold ${t.doneAt ? 'text-slate-500 line-through' : 'text-slate-100'}`}>{t.title}</p>
+          <p className={`break-keep text-base font-semibold ${t.doneAt ? 'text-slate-500 line-through' : 'text-slate-900'}`}>{t.title}</p>
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
             {t.due && (late
-              ? <Chip tone="stop">기한 {t.due} 지남</Chip>
-              : <span className="text-tiny font-semibold text-slate-400">기한 <span className="font-mono tabular-nums">{t.due}</span></span>)}
+              ? <Tag tone="stop">기한 {t.due} 지남</Tag>
+              : <span className={TEXT.meta}>기한 <span className="font-mono tabular-nums">{t.due}</span></span>)}
             {t.projectId && t.projectName && (
-              <Link href={`/projects/${t.projectId}`} className={`text-tiny ${HUD_LINK}`}>{t.projectName}</Link>
+              <Link href={`/projects/${t.projectId}`} className={`text-tiny ${LINK}`}>{t.projectName}</Link>
             )}
-            {t.byAgent ? <Chip tone="ok">◆ {agentName}</Chip> : <span className="text-tiny font-semibold text-slate-400">{t.author}</span>}
-            {t.doneAt && <span className="text-tiny text-slate-500">끝냄 <span className="font-mono tabular-nums">{t.doneAt}</span></span>}
+            {t.byAgent ? (
+              <Tag tone="ok"><Spark className="mr-0.5 inline h-2.5 w-2.5 align-[-1px]" />{agentName}</Tag>
+            ) : <span className={TEXT.meta}>{t.author}</span>}
+            {t.doneAt && <span className={TEXT.meta}>끝냄 <span className="font-mono tabular-nums">{t.doneAt}</span></span>}
           </div>
-          {t.note && <p className="mt-1 whitespace-pre-wrap break-keep text-small text-slate-300">{t.note}</p>}
+          {t.note && <p className="mt-1 whitespace-pre-wrap break-keep text-small text-slate-600">{t.note}</p>}
         </div>
         <span className="ml-auto flex shrink-0 items-center gap-1">
-          {t.doneAt && <HudBtn size="sm" kind="quiet" busy={busyKey === 'done'} busyLabel="…" onClick={toggle}>되살리기</HudBtn>}
+          {t.doneAt && <Btn size="sm" kind="quiet" busy={busyKey === 'done'} busyLabel="…" onClick={toggle}>되살리기</Btn>}
           {asking ? (
             <>
-              <HudBtn size="sm" kind="undo" busy={busyKey === 'del'} busyLabel="삭제 중…" onClick={remove}>삭제합니다</HudBtn>
-              <HudBtn size="sm" kind="quiet" disabled={busyKey !== null} onClick={() => setAsking(false)}>취소</HudBtn>
+              <Btn size="sm" kind="undo" busy={busyKey === 'del'} busyLabel="삭제 중…" onClick={remove}>삭제합니다</Btn>
+              <Btn size="sm" kind="quiet" disabled={busyKey !== null} onClick={() => setAsking(false)}>취소</Btn>
             </>
           ) : (
-            <HudBtn size="sm" kind="undo" onClick={() => setAsking(true)}>삭제</HudBtn>
+            <Btn size="sm" kind="undo" onClick={() => setAsking(true)}>삭제</Btn>
           )}
         </span>
       </div>
-      <HudErr>{error}</HudErr>
+      <Err>{error}</Err>
     </li>
   );
 }

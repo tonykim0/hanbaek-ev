@@ -1,5 +1,5 @@
 /**
- * 가지 끝 등의 판정 — 현황과 담당 화면이 같이 쓴다(둘이 다른 색을 켜지 않게).
+ * 담당 표지의 등 판정 — 현황과 담당 화면이 같이 쓴다(둘이 다른 색을 켜지 않게).
  *   빨강  기한 지난 할 일이 있거나, 맡은 범위에 막는 것(확정 누락)이 있다
  *   노랑  봐야 할 것이 있다 — 한백 차례 · 7일 넘게 멈춘 현장
  *   초록  업무 정의가 있고 짚을 것이 없다
@@ -8,7 +8,7 @@
  */
 import { stampOf } from '@/lib/date';
 import type { Agent, AgentHeadline } from '@/types/agents';
-import type { LedTone } from './hud';
+import type { LedTone } from './kit';
 
 /** 조직도 카드의 직함 줄 — 그 담당이 맡은 일. 운영사 담당은 이름이 곧 맡은 곳이라 일만 적는다 */
 export function roleLineOf(agent: Agent): string {
