@@ -204,7 +204,7 @@ const GROUPS: Group[] = [
     label: '에이전트',
     adminOnly: true,
     items: [
-      { href: '/admin/agents', label: '에이전트', short: '에이전트', note: '운영사별 · 정산 · 열린구매 · 전략', adminOnly: true },
+      { href: '/admin/agents', label: '에이전트', short: '에이전트', note: '전략 · 운영사별 · 정산', adminOnly: true },
     ],
   },
   {

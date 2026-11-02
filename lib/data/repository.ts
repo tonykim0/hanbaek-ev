@@ -489,10 +489,10 @@ export interface ProjectRepository {
    * 에이전트 — 한백의 일을 나눠 맡는 AI 담당 (store/agents · migrations/0103) [한백 관리자].
    * 업무 정의 · 할 일 · 오간 말만 남긴다. 에이전트가 보는 현장·지급·기성은 lib/agents/scope 가 그때그때 읽는다.
    */
-  /** 담당 여덟 — 업무 정의 수 · 열린 할 일 · 마지막 말 */
+  /** 담당 일곱 — 업무 정의 수 · 열린 할 일 · 마지막 말 */
   listAgents(actor: Actor): Promise<AgentSummary[]>;
-  /** 담당 하나 — 업무 정의 · 할 일 · 최근 대화 */
-  getAgent(id: string, actor: Actor): Promise<AgentDetail>;
+  /** 담당 하나 — 업무 정의 · 할 일 · 최근 대화(넘긴 파일 포함) · 주간 기록. week(그 주 월요일)를 주면 그 주의 말과 일 */
+  getAgent(id: string, actor: Actor, opts?: { week?: string | null }): Promise<AgentDetail>;
   /** 업무 정의 넣기 · 고치기(id 가 있으면) — id 를 돌려준다 */
   saveAgentDuty(input: { agentId: string; id?: string; title: string; body: string }, actor: Actor): Promise<string>;
   deleteAgentDuty(input: { agentId: string; id: string }, actor: Actor): Promise<void>;
@@ -504,9 +504,15 @@ export interface ProjectRepository {
   /** 끝냄 · 되살림 — 이미 그 상태면 아무것도 안 한다 */
   setAgentTaskDone(input: { agentId: string; id: string; done: boolean; byAgent?: boolean }, actor: Actor): Promise<{ title: string }>;
   deleteAgentTask(input: { agentId: string; id: string }, actor: Actor): Promise<void>;
-  /** 말 남기기 — user(지시) · note(기록만)는 actor 이름으로, agent 는 에이전트 이름으로 */
+  /**
+   * 말 남기기 — user(지시) · note(기록만)는 actor 이름으로, agent 는 에이전트 이름으로.
+   * files 는 라우트가 우리 Blob 에 있는지 확인한 것만 넘긴다(agent-files/<담당>/ 아래) — 파일만 넘기면 글은 비어도 된다
+   */
   addAgentMessage(
-    input: { agentId: string; role: AgentMessageRole; body: string; meta?: AgentMessageMeta | null },
+    input: {
+      agentId: string; role: AgentMessageRole; body: string; meta?: AgentMessageMeta | null;
+      files?: Array<{ name: string; pathname: string; url: string; size: number; contentType: string | null }>;
+    },
     actor: Actor
   ): Promise<AgentMessage>;
 

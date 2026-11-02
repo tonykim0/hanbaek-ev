@@ -9,14 +9,17 @@
  *   AgentHead  구역 머리 — 구역 제목(TEXT.section) 앞에 「//」
  *   Activity   최근 이레의 활동 칸
  *   ORG_LINE · OrgNode · Twig · DotGrid  조직도의 선 · 마디 · 매달린 칸 · 점 격자 바탕
+ *   FileChip   넘긴 파일 한 장 — 누르면 연다
  * 이 두 화면(/admin/agents · /admin/agents/[id]) 밖으로 가져가지 않는다 — 시공 줄의 자리 정본(construction/shell.tsx)과
  * 같은 자리다. ★콘솔 화면을 어둡게 만들지 않는다★.
  *
- * ★고정폭 글꼴(font-mono)은 영문·숫자·시각에만 쓴다★ — 고정폭 글꼴에는 한글이 없어 대신 그려지는 한글이 「진 행 중」처럼
- * 벌어졌다(2026-11-02 첫 화면).
+ * ★글꼴은 콘솔 것 하나다★(한백 2026-11-02 「폰트는 기존 디자인 시스템 폰트 맞춰줘」) — 고정폭 글꼴로 시각 · 숫자를 그리던
+ * 것을 걷었다. 숫자는 본문 글꼴의 자릿수 고정(tabular-nums)으로 줄을 맞춘다.
  */
 import type { CSSProperties, ReactNode } from 'react';
 import { TEXT } from '@/components/ui';
+import { sizeLabel } from '@/lib/agents/files';
+import type { AgentFile } from '@/types/agents';
 
 /** 반짝이 — 네 끝이 오목한 별. 글자(◆ ✦)는 글꼴마다 크기·자리가 달라 그림으로 둔다 */
 export function Spark({ className = '' }: { className?: string }) {
@@ -72,11 +75,36 @@ export function AgentHead({ children, meta, action }: { children: ReactNode; met
   return (
     <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
       <h2 className={TEXT.section}>
-        <span aria-hidden className="mr-1 font-mono text-brand-400">{'//'}</span>{children}
+        <span aria-hidden className="mr-1 text-brand-400">{'//'}</span>{children}
       </h2>
       {action}
       {meta !== undefined && <span className={`${TEXT.meta} tabular-nums`}>{meta}</span>}
     </div>
+  );
+}
+
+/** 클립 — 파일 */
+export function Clip({ className = '' }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden className={className}>
+      <path d="M13.5 7.5 8.2 12.8a3.2 3.2 0 0 1-4.5-4.5l5.6-5.6a2.1 2.1 0 0 1 3 3L6.7 11.3a1.1 1.1 0 0 1-1.5-1.5l5-5" />
+    </svg>
+  );
+}
+
+/** 넘긴 파일 한 장 — 누르면 새 탭에서 연다(PDF · 그림은 보이고, 나머지는 내려받는다). 각진 모양 — 누르는 것이다(규칙 11) */
+export function FileChip({ file }: { file: Pick<AgentFile, 'name' | 'url' | 'size'> }) {
+  return (
+    <a
+      href={file.url}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex max-w-full items-center gap-1.5 rounded-ctl border border-slate-200 bg-white px-2 py-1 text-small font-semibold text-slate-700 transition hover:border-brand-300 hover:text-brand-800"
+    >
+      <Clip className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+      <span className="min-w-0 truncate">{file.name}</span>
+      <span className="shrink-0 text-tiny font-semibold tabular-nums text-slate-500">{sizeLabel(file.size)}</span>
+    </a>
   );
 }
 

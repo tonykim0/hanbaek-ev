@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { briefOf, headlineOf, siteLinesOf, SITE_LIMIT, type ScopeData } from '@/lib/agents/brief';
-import { toMessages } from '@/lib/agents/brain';
+import { toMessages, withContext } from '@/lib/agents/brain';
 import type { Batch } from '@/lib/payout-board';
 import { today } from '@/lib/date';
 import type { ProjectSummary } from '@/types/project';
@@ -38,7 +38,6 @@ function site(id: string, over: Partial<ProjectSummary> = {}): ProjectSummary {
 
 const SK: Agent = { id: 'op-sk', kind: 'operator', cpo: 'SK일렉링크', name: 'SK일렉링크 담당' };
 const SETTLE: Agent = { id: 'settlement', kind: 'settlement', cpo: null, name: '정산 담당' };
-const BUY: Agent = { id: 'purchase', kind: 'purchase', cpo: null, name: '열린구매 담당' };
 const PLAN: Agent = { id: 'strategy', kind: 'strategy', cpo: null, name: '전략·기획 담당' };
 
 const data = (over: Partial<ScopeData> = {}): ScopeData => ({ today: TODAY, projects: [], batches: [], receivables: [], ...over });
@@ -96,7 +95,7 @@ describe('운영사 담당이 읽는 현장', () => {
   });
 });
 
-describe('정산 · 열린구매가 읽는 배치', () => {
+describe('정산 담당이 읽는 것 — 기성관리 · 지급관리 · 열린구매', () => {
   const batches = [
     batch({ paidAt: shift(-3), org: '에코일렉', kind: '시공비', total: 3_000_000 }),               // 확정 누락
     batch({ paidAt: shift(7), org: '대상전력', kind: '영업비', total: 1_200_000 }),                 // 가확정
@@ -105,8 +104,9 @@ describe('정산 · 열린구매가 읽는 배치', () => {
     batch({ paidAt: shift(-400), org: '옛업체', kind: '시공비', finalized: true }),                 // 오래된 지급완료
   ];
 
-  it('정산 — 상태별로 묶고, 오래된 지급완료는 뺀다', () => {
+  it('지급관리 — 상태별로 묶고, 오래된 지급완료는 뺀다', () => {
     const text = briefOf(SETTLE, data({ batches }));
+    expect(text).toContain('[기성관리 — 한백이 운영사에게서 받을 돈의 할 일 0건');
     expect(text).toContain('확정 누락 1건:');
     expect(text).toContain(`- ${shift(-3)} · 에코일렉 · 시공비 · 1건 · 공급가액 3,000,000원 · 세금계산서 없음`);
     expect(text).toContain('가확정 1건:');
@@ -114,27 +114,35 @@ describe('정산 · 열린구매가 읽는 배치', () => {
     expect(text).not.toContain('옛업체');
   });
 
-  it('정산 카드 — 확정 누락은 빨강', () => {
-    expect(headlineOf(SETTLE, data({ batches })).counts[0]).toEqual({ label: '확정 누락', value: '1', tone: 'stop' });
+  it('카드 — 받을 기성 · 나갈 지급(아직 지급완료가 아닌 배치) · 확정 누락은 빨강', () => {
+    expect(headlineOf(SETTLE, data({ batches })).counts).toEqual([
+      { label: '받을 기성', value: '0건' },
+      { label: '나갈 지급', value: '3건' },
+      { label: '확정 누락', value: '1', tone: 'stop' },
+    ]);
   });
 
-  it('열린구매 — 아직 안 나간 것만, 지급처 사업자·계좌와 현장 몫을 붙인다', () => {
+  it('열린구매 — 아직 안 나간 것만, 지급처 사업자·계좌 · 현장 몫 · 붙일 자료를 붙인다', () => {
     const partners = new Map([
-      ['대상전력', { bizRegNo: '1234567890', ceo: '박대상', bankName: '국민은행', bankAccountNo: '12345', bankHolder: '대상전력' }],
-      ['네이비인프라', { bizRegNo: null, ceo: null, bankName: null, bankAccountNo: null, bankHolder: null }],
+      ['대상전력', {
+        bizRegNo: '1234567890', ceo: '박대상', bankName: '국민은행', bankAccountNo: '12345', bankHolder: '대상전력',
+        hasBizCert: true, hasBankbook: false,
+      }],
+      ['네이비인프라', {
+        bizRegNo: null, ceo: null, bankName: null, bankAccountNo: null, bankHolder: null, hasBizCert: false, hasBankbook: false,
+      }],
     ]);
     const batchLines = new Map([[`${shift(7)}|대상전력|영업비`, [{ no: 'HB-2026-077', projectName: '반달마을', label: '영업비 1차', amount: 1_200_000 }]]]);
-    const text = briefOf(BUY, data({ batches, partners, batchLines }));
-    expect(text).not.toContain('푸름');   // 이미 나갔다
-    expect(text).toContain('상태 확정 누락');
-    expect(text).toContain('지급처: 사업자등록번호 1234567890 · 대표 박대상 · 국민은행 12345 예금주 대상전력');
-    expect(text).toContain('· HB-2026-077 반달마을 — 영업비 1차 1,200,000원');
-    expect(text).toContain('지급처: 계좌 미등록');         // 네이비인프라 — 정보는 있는데 계좌가 비었다
-    expect(text).toContain('지급처: 협력사 정보 미등록');   // 에코일렉 — 정보가 아예 없다
-    expect(headlineOf(BUY, data({ batches })).counts).toEqual([
-      { label: '나갈 지급', value: '3건' },
-      { label: '공급가액', value: '4,700,000원' },
-    ]);
+    const text = briefOf(SETTLE, data({ batches, partners, batchLines }));
+    const buy = text.slice(text.indexOf('[열린구매'));
+    expect(buy).not.toContain('푸름');   // 이미 나갔다
+    expect(buy).toContain('상태 확정 누락');
+    expect(buy).toContain('지급처: 사업자등록번호 1234567890 · 대표 박대상 · 국민은행 12345 예금주 대상전력');
+    expect(buy).toContain('· HB-2026-077 반달마을 — 영업비 1차 1,200,000원');
+    expect(buy).toContain('지급처: 계좌 미등록');         // 네이비인프라 — 정보는 있는데 계좌가 비었다
+    expect(buy).toContain('지급처: 협력사 정보 미등록');   // 에코일렉 — 정보가 아예 없다
+    expect(buy).toContain(`/payments/statement?org=${encodeURIComponent('대상전력')}&date=${shift(7)}&kind=${encodeURIComponent('영업비')}`);
+    expect(buy).toContain('세금계산서 없음(협력사 발행 대기) · 사업자등록증 있음 · 통장사본 없음');
   });
 });
 
@@ -156,8 +164,36 @@ describe('전략·기획이 읽는 수주 흐름', () => {
 });
 
 describe('지난 대화를 에이전트에게 넘기는 모양', () => {
-  const said = (role: AgentMessage['role'], body: string): AgentMessage => ({
-    id: body, role, author: role === 'agent' ? 'SK일렉링크 담당' : '김한백', body, at: '2026-11-02 10:00', meta: null,
+  const said = (role: AgentMessage['role'], body: string, files: AgentMessage['files'] = []): AgentMessage => ({
+    id: body, role, author: role === 'agent' ? 'SK일렉링크 담당' : '김한백', body, at: '2026-11-02 10:00', meta: null, files,
+  });
+  const file = (id: string, name: string) => ({ id, name, url: `https://blob.example/${id}`, size: 10, contentType: null });
+
+  it('넘긴 파일 — PDF · 그림은 주소로, 글자를 뽑은 것은 글로, 못 여는 것은 이름만', () => {
+    const m = toMessages(
+      [said('user', '이 자료 보고 정리해줘', [
+        file('a', '견적서.pdf'), file('b', '현장.jpg'), file('c', '단가표.xlsx'), file('d', '공문.hwp'),
+      ])],
+      new Map([['c', '## 시트 「단가」 (1줄)\n완속\t1200000']]),
+    );
+    expect(m[0].content).toEqual([
+      { type: 'text', text: '[김한백 · 2026-11-02 10:00] 이 자료 보고 정리해줘' },
+      { type: 'text', text: '[넘긴 파일 견적서.pdf]' },
+      { type: 'document', source: { type: 'url', url: 'https://blob.example/a' }, title: '견적서.pdf' },
+      { type: 'text', text: '[넘긴 파일 현장.jpg]' },
+      { type: 'image', source: { type: 'url', url: 'https://blob.example/b' } },
+      { type: 'text', text: '[넘긴 파일 단가표.xlsx] — 글자만 뽑음\n## 시트 「단가」 (1줄)\n완속\t1200000' },
+      { type: 'text', text: '[넘긴 파일 공문.hwp] — 이 형식은 열지 못한다. 이름만 안다' },
+    ]);
+  });
+
+  it('지금의 콘솔 자료는 마지막 지시 앞에 붙는다 — 앞의 대화는 그대로(캐시가 남는다)', () => {
+    const m = withContext(toMessages([said('user', '첫 지시'), said('agent', '답'), said('user', '둘째 지시')]), '[지금 — 자료]');
+    expect(m[0]).toEqual({ role: 'user', content: '[김한백 · 2026-11-02 10:00] 첫 지시' });
+    expect(m[2]).toEqual({
+      role: 'user',
+      content: [{ type: 'text', text: '[지금 — 자료]' }, { type: 'text', text: '[김한백 · 2026-11-02 10:00] 둘째 지시' }],
+    });
   });
 
   it('맨 앞의 에이전트 말은 버린다 — 대화는 사람의 말로 시작해야 한다', () => {

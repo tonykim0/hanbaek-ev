@@ -707,3 +707,19 @@ export const agentMessages = pgTable('agent_messages', {
 }, (t) => ({
   byThread: index('agent_messages_thread_idx').on(t.agentId, t.at),
 }));
+
+/** 담당에게 넘긴 파일 — 지시나 기록에 붙는다. 파일은 Blob 의 agent-files/<담당>/ 아래(migrations/0105) */
+export const agentFiles = pgTable('agent_files', {
+  id: text('id').primaryKey(),
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  messageId: text('message_id').notNull().references(() => agentMessages.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  pathname: text('pathname').notNull(),
+  url: text('url').notNull(),
+  size: integer('size').notNull().default(0),
+  contentType: text('content_type'),
+  at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  byAgent: index('agent_files_agent_idx').on(t.agentId, t.at),
+  byMessage: index('agent_files_message_idx').on(t.messageId),
+}));

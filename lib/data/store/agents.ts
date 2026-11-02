@@ -9,16 +9,20 @@
  *
  * 에이전트가 보는 현장·지급·기성은 여기 없다 — 콘솔이 이미 셈하는 것을 부를 때마다 읽는다(lib/agents/scope).
  */
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
+import type { PgColumn } from 'drizzle-orm/pg-core';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
-import { agentDuties, agentMessages, agents, agentTasks, projects } from '@/lib/db/schema';
+import { agentDuties, agentFiles, agentMessages, agents, agentTasks, auditLog, projects } from '@/lib/db/schema';
 import { stampOf, today } from '@/lib/date';
 import { allSlots } from '../db-slot';
 import type {
-  Agent, AgentDetail, AgentDuty, AgentKind, AgentMessage, AgentMessageMeta, AgentMessageRole, AgentSummary, AgentTask,
+  Agent, AgentDetail, AgentDuty, AgentEvent, AgentFile, AgentKind, AgentMessage, AgentMessageMeta, AgentMessageRole,
+  AgentSummary, AgentTask, AgentWeek,
 } from '@/types/agents';
 import { AGENT_KINDS } from '@/types/agents';
+import { AGENT_FILES_PER_MESSAGE, agentFileName, agentFilePrefix } from '@/lib/agents/files';
+import { mondayOf, shiftDay } from '@/lib/agents/weeks';
 import type { CpoName } from '@/types/project';
 import type { Actor, ProjectRepository } from '../repository';
 import { assertAdmin } from './shared';
@@ -29,13 +33,59 @@ const MAX = { dutyTitle: 60, dutyBody: 4000, taskTitle: 120, taskNote: 1000, sai
 const THREAD_LIMIT = 300;
 /** 현황의 활동 칸 — 이레 */
 const ACTIVITY_DAYS = 7;
+/** 주간 기록에 싣는 주 — 최근 한 해 */
+const WEEKS_LIMIT = 52;
+/** 한 주를 펼칠 때 싣는 말 상한 */
+const WEEK_THREAD_LIMIT = 1000;
 
-/** 'YYYY-MM-DD' 를 며칠 민다 (달력 날짜끼리라 시간대가 끼지 않는다) */
-function shiftDay(day: string, delta: number): string {
-  const d = new Date(`${day}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + delta);
-  return d.toISOString().slice(0, 10);
+/*
+ * 주간 기록이 감사기록에서 읽는 일 — 할 일이 적히고 끝나고, 업무 정의가 바뀐 때. 감사기록은 지운 할 일·업무 정의의 흔적도
+ * 남아 있어 「그 주에 무엇을 했나」를 그대로 보여준다(할 일 표는 지금 상태만 안다). 이름은 아래 쓰기들이 남기는 그대로다.
+ */
+const DUTY_ACTIONS = ['에이전트 업무 정의', '에이전트 업무 정의 수정', '에이전트 업무 정의 삭제'];
+const TASK_ADDED = ['에이전트 할 일', '에이전트 할 일 (에이전트가 적음)'];
+const TASK_DONE = ['에이전트 할 일 끝냄', '에이전트 할 일 끝냄 (에이전트가 적음)'];
+const EVENT_ACTIONS = [...DUTY_ACTIONS, ...TASK_ADDED, ...TASK_DONE];
+
+/** 한국 시각으로 그 날 0시 */
+const kstStart = (day: string) => new Date(`${day}T00:00:00+09:00`);
+
+/** 시각 열 → 그 시각이 든 주의 월요일(한국 달력) 글자. 고른 칸과 묶는 칸에 같은 것을 쓴다 */
+const weekOf = (col: PgColumn): SQL<string> =>
+  sql<string>`to_char(date_trunc('week', ${col} at time zone 'Asia/Seoul'), 'YYYY-MM-DD')`;
+
+/** 감사기록의 「이름(아이디)」에서 이름만 */
+const actorName = (a: string) => a.replace(/\([^()]*\)$/, '');
+/** 업무 정의 감사값 「제목 — 내용」의 제목 */
+const dutyTitleOf = (v: string | null) => (v ?? '').split(' — ')[0];
+
+function eventOf(row: typeof auditLog.$inferSelect, agentName: string): AgentEvent | null {
+  const at = stampOf(row.at);
+  const by = actorName(row.actor);
+  switch (row.action) {
+    case '에이전트 업무 정의':
+      return { at, kind: 'duty-added', title: dutyTitleOf(row.newValue), by, byAgent: false, after: row.newValue };
+    case '에이전트 업무 정의 수정':
+      return { at, kind: 'duty-edited', title: dutyTitleOf(row.newValue), by, byAgent: false, before: row.oldValue, after: row.newValue };
+    case '에이전트 업무 정의 삭제':
+      return { at, kind: 'duty-deleted', title: dutyTitleOf(row.oldValue), by, byAgent: false, before: row.oldValue };
+    case '에이전트 할 일':
+      return { at, kind: 'task-added', title: row.newValue ?? '', by, byAgent: false };
+    case '에이전트 할 일 (에이전트가 적음)':
+      return { at, kind: 'task-added', title: row.newValue ?? '', by: agentName, byAgent: true };
+    case '에이전트 할 일 끝냄':
+      return { at, kind: 'task-done', title: row.oldValue ?? '', by, byAgent: false };
+    case '에이전트 할 일 끝냄 (에이전트가 적음)':
+      return { at, kind: 'task-done', title: row.oldValue ?? '', by: agentName, byAgent: true };
+    default:
+      return null;
+  }
 }
+
+function fileOf(r: typeof agentFiles.$inferSelect): AgentFile {
+  return { id: r.id, name: r.name, url: r.url, size: r.size, contentType: r.contentType };
+}
+
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -56,7 +106,7 @@ async function agentRow(id: string): Promise<Agent> {
   return agentOf(row);
 }
 
-function messageOf(r: typeof agentMessages.$inferSelect): AgentMessage {
+function messageOf(r: typeof agentMessages.$inferSelect, files: AgentFile[] = []): AgentMessage {
   return {
     id: r.id,
     role: (['user', 'note', 'agent'].includes(r.role) ? r.role : 'note') as AgentMessageRole,
@@ -64,6 +114,7 @@ function messageOf(r: typeof agentMessages.$inferSelect): AgentMessage {
     body: r.body,
     at: stampOf(r.at),
     meta: r.meta ?? null,
+    files,
   };
 }
 
@@ -133,19 +184,83 @@ export const agentStore: Pick<
     });
   },
 
-  async getAgent(id, actor): Promise<AgentDetail> {
+  async getAgent(id, actor, opts): Promise<AgentDetail> {
     assertAdmin(actor, '에이전트');
     const agent = await agentRow(id);
     const db = getDb();
-    const [duties, tasks, said] = await allSlots([
+    /* 한 주를 골랐으면 그 주(월요일 0시 ~ 다음 월요일 0시, 한국 시각)의 말 전부, 아니면 최근 말 */
+    const start = opts?.week && DAY_RE.test(opts.week) ? mondayOf(opts.week) : null;
+    const range = start ? { from: kstStart(start), to: kstStart(shiftDay(start, 7)) } : null;
+    const msgWeek = weekOf(agentMessages.at);
+    const logWeek = weekOf(auditLog.at);
+    const fileWeek = weekOf(agentFiles.at);
+    const [duties, tasks, said, msgWeeks, logWeeks, fileWeeks] = await allSlots([
       () => db.select().from(agentDuties).where(eq(agentDuties.agentId, id))
         .orderBy(asc(agentDuties.sort), asc(agentDuties.createdAt)),
       () => db.select({ t: agentTasks, projectName: projects.name })
         .from(agentTasks).leftJoin(projects, eq(projects.id, agentTasks.projectId))
         .where(eq(agentTasks.agentId, id)),
-      () => db.select().from(agentMessages).where(eq(agentMessages.agentId, id))
-        .orderBy(desc(agentMessages.at)).limit(THREAD_LIMIT),
+      () => (range
+        ? db.select().from(agentMessages)
+          .where(and(eq(agentMessages.agentId, id), gte(agentMessages.at, range.from), lt(agentMessages.at, range.to)))
+          .orderBy(desc(agentMessages.at)).limit(WEEK_THREAD_LIMIT)
+        : db.select().from(agentMessages).where(eq(agentMessages.agentId, id))
+          .orderBy(desc(agentMessages.at)).limit(THREAD_LIMIT)),
+      () => db.select({
+        week: msgWeek,
+        role: agentMessages.role,
+        n: sql<number>`count(*)::int`,
+        usd: sql<number>`coalesce(sum((${agentMessages.meta}->>'usd')::float8), 0)::float8`,
+      }).from(agentMessages).where(eq(agentMessages.agentId, id)).groupBy(msgWeek, agentMessages.role),
+      () => db.select({ week: logWeek, action: auditLog.action, n: sql<number>`count(*)::int` })
+        .from(auditLog).where(and(eq(auditLog.field, agent.name), inArray(auditLog.action, EVENT_ACTIONS)))
+        .groupBy(logWeek, auditLog.action),
+      () => db.select({ week: fileWeek, n: sql<number>`count(*)::int` })
+        .from(agentFiles).where(eq(agentFiles.agentId, id)).groupBy(fileWeek),
     ] as const);
+
+    const rows = said.reverse();
+    const [files, logs] = await allSlots([
+      () => (rows.length
+        ? db.select().from(agentFiles).where(inArray(agentFiles.messageId, rows.map((m) => m.id))).orderBy(asc(agentFiles.at))
+        : Promise.resolve([] as Array<typeof agentFiles.$inferSelect>)),
+      () => (range
+        ? db.select().from(auditLog)
+          .where(and(
+            eq(auditLog.field, agent.name), inArray(auditLog.action, EVENT_ACTIONS),
+            gte(auditLog.at, range.from), lt(auditLog.at, range.to),
+          ))
+          .orderBy(asc(auditLog.at))
+        : Promise.resolve([] as Array<typeof auditLog.$inferSelect>)),
+    ] as const);
+    const filesOf = new Map<string, AgentFile[]>();
+    for (const f of files) filesOf.set(f.messageId, [...(filesOf.get(f.messageId) ?? []), fileOf(f)]);
+
+    /* 주마다 셈 — 말 · 할 일 · 업무 정의 · 파일 중 하나라도 있던 주 */
+    const weeks = new Map<string, AgentWeek>();
+    const weekRow = (w: string): AgentWeek => {
+      let x = weeks.get(w);
+      if (!x) {
+        x = { start: w, end: shiftDay(w, 6), user: 0, note: 0, agent: 0, tasksAdded: 0, tasksDone: 0, dutyChanges: 0, files: 0, usd: 0 };
+        weeks.set(w, x);
+      }
+      return x;
+    };
+    for (const r of msgWeeks) {
+      const x = weekRow(r.week);
+      if (r.role === 'user') x.user += r.n;
+      else if (r.role === 'agent') x.agent += r.n;
+      else x.note += r.n;
+      x.usd += Number(r.usd ?? 0);
+    }
+    for (const r of logWeeks) {
+      const x = weekRow(r.week);
+      if (DUTY_ACTIONS.includes(r.action)) x.dutyChanges += r.n;
+      else if (TASK_ADDED.includes(r.action)) x.tasksAdded += r.n;
+      else if (TASK_DONE.includes(r.action)) x.tasksDone += r.n;
+    }
+    for (const r of fileWeeks) weekRow(r.week).files += r.n;
+
     return {
       agent,
       duties: duties.map((d): AgentDuty => ({
@@ -163,7 +278,15 @@ export const agentStore: Pick<
         byAgent: t.author === agent.name,
         createdAt: stampOf(t.createdAt),
       })).sort(taskOrder),
-      messages: said.reverse().map(messageOf),
+      messages: rows.map((m) => messageOf(m, filesOf.get(m.id) ?? [])),
+      weeks: [...weeks.values()].sort((x, y) => y.start.localeCompare(x.start)).slice(0, WEEKS_LIMIT),
+      week: start
+        ? {
+          start,
+          end: shiftDay(start, 6),
+          events: logs.map((l) => eventOf(l, agent.name)).filter((e): e is AgentEvent => e !== null),
+        }
+        : null,
     };
   },
 
@@ -288,22 +411,42 @@ export const agentStore: Pick<
     const agent = await agentRow(input.agentId);
     const fromAgent = input.role === 'agent';
     const body = clip(input.body, fromAgent ? MAX.agentSaid : MAX.said, '글');
-    if (!body) throw new Error('내용을 적어주세요.');
+    /* 파일은 사람이 넘긴다 — 에이전트의 말에는 붙지 않는다. 자리는 라우트가 우리 Blob 에서 확인한 것이고, 여기서 한 번 더 본다 */
+    const given = fromAgent ? [] : input.files ?? [];
+    if (given.length > AGENT_FILES_PER_MESSAGE) throw new Error(`파일은 한 번에 ${AGENT_FILES_PER_MESSAGE}개까지입니다.`);
+    for (const f of given) {
+      if (!f.pathname.startsWith(agentFilePrefix(agent.id)) || f.pathname.includes('..')) throw new Error('이 담당의 파일이 아닙니다.');
+    }
+    if (!body && given.length === 0) throw new Error('내용을 적어주세요.');
     const id = crypto.randomUUID();
     const author = fromAgent ? agent.name : actor.name;
     const meta: AgentMessageMeta | null = fromAgent ? input.meta ?? null : null;
     const db = getDb();
-    const [row] = await db.transaction(async (tx) => {
-      const inserted = await tx.insert(agentMessages)
+    const [row, saved] = await db.transaction(async (tx) => {
+      const [inserted] = await tx.insert(agentMessages)
         .values({ id, agentId: agent.id, role: input.role, author, authorId: fromAgent ? null : actor.id, body, meta })
         .returning();
+      const filed = given.length
+        ? await tx.insert(agentFiles).values(given.map((f) => ({
+          id: crypto.randomUUID(),
+          agentId: agent.id,
+          messageId: id,
+          name: agentFileName(f.name),
+          pathname: f.pathname,
+          url: f.url,
+          size: Math.max(0, Math.round(f.size)),
+          contentType: f.contentType,
+        }))).returning()
+        : [];
       await writeAudit(tx, {
         projectId: null, actor,
         action: input.role === 'user' ? '에이전트 지시' : input.role === 'note' ? '에이전트 기록' : '에이전트 답',
-        field: agent.name, oldValue: null, newValue: body.slice(0, 200),
+        field: agent.name, oldValue: null,
+        newValue: [body.slice(0, 200), filed.length ? `파일 ${filed.map((f) => f.name).join(', ')}` : '']
+          .filter(Boolean).join(' · ').slice(0, 2000),
       });
-      return inserted;
+      return [inserted, filed] as const;
     });
-    return messageOf(row);
+    return messageOf(row, saved.map(fileOf));
   },
 };

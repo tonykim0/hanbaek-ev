@@ -6,16 +6,19 @@
  * 답할 지시가 없으면 부르기 전에 거절한다.
  */
 import { afterAll, describe, expect, it } from 'vitest';
-import { like } from 'drizzle-orm';
+import { and, like, or } from 'drizzle-orm';
 import { POST as postDuty } from '@/app/api/agents/[id]/duties/route';
 import { DELETE as deleteDuty } from '@/app/api/agents/[id]/duties/[dutyId]/route';
 import { POST as postTask } from '@/app/api/agents/[id]/tasks/route';
 import { DELETE as deleteTask, PATCH as patchTask } from '@/app/api/agents/[id]/tasks/[taskId]/route';
 import { POST as postMessage } from '@/app/api/agents/[id]/messages/route';
 import { POST as postReply } from '@/app/api/agents/[id]/reply/route';
+import { POST as postFileToken } from '@/app/api/agents/[id]/files/route';
 import { getRepository } from '@/lib/data';
 import { getDb } from '@/lib/db/client';
-import { agentDuties, agentMessages, agentTasks } from '@/lib/db/schema';
+import { agentDuties, agentMessages, agentTasks, auditLog } from '@/lib/db/schema';
+import { mondayOf } from '@/lib/agents/weeks';
+import { today } from '@/lib/date';
 import { RUN, USERS, actorOf, call, signIn } from './kit';
 
 const repo = getRepository();
@@ -26,9 +29,14 @@ const mark = `[시험 ${RUN}]`;
 
 afterAll(async () => {
   const db = getDb();
-  await db.delete(agentMessages).where(like(agentMessages.body, `%${RUN}%`));
+  await db.delete(agentMessages).where(like(agentMessages.body, `%${RUN}%`)); // 붙은 파일 줄도 같이 지워진다(cascade)
   await db.delete(agentTasks).where(like(agentTasks.title, `%${RUN}%`));
   await db.delete(agentDuties).where(like(agentDuties.title, `%${RUN}%`));
+  /* 주간 기록이 감사기록을 읽는다 — 시험이 남긴 줄이 개발 DB 의 주간 기록에 섞이지 않게 걷는다 */
+  await db.delete(auditLog).where(and(
+    like(auditLog.action, '에이전트%'),
+    or(like(auditLog.newValue, `%${RUN}%`), like(auditLog.oldValue, `%${RUN}%`)),
+  ));
 });
 
 describe('에이전트 — 누가 쓰나', () => {
@@ -135,5 +143,87 @@ describe('대화', () => {
   it('빈 말은 400', async () => {
     await signIn(USERS.admin);
     expect((await call(postMessage, { body: { body: '  ' }, params })).status).toBe(400);
+  });
+});
+
+describe('넘긴 파일', () => {
+  const prefix = `agent-files/${AGENT}/`;
+
+  it('토큰 — 협력사는 403 · 이름이 없으면 400 · 너무 크면 422', async () => {
+    await signIn(USERS.ecoelec);
+    expect((await call(postFileToken, { body: { name: 'a.pdf', size: 10 }, params })).status).toBe(403);
+    await signIn(USERS.admin);
+    expect((await call(postFileToken, { body: { size: 10 }, params })).status).toBe(400);
+    expect((await call(postFileToken, { body: { name: 'a.pdf', size: 0 }, params })).status).toBe(400);
+    expect((await call(postFileToken, { body: { name: 'a.pdf', size: 60 * 1024 * 1024 }, params })).status).toBe(422);
+    expect((await call(postFileToken, { body: { name: 'a.pdf', size: 10 }, params: { id: '../x' } })).status).toBe(400);
+  });
+
+  it.skipIf(!process.env.BLOB_READ_WRITE_TOKEN)('토큰 — 자리는 서버가 이 담당 밑에 짓는다', async () => {
+    await signIn(USERS.admin);
+    const r = await call(postFileToken, { body: { name: '견적/서.pdf', size: 1000 }, params });
+    expect(r.status).toBe(200);
+    expect(r.json?.pathname as string).toMatch(new RegExp(`^${prefix}[0-9a-f-]{36}/견적_서\\.pdf$`));
+  });
+
+  it('남의 자리 · 없는 파일은 받지 않는다 — 클라이언트가 준 주소를 믿지 않는다', async () => {
+    await signIn(USERS.admin);
+    const other = await call(postMessage, {
+      body: { body: `${mark} 파일`, files: [{ pathname: 'agent-files/op-hec/x/a.pdf', name: 'a.pdf' }] }, params,
+    });
+    expect(other.status).toBe(400);
+    expect(other.json?.error).toBe('이 담당에게 올린 파일이 아닙니다.');
+    const missing = await call(postMessage, {
+      body: { body: `${mark} 파일`, files: [{ pathname: `${prefix}${crypto.randomUUID()}/없음.pdf`, name: '없음.pdf' }] }, params,
+    });
+    expect(missing.status).toBe(400);
+    expect(missing.json?.error).toContain('올린 파일을 찾을 수 없습니다');
+  });
+
+  it('저장소 — 파일만 넘겨도 되고, 대화에 파일이 붙어 나온다 · 에이전트의 말에는 붙지 않는다', async () => {
+    const file = { name: '단가표.xlsx', pathname: `${prefix}${crypto.randomUUID()}/단가표.xlsx`, url: 'https://blob.example/x', size: 2048, contentType: null };
+    const m = await repo.addAgentMessage({ agentId: AGENT, role: 'note', body: `${mark}`, files: [file] }, admin);
+    expect(m.files).toHaveLength(1);
+    expect(m.files[0]).toMatchObject({ name: '단가표.xlsx', size: 2048 });
+    const back = (await repo.getAgent(AGENT, admin)).messages.find((x) => x.id === m.id);
+    expect(back?.files.map((f) => f.name)).toEqual(['단가표.xlsx']);
+
+    const said = await repo.addAgentMessage({ agentId: AGENT, role: 'agent', body: `${mark} 답`, files: [file] }, admin);
+    expect(said.files).toEqual([]);
+    await expect(repo.addAgentMessage(
+      { agentId: AGENT, role: 'user', body: `${mark}`, files: [{ ...file, pathname: 'agent-files/op-hec/y/a.pdf' }] }, admin,
+    )).rejects.toThrow('이 담당의 파일이 아닙니다');
+  });
+});
+
+describe('주간 기록', () => {
+  it('이번 주 줄에 말 · 할 일 · 업무 정의 · 파일이 세어지고, 그 주를 펼치면 일이 시각 순으로 선다', async () => {
+    const before = (await repo.getAgent(AGENT, admin)).weeks.find((w) => w.start === mondayOf(today()));
+    const n = (k: 'user' | 'tasksAdded' | 'tasksDone' | 'dutyChanges') => before?.[k] ?? 0;
+
+    const tag = `${mark} 주간기록`; // 이 시험의 일만 골라 보려고 — 위의 시험들도 같은 표지를 쓴다
+    await repo.addAgentMessage({ agentId: AGENT, role: 'user', body: `${tag} 이번 주 정리` }, admin);
+    const duty = await repo.saveAgentDuty({ agentId: AGENT, title: `${tag} 보고`, body: '월요일' }, admin);
+    await repo.saveAgentDuty({ agentId: AGENT, id: duty, title: `${tag} 보고`, body: '월요일 · 목요일' }, admin);
+    const task = await repo.addAgentTask({ agentId: AGENT, title: `${tag} 회신 받기`, byAgent: true }, admin);
+    await repo.setAgentTaskDone({ agentId: AGENT, id: task.id, done: true }, admin);
+
+    const after = await repo.getAgent(AGENT, admin);
+    const week = after.weeks.find((w) => w.start === mondayOf(today()));
+    expect(week?.end).toBe(after.weeks[0].end);
+    expect(week?.user).toBe(n('user') + 1);
+    expect(week?.dutyChanges).toBe(n('dutyChanges') + 2);
+    expect(week?.tasksAdded).toBe(n('tasksAdded') + 1);
+    expect(week?.tasksDone).toBe(n('tasksDone') + 1);
+
+    const open = await repo.getAgent(AGENT, admin, { week: today() }); // 아무 날이나 주면 그 주 월요일로
+    expect(open.week?.start).toBe(mondayOf(today()));
+    const mine = open.week!.events.filter((e) => e.title.includes(tag));
+    expect(mine.map((e) => e.kind)).toEqual(['duty-added', 'duty-edited', 'task-added', 'task-done']);
+    expect(mine[1].before).toContain('월요일');
+    expect(mine[1].after).toContain('월요일 · 목요일');
+    expect(mine[2].byAgent).toBe(true);
+    expect(mine[2].by).toBe('SK일렉링크 담당');
+    expect(open.messages.some((m) => m.body === `${tag} 이번 주 정리`)).toBe(true);
   });
 });

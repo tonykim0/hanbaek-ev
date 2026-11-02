@@ -2,7 +2,7 @@
  * 에이전트가 읽을 재료를 모은다 (서버 전용) — 할 일 조립(lib/todos)과 같은 읽기를 한 번 하고, 담당마다 나눠 읽는다.
  *
  * ★저장하지 않는다★ — 부를 때마다 콘솔의 정본을 읽는다. 에이전트가 보는 것과 보드·명세서가 보여주는 것이 늘 같다
- * (dual-write 금지). 현황 화면은 여덟 카드의 한 줄을 이 한 번의 읽기로 같이 만든다.
+ * (dual-write 금지). 현황 화면은 일곱 카드의 한 줄을 이 한 번의 읽기로 같이 만든다.
  */
 import { getRepository } from '@/lib/data';
 import { listPartnerDetails } from '@/lib/auth/partner-details';
@@ -15,9 +15,10 @@ import type { Actor } from '@/lib/auth/types';
 import type { BatchLine, PartnerLine, ScopeData } from './brief';
 
 /**
- * @param withPurchase 열린구매가 쓸 지급처 사업자·계좌와 배치의 현장 몫까지 — 그 담당을 부를 때만 읽는다
+ * @param withPayees 정산 담당이 열린구매 글에 쓸 지급처 사업자·계좌 · 붙일 자료가 있는지 · 배치의 현장 몫까지 — 그 담당을
+ *                   부를 때만 읽는다
  */
-export async function loadScope(actor: Actor, withPurchase = false): Promise<ScopeData> {
+export async function loadScope(actor: Actor, withPayees = false): Promise<ScopeData> {
   const repo = getRepository();
   const [{ projects, history, settlements }, finals, invoices] = await Promise.all([
     repo.listTodoSources({ role: actor.role, org: actor.org }),
@@ -32,7 +33,7 @@ export async function loadScope(actor: Actor, withPurchase = false): Promise<Sco
     batches: batchesOf(history, finals, invoices),
     receivables: receivableTodos(settlements.filter((s) => !held.has(s.id))),
   };
-  if (!withPurchase) return data;
+  if (!withPayees) return data;
 
   const [details, accounts] = await Promise.all([listPartnerDetails(), userStore.list()]);
   /* 계정은 회사당 하나다 — 같은 소속에 여럿이면 정보를 적은 첫 계정 */
@@ -43,6 +44,7 @@ export async function loadScope(actor: Actor, withPurchase = false): Promise<Sco
     if (!org || !d || partners.has(org)) continue;
     partners.set(org, {
       bizRegNo: d.bizRegNo, ceo: d.ceo, bankName: d.bankName, bankAccountNo: d.bankAccountNo, bankHolder: d.bankHolder,
+      hasBizCert: Boolean(d.bizCertUrl), hasBankbook: Boolean(d.bankbookUrl),
     });
   }
   const noOf = new Map(projects.map((p) => [p.id, p.mgmtNo ?? p.id]));

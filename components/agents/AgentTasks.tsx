@@ -123,14 +123,14 @@ function TaskItem({ agentId, agentName, task: t, today }: { agentId: string; age
           <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
             {t.due && (late
               ? <Tag tone="stop">기한 {t.due} 지남</Tag>
-              : <span className={TEXT.meta}>기한 <span className="font-mono tabular-nums">{t.due}</span></span>)}
+              : <span className={`${TEXT.meta} tabular-nums`}>기한 {t.due}</span>)}
             {t.projectId && t.projectName && (
               <Link href={`/projects/${t.projectId}`} className={`text-tiny ${LINK}`}>{t.projectName}</Link>
             )}
             {t.byAgent ? (
               <Tag tone="ok"><Spark className="mr-0.5 inline h-2.5 w-2.5 align-[-1px]" />{agentName}</Tag>
             ) : <span className={TEXT.meta}>{t.author}</span>}
-            {t.doneAt && <span className={TEXT.meta}>끝냄 <span className="font-mono tabular-nums">{t.doneAt}</span></span>}
+            {t.doneAt && <span className={`${TEXT.meta} tabular-nums`}>끝냄 {t.doneAt}</span>}
           </div>
           {t.note && <p className="mt-1 whitespace-pre-wrap break-keep text-small text-slate-600">{t.note}</p>}
         </div>

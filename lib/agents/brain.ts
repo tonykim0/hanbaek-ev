@@ -4,13 +4,22 @@
  * ★손에 쥔 것은 할 일 목록뿐이다★ — add_task · complete_task 두 도구. 반려 · 확정 · 단계 이동 · 지급 같은 콘솔의 값은
  * 못 바꾼다(그건 사람이 콘솔에서 누른다 — 판독이 반려하지 않는 것과 같은 원칙). 전략·기획만 웹 검색을 더 쥔다.
  *
+ * 한백이 넘긴 파일(lib/agents/files)은 그 말에 붙여 읽는다 — PDF · 그림은 주소로 바로, 엑셀 · 워드 · 한글(hwpx) · 글 파일은
+ * 서버가 글자를 뽑아서(lib/agents/file-text), 그 밖의 형식은 이름만.
+ *
+ * ★바뀌는 자료는 마지막 지시 곁에 둔다★ — 시스템에는 바뀌지 않는 것(역할 · 일하는 법 · 업무 정의)만 두고, 그때그때 바뀌는
+ * 오늘 · 열린 할 일 · 콘솔 자료는 마지막 지시에 붙인다. 그래야 지난 대화(넘긴 PDF 포함)가 캐시에서 싸게 읽힌다 — 바뀌는
+ * 자료가 앞에 있으면 그 뒤의 대화 전부를 매번 새로 읽는다.
+ *
  * 모델은 claude-opus-5-5 다 — 생각을 끌 수 없고(adaptive 가 늘 돈다) 강도는 effort 가 정한다. 설치된 SDK(0.52)가
  * output_config · 새 웹 검색 · 서버 대체(fallbacks)의 타입을 모르므로 요청 타입을 넓혀 보낸다(lib/survey/read-plate 와 같은 방식).
  * 거절(refusal)은 서버가 다른 모델로 이어 답하게 한다(fallbacks: "default").
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { logLlmCall, usdOf } from '@/lib/llm-usage';
-import type { Agent, AgentDuty, AgentMessage, AgentMessageMeta, AgentSource, AgentTask } from '@/types/agents';
+import { agentFileRead } from './files';
+import { fileTextsOf } from './file-text';
+import type { Agent, AgentDuty, AgentFile, AgentMessage, AgentMessageMeta, AgentSource, AgentTask } from '@/types/agents';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = 'claude-opus-5-5';
@@ -43,13 +52,15 @@ function roleOf(agent: Agent): string {
         + `${agent.cpo} 쪽과 오간 일을 기록한다. [현장] 자료의 「칸」은 그 현장이 선 단계, 「차례」는 지금 움직여야 할 쪽 `
         + '(한백 · 영업사 · 시공사), 「정체」는 마지막 진척 뒤 지난 날수다.';
     case 'settlement':
-      return '협력사 지급과 운영사 기성을 맡는다. 지급은 배치(지급처 × 구분 × 지급일)로 묶여 가확정 → 확정 → 지급완료로 간다. '
-        + '가확정이면 협력사가 세금계산서를 발행할 차례이고, 확정 누락은 지급일이 지났는데 확정을 건너뛴 것이다. '
-        + '기성은 한백이 운영사에게서 받을 돈이다.';
-    case 'purchase':
-      return '열린구매를 맡는다 — 한백 사내 아지트에 올릴 지출 글을 쓴다. [나갈 지급]이 재료다. 글의 양식과 꼭 들어갈 항목은 '
-        + '업무 정의를 따른다. 업무 정의에 양식이 없으면 제목 · 지출 내용 · 지급처 · 금액 · 지급일 · 계좌 · 첨부(세금계산서) 순으로 '
-        + '쓰고, 양식을 정해 달라고 한 줄 덧붙인다. 금액은 자료의 공급가액 그대로 쓰고, 부가세를 더할지는 업무 정의를 따른다.';
+      return '정산을 맡는다 — 세 가지다.\n'
+        + '1) 기성관리: 한백이 운영사에게서 받을 돈(기성)을 챙긴다. [기성관리] 자료가 청구 · 수금할 차례다.\n'
+        + '2) 지급관리: 협력사(영업사 · 시공사)에게 줄 영업비 · 시공비. 지급은 배치(지급처 × 구분 × 지급일)로 묶여 가확정 → 확정 → '
+        + '지급완료로 간다. 가확정이면 협력사가 세금계산서를 발행할 차례이고, 확정 누락은 지급일이 지났는데 확정을 건너뛴 것이다.\n'
+        + '3) 열린구매: 지급을 위해 한백 사내 아지트에 올릴 지출 글을 쓰고 붙일 자료를 챙긴다. [열린구매] 자료가 재료다. 글의 양식과 '
+        + '꼭 들어갈 항목은 업무 정의를 따른다. 업무 정의에 양식이 없으면 제목 · 지출 내용 · 지급처 · 금액 · 지급일 · 계좌 · 붙일 자료 '
+        + '순으로 쓰고, 양식을 정해 달라고 한 줄 덧붙인다. 금액은 자료의 공급가액 그대로 쓰고, 부가세를 더할지는 업무 정의를 따른다. '
+        + '붙일 자료는 자료 줄에 있는 것(거래명세서 주소 · 세금계산서 · 사업자등록증 · 통장사본)을 적고, 없는 것은 없다고 짚는다. '
+        + '아지트에 올리는 것은 아직 네가 하지 못한다 — 글을 다 쓰면 한백이 올린다.';
     case 'strategy':
       return '시장 정보를 모으고 전략·기획을 맡는다. 전기차 충전 인프라 시장(환경부 보조금 정책 · 운영사 동향 · 공동주택 충전기 '
         + '설치 의무 · 경쟁 시공사)을 웹 검색으로 찾아보고, [수주 흐름]과 견주어 한백에 필요한 것을 정리한다. '
@@ -64,7 +75,9 @@ const RULES = `일하는 법:
 - 너는 콘솔의 값을 바꾸지 못한다. 반려 · 확정 · 단계 이동 · 지급은 사람이 콘솔에서 한다. 필요하면 무엇을 누가 해야 하는지 말한다.
 - 한백이 맡긴 일 · 다시 확인할 일 · 기한이 있는 일은 add_task 로 할 일에 적는다. 같은 할 일이 이미 열려 있으면 또 적지 않는다.
   한백이 끝났다고 알려 준 할 일은 complete_task 로 끝낸다. 적거나 끝냈으면 답에 한 줄로 말한다.
-- 「[기록 …]」으로 시작하는 말은 한백이 남긴 기록이다(운영사 담당자와 통화한 내용 같은 것). 답을 바라는 말이 아니지만 근거로 쓴다.`;
+- 「[기록 …]」으로 시작하는 말은 한백이 남긴 기록이다(운영사 담당자와 통화한 내용 같은 것). 답을 바라는 말이 아니지만 근거로 쓴다.
+- 「[넘긴 파일 …]」은 한백이 너에게 준 파일이다. 읽을 수 있으면 읽고 근거로 쓴다. 이름만 알고 열지 못한 파일은 그렇다고 말한다.
+- 「[지금 …]」으로 시작하는 덩이는 마지막 지시를 받은 때의 콘솔 자료다 — 한백이 쓴 말이 아니다.`;
 
 function dutiesBlock(duties: AgentDuty[]): string {
   if (duties.length === 0) {
@@ -86,16 +99,46 @@ function tasksBlock(tasks: AgentTask[]): string {
   ].join('\n');
 }
 
-/** 지난 대화를 메시지로 — 기록(note)은 한백의 말로 넣되 머리에 표지를 단다. 맨 앞은 사람의 말이어야 한다 */
-export function toMessages(history: AgentMessage[]): Anthropic.MessageParam[] {
-  const out: Anthropic.MessageParam[] = history.map((m) => (m.role === 'agent'
-    ? { role: 'assistant' as const, content: m.body }
-    : {
+/** 넘긴 파일 하나를 읽을 덩이로 — PDF · 그림은 주소로, 글자를 뽑은 것은 글로, 그 밖은 이름만 */
+function fileBlocks(f: AgentFile, texts?: Map<string, string>): Anthropic.ContentBlockParam[] {
+  const head = `[넘긴 파일 ${f.name}]`;
+  switch (agentFileRead(f.name)) {
+    case 'pdf':
+      return [{ type: 'text', text: head }, { type: 'document', source: { type: 'url', url: f.url }, title: f.name }];
+    case 'image':
+      return [{ type: 'text', text: head }, { type: 'image', source: { type: 'url', url: f.url } }];
+    default: {
+      const t = texts?.get(f.id);
+      return [{ type: 'text', text: t ? `${head} — 글자만 뽑음\n${t}` : `${head} — 이 형식은 열지 못한다. 이름만 안다` }];
+    }
+  }
+}
+
+/**
+ * 지난 대화를 메시지로 — 기록(note)은 한백의 말로 넣되 머리에 표지를 단다. 맨 앞은 사람의 말이어야 한다.
+ * 파일이 붙은 말은 글 덩이 뒤에 파일 덩이가 붙는다(texts — 파일 id → 뽑은 글자, lib/agents/file-text).
+ */
+export function toMessages(history: AgentMessage[], texts?: Map<string, string>): Anthropic.MessageParam[] {
+  const out: Anthropic.MessageParam[] = history.map((m) => {
+    if (m.role === 'agent') return { role: 'assistant' as const, content: m.body };
+    const head = m.role === 'note' ? `[기록 — ${m.author} · ${m.at}] ${m.body}` : `[${m.author} · ${m.at}] ${m.body}`;
+    if (!m.files?.length) return { role: 'user' as const, content: head };
+    return {
       role: 'user' as const,
-      content: m.role === 'note' ? `[기록 — ${m.author} · ${m.at}] ${m.body}` : `[${m.author} · ${m.at}] ${m.body}`,
-    }));
+      content: [{ type: 'text' as const, text: head }, ...m.files.flatMap((f) => fileBlocks(f, texts))],
+    };
+  });
   while (out.length > 0 && out[0].role === 'assistant') out.shift();
   return out;
+}
+
+/** 마지막 지시 앞에 지금의 자료를 붙인다 — 바뀌는 것이 대화의 끝에 있어야 앞의 대화가 캐시에 남는다 */
+export function withContext(messages: Anthropic.MessageParam[], context: string): Anthropic.MessageParam[] {
+  const last = messages[messages.length - 1];
+  const blocks: Anthropic.ContentBlockParam[] = typeof last.content === 'string'
+    ? [{ type: 'text', text: last.content }]
+    : last.content;
+  return [...messages.slice(0, -1), { role: last.role, content: [{ type: 'text', text: context }, ...blocks] }];
 }
 
 /** 에이전트가 쥔 손 — 라우트가 저장소에 이어 준다(이 파일은 저장소를 모른다) */
@@ -166,6 +209,7 @@ export async function agentReply(input: {
   hands: AgentHands;
 }): Promise<AgentTurn> {
   const { agent, hands } = input;
+  /* 바뀌지 않는 것만 — 역할 · 일하는 법 · 업무 정의(한백이 고칠 때만 바뀐다) */
   const system = [
     {
       type: 'text' as const,
@@ -173,13 +217,16 @@ export async function agentReply(input: {
         + '충전기를 놓고, 영업사 · 시공사 협력사에게 하도급을 준다. 너는 이 대화창에서 한백 관리자와 일한다.\n\n'
         + `${roleOf(agent)}\n\n${RULES}\n\n${dutiesBlock(input.duties)}`,
     },
-    { type: 'text' as const, text: `오늘: ${input.today} (한국)\n\n${tasksBlock(input.tasks)}\n\n${input.brief}` },
   ];
   const tools: unknown[] = agent.kind === 'strategy' ? [...TASK_TOOLS, WEB_SEARCH] : [...TASK_TOOLS];
-  const messages = toMessages(input.history);
-  if (messages.length === 0 || messages[messages.length - 1].role !== 'user') {
+  const said = toMessages(input.history, await fileTextsOf(input.history));
+  if (said.length === 0 || said[said.length - 1].role !== 'user') {
     throw new Error('답할 지시가 없습니다.');
   }
+  const messages = withContext(
+    said,
+    `[지금 — 이 지시를 받은 때의 콘솔 자료]\n오늘: ${input.today} (한국)\n\n${tasksBlock(input.tasks)}\n\n${input.brief}`,
+  );
 
   const started = Date.now();
   const texts: string[] = [];
@@ -238,6 +285,9 @@ export async function agentReply(input: {
     } catch (err) {
       if (err instanceof Anthropic.APIError) {
         console.error('[agent]', agent.id, err.status, err.message);
+        if (err.status === 400 && /pdf|document|image|url|fetch|download/i.test(err.message)) {
+          throw new Error('넘긴 파일을 AI 가 열지 못했습니다(너무 크거나 쪽수가 많을 수 있습니다) — 나눠서 다시 넘겨 주세요.');
+        }
         throw new Error(err.status === 429 || err.status === 529
           ? 'AI 가 지금 붐빕니다 — 잠시 뒤 「다시 묻기」를 눌러 주세요.'
           : `답을 받지 못했습니다(${err.status ?? '연결'}) — 「다시 묻기」를 눌러 주세요.`);

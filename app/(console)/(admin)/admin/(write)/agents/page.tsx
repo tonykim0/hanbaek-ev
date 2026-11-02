@@ -18,12 +18,13 @@ export const dynamic = 'force-dynamic';
 
 /**
  * 에이전트 현황 [한백 관리자] — ★조직도★ (한백 지시 2026-11-01 「나의 에이전트 현황을 다 보고싶어」 · 11-02 「futurist 하게」 ·
- * 「워크트리보다 조직도 같은 개념」 · 「검정 배경은 지워줘. 기존 디자인컴포넌트의 틀은 맞추되, AI에이전트의 느낌은 지우지마」).
+ * 「워크트리보다 조직도 같은 개념」 · 「검정 배경은 지워줘. 기존 디자인컴포넌트의 틀은 맞추되, AI에이전트의 느낌은 지우지마」 ·
+ * 「정산담당이 열린구매까지 같이하는거야. 그리고 전략이 최우선이고 그 이후에 운영사 담당자들이야」).
  *
- * 맨 위가 한백, 그 밑에 부서처럼 운영사 담당 · 정산 · 열린구매 · 전략·기획이 나란히 서고, 운영사 담당 밑에 운영사 다섯이
- * 매달린다. 칸마다 담당 표지의 등이 상태다(components/agents/status) — 맡은 범위의 셈(콘솔이 지금 셈한 것, lib/agents/brief
- * headlineOf) · 최근 이레의 활동 칸 · 업무 정의 · 열린 할 일. 누르면 그 담당과의 대화(/admin/agents/[id]).
- * 가로 네 칸이 서려면 넓어야 해서 xl 아래에서는 같은 조직을 세로로 펼친다. 모양은 components/agents/kit.
+ * 맨 위가 한백, 그 바로 밑에 전략·기획(최우선), 그 밑에 운영사 담당(다섯이 한 줄로 매달린다)과 정산(기성 · 지급 · 열린구매)이
+ * 나란히 선다 — 한백이 그림 셋 중에 고른 모양이다. 칸마다 담당 표지의 등이 상태다(components/agents/status) — 맡은 범위의
+ * 셈(콘솔이 지금 셈한 것, lib/agents/brief headlineOf) · 최근 이레의 활동 칸 · 업무 정의 · 열린 할 일. 누르면 그 담당과의
+ * 대화(/admin/agents/[id]). 가로로 서려면 넓어야 해서 xl 아래에서는 같은 조직을 세로로 펼친다. 모양은 components/agents/kit.
  */
 export default async function AgentsPage() {
   const session = await getSessionUser();
@@ -32,7 +33,8 @@ export default async function AgentsPage() {
   const [agents, data] = await Promise.all([getRepository().listAgents(actor), loadScope(actor)]);
   const rows = agents.map((a) => ({ a, h: headlineOf(a, data) }));
   const operators = rows.filter((r) => r.a.kind === 'operator');
-  const others = rows.filter((r) => r.a.kind !== 'operator');
+  const strategy = rows.find((r) => r.a.kind === 'strategy') ?? null;
+  const settlement = rows.find((r) => r.a.kind === 'settlement') ?? null;
   const open = agents.reduce((n, a) => n + a.openTasks, 0);
   const saidToday = agents.reduce((n, a) => n + (a.activity[a.activity.length - 1]?.n ?? 0), 0);
   const usdToday = agents.reduce((n, a) => n + a.usdToday, 0);
@@ -64,7 +66,7 @@ export default async function AgentsPage() {
     <>
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <p className="mb-1 font-mono text-tiny font-bold uppercase tracking-[0.2em] text-brand-700">hanbaek · agent org</p>
+          <p className="mb-1 text-small font-bold text-brand-700">AI 담당 조직도</p>
           <h1 className="text-h1 font-black text-slate-900">에이전트</h1>
         </div>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
@@ -76,47 +78,61 @@ export default async function AgentsPage() {
       </header>
 
       {/*
-        넓은 화면 — 가로 조직도: 한백 → 부서 넷 → 운영사 다섯.
-        운영사 다섯은 부서 밑에 세로로 매달면 칸이 네 등분이라 이름이 잘렸다(1280px 에서 「현대엔지니어링 …」) — 그래서 한 줄
-        아래에 다섯 칸으로 선다. 운영사 담당 칸의 가운데(첫 칸 = 12.5%)에서 선이 내려와 그 줄의 가로선에 닿는다.
+        넓은 화면 — 한백 → 전략·기획 → (운영사 담당 · 정산), 운영사 다섯은 한 줄 아래.
+        운영사 다섯을 부서 칸 밑에 세로로 매달면 칸이 좁아 이름이 잘렸다(1280px 에서 「현대엔지니어링 …」) — 그래서 다섯 칸으로
+        한 줄을 다 쓴다. 운영사 담당 칸의 가운데(두 칸 중 첫 칸 = 25%)에서 선이 내려와 그 줄의 가로선에 닿는다.
       */}
       <DotGrid className="hidden py-2 xl:block">
         <div className="flex flex-col items-center">
           <Hub agents={agents.length} />
           <span aria-hidden className={`h-8 w-px ${ORG_LINE}`} />
+          {strategy && (
+            <div className="relative w-full max-w-[360px]">
+              <OrgNode className="absolute left-1/2 top-0 z-10 -translate-x-1/2 -translate-y-1/2" />
+              <AgentCard agent={strategy.a} headline={strategy.h} />
+            </div>
+          )}
         </div>
         <OrgRow>
           {[
-            <div key="operators" className="flex h-full flex-col">
+            <div key="operators" className="mx-auto flex h-full w-full max-w-[340px] flex-col">
               <Dept title="운영사 담당" count={operators.length} headline={dept} />
               <span aria-hidden className={`mx-auto min-h-0 w-px flex-1 ${ORG_LINE}`} />
             </div>,
-            ...others.map((r) => <AgentCard key={r.a.id} agent={r.a} headline={r.h} />),
+            ...(settlement
+              ? [<div key="settlement" className="mx-auto w-full max-w-[340px]"><AgentCard agent={settlement.a} headline={settlement.h} /></div>]
+              : []),
           ]}
         </OrgRow>
         <div className="relative">
-          <span aria-hidden className={`absolute left-[12.5%] top-0 h-8 w-px ${ORG_LINE}`} />
+          <span aria-hidden className={`absolute left-1/4 top-0 h-8 w-px ${ORG_LINE}`} />
           <div className="pt-8">
             <OrgRow>{operators.map((r) => <AgentCard key={r.a.id} agent={r.a} headline={r.h} />)}</OrgRow>
           </div>
         </div>
       </DotGrid>
 
-      {/* 좁은 화면 — 같은 조직을 세로로 */}
+      {/* 좁은 화면 — 같은 조직을 세로로: 한백 밑에 전략·기획, 그 밑에 운영사 담당(다섯)과 정산 */}
       <DotGrid className="xl:hidden">
         <Hub agents={agents.length} compact />
         <ul>
-          <Twig last={others.length === 0} node={<span aria-hidden className="block h-3 w-3 rotate-45 border-2 border-brand-400 bg-brand-50" />}>
-            <div className="flex min-h-[62px] items-center">
-              <Dept title="운영사 담당" count={operators.length} headline={dept} compact />
-            </div>
-            {operatorList}
+          <Twig last>
+            {strategy && <div className="pb-2"><AgentCard agent={strategy.a} headline={strategy.h} /></div>}
+            {/* 전략·기획 칸 표지의 가운데(칸 왼쪽 + 28px) 밑으로 레일이 내려간다 */}
+            <ul className="-mt-2 ml-4">
+              <Twig last={!settlement} node={<span aria-hidden className="block h-3 w-3 rotate-45 border-2 border-brand-400 bg-brand-50" />}>
+                <div className="flex min-h-[62px] items-center">
+                  <Dept title="운영사 담당" count={operators.length} headline={dept} compact />
+                </div>
+                {operatorList}
+              </Twig>
+              {settlement && (
+                <Twig last>
+                  <div className="pb-2"><AgentCard agent={settlement.a} headline={settlement.h} /></div>
+                </Twig>
+              )}
+            </ul>
           </Twig>
-          {others.map((r, i) => (
-            <Twig key={r.a.id} last={i === others.length - 1}>
-              <div className="pb-2"><AgentCard agent={r.a} headline={r.h} /></div>
-            </Twig>
-          ))}
         </ul>
       </DotGrid>
     </>
@@ -127,7 +143,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <dt className={TEXT.meta}>{label}</dt>
-      <dd className="font-mono text-h2 font-black tabular-nums text-slate-900">{value}</dd>
+      <dd className="text-h2 font-black tabular-nums text-slate-900">{value}</dd>
     </div>
   );
 }
@@ -147,7 +163,6 @@ function Hub({ agents, compact = false }: { agents: number; compact?: boolean })
     <div className="flex items-center gap-3 rounded-box border border-brand-300 bg-white px-6 py-3 shadow-[0_14px_34px_-20px_rgba(49,106,64,0.6)]">
       <Image src="/logo.png" alt="" width={36} height={36} className="flex-none" />
       <div>
-        <p className="font-mono text-micro font-bold tracking-[0.3em] text-brand-600">HQ</p>
         <p className="text-h2 font-black text-slate-900">한백</p>
         <p className={TEXT.meta}>관리자 · 에이전트 {agents}</p>
       </div>
@@ -222,7 +237,7 @@ function AgentCard({ agent: a, headline }: { agent: AgentSummary; headline: Agen
         <span className={`${TEXT.meta} tabular-nums`}>업무 {a.duties} · 할 일 {a.openTasks}</span>
         {a.duties === 0 && <Tag tone="warn">업무 정의 미지정</Tag>}
         {a.lateTasks > 0 && <Tag tone="stop">기한 지남 {a.lateTasks}</Tag>}
-        <span className="ml-auto font-mono text-micro tabular-nums text-slate-500">{a.last ? a.last.at.slice(5) : 'idle'}</span>
+        <span className={`ml-auto ${TEXT.meta} tabular-nums`}>{a.last ? a.last.at.slice(5) : '—'}</span>
       </div>
     </Link>
   );

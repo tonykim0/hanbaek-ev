@@ -12,20 +12,24 @@ import { batchKey, batchStateOf, type Batch, type BatchState } from '@/lib/payou
 import { OVERDUE_DAYS, whatOf, type TodoItem } from '@/lib/todo-types';
 import { won } from '@/lib/format';
 import { normalizeOrg } from '@/lib/roles';
+import { CONSOLE_URL } from '@/lib/portal-intake';
 import type { CpoName, ProjectSummary } from '@/types/project';
 import { CPO_NAMES } from '@/types/project';
 import type { Agent, AgentHeadline } from '@/types/agents';
 
-/** 지급처 한 곳 — 아지트 지출 글에 들어갈 것(열린구매만 받는다) */
+/** 지급처 한 곳 — 아지트 지출 글에 들어갈 것(정산 담당만 받는다) */
 export interface PartnerLine {
   bizRegNo: string | null;
   ceo: string | null;
   bankName: string | null;
   bankAccountNo: string | null;
   bankHolder: string | null;
+  /** 협력사 정보에 사업자등록증 · 통장사본 파일이 올라와 있나 — 지출 글에 붙일 자료 */
+  hasBizCert: boolean;
+  hasBankbook: boolean;
 }
 
-/** 배치 하나의 현장 몫 — 지출 글에 현장별로 적는다(열린구매만 받는다) */
+/** 배치 하나의 현장 몫 — 지출 글에 현장별로 적는다(정산 담당만 받는다) */
 export interface BatchLine {
   /** 관리번호 — 없으면 현장 id */
   no: string;
@@ -34,15 +38,15 @@ export interface BatchLine {
   amount: number;
 }
 
-/** 담당 여덟이 나눠 읽는 재료 — scope.ts 가 한 번 모은다 */
+/** 담당 일곱이 나눠 읽는 재료 — scope.ts 가 한 번 모은다 */
 export interface ScopeData {
   today: string;
   projects: ProjectSummary[];
   batches: Batch[];
   receivables: TodoItem[];
-  /** 지급처(소속 이름) → 사업자·계좌. 열린구매를 부를 때만 채운다 */
+  /** 지급처(소속 이름) → 사업자·계좌. 정산 담당을 부를 때만 채운다 */
   partners?: Map<string, PartnerLine>;
-  /** 배치 열쇠(lib/payout-board batchKey) → 현장 몫. 열린구매를 부를 때만 채운다 */
+  /** 배치 열쇠(lib/payout-board batchKey) → 현장 몫. 정산 담당을 부를 때만 채운다 */
   batchLines?: Map<string, BatchLine[]>;
 }
 
@@ -138,7 +142,26 @@ function daysBefore(day: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** 배치 하나의 거래명세서 — 콘솔 주소(로그인한 한백이 연다). 지출 글에 붙일 자료의 첫째다 */
+export function statementUrl(b: Pick<Batch, 'org' | 'paidAt' | 'kind'>): string {
+  return `${CONSOLE_URL}/payments/statement?org=${encodeURIComponent(b.org ?? '')}&date=${b.paidAt}&kind=${encodeURIComponent(b.kind)}`;
+}
+
+/**
+ * 정산 담당의 자료 — 셋이다(한백 2026-11-02 「정산의 경우에는 기성관리(운영사로부터 수금)과 지급관리(협력사에게 영업비 및
+ * 시공비 지급). 그리고 지급을 위해 열린구매 글 작성 및 관련 자료 준비까지」).
+ *   기성관리  한백이 운영사에게서 받을 돈의 할 일(lib/todo-receivables — 청구 · 수금)
+ *   지급관리  협력사 배치의 상태(lib/payout-board — 확정 누락 · 가확정 · 확정 · 최근 지급완료)
+ *   열린구매  아직 나가지 않은 배치마다 지출 글의 재료 — 지급처 사업자·계좌, 현장 몫, 붙일 자료(거래명세서 주소 · 세금계산서 ·
+ *             사업자등록증 · 통장사본이 콘솔에 있는지). 협력사 정보는 부를 때만 읽는다(scope withPayees)
+ */
 function settlementBrief(data: ScopeData): string {
+  const out = [`[기성관리 — 한백이 운영사에게서 받을 돈의 할 일 ${data.receivables.length}건, ${data.today} 콘솔 기준]`];
+  for (const r of data.receivables) {
+    out.push(`- ${[r.name, r.kind, r.what, r.urgencyLabel].filter(Boolean).join(' · ')}`);
+  }
+  if (data.receivables.length === 0) out.push('- 없음');
+
   const since = daysBefore(data.today, PAID_LOOKBACK_DAYS);
   const groups = new Map<BatchState, Batch[]>();
   for (const b of data.batches) {
@@ -146,26 +169,19 @@ function settlementBrief(data: ScopeData): string {
     if (state === '지급완료' && b.paidAt < since) continue;
     groups.set(state, [...(groups.get(state) ?? []), b]);
   }
-  const out = [`[협력사 지급 — 배치(지급처 × 구분 × 지급일), ${data.today} 콘솔 기준]`];
+  out.push('', '[지급관리 — 협력사 영업비·시공비 배치(지급처 × 구분 × 지급일)]');
   for (const state of STATE_ORDER) {
     const rows = (groups.get(state) ?? []).sort((a, b) => a.paidAt.localeCompare(b.paidAt));
     const title = state === '지급완료' ? `지급완료 (최근 ${PAID_LOOKBACK_DAYS}일)` : state;
     out.push(`${title} ${rows.length}건${rows.length ? ':' : ''}`);
     for (const b of rows) out.push(`- ${batchLine(b)}`);
   }
-  out.push('', `[받을 기성 — 한백이 운영사에게서 받을 돈의 할 일 ${data.receivables.length}건]`);
-  for (const r of data.receivables) {
-    out.push(`- ${[r.name, r.kind, r.what, r.urgencyLabel].filter(Boolean).join(' · ')}`);
-  }
-  return out.join('\n');
-}
 
-function purchaseBrief(data: ScopeData): string {
   /* 아직 나가지 않은 것 — 가확정 · 확정(지급일 전) · 확정 누락(지급일이 지났는데 확정을 건너뜀) */
   const due = data.batches
     .filter((b) => batchStateOf(b) !== '지급완료')
     .sort((a, b) => a.paidAt.localeCompare(b.paidAt) || (a.org ?? '').localeCompare(b.org ?? '', 'ko'));
-  const out = [`[나갈 지급 — 아지트 지출 글의 재료, ${data.today} 콘솔 기준 · 금액은 콘솔의 공급가액]`];
+  out.push('', '[열린구매 — 나갈 지급마다 아지트 지출 글의 재료 · 금액은 콘솔의 공급가액]');
   if (due.length === 0) out.push('- 없음');
   for (const b of due) {
     out.push(`- ${batchLine(b)} · 상태 ${batchStateOf(b)}`);
@@ -183,6 +199,12 @@ function purchaseBrief(data: ScopeData): string {
     }
     const lines = data.batchLines?.get(batchKey(b.paidAt, b.org, b.kind)) ?? [];
     for (const l of lines) out.push(`  · ${l.no} ${l.projectName} — ${l.label} ${won(l.amount)}원`);
+    out.push(`  자료: ${[
+      `거래명세서 ${statementUrl(b)}`,
+      b.invoice ? '세금계산서 첨부됨' : '세금계산서 없음(협력사 발행 대기)',
+      partner ? (partner.hasBizCert ? '사업자등록증 있음' : '사업자등록증 없음') : null,
+      partner ? (partner.hasBankbook ? '통장사본 있음' : '통장사본 없음') : null,
+    ].filter(Boolean).join(' · ')}`);
   }
   return out.join('\n');
 }
@@ -224,7 +246,6 @@ export function briefOf(agent: Agent, data: ScopeData): string {
   switch (agent.kind) {
     case 'operator': return agent.cpo ? operatorBrief(data, agent.cpo) : '[운영사가 지정되지 않은 담당]';
     case 'settlement': return settlementBrief(data);
-    case 'purchase': return purchaseBrief(data);
     case 'strategy': return strategyBrief(data);
   }
 }
@@ -245,24 +266,15 @@ export function headlineOf(agent: Agent, data: ScopeData): AgentHeadline {
     };
   }
   if (agent.kind === 'settlement') {
+    /* 받을 돈 · 줄 돈 · 막힌 것 — 나갈 지급은 아직 지급완료가 아닌 배치(열린구매 글을 쓸 것)다 */
     const states = data.batches.map(batchStateOf);
     const missed = states.filter((s) => s === '확정 누락').length;
-    const pending = states.filter((s) => s === '가확정').length;
+    const due = states.filter((s) => s !== '지급완료').length;
     return {
       counts: [
-        { label: '확정 누락', value: `${missed}`, ...(missed ? { tone: 'stop' as const } : {}) },
-        { label: '가확정', value: `${pending}` },
         { label: '받을 기성', value: `${data.receivables.length}건` },
-      ],
-    };
-  }
-  if (agent.kind === 'purchase') {
-    const due = data.batches.filter((b) => batchStateOf(b) !== '지급완료');
-    const total = due.reduce((n, b) => n + b.total, 0);
-    return {
-      counts: [
-        { label: '나갈 지급', value: `${due.length}건` },
-        { label: '공급가액', value: `${won(total)}원` },
+        { label: '나갈 지급', value: `${due}건` },
+        { label: '확정 누락', value: `${missed}`, ...(missed ? { tone: 'stop' as const } : {}) },
       ],
     };
   }

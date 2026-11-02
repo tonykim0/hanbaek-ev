@@ -9,7 +9,7 @@ export function HeadlineCounts({ headline }: { headline: AgentHeadline }) {
         <Tag key={c.label} tone={c.tone}>{c.label} {c.value}</Tag>
       ) : (
         <span key={c.label} className={TEXT.meta}>
-          {c.label} <span className="font-mono text-small font-bold tabular-nums text-slate-900">{c.value}</span>
+          {c.label} <span className="text-small font-bold tabular-nums text-slate-900">{c.value}</span>
         </span>
       )))}
     </div>

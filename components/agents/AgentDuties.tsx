@@ -2,12 +2,13 @@
 
 /**
  * 업무 정의 — 한백이 담당마다 적는다(한백 지시 2026-11-02 「그 업무들에 대한 정의도 내가 담당자별로 지정할거야」).
- * 에이전트는 이것을 지시로 읽는다(lib/agents/brain). 평소엔 글자, 「수정」을 눌러야 칸이 열린다(화면 규칙 4).
+ * 에이전트는 이것을 지시로 읽는다(lib/agents/brain) — 부를 때마다 지금의 정의를 읽으므로, 업무가 바뀌면 여기만 고치면 된다.
+ * 평소엔 글자, 「수정」을 눌러야 칸이 열린다(화면 규칙 4). 고친 기록은 감사기록에 앞뒤가 남고 주간 기록이 보여준다.
  */
 import { useState } from 'react';
 import type { AgentDuty } from '@/types/agents';
 import { useAction } from '@/lib/use-action';
-import { Btn, Err, FIELD, PANEL } from '@/components/ui';
+import { Btn, Err, FIELD, PANEL, TEXT } from '@/components/ui';
 import { AgentHead } from './kit';
 
 export function AgentDuties({ agentId, duties }: { agentId: string; duties: AgentDuty[] }) {
@@ -42,11 +43,13 @@ function DutyItem({ agentId, duty, n }: { agentId: string; duty: AgentDuty; n: n
   return (
     <li className="flex flex-col gap-1 py-2.5">
       <div className="flex items-baseline gap-2">
-        <span className="font-mono text-tiny font-bold tabular-nums text-brand-600">{String(n).padStart(2, '0')}</span>
+        <span className="text-tiny font-bold tabular-nums text-brand-600">{String(n).padStart(2, '0')}</span>
         <p className="min-w-0 flex-1 break-keep text-base font-bold text-slate-900">{duty.title}</p>
         <Btn size="sm" kind="quiet" onClick={() => setEditing(true)}>수정</Btn>
       </div>
       {duty.body.trim() && <p className="whitespace-pre-wrap break-keep pl-6 text-small leading-relaxed text-slate-600">{duty.body}</p>}
+      {/* 고친 적이 있으면 언제인지 — 무엇이 바뀌었는지는 주간 기록이 그 주에 앞뒤를 보여준다 */}
+      {duty.updatedAt && <p className={`pl-6 ${TEXT.meta} tabular-nums`}>고침 {duty.updatedAt.slice(5)}</p>}
     </li>
   );
 }

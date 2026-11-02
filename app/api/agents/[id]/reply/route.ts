@@ -1,7 +1,8 @@
 /**
  * POST /api/agents/[id]/reply — 에이전트가 마지막 지시에 답한다 [한백 관리자]
  *
- * 업무 정의 · 열린 할 일 · 지금 콘솔 자료(lib/agents/scope — 저장하지 않고 이때 읽는다) · 지난 대화를 들고 부른다.
+ * 업무 정의 · 열린 할 일 · 지금 콘솔 자료(lib/agents/scope — 저장하지 않고 이때 읽는다) · 지난 대화(넘긴 파일 포함 —
+ * lib/agents/file-text)를 들고 부른다.
  * 대화 중에 에이전트가 적거나 끝낸 할 일은 이 요청을 보낸 관리자의 이름으로 감사기록에 남고, 적은 쪽에는 에이전트
  * 이름이 선다(store/agents). 답은 대화에 남는다.
  */
@@ -21,7 +22,8 @@ export const POST = adminWrite<{ id: string }, undefined>(
     const last = detail.messages[detail.messages.length - 1];
     if (!last || last.role !== 'user') throw new Error('답할 지시가 없습니다 — 먼저 말을 남겨 주세요.');
 
-    const data = await loadScope(actor, detail.agent.kind === 'purchase');
+    /* 정산 담당은 열린구매 글에 쓸 지급처 사업자·계좌까지 읽는다 */
+    const data = await loadScope(actor, detail.agent.kind === 'settlement');
     const sites = new Map<string, string>();
     for (const p of data.projects) {
       sites.set(p.id.toUpperCase(), p.id);

@@ -11,20 +11,19 @@ import type { CpoName } from './project';
 
 /**
  * 담당의 갈래 — 갈래마다 보는 자료와 손에 쥔 도구가 다르다(lib/agents/scope · lib/agents/brain).
+ *   strategy    전략·기획 — 시장 정보(웹 검색)와 수주 흐름. 조직도의 맨 위(한백 바로 밑)다
  *   operator    운영사 하나의 현장 — 칸 · 차례 · 정체 · 반려
- *   settlement  지급(배치)과 받을 기성
- *   purchase    열린구매 — 나갈 지급을 아지트에 올릴 지출 글로 쓴다
- *   strategy    전략·기획 — 시장 정보(웹 검색)와 수주 흐름
+ *   settlement  정산 — 기성관리(운영사에게서 수금) · 지급관리(협력사에게 영업비·시공비) · 열린구매(지급을 위한 아지트 지출
+ *               글과 자료). 열린구매는 따로 있던 담당을 2026-11-02 여기 합쳤다(한백 「정산담당이 열린구매까지 같이하는거야」)
  */
-export type AgentKind = 'operator' | 'settlement' | 'purchase' | 'strategy';
-export const AGENT_KINDS = ['operator', 'settlement', 'purchase', 'strategy'] as const satisfies readonly AgentKind[];
+export type AgentKind = 'strategy' | 'operator' | 'settlement';
+export const AGENT_KINDS = ['strategy', 'operator', 'settlement'] as const satisfies readonly AgentKind[];
 
-/** 화면의 묶음 이름 — 현황 화면이 이 순서로 줄을 세운다 */
+/** 화면의 묶음 이름 */
 export const AGENT_KIND_LABEL: Record<AgentKind, string> = {
+  strategy: '전략·기획',
   operator: '운영사 담당',
   settlement: '정산',
-  purchase: '열린구매',
-  strategy: '전략·기획',
 };
 
 export interface Agent {
@@ -87,14 +86,63 @@ export interface AgentMessageMeta {
   done?: string[];
 }
 
+/** 담당에게 넘긴 파일 — 지시나 기록에 붙는다(migrations/0105) */
+export interface AgentFile {
+  id: string;
+  name: string;
+  url: string;
+  /** 바이트 */
+  size: number;
+  contentType: string | null;
+}
+
 export interface AgentMessage {
   id: string;
   role: AgentMessageRole;
   author: string;
+  /** 파일만 넘긴 말이면 빈 글일 수 있다 */
   body: string;
   /** YYYY-MM-DD HH:mm (한국 시각) */
   at: string;
   meta: AgentMessageMeta | null;
+  files: AgentFile[];
+}
+
+/**
+ * 한 주(월요일부터 일요일까지, 한국 달력)에 그 담당과 오간 것의 셈 — 「주간 기록」의 한 줄
+ * (한백 지시 2026-11-02 「각 담당자마다 주단위로 뭐했는지도 과거 이력 조회 필요」).
+ */
+export interface AgentWeek {
+  /** 그 주 월요일 YYYY-MM-DD */
+  start: string;
+  /** 그 주 일요일 YYYY-MM-DD */
+  end: string;
+  /** 한백의 지시 · 기록만 · 에이전트의 답 */
+  user: number;
+  note: number;
+  agent: number;
+  /** 그 주에 적힌 할 일 · 끝난 할 일 */
+  tasksAdded: number;
+  tasksDone: number;
+  /** 업무 정의를 넣고 · 고치고 · 지운 수 */
+  dutyChanges: number;
+  files: number;
+  /** 에이전트의 답에 든 비용 어림(달러) */
+  usd: number;
+}
+
+/** 주간 기록에서 대화 사이에 끼는 일 — 할 일이 적히고 끝나고, 업무 정의가 바뀐 때 */
+export interface AgentEvent {
+  /** YYYY-MM-DD HH:mm (한국 시각) */
+  at: string;
+  kind: 'task-added' | 'task-done' | 'duty-added' | 'duty-edited' | 'duty-deleted';
+  title: string;
+  /** 적은 쪽 — 사람 이름 또는 에이전트 이름 */
+  by: string;
+  byAgent: boolean;
+  /** 업무 정의가 바뀌었을 때 — 앞의 내용과 바뀐 내용(감사기록 그대로, 길면 잘려 있다) */
+  before?: string | null;
+  after?: string | null;
 }
 
 /** 현황 화면의 카드 한 장 */
@@ -116,8 +164,12 @@ export interface AgentDetail {
   duties: AgentDuty[];
   /** 열린 것이 위(기한 이른 순), 끝낸 것은 아래(최근 끝낸 순) */
   tasks: AgentTask[];
-  /** 오래된 것이 앞 — 대화처럼 읽힌다 */
+  /** 오래된 것이 앞 — 대화처럼 읽힌다. 한 주를 고르면 그 주의 말 전부 */
   messages: AgentMessage[];
+  /** 무엇이든 오간 주 — 최근 주가 앞 */
+  weeks: AgentWeek[];
+  /** 한 주를 골랐을 때만 — 그 주와, 대화 사이에 끼는 일(할 일 · 업무 정의) */
+  week: { start: string; end: string; events: AgentEvent[] } | null;
 }
 
 /** 에이전트가 지금 맡은 범위의 한 줄 — 카드와 머리말에 선다(lib/agents/brief headlineOf) */
