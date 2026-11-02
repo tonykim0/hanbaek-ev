@@ -123,6 +123,13 @@ describe('대화', () => {
     const reply = await call(postReply, { params });
     expect(reply.status).toBe(422);
     expect(reply.json?.error).toContain('답할 지시가 없습니다');
+
+    // 현황의 활동 칸 — 이레, 오늘 칸에 방금 남긴 기록이 든다(한국 달력)
+    const sk = (await repo.listAgents(admin)).find((a) => a.id === AGENT);
+    expect(sk?.activity).toHaveLength(7);
+    expect(sk?.activity[6].n).toBeGreaterThanOrEqual(1);
+    expect(sk?.last?.role).toBe('note');
+    expect(typeof sk?.usdToday).toBe('number');
   });
 
   it('빈 말은 400', async () => {

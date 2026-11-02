@@ -27,6 +27,15 @@ import { assertAdmin } from './shared';
 const MAX = { dutyTitle: 60, dutyBody: 4000, taskTitle: 120, taskNote: 1000, said: 6000, agentSaid: 20000 } as const;
 /** 화면에 싣는 대화 — 최근 것부터 이만큼. 에이전트가 읽는 것은 lib/agents/brain 이 따로 자른다 */
 const THREAD_LIMIT = 300;
+/** 현황의 활동 칸 — 이레 */
+const ACTIVITY_DAYS = 7;
+
+/** 'YYYY-MM-DD' 를 며칠 민다 (달력 날짜끼리라 시간대가 끼지 않는다) */
+function shiftDay(day: string, delta: number): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + delta);
+  return d.toISOString().slice(0, 10);
+}
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -75,7 +84,10 @@ export const agentStore: Pick<
     assertAdmin(actor, '에이전트');
     const db = getDb();
     const now = today();
-    const [rows, duties, tasks, lasts] = await allSlots([
+    /* 활동 칸 이레 — 한국 달력으로 오늘부터 엿새 전까지 */
+    const days = Array.from({ length: ACTIVITY_DAYS }, (_, i) => shiftDay(now, i - (ACTIVITY_DAYS - 1)));
+    const dayOfAt = sql<string>`to_char(${agentMessages.at} at time zone 'Asia/Seoul', 'YYYY-MM-DD')`;
+    const [rows, duties, tasks, lasts, recent] = await allSlots([
       () => db.select().from(agents).orderBy(asc(agents.sort)),
       () => db.select({ agentId: agentDuties.agentId, n: sql<number>`count(*)::int` })
         .from(agentDuties).groupBy(agentDuties.agentId),
@@ -87,10 +99,20 @@ export const agentStore: Pick<
       () => db.selectDistinctOn([agentMessages.agentId], {
         agentId: agentMessages.agentId, role: agentMessages.role, body: agentMessages.body, at: agentMessages.at,
       }).from(agentMessages).orderBy(agentMessages.agentId, desc(agentMessages.at)),
+      () => db.select({
+        agentId: agentMessages.agentId,
+        day: dayOfAt,
+        n: sql<number>`count(*)::int`,
+        usd: sql<number>`coalesce(sum((${agentMessages.meta}->>'usd')::float8), 0)::float8`,
+      }).from(agentMessages)
+        .where(sql`${agentMessages.at} >= ${`${days[0]}T00:00:00+09:00`}::timestamptz`)
+        .groupBy(agentMessages.agentId, dayOfAt),
     ] as const);
     const dutyOf = new Map(duties.map((d) => [d.agentId, d.n]));
     const taskOf = new Map(tasks.map((t) => [t.agentId, t]));
     const lastOf = new Map(lasts.map((m) => [m.agentId, m]));
+    const dayKey = (agentId: string, day: string) => `${agentId}|${day}`;
+    const recentOf = new Map(recent.map((x) => [dayKey(x.agentId, x.day), x]));
     return rows.map((r) => {
       const last = lastOf.get(r.id);
       return {
@@ -98,6 +120,8 @@ export const agentStore: Pick<
         duties: dutyOf.get(r.id) ?? 0,
         openTasks: taskOf.get(r.id)?.open ?? 0,
         lateTasks: taskOf.get(r.id)?.late ?? 0,
+        activity: days.map((day) => ({ day, n: recentOf.get(dayKey(r.id, day))?.n ?? 0 })),
+        usdToday: Number(recentOf.get(dayKey(r.id, now))?.usd ?? 0),
         last: last
           ? {
             role: (['user', 'note', 'agent'].includes(last.role) ? last.role : 'note') as AgentMessageRole,

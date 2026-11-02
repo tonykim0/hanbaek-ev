@@ -105,6 +105,10 @@ export interface AgentSummary extends Agent {
   lateTasks: number;
   /** 마지막 말 — 없으면 null */
   last: { role: AgentMessageRole; at: string; line: string } | null;
+  /** 최근 7일(한국 달력, 오래된 날부터 오늘까지)의 말 수 — 가지 줄의 활동 칸 */
+  activity: Array<{ day: string; n: number }>;
+  /** 오늘 에이전트의 답에 든 비용 어림(달러) */
+  usdToday: number;
 }
 
 export interface AgentDetail {
