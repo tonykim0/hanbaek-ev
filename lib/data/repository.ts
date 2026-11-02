@@ -14,6 +14,9 @@
 import type { Biz } from '@/lib/biz';
 import type { RetouchLog } from '@/lib/retouch/types';
 import type {
+  AgentDetail, AgentMessage, AgentMessageMeta, AgentMessageRole, AgentSummary,
+} from '@/types/agents';
+import type {
   NoteScope,
   Court, DocStatus, HoldState, IntakeDraft, LineAxes, NewPayoutEntry, NewPricingRule, PayoutKind, PayoutRow, PreInstall, PricingRule,
   ChargerModel, RecvPreset,
@@ -481,6 +484,31 @@ export interface ProjectRepository {
    * 파일은 남기지 않는다. 직인사용동의로 고쳐 낸 서류의 근거다.
    */
   logRetouch(entry: RetouchLog, actor: Actor): Promise<void>;
+
+  /*
+   * 에이전트 — 한백의 일을 나눠 맡는 AI 담당 (store/agents · migrations/0103) [한백 관리자].
+   * 업무 정의 · 할 일 · 오간 말만 남긴다. 에이전트가 보는 현장·지급·기성은 lib/agents/scope 가 그때그때 읽는다.
+   */
+  /** 담당 여덟 — 업무 정의 수 · 열린 할 일 · 마지막 말 */
+  listAgents(actor: Actor): Promise<AgentSummary[]>;
+  /** 담당 하나 — 업무 정의 · 할 일 · 최근 대화 */
+  getAgent(id: string, actor: Actor): Promise<AgentDetail>;
+  /** 업무 정의 넣기 · 고치기(id 가 있으면) — id 를 돌려준다 */
+  saveAgentDuty(input: { agentId: string; id?: string; title: string; body: string }, actor: Actor): Promise<string>;
+  deleteAgentDuty(input: { agentId: string; id: string }, actor: Actor): Promise<void>;
+  /** 할 일 적기 — byAgent 면 적은 쪽에 에이전트 이름이 남는다(대화 중 에이전트의 도구) */
+  addAgentTask(
+    input: { agentId: string; title: string; note?: string | null; due?: string | null; projectId?: string | null; byAgent?: boolean },
+    actor: Actor
+  ): Promise<{ id: string; title: string }>;
+  /** 끝냄 · 되살림 — 이미 그 상태면 아무것도 안 한다 */
+  setAgentTaskDone(input: { agentId: string; id: string; done: boolean; byAgent?: boolean }, actor: Actor): Promise<{ title: string }>;
+  deleteAgentTask(input: { agentId: string; id: string }, actor: Actor): Promise<void>;
+  /** 말 남기기 — user(지시) · note(기록만)는 actor 이름으로, agent 는 에이전트 이름으로 */
+  addAgentMessage(
+    input: { agentId: string; role: AgentMessageRole; body: string; meta?: AgentMessageMeta | null },
+    actor: Actor
+  ): Promise<AgentMessage>;
 
   /** 실사보고서 임시 저장본 — 그 계정의 것만, 최근이 위 [본인] (store/survey-drafts) */
   listSurveyDrafts(cpo: string, actor: Actor): Promise<DraftSummary[]>;

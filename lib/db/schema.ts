@@ -14,6 +14,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import type { NoticeFile } from '@/types/project';
 import type { SiteFile } from '@/lib/solar/sites';
+import type { AgentMessageMeta } from '@/types/agents';
 
 // ── 계정 ────────────────────────────────────────────────────────
 export const users = pgTable('users', {
@@ -648,4 +649,61 @@ export const auditLog = pgTable('audit_log', {
   at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => ({
   byProject: index('audit_log_project_idx').on(t.projectId, t.at),
+}));
+
+// ── 에이전트 ────────────────────────────────────────────────────
+/**
+ * 에이전트 — 한백의 일을 나눠 맡는 AI 담당 (migrations/0103, 한백 지시 2026-11-01·02). 운영사 다섯 · 정산 · 열린구매 ·
+ * 전략·기획을 심었다. 에이전트가 보는 현장·지급·기성은 여기 없다 — 부를 때마다 콘솔이 셈한 것을 읽는다(lib/agents/scope).
+ * 여기 남는 것은 한백이 적는 업무 정의 · 할 일 · 오간 말뿐이다.
+ */
+export const agents = pgTable('agents', {
+  id: text('id').primaryKey(),
+  kind: text('kind').notNull(),
+  cpo: text('cpo'),
+  name: text('name').notNull(),
+  sort: integer('sort').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** 업무 정의 — 한백이 담당마다 적는다. 에이전트는 이것을 지시로 읽는다 */
+export const agentDuties = pgTable('agent_duties', {
+  id: text('id').primaryKey(),
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  body: text('body').notNull().default(''),
+  sort: integer('sort').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }),
+}, (t) => ({
+  byAgent: index('agent_duties_agent_idx').on(t.agentId, t.sort),
+}));
+
+/** 할 일 — 한백이 적거나 대화 중에 에이전트가 적는다(author). 기한은 'YYYY-MM-DD' 글자 */
+export const agentTasks = pgTable('agent_tasks', {
+  id: text('id').primaryKey(),
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  note: text('note'),
+  projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  due: text('due'),
+  doneAt: timestamp('done_at', { withTimezone: true }),
+  author: text('author').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  byAgent: index('agent_tasks_agent_idx').on(t.agentId, t.doneAt),
+}));
+
+/** 오간 말 — user(지시) · note(기록만) · agent(에이전트의 말). meta 는 에이전트의 말에만(AgentMessageMeta) */
+export const agentMessages = pgTable('agent_messages', {
+  id: text('id').primaryKey(),
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  role: text('role').notNull(),
+  author: text('author').notNull(),
+  authorId: text('author_id'),
+  body: text('body').notNull(),
+  meta: jsonb('meta').$type<AgentMessageMeta>(),
+  at: timestamp('at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  byThread: index('agent_messages_thread_idx').on(t.agentId, t.at),
 }));

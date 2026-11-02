@@ -47,6 +47,17 @@ export function priceOf(model: string): Price | undefined {
   return PRICES[model] ?? PRICES[model.replace(/-\d{8}$/, '')];
 }
 
+/** 토큰을 달러로 어림한다 — logLlmCall 과 에이전트 대화의 비용 표시(lib/agents/brain)가 같은 셈을 쓴다 */
+export function usdOf(model: string, usage: UsageLike | undefined): number {
+  const PRICE = priceOf(model) ?? PRICES['claude-opus-5'];
+  return (
+    (usage?.input_tokens ?? 0) * PRICE.input
+    + (usage?.output_tokens ?? 0) * PRICE.output
+    + (usage?.cache_read_input_tokens ?? 0) * PRICE.cacheRead
+    + (usage?.cache_creation_input_tokens ?? 0) * PRICE.cacheWrite
+  ) / 1_000_000;
+}
+
 export interface LlmCallLog {
   /** 어느 경로인가 — 로그에서 이 이름으로 묶어 본다 (claude-import · partner-doc · classify:intake · orient:parking-check) */
   route: string;
@@ -67,12 +78,7 @@ export function logLlmCall({ route, model, ms, pages, usage }: LlmCallLog): void
     const output = usage?.output_tokens ?? 0;
     const cacheRead = usage?.cache_read_input_tokens ?? 0;
     const cacheWrite = usage?.cache_creation_input_tokens ?? 0;
-    const PRICE = priceOf(model) ?? PRICES['claude-opus-5'];
-    const usd =
-      (input * PRICE.input
-        + output * PRICE.output
-        + cacheRead * PRICE.cacheRead
-        + cacheWrite * PRICE.cacheWrite) / 1_000_000;
+    const usd = usdOf(model, usage);
 
     console.log(
       `[llm] ${route} model=${model} ms=${ms}`

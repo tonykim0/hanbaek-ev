@@ -55,6 +55,7 @@ import { payoutStore } from './store/payouts';
 import { pricingStore } from './store/pricing';
 import { recvPresetStore } from './store/recv-presets';
 import { retouchStore } from './store/retouch';
+import { agentStore } from './store/agents';
 import { surveyDraftStore } from './store/survey-drafts';
 import { noticeStore } from './store/notices';
 import { fanOutNote, notificationStore, notifyMilestone } from './store/notifications';
@@ -220,6 +221,8 @@ export const pgRepository: ProjectRepository = {
   ...noticeMessageStore,
   // 서류 문구 수정의 기록은 store/retouch.ts 에 있다
   ...retouchStore,
+  // 에이전트의 업무 정의 · 할 일 · 대화는 store/agents.ts 에 있다
+  ...agentStore,
 
   async listProjects(viewer: Viewer): Promise<ProjectSummary[]> {
     if (!isHanbaek(viewer.role) && !viewer.org) return [];
