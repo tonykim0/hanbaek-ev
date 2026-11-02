@@ -7,8 +7,18 @@
  * 깜빡임은 색과 따로다 — 최근 24시간에 대화가 있었다는 것.
  */
 import { stampOf } from '@/lib/date';
-import type { AgentHeadline } from '@/types/agents';
+import type { Agent, AgentHeadline } from '@/types/agents';
 import type { LedTone } from './hud';
+
+/** 조직도 카드의 직함 줄 — 그 담당이 맡은 일. 운영사 담당은 이름이 곧 맡은 곳이라 일만 적는다 */
+export function roleLineOf(agent: Agent): string {
+  switch (agent.kind) {
+    case 'operator': return '현장 진행 · 운영사 소통';
+    case 'settlement': return '협력사 지급 · 운영사 기성';
+    case 'purchase': return '아지트 지출 글';
+    case 'strategy': return '시장 정보 · 전략 · 기획';
+  }
+}
 
 export function ledOf(a: { lateTasks: number; duties: number; headline: AgentHeadline }): { tone: LedTone; label: string } {
   if (a.lateTasks > 0 || a.headline.counts.some((c) => c.tone === 'stop')) return { tone: 'stop', label: '막힌 것 있음' };

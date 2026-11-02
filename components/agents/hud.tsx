@@ -7,7 +7,8 @@
  *
  * 바뀐 것은 옷뿐이다. ★색의 뜻은 콘솔과 같다★: 빨강 막는 것 · 노랑 사람이 봐야 하는 것 · 초록(한백 로고 그린) 진행·확인 ·
  * 하늘 고리(링크)·정보. 단추의 넷(do · side · quiet · undo)과 크기 둘, 활자 여덟 단계, 모서리 넷도 콘솔 것 그대로다.
- * 「워크트리처럼」은 git 그래프로 옮겼다 — 본부(main)가 줄기, 담당마다 가지(⎇ agent/…), 가지 끝의 등이 상태다.
+ * 현황은 ★조직도★다(한백 확인 2026-11-02 「워크트리보다 조직도 같은 개념」) — 한백이 맨 위, 그 밑에 부서처럼 담당이 서고
+ * 운영사 담당 밑에 운영사 다섯이 매달린다. 카드마다 등이 상태다(components/agents/status).
  */
 import type { ButtonHTMLAttributes, ReactNode } from 'react';
 
@@ -112,11 +113,6 @@ export function Led({ tone, live = false, label }: { tone: LedTone; live?: boole
   );
 }
 
-/** 가지 이름 — 워크트리의 브랜치처럼 */
-export function BranchName({ id }: { id: string }) {
-  return <span className="font-mono text-tiny text-brand-300/80">⎇ agent/{id}</span>;
-}
-
 /* ── 입력칸 ── 날짜·고르기 칸이 어둡게 열리도록 color-scheme 을 준다. 폭을 정하려면 _BASE 에 폭을 붙인다(ui.tsx FIELD 와 같은 함정) */
 const FIELD_LOOK =
   'rounded-ctl border border-white/10 bg-black/40 px-3 py-2 text-base text-slate-100 placeholder:text-slate-500 [color-scheme:dark] transition focus:border-brand-300/60 focus:outline-none focus:ring-2 focus:ring-brand-400/20 disabled:opacity-50';
@@ -132,10 +128,13 @@ export function HudErr({ children, className = '' }: { children?: string | null;
 /** 고리(링크) 글자 — 하늘 */
 export const HUD_LINK = 'font-semibold text-cyan-300 underline decoration-cyan-300/30 underline-offset-2 transition hover:decoration-cyan-200';
 
+/** 조직도의 선 색 — 가로선 · 세로선이 같은 것을 쓴다 */
+export const ORG_LINE = 'bg-brand-400/40';
+
 /*
- * ── 가지 ── git 그래프 · tree 명령의 ├─ └─. 줄기(세로선)에서 칸마다 가로선이 뻗고 마디에 점(또는 등)이 선다.
- * 마지막 가지(last)에서 줄기가 끝난다. 마디의 높이는 카드 첫 줄 가운데(26px)에 맞췄고, 마디는 크기와 무관하게 그 점에
- * 가운데가 오게 놓는다. 뿌리(main)의 점도 같은 세로줄(12px)에 선다.
+ * ── 매달린 칸 ── 조직도에서 한 부서 밑에 세로로 매달린 사람들(운영사 담당 밑의 다섯)과, 좁은 화면에서 조직 전체를 세로로
+ * 펼칠 때 쓴다. 세로선(레일)에서 칸마다 가로선이 뻗고 마디에 점이 선다. 마지막 칸(last)에서 레일이 끝난다. 마디의 높이는
+ * 카드 첫 줄 가운데(26px)에 맞췄다.
  */
 export function Twig({ last, children, node }: { last: boolean; children: ReactNode; node?: ReactNode }) {
   return (

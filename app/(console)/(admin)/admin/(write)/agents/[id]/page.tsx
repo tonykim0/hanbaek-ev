@@ -10,8 +10,8 @@ import { HeadlineCounts } from '@/components/agents/HeadlineCounts';
 import { AgentRoom } from '@/components/agents/AgentRoom';
 import { AgentDuties } from '@/components/agents/AgentDuties';
 import { AgentTasks } from '@/components/agents/AgentTasks';
-import { BranchName, Chip, Deck, Led } from '@/components/agents/hud';
-import { isLive, ledOf } from '@/components/agents/status';
+import { Chip, Deck, Led } from '@/components/agents/hud';
+import { isLive, ledOf, roleLineOf } from '@/components/agents/status';
 
 export const metadata = { title: '에이전트 — 한백 전기차사업관리시스템' };
 export const dynamic = 'force-dynamic';
@@ -46,16 +46,14 @@ export default async function AgentPage({ params }: { params: { id: string } }) 
 
   return (
     <Deck>
-      <nav className="font-mono text-tiny text-slate-400">
-        <Link href="/admin/agents" className="transition hover:text-brand-200">agents</Link>
-        <span className="px-1.5 text-slate-600">/</span>
-        <span className="text-slate-200">{agent.id}</span>
+      <nav className="text-tiny font-semibold text-slate-400">
+        <Link href="/admin/agents" className="transition hover:text-brand-200">← 에이전트 조직도</Link>
       </nav>
       <header className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 border-b border-white/[0.07] pb-4">
         <Led tone={led.tone} live={live} label={`${led.label}${live ? ' · 최근 24시간 대화' : ''}`} />
         <h1 className="text-h1 font-black text-white">{agent.name}</h1>
-        <BranchName id={agent.id} />
         <Chip>{AGENT_KIND_LABEL[agent.kind]}</Chip>
+        <span className="text-small font-semibold text-slate-400">{roleLineOf(agent)}</span>
         <HeadlineCounts headline={headline} />
       </header>
 
