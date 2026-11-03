@@ -89,7 +89,7 @@ export default function TopBar({ role, biz, onMenu }: {
           type="button"
           onClick={onMenu}
           aria-label="메뉴 열기"
-          className="-ml-1.5 mr-0.5 shrink-0 rounded-ctl px-2 py-1.5 text-lead font-bold text-white/85 transition hover:bg-white/10 hover:text-white md:hidden"
+          className={`-ml-1.5 mr-0.5 shrink-0 rounded-ctl px-2 py-1.5 text-lead font-bold transition md:hidden ${BIZ_FRAME[biz].ink}`}
         >
           ☰
         </button>
@@ -104,14 +104,14 @@ export default function TopBar({ role, biz, onMenu }: {
         * 색만으로 가르지 않는다: 고른 쪽은 글자가 늘 보이고(흰 바탕), aria-current 로도 말한다.
         */}
       {isHanbaek(role) && (
-        <nav aria-label="사업" className="mr-2 flex shrink-0 rounded-ctl bg-black/15 p-0.5">
+        <nav aria-label="사업" className={`mr-2 flex shrink-0 rounded-ctl p-0.5 ${BIZ_FRAME[biz].track}`}>
           {BIZES.map((b) => (
             <Link
               key={b}
               href={BIZ_HOME[b]}
               aria-current={b === biz ? 'page' : undefined}
               className={`rounded-[6px] px-2.5 py-1 text-small font-black transition ${
-                b === biz ? `bg-white ${BIZ_FRAME[b].pick}` : 'text-white/80 hover:bg-white/10 hover:text-white'
+                b === biz ? `bg-white ${BIZ_FRAME[b].pick}` : BIZ_FRAME[biz].ink
               }`}
             >
               {BIZ_LABEL[b]}

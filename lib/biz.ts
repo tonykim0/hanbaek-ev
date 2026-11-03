@@ -6,8 +6,7 @@
  *
  * ★색은 틀만 갈린다★ — 상단 바 · 전환 단추 · 사이드바의 고른 메뉴. 단추 · 배지 · 띠는 두 사업이 같다: 한백 그린(brand)이
  * 회사 색이자 「통과·진행」 상태 색이라(components/ui.tsx 의 ok), 사업마다 바꾸면 상태 색의 뜻(빨강 막힘 · 노랑 봐야 함 ·
- * 하늘 계약)이 사업마다 달라진다. 태양광의 주황(sun — 로고 초록의 보색 쪽, tailwind.config)은 틀에만 서서 내용 속 연한
- * 노랑(봐야 함)과 안 섞인다.
+ * 하늘 계약)이 사업마다 달라진다. 태양광의 귤색(sun, tailwind.config)은 틀에만 선다.
  */
 export type Biz = 'ev' | 'solar';
 
@@ -46,8 +45,23 @@ export const BIZ_LABEL: Record<Biz, string> = { ev: '전기차', solar: '태양�
 /** 사이드바 로고 밑 · 탭 제목 */
 export const BIZ_TITLE: Record<Biz, string> = { ev: '전기차사업관리', solar: '태양광사업관리' };
 
-/** 틀의 색 — bar 상단 바 · on 사이드바의 고른 메뉴 · pick 전환 단추에서 고른 쪽의 글자 */
-export const BIZ_FRAME: Record<Biz, { bar: string; on: string; pick: string }> = {
-  ev: { bar: 'bg-brand-700', on: 'bg-brand-50 text-brand-800', pick: 'text-brand-800' },
-  solar: { bar: 'bg-sun-500', on: 'bg-sun-50 text-sun-800', pick: 'text-sun-700' },
+/**
+ * 틀의 색 — bar 상단 바 · ink 바 위 글자(메뉴 단추 · 전환의 안 고른 쪽) · track 전환 단추의 홈 · pick 전환에서 고른 쪽의 글자 ·
+ * on 사이드바의 고른 메뉴. 전기차는 진한 그린 바에 흰 글자, 태양광은 귤색 바에 진한 글자 — 귤색은 밝아서 흰 글자가 안 읽힌다.
+ */
+export const BIZ_FRAME: Record<Biz, { bar: string; ink: string; track: string; pick: string; on: string }> = {
+  ev: {
+    bar: 'bg-brand-700',
+    ink: 'text-white/80 hover:bg-white/10 hover:text-white',
+    track: 'bg-black/15',
+    pick: 'text-brand-800',
+    on: 'bg-brand-50 text-brand-800',
+  },
+  solar: {
+    bar: 'bg-sun-500',
+    ink: 'text-slate-900/75 hover:bg-black/5 hover:text-slate-900',
+    track: 'bg-black/10',
+    pick: 'text-sun-800',
+    on: 'bg-sun-50 text-sun-800',
+  },
 };
