@@ -4,7 +4,8 @@
  *
  * ★상담 접수★ (한백 지시 2026-11-03 「현장관리에서 상담 개소 접수 할 수 있도록」) — 현장은 상담 접수로 들어와 상담 칸에 선다.
  * 다음 칸(현장 확인 · 견적·계약 …)으로 넘어가는 일은 아직 없다 — 무엇이 끝나면 넘어가는지 정해지면 붙인다(lib/solar/stages 초안).
- * 한백은 전부, 태양광 참여 협력사는 제 소속의 현장만 본다(lib/data/solar-sites). 열람 전용에게는 접수 단추가 없다.
+ * 한백은 전부, 태양광 참여 협력사는 제 소속의 현장만 본다(lib/data/solar-sites). 접수 단추는 태양광 참여 협력사에게만 —
+ * 담당은 접수한 계정의 소속이고 한백은 접수하지 않는다(한백 지시 「한백 직접은 없어」).
  */
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -29,7 +30,7 @@ export default async function SolarSitesPage() {
     <div>
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <h1 className="text-h1 font-black text-slate-900">현장관리</h1>
-        {canWrite(session.role) && (
+        {!hanbaek && canWrite(session.role) && session.solar && (
           <BtnLink kind="do" size="md" href="/solar/sites/new">
             상담 접수
           </BtnLink>
@@ -66,9 +67,9 @@ export default async function SolarSitesPage() {
                           <p className="mt-0.5 truncate text-tiny text-slate-500">{site.address}</p>
                           <p className="mt-1.5 flex flex-wrap items-center gap-1">
                             <Tag>{SITE_KIND_LABEL[site.kind]}</Tag>
-                            {site.files.length > 0 && <Tag>파일 {site.files.length}</Tag>}
+                            {site.files.length > 0 && <Tag>첨부파일 {site.files.length}</Tag>}
                             {/* 한백은 전 현장을 본다 — 누구 현장인지 카드에 적는다. 협력사에게는 늘 자기라 안 적는다 */}
-                            {hanbaek && <Tag tone={site.org ? 'mute' : 'stage'}>{site.org ?? '한백 직접'}</Tag>}
+                            {hanbaek && site.org && <Tag>{site.org}</Tag>}
                             <span className="ml-auto text-micro font-semibold tabular-nums text-slate-500">
                               {elapsedLabel(dayOf(new Date(site.createdAt))) ?? ''}
                             </span>

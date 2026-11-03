@@ -1,17 +1,22 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
-import { Btn, Confirm, Err, GroupHead, Note, TEXT } from '@/components/ui';
+import { useEffect, useRef, useState } from 'react';
+import { Btn, BtnLink, Confirm, Err, GroupHead, Note, TEXT } from '@/components/ui';
 import { dayOf } from '@/lib/date';
+import { canPreviewFile, extOf, isImageFile } from '@/lib/file-kind';
 import { uploadSiteFile } from '@/lib/solar/site-upload';
 import type { SiteFile } from '@/lib/solar/sites';
 
 const sizeOf = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
 /**
- * 현장의 파일 — 이름을 누르면 새 탭에서 열린다. 올리기는 묶음 머리의 단추(여러 장을 한 번에), 빼기는 줄의 반대쪽 끝이고
- * 되묻는다(화면 규칙 8 · Blob 에서도 지워져 되돌릴 수 없다). 열람 전용 · 남의 현장에는 올리기 · 빼기가 없다.
+ * 현장의 첨부파일 (한백 지시 2026-11-03 「파일 > 첨부파일 · 파일 미리보기 가능하게」).
+ *
+ * ★미리보기★ — 사진은 줄에 작은 그림이 서고, 이름을 누르면 이 화면 위에 미리보기 창이 뜬다(사진 · PDF · txt — 브라우저가
+ * 그릴 수 있는 것, 판정은 lib/file-kind 로 전기차 서류 칸과 같다). 엑셀 · 워드 · 한글은 그릴 수 없어 이름이 곧 받기다.
+ * 창에서 「새 탭」 · 「받기」로 이어 간다. 올리기는 묶음 머리의 단추(여러 장을 한 번에), 빼기는 줄의 반대쪽 끝이고 되묻는다
+ * (화면 규칙 8 · Blob 에서도 지워져 되돌릴 수 없다). 열람 전용 · 남의 현장에는 올리기 · 빼기가 없다.
  *
  * @param unsent 접수 때 못 올린 장 수 — 접수 폼이 현장을 만든 뒤 파일을 올리다 실패하면 여기로 데려와 알린다
  */
@@ -23,6 +28,7 @@ export default function SiteFiles({ siteId, files, canEdit, unsent = 0 }: { site
   const [asking, setAsking] = useState<SiteFile | null>(null);
   const [removing, setRemoving] = useState(false);
   const [removeError, setRemoveError] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<SiteFile | null>(null);
 
   async function upload(list: File[]) {
     if (!list.length) return;
@@ -66,12 +72,12 @@ export default function SiteFiles({ siteId, files, canEdit, unsent = 0 }: { site
   return (
     <div>
       <GroupHead
-        title="파일"
+        title="첨부파일"
         meta={`${files.length}건`}
         action={
           canEdit && (
             <Btn kind="side" size="sm" busy={busy !== null} busyLabel={busy ?? undefined} onClick={() => picker.current?.click()}>
-              파일 올리기
+              올리기
             </Btn>
           )
         }
@@ -89,34 +95,58 @@ export default function SiteFiles({ siteId, files, canEdit, unsent = 0 }: { site
           }}
         />
       )}
-      {unsent > 0 && (
-        <Note className="mt-2">접수 때 파일 {unsent}개를 못 올렸습니다 — 「파일 올리기」로 다시 올려 주세요.</Note>
-      )}
+      {unsent > 0 && <Note className="mt-2">접수 때 첨부파일 {unsent}개를 못 올렸습니다 — 「올리기」로 다시 올려 주세요.</Note>}
       {files.length > 0 && (
         <ul className="mt-2">
-          {files.map((f) => (
-            <li key={f.url} className="flex items-center gap-3 border-t border-slate-100 py-2 first:border-t-0">
-              <a href={f.url} target="_blank" rel="noopener noreferrer" className="min-w-0 truncate text-base font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900">
-                {f.name}
-              </a>
-              <span className={`shrink-0 tabular-nums ${TEXT.meta}`}>
-                {sizeOf(f.size)} · {dayOf(new Date(f.at))}
-              </span>
-              {canEdit && (
-                <span className="ml-auto shrink-0">
-                  <Btn kind="undo" size="sm" onClick={() => setAsking(f)}>
-                    빼기
-                  </Btn>
+          {files.map((f) => {
+            const can = canPreviewFile(f);
+            return (
+              <li key={f.url} className="flex items-center gap-3 border-t border-slate-100 py-2 first:border-t-0">
+                {/* 사진은 줄에서 바로 보인다 — 누르면 크게 */}
+                {isImageFile(f) ? (
+                  <button type="button" onClick={() => setViewing(f)} aria-label={`${f.name} 미리보기`} className="h-10 w-10 shrink-0 overflow-hidden rounded-tag border border-slate-200 bg-slate-50">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={f.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+                  </button>
+                ) : (
+                  <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-tag border border-slate-200 bg-slate-50 text-micro font-black text-slate-500">
+                    {extOf(f).toUpperCase()}
+                  </span>
+                )}
+                {can ? (
+                  <button
+                    type="button"
+                    onClick={() => setViewing(f)}
+                    className="min-w-0 truncate text-left text-base font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900"
+                  >
+                    {f.name}
+                  </button>
+                ) : (
+                  // 그릴 수 없는 형식 — 이름이 곧 받기다
+                  <a href={f.url} download={f.name} className="min-w-0 truncate text-base font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900">
+                    {f.name}
+                  </a>
+                )}
+                <span className={`shrink-0 tabular-nums ${TEXT.meta}`}>
+                  {sizeOf(f.size)} · {dayOf(new Date(f.at))}
                 </span>
-              )}
-            </li>
-          ))}
+                {canEdit && (
+                  <span className="ml-auto shrink-0">
+                    <Btn kind="undo" size="sm" onClick={() => setAsking(f)}>
+                      빼기
+                    </Btn>
+                  </span>
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
       <Err className="mt-1.5 block">{error}</Err>
+      {viewing && <FileViewer file={viewing} onClose={() => setViewing(null)} />}
       <Confirm
         open={asking !== null}
-        title="파일을 뺄까요?"
+        title="첨부파일을 뺄까요?"
         detail={asking ? `${asking.name} 이(가) 이 현장에서 빠지고 저장소에서도 지워집니다.` : undefined}
         confirmLabel="빼기"
         busy={removing}
@@ -128,6 +158,48 @@ export default function SiteFiles({ siteId, files, canEdit, unsent = 0 }: { site
           setRemoveError(null);
         }}
       />
+    </div>
+  );
+}
+
+/**
+ * 미리보기 창 — 이 화면 위에 뜬다(새 탭으로 나가지 않고 보고 닫는다). 사진은 창에 맞춰, PDF · txt 는 브라우저가 그린다.
+ * Esc · 바깥 누르기 · 「닫기」로 닫는다. 창은 상자 한 겹이다(화면 규칙 1).
+ */
+function FileViewer({ file, onClose }: { file: SiteFile; onClose: () => void }) {
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', key);
+    return () => window.removeEventListener('keydown', key);
+  }, [onClose]);
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label={`${file.name} 미리보기`} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
+      <div className="flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-panel border border-slate-200 bg-white" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
+          <p className="min-w-0 truncate text-lead font-black text-slate-900">{file.name}</p>
+          <span className={`shrink-0 tabular-nums ${TEXT.meta}`}>{sizeOf(file.size)}</span>
+          <span className="ml-auto flex shrink-0 items-center gap-1.5">
+            <BtnLink kind="quiet" href={file.url} target="_blank" rel="noopener noreferrer">
+              새 탭
+            </BtnLink>
+            <BtnLink kind="quiet" href={file.url} download={file.name}>
+              받기
+            </BtnLink>
+            <Btn kind="quiet" size="sm" onClick={onClose}>
+              닫기
+            </Btn>
+          </span>
+        </div>
+        <div className="min-h-0 flex-1 bg-slate-100">
+          {isImageFile(file) ? (
+            /* eslint-disable-next-line @next/next/no-img-element */
+            <img src={file.url} alt={file.name} className="h-full w-full object-contain" />
+          ) : (
+            <iframe src={extOf(file) === 'pdf' ? `${file.url}#view=FitH` : file.url} title={file.name} className="h-full w-full border-0 bg-white" />
+          )}
+        </div>
+      </div>
     </div>
   );
 }

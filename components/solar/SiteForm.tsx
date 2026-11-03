@@ -1,16 +1,21 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useRef, useState } from 'react';
-import { Btn, Choice, Err, FIELD, TEXT } from '@/components/ui';
+import { useCallback, useRef, useState } from 'react';
+import { useAddressSearch, type PostcodeData } from '@/components/contracts/AddressSearchButton';
+import { Btn, Choice, Err, FIELD, FIELD_BASE, TEXT } from '@/components/ui';
 import { uploadSiteFile } from '@/lib/solar/site-upload';
-import { SITE_DIRECT, SITE_KIND_LABEL, SITE_KINDS, SITE_LIMITS, type SiteDraft } from '@/lib/solar/sites';
+import { SITE_KIND_LABEL, SITE_KINDS, SITE_LIMITS, type SiteDraft } from '@/lib/solar/sites';
 
 /**
  * 상담 접수 · 고치기 폼 — 같은 칸, 같은 규칙(lib/solar/sites cleanSiteInput — 서버가 한 번 더 본다).
  *
- * 담당 협력사는 한백 관리자에게만 선다 — 협력사가 접수하면 제 소속이 담당이다(저장소가 정한다, 보낸 값을 안 본다).
- * 고르는 목록은 태양광 참여를 켠 협력사다(계정설정). 「한백 직접」은 한백이 손님을 바로 받은 현장이다.
+ * ★담당 협력사를 고르는 칸이 없다★ (한백 지시 2026-11-03 「담당협력사는 해당 계정으로 로그인한 협력사만 · 한백 직접은 없어」) —
+ * 접수는 태양광 참여 협력사가 제 계정으로 하고, 그 소속이 담당이다(저장소가 정한다). 한백은 접수하지 않는다.
+ *
+ * ★주소는 검색해서 고른다★ (같은 날 「계약서 작성할 때처럼 주소 검색하게」) — 계약서 양식과 같은 카카오(다음) 우편번호 검색
+ * (components/contracts/AddressSearchButton 의 useAddressSearch)이 도로명주소를 넣는다. 칸은 열어 둔다(동 · 호 같은 꼬리를 붙이게).
+ * 고른 주소에 건물명이 있고 현장명이 비어 있으면 그 이름을 현장명에 넣는다.
  *
  * ★파일★ (2026-11-03 「상담접수할 때 파일도 올릴 수 있도록」) — 접수할 때 고른 파일은 현장이 생긴 뒤에 한 장씩 올린다(자리가
  * 현장 번호 아래라 번호가 먼저 있어야 한다). 못 올린 장이 있어도 접수는 된 것이라 상세로 가서 그 수를 알린다(?unsent=) —
@@ -19,16 +24,11 @@ import { SITE_DIRECT, SITE_KIND_LABEL, SITE_KINDS, SITE_LIMITS, type SiteDraft }
 export default function SiteForm({
   siteId,
   initial,
-  orgs,
-  isAdmin,
   onDone,
 }: {
   /** 있으면 고치기, 없으면 새 접수 */
   siteId?: string;
   initial: SiteDraft;
-  /** 담당으로 고를 수 있는 협력사 — 한백 관리자에게만 */
-  orgs: string[];
-  isAdmin: boolean;
   /** 고치기를 마치면(또는 취소) — 글자로 돌아간다 */
   onDone?: () => void;
 }) {
@@ -41,6 +41,11 @@ export default function SiteForm({
   const picker = useRef<HTMLInputElement>(null);
   const set = <K extends keyof SiteDraft>(k: K, v: SiteDraft[K]) => setD((x) => ({ ...x, [k]: v }));
 
+  const onPicked = useCallback((address: string, data?: PostcodeData) => {
+    setD((x) => ({ ...x, address, name: x.name.trim() || data?.buildingName?.trim() || x.name }));
+  }, []);
+  const search = useAddressSearch(onPicked);
+
   const missing = !d.name.trim() ? '현장명' : !d.address.trim() ? '주소' : !d.kind ? '설치 형태' : null;
 
   async function submit(e: React.FormEvent) {
@@ -48,15 +53,7 @@ export default function SiteForm({
     if (missing || busy) return;
     setBusy(true);
     setError(null);
-    const body = {
-      name: d.name,
-      address: d.address,
-      kind: d.kind,
-      customer: d.customer,
-      phone: d.phone,
-      memo: d.memo,
-      ...(isAdmin ? { org: d.org || null } : {}),
-    };
+    const body = { name: d.name, address: d.address, kind: d.kind, customer: d.customer, phone: d.phone, memo: d.memo };
     try {
       const res = await fetch(siteId ? `/api/solar/sites/${siteId}` : '/api/solar/sites', {
         method: siteId ? 'PATCH' : 'POST',
@@ -75,7 +72,7 @@ export default function SiteForm({
         let unsent = 0;
         for (const [i, f] of picked.entries()) {
           try {
-            await uploadSiteFile(got.id, f, (pct) => setBusyLabel(`파일 올리는 중 ${i + 1}/${picked.length} · ${pct}%`));
+            await uploadSiteFile(got.id, f, (pct) => setBusyLabel(`첨부파일 올리는 중 ${i + 1}/${picked.length} · ${pct}%`));
           } catch {
             unsent += 1;
           }
@@ -97,9 +94,24 @@ export default function SiteForm({
       <Field label="현장명" need>
         <input className={FIELD} value={d.name} maxLength={SITE_LIMITS.name} placeholder="상호 · 건물명" onChange={(e) => set('name', e.target.value)} />
       </Field>
-      <Field label="주소" need>
-        <input className={FIELD} value={d.address} maxLength={SITE_LIMITS.address} placeholder="도로명 · 지번 주소" onChange={(e) => set('address', e.target.value)} />
-      </Field>
+      {/* 주소 칸과 검색 단추 — 단추를 label 안에 두지 않는다(이름을 누르면 단추가 눌린다) */}
+      <div className="grid gap-1.5">
+        <FieldName label="주소" need />
+        <div className="flex items-start gap-2">
+          <input
+            aria-label="주소"
+            className={`${FIELD_BASE} min-w-0 flex-1`}
+            value={d.address}
+            maxLength={SITE_LIMITS.address}
+            placeholder="「주소 검색」으로 도로명주소를 고르세요"
+            onChange={(e) => set('address', e.target.value)}
+          />
+          <Btn kind="side" disabled={busy} busy={search.loading} busyLabel="여는 중…" onClick={() => void search.open()} className="shrink-0 whitespace-nowrap">
+            주소 검색
+          </Btn>
+        </div>
+        <Err>{search.error}</Err>
+      </div>
       {/* 고르는 칩은 label 로 감싸지 않는다 — 이름을 누르면 첫 칩이 눌린다 */}
       <div role="group" aria-label="설치 형태" className="grid gap-1.5">
         <FieldName label="설치 형태" need />
@@ -123,8 +135,8 @@ export default function SiteForm({
         <textarea className={`${FIELD} min-h-[6rem]`} value={d.memo} maxLength={SITE_LIMITS.memo} onChange={(e) => set('memo', e.target.value)} />
       </Field>
       {!siteId && (
-        <div role="group" aria-label="파일" className="grid gap-1.5">
-          <FieldName label="파일" />
+        <div role="group" aria-label="첨부파일" className="grid gap-1.5">
+          <FieldName label="첨부파일" />
           <div>
             <Btn kind="side" size="sm" disabled={busy} onClick={() => picker.current?.click()}>
               파일 고르기
@@ -158,24 +170,10 @@ export default function SiteForm({
           )}
         </div>
       )}
-      {isAdmin && (
-        <Field label="담당 협력사">
-          <select className={`${FIELD} cursor-pointer`} value={d.org} onChange={(e) => set('org', e.target.value)}>
-            <option value={SITE_DIRECT}>한백 직접</option>
-            {orgs.map((o) => (
-              <option key={o} value={o}>
-                {o}
-              </option>
-            ))}
-            {/* 지금 담당이 참여를 끈 협력사여도 목록에서 사라지지 않게 — 그대로 두면 그대로다 */}
-            {d.org && !orgs.includes(d.org) && <option value={d.org}>{d.org}</option>}
-          </select>
-        </Field>
-      )}
       <div className="flex flex-wrap items-center gap-2">
         {/* 못 하는 이유를 단추 이름에(화면 규칙 3) */}
         <Btn type="submit" disabled={!!missing} busy={busy} busyLabel={busyLabel ?? (siteId ? '저장 중…' : '접수 중…')}>
-          {missing ? `${missing} 필요` : siteId ? '저장' : picked.length ? `상담 접수 · 파일 ${picked.length}개` : '상담 접수'}
+          {missing ? `${missing} 필요` : siteId ? '저장' : picked.length ? `상담 접수 · 첨부파일 ${picked.length}개` : '상담 접수'}
         </Btn>
         {onDone && (
           <Btn kind="quiet" onClick={onDone} disabled={busy}>

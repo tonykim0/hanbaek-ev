@@ -8,6 +8,7 @@
  * Blob 에 저장된 이름은 중복 회피용 접미사가 붙어 있어 그대로 주면 알아보기 어렵다.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { canPreviewFile, extOf, isImageFile } from '@/lib/file-kind';
 import { useRouter } from 'next/navigation';
 import { useLeaveGuard } from '@/lib/use-leave-guard';
 import { pdfThumb } from '@/lib/pdf-render';
@@ -107,20 +108,11 @@ export function useFileDragging(): boolean {
   return useSyncExternalStore(subscribeDrag, () => dragging, () => false);
 }
 
-function extOf(file: DocFile): string {
-  const from = file.name ?? file.url ?? '';
-  const m = from.match(/\.([a-z0-9]{2,5})(?:\?|$)/i);
-  return m ? m[1].toLowerCase() : 'pdf';
-}
-
-/** 브라우저가 탭에서 그려주는 형식 — 그 밖(엑셀·워드·한글)은 내려받아야 열린다 */
-const PREVIEWABLE = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp', 'txt'];
-/** 줄에서 바로 그려 보여줄 수 있는 형식 — 사진 서류(설치완료·기설치 증빙)가 이것이다 */
-const THUMBNAIL = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
-const isImage = (file: DocFile): boolean => THUMBNAIL.includes(extOf(file));
+/* 형식 판정(확장자 · 그릴 수 있는가 · 사진인가)은 lib/file-kind 한 곳이다 — 태양광 첨부파일도 같은 기준을 쓴다 */
+const isImage = (file: DocFile): boolean => isImageFile(file);
 /** 사람이 읽는 크기 — 소수 한 자리면 「29.7MB 인데 왜 막히나」가 안 생긴다 */
 const mb = (bytes: number): string => (bytes / 1024 / 1024).toFixed(1).replace(/\.0$/, '');
-export const canPreview = (file: DocFile): boolean => PREVIEWABLE.includes(extOf(file));
+export const canPreview = (file: DocFile): boolean => canPreviewFile(file);
 
 /**
  * 받을 때 붙는 이름 — 「현장명_서류명」이다. Blob 에 저장된 이름은 중복 회피용 접미사가

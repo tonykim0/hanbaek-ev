@@ -66,12 +66,10 @@ describe('상담 접수 — 누가', () => {
     expect(String(r.json?.error)).toContain('현장명');
   });
 
-  it('한백 관리자는 담당을 고른다 — 참여 협력사 · 「한백 직접」(비움)만, 참여하지 않는 곳은 못 고른다', async () => {
-    expect((await create(USERS.admin, { org: '대상전력' })).status).toBe(422);
-    const a = await create(USERS.admin, { org: '에코일렉' });
-    const b = await create(USERS.admin, { org: null });
-    expect([a.status, b.status]).toEqual([200, 200]);
-    expect((await solarSiteStore.get(String(b.json?.id), viewerOf(USERS.admin)))?.org).toBeNull();
+  it('한백은 접수하지 않는다(422) — 담당은 늘 접수한 협력사의 소속이다(「한백 직접」은 없다)', async () => {
+    const r = await create(USERS.admin, { org: '에코일렉' });
+    expect(r.status).toBe(422);
+    expect(String(r.json?.error)).toContain('한백은 접수하지 않습니다');
   });
 });
 
@@ -105,6 +103,10 @@ describe('고치기 · 지우기 — 담당 협력사와 한백', () => {
     const logs = await getDb().select().from(auditLog).where(and(eq(auditLog.action, `태양광 ${id}`), eq(auditLog.field, '연락처')));
     expect(logs.map((l) => [l.oldValue, l.newValue])).toEqual([['010-0000-0000', '010-1111-2222']]);
     expect((await call(PATCH, { method: 'PATCH', body: { org: null }, params: { id } })).status).toBe(422);
+    // 한백 관리자도 담당은 못 바꾼다 — 접수한 협력사가 담당이다
+    await signIn(USERS.admin);
+    expect((await call(PATCH, { method: 'PATCH', body: { org: '대상전력' }, params: { id } })).status).toBe(422);
+    expect((await call(PATCH, { method: 'PATCH', body: { memo: '한백이 고침' }, params: { id } })).status).toBe(200);
   });
 
   it('참여를 끄면 그 계정은 제 현장도 못 고친다 — 지금 값을 DB 에서 읽는다', async () => {

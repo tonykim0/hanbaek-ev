@@ -6,16 +6,17 @@
  *
  * ★누가 무엇을★
  *   보기   한백의 눈(관리자 · 열람 전용)은 전부, 협력사는 제 소속의 현장만 — 남의 현장은 「없다」로 답한다(있는지도 안 알린다)
- *   접수   태양광 참여를 켠 협력사(소속이 담당이 된다) · 한백 관리자(담당 협력사를 고르거나 「한백 직접」)
- *   고치기 · 지우기   한백 관리자, 또는 그 현장의 담당 협력사
+ *   접수   태양광 참여를 켠 협력사만 — 제 계정의 소속이 담당이 된다. 한백은 접수하지 않는다(「한백 직접」은 없다 —
+ *          한백 지시 2026-11-03 「담당협력사는 해당 계정으로 로그인한 협력사만 작성하게 · 한백 직접은 없어」)
+ *   고치기 · 지우기   한백 관리자, 또는 그 현장의 담당 협력사 — 담당 협력사는 누구도 바꾸지 않는다
  * 열람 전용의 쓰기는 쓰기 껍데기(lib/api/write-route)가 먼저 막는다. 참여 여부는 여기서 한 번 더 DB 에서 읽는다 —
  * 껍데기가 넘긴 actor 에는 그 값이 없고, 계정설정에서 방금 끈 계정이 쓰면 안 된다.
  */
-import { asc, desc, eq, sql } from 'drizzle-orm';
+import { desc, eq, sql } from 'drizzle-orm';
 import { getDb, hasDatabase } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
 import { solarSites, users } from '@/lib/db/schema';
-import { isHanbaek, normalizeOrg } from '@/lib/roles';
+import { isHanbaek } from '@/lib/roles';
 import { today } from '@/lib/date';
 import type { Actor, Viewer } from '@/lib/auth/types';
 import { cleanSiteInput, siteFilePrefix, siteIdOf, type SiteFile, type SiteInput, type SiteKind, type SolarSite } from '@/lib/solar/sites';
@@ -60,8 +61,8 @@ async function editable(id: string, actor: Actor): Promise<Row> {
   return row;
 }
 
-const FIELD_NAME: Record<keyof SiteInput | 'org', string> = {
-  name: '현장명', address: '주소', kind: '설치 형태', customer: '고객 담당자', phone: '연락처', memo: '상담 메모', org: '담당 협력사',
+const FIELD_NAME: Record<keyof SiteInput, string> = {
+  name: '현장명', address: '주소', kind: '설치 형태', customer: '고객 담당자', phone: '연락처', memo: '상담 메모',
 };
 
 export const solarSiteStore = {
@@ -81,33 +82,17 @@ export const solarSiteStore = {
     return row && sees(viewer, row) ? siteOf(row) : null;
   },
 
-  /** 담당으로 고를 수 있는 협력사 — 태양광 참여를 켠 사용 중 계정의 소속(한백이 접수할 때) */
-  async solarOrgs(): Promise<string[]> {
-    if (!hasDatabase()) return [];
-    const rows = await getDb()
-      .selectDistinct({ org: users.org })
-      .from(users)
-      .where(sql`${users.solar} and ${users.active} and ${users.org} is not null`)
-      .orderBy(asc(users.org));
-    return rows.flatMap((r) => (r.org ? [r.org] : []));
-  },
-
   /**
-   * 상담 접수. 협력사는 제 소속이 담당이 되고(보낸 org 는 안 본다), 한백 관리자는 보낸 org — 태양광 참여 협력사 중 하나이거나
-   * 비우면 「한백 직접」. 번호는 시퀀스에서 받는다(지운 번호를 다시 쓰지 않는다).
+   * 상담 접수 — 태양광 참여 협력사만. 담당은 그 계정의 소속이다(보낸 org 는 안 본다). 번호는 시퀀스에서 받는다(지운 번호를
+   * 다시 쓰지 않는다).
    */
   async create(raw: unknown, actor: Actor): Promise<SolarSite> {
     if (!hasDatabase()) throw new Error(NO_DB);
+    if (isHanbaek(actor.role)) throw new Error('상담 접수는 태양광 참여 협력사가 제 계정으로 합니다 — 한백은 접수하지 않습니다.');
     if (!(await participates(actor))) throw new Error('태양광에 참여하는 계정만 접수할 수 있습니다.');
     const input = cleanSiteInput(raw);
-    let org: string | null;
-    if (actor.role === 'admin') {
-      org = normalizeOrg((raw as { org?: unknown })?.org as string | null | undefined) || null;
-      if (org && !(await this.solarOrgs()).includes(org)) throw new Error(`「${org}」는 태양광에 참여하는 협력사가 아닙니다 — 계정설정에서 켭니다.`);
-    } else {
-      org = actor.org;
-      if (!org) throw new Error('소속이 없는 계정은 접수할 수 없습니다.');
-    }
+    const org = actor.org;
+    if (!org) throw new Error('소속이 없는 계정은 접수할 수 없습니다.');
 
     const db = getDb();
     return db.transaction(async (tx) => {
@@ -122,7 +107,7 @@ export const solarSiteStore = {
     });
   },
 
-  /** 고치기 — 보낸 칸만. 담당 협력사는 한백 관리자만 바꾼다 */
+  /** 고치기 — 보낸 칸만. 담당 협력사는 바꾸지 않는다(접수한 협력사가 담당이다) */
   async update(id: string, raw: unknown, actor: Actor): Promise<void> {
     if (!hasDatabase()) throw new Error(NO_DB);
     const row = await editable(id, actor);
@@ -130,24 +115,14 @@ export const solarSiteStore = {
     const patch = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
     // 빠진 칸은 지금 값으로 채워 같은 규칙(cleanSiteInput)으로 본다 — 고치기가 접수보다 느슨하면 빈 현장명이 생긴다
     const next = cleanSiteInput({ ...before, ...patch });
-    let org = before.org;
-    if ('org' in patch) {
-      if (actor.role !== 'admin') throw new Error('담당 협력사는 한백만 바꿉니다.');
-      org = normalizeOrg(patch.org as string | null) || null;
-      if (org && org !== before.org && !(await this.solarOrgs()).includes(org)) {
-        throw new Error(`「${org}」는 태양광에 참여하는 협력사가 아닙니다 — 계정설정에서 켭니다.`);
-      }
-    }
-    const changed = (Object.keys(FIELD_NAME) as (keyof typeof FIELD_NAME)[]).filter((k) =>
-      k === 'org' ? org !== before.org : next[k] !== before[k],
-    );
+    if ('org' in patch) throw new Error('담당 협력사는 접수한 협력사로 정해집니다 — 바꾸지 않습니다.');
+    const changed = (Object.keys(FIELD_NAME) as (keyof typeof FIELD_NAME)[]).filter((k) => next[k] !== before[k]);
     if (changed.length === 0) return;
     const db = getDb();
     await db.transaction(async (tx) => {
-      await tx.update(solarSites).set({ ...next, org, updatedAt: new Date() }).where(eq(solarSites.id, id));
+      await tx.update(solarSites).set({ ...next, updatedAt: new Date() }).where(eq(solarSites.id, id));
       for (const k of changed) {
-        const after = k === 'org' ? org : next[k];
-        await writeAudit(tx, { projectId: null, actor, action: `태양광 ${id}`, field: FIELD_NAME[k], oldValue: before[k], newValue: after });
+        await writeAudit(tx, { projectId: null, actor, action: `태양광 ${id}`, field: FIELD_NAME[k], oldValue: before[k], newValue: next[k] });
       }
     });
   },

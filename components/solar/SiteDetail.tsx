@@ -15,16 +15,12 @@ import SiteForm from './SiteForm';
 export default function SiteDetail({
   site,
   canEdit,
-  isAdmin,
-  orgs,
   createdByName,
   unsent = 0,
 }: {
   site: SolarSite;
   /** 한백 관리자 · 그 현장의 담당 협력사 */
   canEdit: boolean;
-  isAdmin: boolean;
-  orgs: string[];
   /** 접수한 사람 — 계정 이름(없으면 로그인 ID) */
   createdByName: string;
   /** 접수 때 못 올린 파일 수(접수 폼이 ?unsent= 로 데려온다) */
@@ -61,7 +57,7 @@ export default function SiteDetail({
     ['설치 형태', SITE_KIND_LABEL[site.kind]],
     ['고객 담당자', site.customer ?? <Empty kind="wait" />],
     ['연락처', site.phone ?? <Empty kind="wait" />],
-    ['담당 협력사', site.org ?? '한백 직접'],
+    ['담당 협력사', site.org ?? <Empty kind="wait" />],
     ['접수', `${dayOf(new Date(site.createdAt))} · ${createdByName}`],
   ];
 
@@ -75,7 +71,7 @@ export default function SiteDetail({
 
       <div className={`${PANEL} p-5`}>
         {editing ? (
-          <SiteForm siteId={site.id} initial={draftOf(site)} orgs={orgs} isAdmin={isAdmin} onDone={() => setEditing(false)} />
+          <SiteForm siteId={site.id} initial={draftOf(site)} onDone={() => setEditing(false)} />
         ) : (
           <>
             <dl className="grid grid-cols-[6.5rem_1fr] gap-x-4 gap-y-2.5">

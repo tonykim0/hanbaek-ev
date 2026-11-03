@@ -51,7 +51,10 @@ export type SolarSite = {
   customer: string | null;
   phone: string | null;
   memo: string | null;
-  /** 담당 협력사 — 협력사가 접수하면 그 소속, 한백이 직접 받으면 null(「한백 직접」) */
+  /**
+   * 담당 협력사 — 접수한 협력사 계정의 소속(한백 지시 2026-11-03 「해당 계정으로 로그인한 협력사만 · 한백 직접은 없어」).
+   * null 은 그 지시 전에 한백이 「한백 직접」으로 받은 것뿐이다.
+   */
   org: string | null;
   /** 접수한 계정(로그인 ID) */
   createdBy: string;
@@ -105,9 +108,6 @@ export function cleanSiteInput(raw: unknown): SiteInput {
   };
 }
 
-/** 폼의 담당 협력사 칸에서 「한백 직접」 — 보낼 때는 빈 값(null)이다 */
-export const SITE_DIRECT = '';
-
 /** 접수 · 고치기 폼이 쥐는 값 — 칸은 빈 글자로, 설치 형태는 안 골랐으면 null */
 export type SiteDraft = {
   name: string;
@@ -116,7 +116,6 @@ export type SiteDraft = {
   customer: string;
   phone: string;
   memo: string;
-  org: string;
 };
 
 /**
@@ -130,7 +129,6 @@ export const draftOf = (s: Partial<SolarSite> = {}): SiteDraft => ({
   customer: s.customer ?? '',
   phone: s.phone ?? '',
   memo: s.memo ?? '',
-  org: s.org ?? SITE_DIRECT,
 });
 
 /** SL-연도-순번(세 자리 — 넘으면 그대로 늘어난다) */
