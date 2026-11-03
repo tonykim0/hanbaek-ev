@@ -6,7 +6,8 @@
  *
  * ★색은 틀만 갈린다★ — 상단 바 · 전환 단추 · 사이드바의 고른 메뉴. 단추 · 배지 · 띠는 두 사업이 같다: 한백 그린(brand)이
  * 회사 색이자 「통과·진행」 상태 색이라(components/ui.tsx 의 ok), 사업마다 바꾸면 상태 색의 뜻(빨강 막힘 · 노랑 봐야 함 ·
- * 하늘 계약)이 사업마다 달라진다. 태양광의 진한 주황은 진한 바탕(상단 바)에만 서서 내용 속 연한 노랑(봐야 함)과 안 섞인다.
+ * 하늘 계약)이 사업마다 달라진다. 태양광의 주황(sun — 로고 초록의 보색 쪽, tailwind.config)은 틀에만 서서 내용 속 연한
+ * 노랑(봐야 함)과 안 섞인다.
  */
 export type Biz = 'ev' | 'solar';
 
@@ -48,5 +49,5 @@ export const BIZ_TITLE: Record<Biz, string> = { ev: '전기차사업관리', sol
 /** 틀의 색 — bar 상단 바 · on 사이드바의 고른 메뉴 · pick 전환 단추에서 고른 쪽의 글자 */
 export const BIZ_FRAME: Record<Biz, { bar: string; on: string; pick: string }> = {
   ev: { bar: 'bg-brand-700', on: 'bg-brand-50 text-brand-800', pick: 'text-brand-800' },
-  solar: { bar: 'bg-orange-700', on: 'bg-orange-50 text-orange-800', pick: 'text-orange-800' },
+  solar: { bar: 'bg-sun-500', on: 'bg-sun-50 text-sun-800', pick: 'text-sun-700' },
 };
