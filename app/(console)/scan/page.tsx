@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import PhotoScanner from '@/components/PhotoScanner';
 
 export const metadata: Metadata = {
-  title: '사진 → 스캔본 — 한백 전기차사업관리시스템',
+  title: '사진 → 스캔본',
   robots: { index: false, follow: false },
 };
 

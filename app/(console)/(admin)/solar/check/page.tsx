@@ -9,7 +9,7 @@
  */
 import Checker from '@/components/solar/Checker';
 
-export const metadata = { title: '태양광 설치 검토 — 한백 태양광사업관리' };
+export const metadata = { title: '태양광 설치 검토' };
 
 export default function SolarCheckPage() {
   return (

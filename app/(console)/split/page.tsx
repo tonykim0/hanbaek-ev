@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import PdfSorter from '@/components/PdfSorter';
 
 export const metadata: Metadata = {
-  title: 'PDF 분류·분할 — 한백 전기차사업관리시스템',
+  title: 'PDF 분류·분할',
   robots: { index: false, follow: false },
 };
 

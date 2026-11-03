@@ -1,4 +1,4 @@
-# 한백 EV 콘솔 — 작업 규칙
+# 한백 신재생 콘솔(전기차 · 태양광) — 작업 규칙
 
 ## 큰 그림: 관리 도구를 노션에서 콘솔로 일원화한다
 
@@ -17,6 +17,15 @@
    닫은 주소로 오는 요청은 전부 콘솔의 같은 경로로 넘긴다(`next.config.mjs` redirects — api·정적 파일까지).
    옛 경로(/hec · /nice · /sk · /pluglink · /sk-invest · /kapt · /charger-history · /materials · /intake)도
    같은 파일이 새 자리로 보낸다. ★계정 없는 협력사·영업자는 계약서를 못 쓴다★ — 계정은 `/admin/accounts`.
+5. **주소 이전 (2026-11-03)** — ★운영 주소를 hanbaek-ev → hanbaek-re.vercel.app 으로★(한백 「이제 전기차사업관리가 아니라
+   신재생사업관리야 — 전기차/태양광」 · re = renewable energy). 시스템 이름도 「한백 신재생사업관리시스템」(`lib/biz` SYSTEM_NAME —
+   탭 제목 꼬리는 `app/layout` 의 title.template 이 달고, 화면은 제 이름만 적는다). 옛 주소 둘(hanbaek-ev · hanbaek-form)로 오는
+   요청은 `next.config.mjs` 가 경로·쿼리 그대로 넘긴다(307 — 영구 이동은 브라우저가 오래 기억해 되돌릴 수 없어 안 쓴다).
+   ★배포 순서★: Vercel 프로젝트(hanbaek-form)에 새 주소를 ★먼저★ 붙이고(`npx vercel domains add hanbaek-re.vercel.app hanbaek-form`
+   — 자동 모드 분류기가 막아 한백이 직접) `curl https://hanbaek-re.vercel.app` 이 DEPLOYMENT_NOT_FOUND 가 아닌 것을 본 뒤에 머지한다
+   — 붙기 전에 나가면 모두를 없는 주소로 보낸다. ★옛 주소는 프로젝트에서 떼지 않는다★(떼면 넘길 수도 없다). 로그인 쿠키는 주소마다
+   따로라 옮긴 뒤 한 번 다시 로그인한다. 카카오 JavaScript SDK 도메인은 새 주소로 등록한다. 저장소·Vercel 프로젝트 이름은 그대로다.
+   `test/conventions/domains.test.ts` 가 넘기는 규칙과 화면·공지에 옛 주소가 남지 않는지를 본다.
 
 **dual-write 금지**는 그대로다 — 한 필드의 정본은 한 곳. 26년 현장의 정본은 이제 콘솔 DB 다.
 정산관리도 이관했다 — ★2026-08-28 로 끝났다★. 지급 원장 110건(4억 6,889만)이 콘솔에 있고,
@@ -382,7 +391,7 @@ development 환경에만 연결)를 가리키고, 프로덕션·프리뷰는 원
   그 폴더·우리 저장소인지 확인한다(`lib/survey/draft-blobs` vetPhotos). 지우면 폴더째 걷는다. 저장 뒤 바꾼 것을 두고
   나가면 「중단하시겠습니까」를 묻는다(`lib/survey/use-draft`). ★실사보고서 작성 자체는 여전히 서버에 아무것도
   안 남긴다★ — 남는 것은 사람이 「임시 저장」을 누른 것뿐이다.
-- **콘솔** (`app/(console)/`, 로그인, `hanbaek-ev.vercel.app`) — 한백이 현장을 진행시킨다. 지금 만드는 것.
+- **콘솔** (`app/(console)/`, 로그인, `hanbaek-re.vercel.app` — 2026-11-03 까지 `hanbaek-ev.vercel.app`, 그 주소는 넘긴다) — 한백이 현장을 진행시킨다. 지금 만드는 것.
 
 주소는 하나다(2026-10-01 포털을 닫았다). 예전에는 주소가 둘이고 배포가 하나라 `middleware.ts` 가 주소로
 구역을 갈랐다 — 그 게이트는 걷었고, 닫은 주소를 콘솔로 넘기는 일은 `next.config.mjs` 가 한다.
@@ -500,7 +509,7 @@ batch_finals 테이블. 「1차 확정」이라 부르지 않는다 — 1차·2�
 고치면 갈린다). 옮기며 바꾼 것 셋: 화면은 콘솔 부품(Btn · Badge · Segments · 글자 역할 — `components/solar/ui` 가 판정 → 말투만 잇는다) ·
 항공사진 잇기는 sharp 대신 jpeg-js(`lib/solar/sources/raster` — 이미 있던 것, 네이티브 모듈을 안 더한다) · AI 지붕 찾기는 콘솔 SDK(0.52)에
 맞춰 칸을 변수로 넘기고 `[llm] solar-roofs` 비용 한 줄을 남긴다(한 번 약 $0.04 · 17초). 키 여섯: `KAKAO_JS_KEY`(지도 — ★카카오 앱의
-「JavaScript SDK 도메인」에 그 주소가 있어야 뜬다★, 지금 등록은 localhost:3100 뿐) · `KAKAO_REST_KEY`(검색 후보) · `VWORLD_KEY` ·
+「JavaScript SDK 도메인」에 그 주소가 있어야 뜬다★ — localhost:3200 · https://hanbaek-re.vercel.app 을 넣어야 한다, 지금 등록은 localhost:3100 뿐) · `KAKAO_REST_KEY`(검색 후보) · `VWORLD_KEY` ·
 `VWORLD_DOMAIN`(필지 · 건물 · 항공사진) · `KEPCO_KEY`(계통) · `DATA_GO_KR_KEY`(건축물대장). Vercel 에는 아직 없다 — 배포 전에 넣는다. 전기차의 모델(운영사 · 단가 케이스 · 기성)을 「범용 현장」으로 일반화하지 않는다 —
 같이 쓰는 것은 바탕(계정 · 알림 · 파일 · 하네스)까지다.
 

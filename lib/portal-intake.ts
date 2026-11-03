@@ -11,7 +11,7 @@
  */
 
 /** 접수하러 갈 곳 — 배포 주소가 둘이라 환경변수로 덮을 수 있게 둔다(middleware 의 호스트 목록과 같은 방식) */
-export const CONSOLE_URL = (process.env.NEXT_PUBLIC_CONSOLE_URL ?? 'https://hanbaek-ev.vercel.app')
+export const CONSOLE_URL = (process.env.NEXT_PUBLIC_CONSOLE_URL ?? 'https://hanbaek-re.vercel.app')
   .replace(/\/+$/, '');
 
 /** 닫힌 문에서 돌려주는 말 — 화면·API 가 같은 문장을 쓴다 */

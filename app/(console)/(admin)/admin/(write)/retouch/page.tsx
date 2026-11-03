@@ -3,7 +3,7 @@ import { Noto_Sans_KR, Noto_Serif_KR } from 'next/font/google';
 import Retouch from '@/components/retouch/Retouch';
 
 export const metadata: Metadata = {
-  title: '서류 문구 수정 — 한백 전기차사업관리시스템',
+  title: '서류 문구 수정',
   robots: { index: false, follow: false },
 };
 

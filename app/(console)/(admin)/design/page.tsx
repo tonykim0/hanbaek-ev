@@ -17,7 +17,7 @@ import {
   Alerts, Badge, Blank, Btn, Choice, Clear, Empty, Err, FIELD, FIELD_CELL, GroupHead, HR, Note, Saved, Segments, Tag, TEXT, Td, Th, Val,
 } from '@/components/ui';
 
-export const metadata = { title: '디자인 기준 — 한백 전기차사업관리시스템' };
+export const metadata = { title: '디자인 기준' };
 
 /*
  * 클래스 이름은 통째로 적는다.
@@ -107,7 +107,7 @@ export default function DesignPage() {
             <div key={cls} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2.5">
               <code className="w-24 shrink-0 text-micro font-bold text-brand-700">{cls}</code>
               <span className="w-12 shrink-0 text-micro tabular-nums text-slate-400">{px}</span>
-              <span className={`${cls} font-bold text-slate-800`}>한백 전기차사업관리 0123</span>
+              <span className={`${cls} font-bold text-slate-800`}>한백 신재생사업관리 0123</span>
               <span className="ml-auto text-tiny text-slate-400">{use}</span>
             </div>
           ))}

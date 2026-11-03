@@ -4,8 +4,9 @@ import { redirect } from 'next/navigation';
 import LoginForm from './LoginForm';
 import { getSessionUser } from '@/lib/auth/session';
 import { isUsingDevSeed } from '@/lib/auth/users';
+import { SYSTEM_NAME } from '@/lib/biz';
 
-export const metadata = { title: '로그인 — 한백 전기차사업관리시스템' };
+export const metadata = { title: '로그인' };
 
 export default async function LoginPage() {
   if (await getSessionUser()) redirect('/projects');
@@ -22,7 +23,7 @@ export default async function LoginPage() {
             className="mx-auto mb-3 rounded-2xl"
             priority
           />
-          <h1 className="text-h1 font-black text-slate-900">한백 전기차충전사업 관리시스템</h1>
+          <h1 className="text-h1 font-black text-slate-900">{SYSTEM_NAME}</h1>
         </div>
 
         <div className="rounded-panel border border-slate-200 bg-white p-6 shadow-[0_20px_40px_-32px_rgba(15,23,42,0.5)]">

@@ -3,7 +3,7 @@ import { getSessionUser } from '@/lib/auth/session';
 import { getRepository } from '@/lib/data';
 import NotificationList from '@/components/NotificationList';
 
-export const metadata = { title: '알림 — 한백 전기차사업관리시스템' };
+export const metadata = { title: '알림' };
 export const dynamic = 'force-dynamic';
 
 /**

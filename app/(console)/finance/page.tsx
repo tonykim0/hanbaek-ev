@@ -11,7 +11,7 @@ import { Frame } from '@/components/settlement/parts';
 import { Blank, PANEL, Tag, TEXT, Td, Th } from '@/components/ui';
 import type { ReactNode } from 'react';
 
-export const metadata = { title: '정산 현황 — 한백 전기차사업관리시스템' };
+export const metadata = { title: '정산 현황' };
 
 /**
  * 정산 현황 — 돈이 달마다 얼마 들어오고 얼마 나갔나.

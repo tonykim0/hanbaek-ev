@@ -8,7 +8,7 @@
  */
 import { SOLAR_STAGES } from '@/lib/solar/stages';
 
-export const metadata = { title: '태양광 현장관리 — 한백 태양광사업관리' };
+export const metadata = { title: '태양광 현장관리' };
 
 export default function SolarPage() {
   return (

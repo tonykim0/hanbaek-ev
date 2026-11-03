@@ -4,7 +4,7 @@ import { getRepository } from '@/lib/data';
 import NoticeBoard from '@/components/NoticeBoard';
 import { canWrite } from '@/lib/roles';
 
-export const metadata = { title: '공지 — 한백 전기차사업관리시스템' };
+export const metadata = { title: '공지' };
 // 공지를 쓰면 배포 없이 바로 보이도록 매 요청마다 읽는다
 export const dynamic = 'force-dynamic';
 

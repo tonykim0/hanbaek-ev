@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 
-export const metadata = { title: '실사보고서 작성 — 한백 전기차사업관리시스템' };
+export const metadata = { title: '실사보고서 작성' };
 
 /**
  * 실사보고서(사진대지) 작성 — 운영사별 서식으로 들어가는 자리.

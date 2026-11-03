@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Analytics } from '@vercel/analytics/react';
+import { SYSTEM_NAME } from '@/lib/biz';
 import './globals.css';
 
 /*
@@ -8,13 +9,16 @@ import './globals.css';
  * 「한백 전기차충전사업」·「| 한백 전기차충전사업」. 같은 시스템을 네 이름으로 부르면
  * 링크를 받은 사람은 그것이 같은 것인지 알 수 없다.
  *
- * 콘솔의 이름은 ★한백 전기차사업관리시스템★ 하나다. 여기 title 은 제 제목을 안 정한
- * 화면의 기본값이라, 콘솔 이름으로 둔다 — 새 콘솔 화면이 제목을 깜빡해도 남의 이름을
- * 달지 않는다. (포털 「한백 전기차충전사업」은 2026-10-01 닫았다 — 이름이 하나 남았다.)
+ * 콘솔의 이름은 하나다 — 처음엔 「한백 전기차사업관리시스템」, 태양광이 들어온 2026-11-03 부터
+ * ★한백 신재생사업관리시스템★(lib/biz SYSTEM_NAME). (포털 「한백 전기차충전사업」은 2026-10-01 닫았다.)
+ *
+ * ★화면은 제 이름만 적는다★ — 「계약관리」처럼. 꼬리(— 한백 신재생사업관리시스템)는 여기 template 이 단다.
+ * 예전에는 화면 31곳이 꼬리까지 손으로 적어, 이름을 바꾸려면 31곳을 고쳐야 했다(같은 날 그렇게 걷었다).
+ * 제목을 안 정한 화면은 default — 새 화면이 제목을 깜빡해도 남의 이름을 달지 않는다.
  */
 export const metadata: Metadata = {
-  title: '한백 전기차사업관리시스템',
-  description: '한백 EV 인프라 사업 관리',
+  title: { default: SYSTEM_NAME, template: `%s — ${SYSTEM_NAME}` },
+  description: '한백 신재생 사업 관리 — 전기차 · 태양광',
   icons: { icon: '/logo.png', apple: '/logo.png' },
 };
 

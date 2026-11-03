@@ -10,6 +10,13 @@
  */
 export type Biz = 'ev' | 'solar';
 
+/**
+ * 시스템 이름 — 두 사업을 아우른다(2026-11-03, 한백 「이제 전기차사업관리가 아니라 신재생사업관리야 — 전기차/태양광」).
+ * 탭 제목의 꼬리(app/layout 의 title.template)와 로그인 화면이 이것 하나를 쓴다. 사업마다의 이름은 BIZ_TITLE(사이드바).
+ * 운영 주소도 같은 날 hanbaek-ev → hanbaek-re(renewable energy)로 바꿨다 — 옛 주소는 next.config 가 넘긴다.
+ */
+export const SYSTEM_NAME = '한백 신재생사업관리시스템';
+
 export const BIZES: readonly Biz[] = ['ev', 'solar'];
 
 export const SOLAR_ROOT = '/solar';
