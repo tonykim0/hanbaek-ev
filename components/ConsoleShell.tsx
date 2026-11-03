@@ -25,6 +25,7 @@ import type { Role } from '@/lib/roles';
 import { canWrite, isHanbaek, ROLE_LABEL } from '@/lib/roles';
 import { TODO_GROUPS, type TodoGroup } from '@/lib/todo-types';
 import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
+import { BIZ_COOKIE, BIZ_FRAME, BIZ_HOME, BIZ_TITLE, bizOf, isShared, type Biz } from '@/lib/biz';
 import TopBar from '@/components/TopBar';
 
 const COLLAPSE_KEY = 'hb-console-sidebar-collapsed';
@@ -240,16 +241,52 @@ const GROUPS: Group[] = [
   },
 ];
 
+/**
+ * 태양광 사업의 사이드바(2026-11-03 시작) — 지금은 현장관리 하나와, 사업과 상관없는 기준 · 계정(협력사 정보 · 계정설정).
+ * 공지 · 알림은 묶음 밖 맨 위라 두 사업이 같이 쓴다. 전기차의 접수 · 정산 · 단가표는 전기차의 일이라 여기 없다.
+ * 태양광은 아직 한백만 본다(/solar 는 (admin) 그룹 안) — 협력사 계정이 생기면 묶음마다 문을 다시 정한다.
+ */
+const SOLAR_GROUPS: Group[] = [
+  {
+    label: '진행',
+    hanbaekOnly: true,
+    items: [{ href: '/solar', label: '현장관리', short: '현장' }],
+  },
+  {
+    label: '기준 · 계정',
+    hanbaekOnly: true,
+    items: [
+      { href: '/admin/partners', label: '협력사 정보', short: '협력', hanbaekOnly: true },
+      { href: '/admin/accounts', label: '계정설정', short: '계정', adminOnly: true },
+    ],
+  },
+];
+
 export default function ConsoleShell({
-  org, role, actAs = null, children,
+  org, role, actAs = null, lastBiz = 'ev', children,
 }: {
   org: string | null;
   role: Role;
   /** 대행 중이면 그 계정 이름 — 관리자가 협력사의 눈으로 보고 있다 */
   actAs?: { name: string } | null;
+  /** 마지막에 있던 사업 — 같이 쓰는 화면(공지 · 알림 …)의 틀을 이것으로 그린다(lib/biz) */
+  lastBiz?: Biz;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  /*
+   * 사업 — 주소로 정한다(/solar 아래가 태양광). 같이 쓰는 화면은 마지막에 있던 사업 그대로. 사업이 정해지는
+   * 화면에 들어서면 그것이 마지막 사업이 되고, 쿠키에 적어 다음 첫 그림(서버)도 맞춘다.
+   */
+  const [last, setLast] = useState<Biz>(lastBiz);
+  const biz = bizOf(pathname, last);
+  const frame = BIZ_FRAME[biz];
+  useEffect(() => {
+    if (isShared(pathname)) return;
+    const now = bizOf(pathname);
+    setLast(now);
+    document.cookie = `${BIZ_COOKIE}=${now}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
+  }, [pathname]);
   const [open, setOpen] = useState(true);
   const [ready, setReady] = useState(false);
   /**
@@ -370,7 +407,8 @@ export default function ConsoleShell({
     && (!x.writerOnly || canWrite(role))
     && (!x.partnerOnly || !isHanbaek(role));
 
-  const groups = GROUPS.filter(allow)
+  const groups = (biz === 'solar' ? SOLAR_GROUPS : GROUPS)
+    .filter(allow)
     .map((g) => ({ ...g, items: g.items.filter(allow) }))
     .filter((g) => g.items.length > 0);
 
@@ -391,12 +429,12 @@ export default function ConsoleShell({
         } md:translate-x-0 ${open ? 'md:w-[184px]' : 'md:w-[56px]'}`}
       >
         <div className={`flex h-14 shrink-0 items-center ${expanded ? 'gap-2 px-3' : 'justify-center'}`}>
-          <Link href="/projects" className="flex min-w-0 items-center gap-2">
+          <Link href={BIZ_HOME[biz]} className="flex min-w-0 items-center gap-2">
             <Image src="/logo.png" alt="한백" width={24} height={24} className="flex-none" priority />
             {expanded && (
               <span className="min-w-0 leading-tight">
                 <span className="block text-base font-bold text-slate-900">한백</span>
-                <span className="block truncate text-micro text-slate-500">전기차사업관리</span>
+                <span className="block truncate text-micro text-slate-500">{BIZ_TITLE[biz]}</span>
               </span>
             )}
           </Link>
@@ -409,9 +447,9 @@ export default function ConsoleShell({
             세우고 아래 묶음들과 얇은 선으로 가른다(상자를 겹치지 않는다 — 화면 규칙 1).
           */}
           <div className="mb-3 border-b border-slate-100 pb-3">
-            <TopItem href="/notices" label="공지" count={unread} expanded={expanded} active={pathname.startsWith('/notices')} />
+            <TopItem href="/notices" label="공지" count={unread} expanded={expanded} active={pathname.startsWith('/notices')} on={frame.on} />
             {/* 알림 — 진행현황에 상대방이 남긴 글(lib/notify.ts). 공지와 같은 꼴, 공지 바로 밑 */}
-            <TopItem href="/notifications" label="알림" count={alerts} expanded={expanded} active={pathname.startsWith('/notifications')} />
+            <TopItem href="/notifications" label="알림" count={alerts} expanded={expanded} active={pathname.startsWith('/notifications')} on={frame.on} />
           </div>
 
           {groups.map((g) => (
@@ -438,7 +476,7 @@ export default function ConsoleShell({
                           expanded ? 'gap-2 px-2 py-1.5' : 'justify-center py-2'
                         } ${
                           active
-                            ? 'bg-brand-50 text-brand-800'
+                            ? frame.on
                             : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                         }`}
                       >
@@ -541,7 +579,7 @@ export default function ConsoleShell({
           '--console-top': actAs ? '79px' : '48px',
         } as CSSProperties}
       >
-        <TopBar role={role} onMenu={() => setDrawer(true)} />
+        <TopBar role={role} biz={biz} onMenu={() => setDrawer(true)} />
         {/*
           * 대행 띠 — 지금 눈이 내 것이 아님을 어느 화면에서든 보인다. 사이드바에 관리
           * 묶음이 사라지므로(눈이 협력사다) 돌아오는 길은 이 띠 하나뿐이다.
@@ -585,8 +623,10 @@ function ActAsExit() {
  * 사이드바 맨 위 한 줄(공지·알림) — 업무 묶음 밖에서 먼저 읽을 것. 안 읽은 것이 있을 때만 배지를 단다 —
  * 0 을 적으면 할 일 배지(늘 서 있다)와 헷갈린다. 접힌 사이드바에서는 점 하나.
  */
-function TopItem({ href, label, count, expanded, active }: {
+function TopItem({ href, label, count, expanded, active, on }: {
   href: string; label: string; count: number; expanded: boolean; active: boolean;
+  /** 고른 메뉴의 색 — 사업의 틀 색(lib/biz BIZ_FRAME) */
+  on: string;
 }) {
   return (
     <Link
@@ -595,7 +635,7 @@ function TopItem({ href, label, count, expanded, active }: {
       className={`flex items-center rounded-ctl font-semibold transition ${
         expanded ? 'gap-2 px-2 py-1.5' : 'justify-center py-2'
       } ${
-        active ? 'bg-brand-50 text-brand-800' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+        active ? on : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
       }`}
     >
       {expanded ? (

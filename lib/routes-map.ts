@@ -36,6 +36,7 @@ export const CONSOLE_PATHS = [
   '/library',
   '/lookup',
   '/apartments',
+  '/solar',       // 태양광 사업 — 첫 화면 현장관리(2026-11-03 시작). 지금은 (admin) 그룹 안이라 한백만
   '/login',
 ] as const;
 
@@ -47,6 +48,6 @@ export const ADMIN_ONLY = ['/admin'] as const;
 /** /admin 아래인데 한백의 눈(열람 전용)에게도 여는 것 — 재무가 지급 전에 보는 협력사 정보 */
 export const ADMIN_READABLE = ['/admin/partners'] as const;
 /** 한백의 눈만(관리자·열람 전용) — (admin) 라우트 그룹의 바깥 문과 같다 */
-export const HANBAEK_ONLY = ['/receivables', '/pricing', '/design'] as const;
+export const HANBAEK_ONLY = ['/receivables', '/pricing', '/design', '/solar'] as const;
 /** 쓰는 사람만 — 열람 전용은 못 들어간다 */
 export const WRITER_ONLY = ['/projects/new', '/contracts', '/settings'] as const;

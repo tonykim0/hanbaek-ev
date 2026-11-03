@@ -12,6 +12,7 @@
  */
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { BIZ_FRAME, BIZ_HOME, BIZ_LABEL, BIZES, type Biz } from '@/lib/biz';
 import { isHanbaek, type Role } from '@/lib/roles';
 
 const TOOLS: { href: string; label: string; adminOnly?: boolean; blank?: boolean }[] = [
@@ -64,12 +65,16 @@ const TOOLS_DOC = [
   { href: '/scan', label: '사진 → 스캔본' },
 ];
 
-export default function TopBar({ role, onMenu }: {
+export default function TopBar({ role, biz, onMenu }: {
   role: Role;
+  /** 지금 사업 — 바의 색과 도구가 갈린다(lib/biz) */
+  biz: Biz;
   /** 좁은 화면에서 사이드바 서랍을 연다 — 넓은 화면에는 사이드바가 늘 서 있어 단추가 없다 */
   onMenu?: () => void;
 }) {
   const pathname = usePathname();
+  // 아래 도구는 전부 전기차의 것이다(자료실 · 이력 조회 · 접수 · 서류 손질) — 태양광 도구는 태양광 일이 생기면 그때 단다
+  const ev = biz === 'ev';
 
   return (
     /*
@@ -77,7 +82,7 @@ export default function TopBar({ role, onMenu }: {
      * 로고 원색(brand-400)은 흰 글자가 안 읽혀서 같은 계열의 진한 톤을 쓴다.
      * 조회 도구는 왼쪽 — 본문 제목과 같은 여백에서 시작한다.
      */
-    <header className="sticky top-0 z-30 flex h-12 items-center gap-1 bg-brand-700 px-5 sm:px-7 print:hidden">
+    <header className={`sticky top-0 z-30 flex h-12 items-center gap-1 ${BIZ_FRAME[biz].bar} px-5 sm:px-7 print:hidden`}>
       {/* 좁은 화면에서는 사이드바가 서랍이라 여는 자리가 필요하다 — 메뉴 옆이 그 자리다 */}
       {onMenu && (
         <button
@@ -93,6 +98,27 @@ export default function TopBar({ role, onMenu }: {
         * 좁은 화면에서는 바로가기가 옆으로 흐른다 — 접히면 상단 바 높이(h-12)를 넘어
         * 글자가 잘린다. 스크롤바는 감춘다.
         */}
+      {/*
+        * 사업 전환 — 바의 맨 왼쪽(한백 「모드를 바꾸게 할까? 태양광/전기차」). 바가 곧 사업의 색이라 그 바 위에 선다.
+        * 두 사업을 다 보는 한백(관리자 · 열람 전용)에게만 — 협력사는 자기 사업 하나라 바꿀 것이 없다.
+        * 색만으로 가르지 않는다: 고른 쪽은 글자가 늘 보이고(흰 바탕), aria-current 로도 말한다.
+        */}
+      {isHanbaek(role) && (
+        <nav aria-label="사업" className="mr-2 flex shrink-0 rounded-ctl bg-black/15 p-0.5">
+          {BIZES.map((b) => (
+            <Link
+              key={b}
+              href={BIZ_HOME[b]}
+              aria-current={b === biz ? 'page' : undefined}
+              className={`rounded-[6px] px-2.5 py-1 text-small font-black transition ${
+                b === biz ? `bg-white ${BIZ_FRAME[b].pick}` : 'text-white/80 hover:bg-white/10 hover:text-white'
+              }`}
+            >
+              {BIZ_LABEL[b]}
+            </Link>
+          ))}
+        </nav>
+      )}
       <nav
         aria-label="바로가기"
         className="flex min-w-0 items-center gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -103,10 +129,10 @@ export default function TopBar({ role, onMenu }: {
           화면을 열 때 눈이 처음 닿는 자리에 선다(ConsoleShell). 같은 것을 두 곳에
           두지 않는다(화면 규칙 5).
         */}
-        {role === 'admin' && ADMIN_INTAKE.map((t) => (
+        {ev && role === 'admin' && ADMIN_INTAKE.map((t) => (
           <BarLink key={t.href} href={t.href} label={t.label} active={pathname.startsWith(t.href)} />
         ))}
-        {isHanbaek(role) && (
+        {ev && isHanbaek(role) && (
           <>
             {TOOLS_DOC.map((t) => (
               <BarLink key={t.href} href={t.href} label={t.label} active={pathname.startsWith(t.href)} />
@@ -115,7 +141,7 @@ export default function TopBar({ role, onMenu }: {
             <div className="mx-1 h-5 w-px shrink-0 bg-white/25" />
           </>
         )}
-        {TOOLS.filter((t) => !t.adminOnly || role === 'admin').map((t) => (
+        {ev && TOOLS.filter((t) => !t.adminOnly || role === 'admin').map((t) => (
           <BarLink
             key={t.href}
             href={t.href}
