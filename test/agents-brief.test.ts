@@ -104,6 +104,18 @@ describe('정산 담당이 읽는 것 — 기성관리 · 지급관리 · 열린
     batch({ paidAt: shift(-400), org: '옛업체', kind: '시공비', finalized: true }),                 // 오래된 지급완료
   ];
 
+  it('기성관리 — 줄마다 관리번호와 운영사가 선다(청구 메일은 운영사에게 간다)', () => {
+    const text = briefOf(SETTLE, data({
+      projects: [site('HB-2026-201', { name: '청주 리버파크자이', cpo: '나이스인프라' })],
+      receivables: [{
+        id: 'claim|HB-2026-201', href: '/projects/HB-2026-201?tab=receivable', name: '청주 리버파크자이',
+        what: '1차 6,600,000원 · 착공 충족', group: '기성', kind: '기성 청구', stalledDays: 0, urgency: 155,
+        urgencyLabel: '청구 가능 155일', overdue: true,
+      }],
+    }));
+    expect(text).toContain('- HB-2026-201 · 청주 리버파크자이 · 운영사 나이스인프라 · 기성 청구 · 1차 6,600,000원 · 착공 충족 · 청구 가능 155일');
+  });
+
   it('지급관리 — 상태별로 묶고, 오래된 지급완료는 뺀다', () => {
     const text = briefOf(SETTLE, data({ batches }));
     expect(text).toContain('[기성관리 — 한백이 운영사에게서 받을 돈의 할 일 0건');
@@ -169,7 +181,7 @@ describe('지난 대화를 에이전트에게 넘기는 모양', () => {
   });
   const file = (id: string, name: string) => ({ id, name, url: `https://blob.example/${id}`, size: 10, contentType: null });
 
-  it('넘긴 파일 — PDF · 그림은 주소로, 글자를 뽑은 것은 글로, 못 여는 것은 이름만', () => {
+  it('넘긴 파일 — PDF · 그림은 주소로, 글자를 뽑은 것은 글로, 못 여는 것은 이름만 · 머리에 id(메일에 붙일 때 쓴다)', () => {
     const m = toMessages(
       [said('user', '이 자료 보고 정리해줘', [
         file('a', '견적서.pdf'), file('b', '현장.jpg'), file('c', '단가표.xlsx'), file('d', '공문.hwp'),
@@ -178,12 +190,12 @@ describe('지난 대화를 에이전트에게 넘기는 모양', () => {
     );
     expect(m[0].content).toEqual([
       { type: 'text', text: '[김한백 · 2026-11-02 10:00] 이 자료 보고 정리해줘' },
-      { type: 'text', text: '[넘긴 파일 견적서.pdf]' },
+      { type: 'text', text: '[넘긴 파일 견적서.pdf · id=a]' },
       { type: 'document', source: { type: 'url', url: 'https://blob.example/a' }, title: '견적서.pdf' },
-      { type: 'text', text: '[넘긴 파일 현장.jpg]' },
+      { type: 'text', text: '[넘긴 파일 현장.jpg · id=b]' },
       { type: 'image', source: { type: 'url', url: 'https://blob.example/b' } },
-      { type: 'text', text: '[넘긴 파일 단가표.xlsx] — 글자만 뽑음\n## 시트 「단가」 (1줄)\n완속\t1200000' },
-      { type: 'text', text: '[넘긴 파일 공문.hwp] — 이 형식은 열지 못한다. 이름만 안다' },
+      { type: 'text', text: '[넘긴 파일 단가표.xlsx · id=c] — 글자만 뽑음\n## 시트 「단가」 (1줄)\n완속\t1200000' },
+      { type: 'text', text: '[넘긴 파일 공문.hwp · id=d] — 이 형식은 열지 못한다. 이름만 안다' },
     ]);
   });
 

@@ -13,7 +13,7 @@ import { and, asc, desc, eq, gte, inArray, lt, sql, type SQL } from 'drizzle-orm
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
-import { agentDuties, agentFiles, agentMessages, agents, agentTasks, auditLog, projects } from '@/lib/db/schema';
+import { agentDuties, agentFiles, agentMails, agentMessages, agents, agentTasks, auditLog, projects } from '@/lib/db/schema';
 import { stampOf, today } from '@/lib/date';
 import { allSlots } from '../db-slot';
 import type {
@@ -26,6 +26,7 @@ import { mondayOf, shiftDay } from '@/lib/agents/weeks';
 import type { CpoName } from '@/types/project';
 import type { Actor, ProjectRepository } from '../repository';
 import { assertAdmin } from './shared';
+import { mailsForMessages } from './agent-mail';
 
 /** 글 상한 — 지시·기록은 메모 결이고, 에이전트의 말은 아지트 글 초안처럼 길 수 있다 */
 const MAX = { dutyTitle: 60, dutyBody: 4000, taskTitle: 120, taskNote: 1000, said: 6000, agentSaid: 20000 } as const;
@@ -45,7 +46,11 @@ const WEEK_THREAD_LIMIT = 1000;
 const DUTY_ACTIONS = ['에이전트 업무 정의', '에이전트 업무 정의 수정', '에이전트 업무 정의 삭제'];
 const TASK_ADDED = ['에이전트 할 일', '에이전트 할 일 (에이전트가 적음)'];
 const TASK_DONE = ['에이전트 할 일 끝냄', '에이전트 할 일 끝냄 (에이전트가 적음)'];
-const EVENT_ACTIONS = [...DUTY_ACTIONS, ...TASK_ADDED, ...TASK_DONE];
+/** 메일이 나간 때 — store/agent-mail finishAgentMail 이 남긴다 */
+const MAIL_SENT = '에이전트 메일 보냄';
+const EVENT_ACTIONS = [...DUTY_ACTIONS, ...TASK_ADDED, ...TASK_DONE, MAIL_SENT];
+/** 승인을 기다리는 메일 */
+const PENDING_MAIL = ['draft', 'failed'];
 
 /** 한국 시각으로 그 날 0시 */
 const kstStart = (day: string) => new Date(`${day}T00:00:00+09:00`);
@@ -77,6 +82,8 @@ function eventOf(row: typeof auditLog.$inferSelect, agentName: string): AgentEve
       return { at, kind: 'task-done', title: row.oldValue ?? '', by, byAgent: false };
     case '에이전트 할 일 끝냄 (에이전트가 적음)':
       return { at, kind: 'task-done', title: row.oldValue ?? '', by: agentName, byAgent: true };
+    case MAIL_SENT:
+      return { at, kind: 'mail-sent', title: row.newValue ?? '', by, byAgent: false };
     default:
       return null;
   }
@@ -138,7 +145,7 @@ export const agentStore: Pick<
     /* 활동 칸 이레 — 한국 달력으로 오늘부터 엿새 전까지 */
     const days = Array.from({ length: ACTIVITY_DAYS }, (_, i) => shiftDay(now, i - (ACTIVITY_DAYS - 1)));
     const dayOfAt = sql<string>`to_char(${agentMessages.at} at time zone 'Asia/Seoul', 'YYYY-MM-DD')`;
-    const [rows, duties, tasks, lasts, recent] = await allSlots([
+    const [rows, duties, tasks, lasts, recent, mails] = await allSlots([
       () => db.select().from(agents).orderBy(asc(agents.sort)),
       () => db.select({ agentId: agentDuties.agentId, n: sql<number>`count(*)::int` })
         .from(agentDuties).groupBy(agentDuties.agentId),
@@ -158,7 +165,10 @@ export const agentStore: Pick<
       }).from(agentMessages)
         .where(sql`${agentMessages.at} >= ${`${days[0]}T00:00:00+09:00`}::timestamptz`)
         .groupBy(agentMessages.agentId, dayOfAt),
+      () => db.select({ agentId: agentMails.agentId, n: sql<number>`count(*)::int` })
+        .from(agentMails).where(inArray(agentMails.status, PENDING_MAIL)).groupBy(agentMails.agentId),
     ] as const);
+    const mailOf = new Map(mails.map((m) => [m.agentId, m.n]));
     const dutyOf = new Map(duties.map((d) => [d.agentId, d.n]));
     const taskOf = new Map(tasks.map((t) => [t.agentId, t]));
     const lastOf = new Map(lasts.map((m) => [m.agentId, m]));
@@ -173,6 +183,7 @@ export const agentStore: Pick<
         lateTasks: taskOf.get(r.id)?.late ?? 0,
         activity: days.map((day) => ({ day, n: recentOf.get(dayKey(r.id, day))?.n ?? 0 })),
         usdToday: Number(recentOf.get(dayKey(r.id, now))?.usd ?? 0),
+        pendingMails: mailOf.get(r.id) ?? 0,
         last: last
           ? {
             role: (['user', 'note', 'agent'].includes(last.role) ? last.role : 'note') as AgentMessageRole,
@@ -194,7 +205,7 @@ export const agentStore: Pick<
     const msgWeek = weekOf(agentMessages.at);
     const logWeek = weekOf(auditLog.at);
     const fileWeek = weekOf(agentFiles.at);
-    const [duties, tasks, said, msgWeeks, logWeeks, fileWeeks] = await allSlots([
+    const [duties, tasks, said, msgWeeks, logWeeks, fileWeeks, pending] = await allSlots([
       () => db.select().from(agentDuties).where(eq(agentDuties.agentId, id))
         .orderBy(asc(agentDuties.sort), asc(agentDuties.createdAt)),
       () => db.select({ t: agentTasks, projectName: projects.name })
@@ -217,9 +228,13 @@ export const agentStore: Pick<
         .groupBy(logWeek, auditLog.action),
       () => db.select({ week: fileWeek, n: sql<number>`count(*)::int` })
         .from(agentFiles).where(eq(agentFiles.agentId, id)).groupBy(fileWeek),
+      () => db.select({ n: sql<number>`count(*)::int` })
+        .from(agentMails).where(and(eq(agentMails.agentId, id), inArray(agentMails.status, PENDING_MAIL))),
     ] as const);
 
     const rows = said.reverse();
+    /* 메일 초안은 그것을 쓴 답 밑에 선다 — 지금 대화면 답에 이어지지 못한 초안(답을 남기다 끊긴 것)도 */
+    const mails = await mailsForMessages(id, rows.map((m) => m.id), !range);
     const [files, logs] = await allSlots([
       () => (rows.length
         ? db.select().from(agentFiles).where(inArray(agentFiles.messageId, rows.map((m) => m.id))).orderBy(asc(agentFiles.at))
@@ -241,7 +256,9 @@ export const agentStore: Pick<
     const weekRow = (w: string): AgentWeek => {
       let x = weeks.get(w);
       if (!x) {
-        x = { start: w, end: shiftDay(w, 6), user: 0, note: 0, agent: 0, tasksAdded: 0, tasksDone: 0, dutyChanges: 0, files: 0, usd: 0 };
+        x = {
+          start: w, end: shiftDay(w, 6), user: 0, note: 0, agent: 0, tasksAdded: 0, tasksDone: 0, dutyChanges: 0, files: 0, mails: 0, usd: 0,
+        };
         weeks.set(w, x);
       }
       return x;
@@ -258,6 +275,7 @@ export const agentStore: Pick<
       if (DUTY_ACTIONS.includes(r.action)) x.dutyChanges += r.n;
       else if (TASK_ADDED.includes(r.action)) x.tasksAdded += r.n;
       else if (TASK_DONE.includes(r.action)) x.tasksDone += r.n;
+      else if (r.action === MAIL_SENT) x.mails += r.n;
     }
     for (const r of fileWeeks) weekRow(r.week).files += r.n;
 
@@ -279,6 +297,8 @@ export const agentStore: Pick<
         createdAt: stampOf(t.createdAt),
       })).sort(taskOrder),
       messages: rows.map((m) => messageOf(m, filesOf.get(m.id) ?? [])),
+      mails,
+      pendingMails: pending[0]?.n ?? 0,
       weeks: [...weeks.values()].sort((x, y) => y.start.localeCompare(x.start)).slice(0, WEEKS_LIMIT),
       week: start
         ? {

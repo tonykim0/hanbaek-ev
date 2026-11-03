@@ -11,6 +11,7 @@ import type { AgentHeadline, AgentSummary } from '@/types/agents';
 import { Tag, TEXT } from '@/components/ui';
 import { HeadlineCounts } from '@/components/agents/HeadlineCounts';
 import { Activity, AgentMark, DotGrid, ORG_LINE, OrgNode, Twig } from '@/components/agents/kit';
+import { MailAccount } from '@/components/agents/MailAccount';
 import { isLive, ledOf, roleLineOf } from '@/components/agents/status';
 
 export const metadata = { title: '에이전트 — 한백 전기차사업관리시스템' };
@@ -26,11 +27,12 @@ export const dynamic = 'force-dynamic';
  * 셈(콘솔이 지금 셈한 것, lib/agents/brief headlineOf) · 최근 이레의 활동 칸 · 업무 정의 · 열린 할 일. 누르면 그 담당과의
  * 대화(/admin/agents/[id]). 가로로 서려면 넓어야 해서 xl 아래에서는 같은 조직을 세로로 펼친다. 모양은 components/agents/kit.
  */
-export default async function AgentsPage() {
+export default async function AgentsPage({ searchParams }: { searchParams: { mail_error?: string } }) {
   const session = await getSessionUser();
   if (!session) redirect('/login?next=/admin/agents');
   const actor = actorOf(session);
-  const [agents, data] = await Promise.all([getRepository().listAgents(actor), loadScope(actor)]);
+  const repo = getRepository();
+  const [agents, data, account] = await Promise.all([repo.listAgents(actor), loadScope(actor), repo.getMailAccount(actor)]);
   const rows = agents.map((a) => ({ a, h: headlineOf(a, data) }));
   const operators = rows.filter((r) => r.a.kind === 'operator');
   const strategy = rows.find((r) => r.a.kind === 'strategy') ?? null;
@@ -76,6 +78,9 @@ export default async function AgentsPage() {
           <Stat label="오늘 비용" value={`$${usdToday.toFixed(2)}`} />
         </dl>
       </header>
+      <div className="-mt-3 mb-5">
+        <MailAccount account={account} back="/admin/agents" error={searchParams.mail_error ?? null} />
+      </div>
 
       {/*
         넓은 화면 — 한백 → 전략·기획 → (운영사 담당 · 정산), 운영사 다섯은 한 줄 아래.
@@ -237,6 +242,7 @@ function AgentCard({ agent: a, headline }: { agent: AgentSummary; headline: Agen
         <span className={`${TEXT.meta} tabular-nums`}>업무 {a.duties} · 할 일 {a.openTasks}</span>
         {a.duties === 0 && <Tag tone="warn">업무 정의 미지정</Tag>}
         {a.lateTasks > 0 && <Tag tone="stop">기한 지남 {a.lateTasks}</Tag>}
+        {a.pendingMails > 0 && <Tag tone="warn">승인 대기 메일 {a.pendingMails}</Tag>}
         <span className={`ml-auto ${TEXT.meta} tabular-nums`}>{a.last ? a.last.at.slice(5) : '—'}</span>
       </div>
     </Link>

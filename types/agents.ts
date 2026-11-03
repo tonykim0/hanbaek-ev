@@ -84,6 +84,53 @@ export interface AgentMessageMeta {
   /** 이 답에서 적은 할 일·끝낸 할 일의 제목 */
   added?: string[];
   done?: string[];
+  /** 이 답에서 올린 메일 초안의 제목 */
+  mails?: string[];
+}
+
+/**
+ * 보낼 메일의 자리 (migrations/0106) —
+ *   draft      승인 대기. 에이전트가 올렸고 한백이 아직 누르지 않았다
+ *   sending    보내는 중 — 두 번 나가지 않게 이 상태로 먼저 잡는다
+ *   sent       나갔다
+ *   failed     구글이 받지 않았다 — 고쳐서 다시 보낼 수 있다
+ *   discarded  버렸다 — 되살릴 수 있다(화면 규칙 7)
+ */
+export type AgentMailStatus = 'draft' | 'sending' | 'sent' | 'failed' | 'discarded';
+export const AGENT_MAIL_STATUSES = ['draft', 'sending', 'sent', 'failed', 'discarded'] as const satisfies readonly AgentMailStatus[];
+
+/**
+ * 담당이 올린 메일 초안 — ★한백이 승인해야 나간다★(한백 2026-11-03 「난 그거에 대해 승인을 하고 너가 메일을 보내는건데」).
+ * 보내는 계정은 콘솔에 연결한 Gmail 하나다(MailAccountInfo).
+ */
+export interface AgentMail {
+  id: string;
+  /** 초안을 쓴 에이전트의 답 — 대화에서 그 답 밑에 선다. 답이 지워졌으면 null */
+  messageId: string | null;
+  status: AgentMailStatus;
+  to: string[];
+  cc: string[];
+  subject: string;
+  body: string;
+  /** 붙일 파일 — 그 담당에게 넘긴 파일 */
+  files: AgentFile[];
+  /** 보내지 못한 까닭(failed) */
+  error: string | null;
+  /** 보낸 계정 */
+  from: string | null;
+  /** YYYY-MM-DD HH:mm (한국 시각) */
+  createdAt: string;
+  sentAt: string | null;
+  /** 승인하고 보낸 사람 */
+  sentBy: string | null;
+}
+
+/** 콘솔이 메일을 보내는 계정 — 토큰은 싣지 않는다 */
+export interface MailAccountInfo {
+  email: string;
+  /** YYYY-MM-DD HH:mm */
+  connectedAt: string;
+  connectedBy: string;
 }
 
 /** 담당에게 넘긴 파일 — 지시나 기록에 붙는다(migrations/0105) */
@@ -127,15 +174,17 @@ export interface AgentWeek {
   /** 업무 정의를 넣고 · 고치고 · 지운 수 */
   dutyChanges: number;
   files: number;
+  /** 그 주에 나간 메일 */
+  mails: number;
   /** 에이전트의 답에 든 비용 어림(달러) */
   usd: number;
 }
 
-/** 주간 기록에서 대화 사이에 끼는 일 — 할 일이 적히고 끝나고, 업무 정의가 바뀐 때 */
+/** 주간 기록에서 대화 사이에 끼는 일 — 할 일이 적히고 끝나고, 업무 정의가 바뀌고, 메일이 나간 때 */
 export interface AgentEvent {
   /** YYYY-MM-DD HH:mm (한국 시각) */
   at: string;
-  kind: 'task-added' | 'task-done' | 'duty-added' | 'duty-edited' | 'duty-deleted';
+  kind: 'task-added' | 'task-done' | 'duty-added' | 'duty-edited' | 'duty-deleted' | 'mail-sent';
   title: string;
   /** 적은 쪽 — 사람 이름 또는 에이전트 이름 */
   by: string;
@@ -157,6 +206,8 @@ export interface AgentSummary extends Agent {
   activity: Array<{ day: string; n: number }>;
   /** 오늘 에이전트의 답에 든 비용 어림(달러) */
   usdToday: number;
+  /** 승인을 기다리는 메일(승인 대기 · 보내지 못함) */
+  pendingMails: number;
 }
 
 export interface AgentDetail {
@@ -166,6 +217,13 @@ export interface AgentDetail {
   tasks: AgentTask[];
   /** 오래된 것이 앞 — 대화처럼 읽힌다. 한 주를 고르면 그 주의 말 전부 */
   messages: AgentMessage[];
+  /**
+   * 실린 말에 딸린 메일 초안(그 답 밑에 선다) — 지금 대화면 답에 이어지지 못한 초안(답을 남기다 끊긴 것)도 싣는다.
+   * 오래된 것이 앞
+   */
+  mails: AgentMail[];
+  /** 승인을 기다리는 메일(승인 대기 · 보내지 못함) — 실린 말 밖의 것까지 */
+  pendingMails: number;
   /** 무엇이든 오간 주 — 최근 주가 앞 */
   weeks: AgentWeek[];
   /** 한 주를 골랐을 때만 — 그 주와, 대화 사이에 끼는 일(할 일 · 업무 정의) */

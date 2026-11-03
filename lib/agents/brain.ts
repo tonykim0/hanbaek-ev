@@ -1,8 +1,10 @@
 /**
  * 에이전트가 답한다 (서버 전용) — 업무 정의 · 열린 할 일 · 지금 콘솔 자료 · 지난 대화를 읽고 한백의 지시에 답한다.
  *
- * ★손에 쥔 것은 할 일 목록뿐이다★ — add_task · complete_task 두 도구. 반려 · 확정 · 단계 이동 · 지급 같은 콘솔의 값은
- * 못 바꾼다(그건 사람이 콘솔에서 누른다 — 판독이 반려하지 않는 것과 같은 원칙). 전략·기획만 웹 검색을 더 쥔다.
+ * ★손에 쥔 것은 할 일 목록과 메일 초안뿐이다★ — add_task · complete_task · draft_mail. 반려 · 확정 · 단계 이동 · 지급 같은
+ * 콘솔의 값은 못 바꾼다(그건 사람이 콘솔에서 누른다 — 판독이 반려하지 않는 것과 같은 원칙). 전략·기획만 웹 검색을 더 쥔다.
+ * ★메일은 초안까지다★ — 나가는 것은 한백이 그 초안의 「승인하고 보내기」를 눌렀을 때뿐이다(한백 2026-11-03 「난 그거에 대해
+ * 승인을 하고 너가 메일을 보내는건데」 · app/api/agents/[id]/mails/[mailId]/send).
  *
  * 한백이 넘긴 파일(lib/agents/files)은 그 말에 붙여 읽는다 — PDF · 그림은 주소로 바로, 엑셀 · 워드 · 한글(hwpx) · 글 파일은
  * 서버가 글자를 뽑아서(lib/agents/file-text), 그 밖의 형식은 이름만.
@@ -77,7 +79,11 @@ const RULES = `일하는 법:
   한백이 끝났다고 알려 준 할 일은 complete_task 로 끝낸다. 적거나 끝냈으면 답에 한 줄로 말한다.
 - 「[기록 …]」으로 시작하는 말은 한백이 남긴 기록이다(운영사 담당자와 통화한 내용 같은 것). 답을 바라는 말이 아니지만 근거로 쓴다.
 - 「[넘긴 파일 …]」은 한백이 너에게 준 파일이다. 읽을 수 있으면 읽고 근거로 쓴다. 이름만 알고 열지 못한 파일은 그렇다고 말한다.
-- 「[지금 …]」으로 시작하는 덩이는 마지막 지시를 받은 때의 콘솔 자료다 — 한백이 쓴 말이 아니다.`;
+- 「[지금 …]」으로 시작하는 덩이는 마지막 지시를 받은 때의 콘솔 자료다 — 한백이 쓴 말이 아니다.
+- 메일은 draft_mail 로 초안만 올린다. 너는 메일을 보내지 못한다 — 한백이 초안을 보고 「승인하고 보내기」를 눌러야 나간다.
+  업무 정의에 메일을 보내는 경우와 양식이 있으면 그대로 따르고, 한백이 메일을 쓰라고 할 때나 업무 정의가 정한 경우에만 올린다.
+  받는 사람 주소는 업무 정의 · 대화 · 자료에 적힌 것만 쓴다. 모르면 초안을 올리지 말고 누구에게 보낼지 묻는다.
+  초안을 올렸으면 답에 한 줄로 말하고(본문을 답에 다시 옮겨 적지 않는다), 같은 메일을 두 번 올리지 않는다.`;
 
 function dutiesBlock(duties: AgentDuty[]): string {
   if (duties.length === 0) {
@@ -99,9 +105,12 @@ function tasksBlock(tasks: AgentTask[]): string {
   ].join('\n');
 }
 
-/** 넘긴 파일 하나를 읽을 덩이로 — PDF · 그림은 주소로, 글자를 뽑은 것은 글로, 그 밖은 이름만 */
+/**
+ * 넘긴 파일 하나를 읽을 덩이로 — PDF · 그림은 주소로, 글자를 뽑은 것은 글로, 그 밖은 이름만.
+ * 머리에 id 를 단다 — 메일 초안에 그 파일을 붙일 때(draft_mail attach_file_ids) 쓴다.
+ */
 function fileBlocks(f: AgentFile, texts?: Map<string, string>): Anthropic.ContentBlockParam[] {
-  const head = `[넘긴 파일 ${f.name}]`;
+  const head = `[넘긴 파일 ${f.name} · id=${f.id}]`;
   switch (agentFileRead(f.name)) {
     case 'pdf':
       return [{ type: 'text', text: head }, { type: 'document', source: { type: 'url', url: f.url }, title: f.name }];
@@ -145,9 +154,14 @@ export function withContext(messages: Anthropic.MessageParam[], context: string)
 export interface AgentHands {
   addTask(input: { title: string; note: string | null; due: string | null; projectId: string | null }): Promise<string>;
   completeTask(id: string): Promise<string>;
+  /** 메일 초안 올리기 — 저장소가 주소 · 길이 · 붙일 파일을 보고 틀리면 사람 말로 던진다(그 말이 도구 결과로 돌아간다). id 를 돌려준다 */
+  draftMail(input: { to: unknown; cc: unknown; subject: string; body: string; fileIds: string[] }): Promise<string>;
   /** 관리번호(또는 현장 id) → 현장 id. 모르면 null */
   siteOf(ref: string): string | null;
 }
+
+/** 한 답에 올리는 메일 초안 상한 — 잘못 돈 답이 초안을 쏟아 내지 않게 */
+const MAILS_PER_TURN = 3;
 
 const TASK_TOOLS = [
   {
@@ -172,6 +186,24 @@ const TASK_TOOLS = [
       type: 'object',
       properties: { task_id: { type: 'string', description: '[열린 할 일]의 id' } },
       required: ['task_id'],
+    },
+  },
+  {
+    name: 'draft_mail',
+    description: '한백이 승인할 메일 초안을 올린다. 너는 메일을 보내지 못한다 — 한백이 초안을 보고 「승인하고 보내기」를 눌러야 나간다. '
+      + '업무 정의에 정해진 경우 · 양식이 있으면 그대로 따른다. 받는 사람 주소는 업무 정의 · 대화 · 자료에 적힌 것만 쓰고 지어내지 않는다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        to: { type: 'array', items: { type: 'string' }, description: '받는 사람 메일 주소들' },
+        cc: { type: 'array', items: { type: 'string' }, description: '참조 메일 주소들 (선택)' },
+        subject: { type: 'string', description: '제목 (200자 이내)' },
+        body: { type: 'string', description: '본문 — 줄바꿈이 그대로 나간다. 마크다운을 쓰지 않는다' },
+        attach_file_ids: {
+          type: 'array', items: { type: 'string' }, description: '붙일 파일 — 「[넘긴 파일 … · id=…]」의 id (선택)',
+        },
+      },
+      required: ['to', 'subject', 'body'],
     },
   },
 ];
@@ -233,6 +265,7 @@ export async function agentReply(input: {
   const sources = new Map<string, AgentSource>();
   const added: string[] = [];
   const done: string[] = [];
+  const mails: string[] = [];
   let usd = 0;
 
   async function runTool(block: Anthropic.ToolUseBlock): Promise<Anthropic.ToolResultBlockParam> {
@@ -257,6 +290,17 @@ export async function agentReply(input: {
         if (!id) return fail('task_id 가 비었다.');
         done.push(await hands.completeTask(id));
         return { type: 'tool_result', tool_use_id: block.id, content: '끝냈다' };
+      }
+      if (block.name === 'draft_mail') {
+        if (mails.length >= MAILS_PER_TURN) return fail(`한 답에 메일 초안은 ${MAILS_PER_TURN}통까지다.`);
+        const subject = str(args.subject);
+        const ids = Array.isArray(args.attach_file_ids) ? args.attach_file_ids.map(str).filter(Boolean) : [];
+        const id = await hands.draftMail({ to: args.to, cc: args.cc, subject, body: str(args.body), fileIds: ids });
+        mails.push(subject);
+        return {
+          type: 'tool_result', tool_use_id: block.id,
+          content: `초안을 올렸다 (id=${id}) — 한백이 승인하면 나간다. 아직 보내지 않았다.`,
+        };
       }
       return fail(`모르는 도구: ${block.name}`);
     } catch (err) {
@@ -331,13 +375,21 @@ export async function agentReply(input: {
   }
 
   const text = texts.join('\n\n').trim();
+  const acted = {
+    ...(added.length ? { added } : {}),
+    ...(done.length ? { done } : {}),
+    ...(mails.length ? { mails } : {}),
+  };
   if (!text) {
-    // 할 일은 이미 적혔을 수 있다 — 그 사실은 남긴다
-    if (added.length || done.length) {
+    // 할 일 · 메일 초안은 이미 남았을 수 있다 — 그 사실은 남긴다
+    if (added.length || done.length || mails.length) {
       return {
-        text: [added.length ? `할 일을 적었습니다: ${added.join(' · ')}` : '', done.length ? `끝냈습니다: ${done.join(' · ')}` : '']
-          .filter(Boolean).join('\n'),
-        meta: { model: MODEL, ms: Date.now() - started, usd, added, done },
+        text: [
+          added.length ? `할 일을 적었습니다: ${added.join(' · ')}` : '',
+          done.length ? `끝냈습니다: ${done.join(' · ')}` : '',
+          mails.length ? `메일 초안을 올렸습니다: ${mails.join(' · ')}` : '',
+        ].filter(Boolean).join('\n'),
+        meta: { model: MODEL, ms: Date.now() - started, usd, ...acted },
       };
     }
     throw new Error('답을 끝내지 못했습니다 — 「다시 묻기」를 눌러 주세요.');
@@ -349,8 +401,7 @@ export async function agentReply(input: {
       ms: Date.now() - started,
       usd,
       ...(sources.size ? { sources: [...sources.values()] } : {}),
-      ...(added.length ? { added } : {}),
-      ...(done.length ? { done } : {}),
+      ...acted,
     },
   };
 }

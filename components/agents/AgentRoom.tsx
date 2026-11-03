@@ -11,48 +11,57 @@
  * ★파일을 넘긴다★(한백 지시 2026-11-02) — 「파일 첨부」나 끌어다 놓기로 고르면 그 자리에서 Blob 에 바로 올라가고(/files 토큰),
  * 보내기 · 기록만 남기기 때 그 말에 붙는다. 올리는 동안은 보내지 못한다(단추 이름이 말한다). 에이전트가 읽는 법은 lib/agents/files.
  *
- * ★주간 기록★ — 한 주를 고르면(week) 그 주의 말과, 그 사이에 할 일이 적히고 끝나고 업무 정의가 바뀐 일이 시각 순으로 선다.
- * 지난 기록을 보는 자리라 쓰는 칸은 없다 — 「지금 대화로」가 돌아가는 길이다.
+ * ★주간 기록★ — 한 주를 고르면(week) 그 주의 말과, 그 사이에 할 일이 적히고 끝나고 업무 정의가 바뀌고 메일이 나간 일이 시각
+ * 순으로 선다. 지난 기록을 보는 자리라 쓰는 칸은 없다 — 「지금 대화로」가 돌아가는 길이다.
+ *
+ * ★메일 초안★(한백 2026-11-03) — 담당이 올린 초안은 그것을 쓴 답 바로 밑에 선다(MailCard). 한백이 「승인하고 보내기」를 눌러야
+ * 나간다. 답에 이어지지 못한 초안(답을 남기다 끊긴 것)은 올린 시각의 자리에 따로 선다.
  * 말은 띠 모양이다(ui.tsx Note 처럼 왼쪽 선 — 판 안이라 사방 테두리를 두르지 않는다). 에이전트의 말만 초록 바탕에 반짝이를 단다.
  */
 import Link from 'next/link';
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import type { AgentEvent, AgentMessage } from '@/types/agents';
+import type { AgentEvent, AgentMail, AgentMessage } from '@/types/agents';
 import { Btn, Err, FIELD, PANEL, Tag, TEXT } from '@/components/ui';
 import { AGENT_FILE_MAX_BYTES, AGENT_FILES_PER_MESSAGE, sizeLabel } from '@/lib/agents/files';
 import { weekRange } from '@/lib/agents/weeks';
 import { AgentHead, Clip, FileChip, LINK, Spark } from './kit';
+import { MailCard } from './MailCard';
 
 type Phase = 'idle' | 'sending' | 'thinking';
 
 /** 고른 파일 한 장 — 올리는 중 · 올림 · 실패 */
 type Pending = { key: string; name: string; size: number; state: 'up' | 'done' | 'fail'; pct: number; pathname?: string; error?: string };
 
-async function post(url: string, body?: unknown): Promise<{ ok: true; message: AgentMessage } | { ok: false; error: string }> {
+async function post(url: string, body?: unknown): Promise<{ ok: true; message: AgentMessage; mails: AgentMail[] } | { ok: false; error: string }> {
   try {
     const res = await fetch(url, {
       method: 'POST',
       ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }),
     });
-    const json = (await res.json().catch(() => ({}))) as { message?: AgentMessage; error?: string };
+    const json = (await res.json().catch(() => ({}))) as { message?: AgentMessage; mails?: AgentMail[]; error?: string };
     if (!res.ok || !json.message) return { ok: false, error: json.error ?? '처리하지 못했습니다.' };
-    return { ok: true, message: json.message };
+    return { ok: true, message: json.message, mails: json.mails ?? [] };
   } catch {
     return { ok: false, error: '네트워크 오류입니다. 다시 시도해주세요.' };
   }
 }
 
-export function AgentRoom({ agentId, agentName, messages, week, today }: {
+export function AgentRoom({ agentId, agentName, messages, mails, connected, week, today }: {
   agentId: string;
   agentName: string;
   messages: AgentMessage[];
+  /** 실린 말에 딸린 메일 초안 */
+  mails: AgentMail[];
+  /** 콘솔에 Gmail 이 연결돼 있는가 — 아니면 초안의 보내기 단추가 그 까닭을 말한다 */
+  connected: boolean;
   /** 한 주를 골랐을 때 — 그 주와, 대화 사이에 끼는 일 */
   week: { start: string; end: string; events: AgentEvent[] } | null;
   today: string;
 }) {
   const router = useRouter();
   const [list, setList] = useState(messages);
+  const [mailList, setMailList] = useState(mails);
   const [body, setBody] = useState('');
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +75,10 @@ export function AgentRoom({ agentId, agentName, messages, week, today }: {
     if (phase === 'idle') setList(messages);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [messages]);
+  useEffect(() => {
+    if (phase === 'idle') setMailList(mails);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mails]);
 
   /* 새 말이 붙으면 맨 아래로 — 지난 주를 펼쳤을 때는 그 주의 처음부터 읽는다 */
   useEffect(() => {
@@ -125,7 +138,14 @@ export function AgentRoom({ agentId, agentName, messages, week, today }: {
       return;
     }
     setList((l) => [...l, r.message]);
+    if (r.mails.length) setMailList((l) => [...l, ...r.mails]);
     router.refresh(); // 에이전트가 할 일을 적었을 수 있다 — 오른쪽 할 일과 머리말을 다시 그린다
+  }
+
+  /* 초안 하나가 바뀌면(보냄 · 고침 · 버림) 그 자리만 갈고, 머리말의 승인 대기 셈을 다시 그린다 */
+  function mailChanged(mail: AgentMail) {
+    setMailList((l) => l.map((m) => (m.id === mail.id ? mail : m)));
+    router.refresh();
   }
 
   async function send(note: boolean) {
@@ -159,16 +179,30 @@ export function AgentRoom({ agentId, agentName, messages, week, today }: {
   const ready = pending.some((p) => p.state === 'done');
   const canSend = phase === 'idle' && !uploading && (Boolean(body.trim()) || ready);
 
+  /* 메일 초안은 그것을 쓴 답 밑에 — 답이 실리지 않은 초안은 올린 시각의 자리에 따로 */
+  const shown = new Set(list.map((m) => m.id));
+  const mailsOf = new Map<string, AgentMail[]>();
+  for (const m of mailList) {
+    if (m.messageId && shown.has(m.messageId)) mailsOf.set(m.messageId, [...(mailsOf.get(m.messageId) ?? []), m]);
+  }
+  const loose = mailList.filter((m) => !m.messageId || !shown.has(m.messageId));
+  const pendingMails = mailList.filter((m) => m.status === 'draft' || m.status === 'failed').length;
+
   /* 주간 기록 — 말과 일을 시각 순으로 한 줄에 */
-  const rows: Array<{ at: string; said?: AgentMessage; event?: AgentEvent }> = week
-    ? [...list.map((m) => ({ at: m.at, said: m })), ...week.events.map((e) => ({ at: e.at, event: e }))]
-      .sort((a, b) => a.at.localeCompare(b.at))
-    : list.map((m) => ({ at: m.at, said: m }));
+  const rows: Array<{ at: string; said?: AgentMessage; event?: AgentEvent; mail?: AgentMail }> = [
+    ...list.map((m) => ({ at: m.at, said: m })),
+    ...(week ? week.events.map((e) => ({ at: e.at, event: e })) : []),
+    ...loose.map((m) => ({ at: m.createdAt, mail: m })),
+  ].sort((a, b) => a.at.localeCompare(b.at));
+  const card = (m: AgentMail) => <MailCard key={m.id} agentId={agentId} mail={m} connected={connected} onChange={mailChanged} />;
 
   return (
     <section className={`${PANEL} flex min-w-0 flex-col`}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-5 pb-3 pt-4">
-        <AgentHead meta={week ? `${weekRange(week.start, today)} · 말 ${list.length}건 · 일 ${week.events.length}건` : `${list.length}건`}>
+        <AgentHead
+          meta={week ? `${weekRange(week.start, today)} · 말 ${list.length}건 · 일 ${week.events.length}건` : `${list.length}건`}
+          action={pendingMails > 0 ? <Tag tone="warn">승인 대기 메일 {pendingMails}</Tag> : undefined}
+        >
           {week ? '주간 기록' : '대화'}
         </AgentHead>
         {week && (
@@ -179,9 +213,13 @@ export function AgentRoom({ agentId, agentName, messages, week, today }: {
       </div>
 
       <ol ref={scroller} className="flex max-h-[62vh] min-h-[220px] flex-col gap-2 overflow-y-auto border-t border-slate-100 px-5 py-3">
-        {rows.map((r) => (r.said
-          ? <Said key={r.said.id} message={r.said} />
-          : <Happened key={`${r.event!.at}|${r.event!.kind}|${r.event!.title}`} event={r.event!} />))}
+        {rows.map((r) => {
+          if (r.said) {
+            return [<Said key={r.said.id} message={r.said} />, ...(mailsOf.get(r.said.id) ?? []).map(card)];
+          }
+          if (r.mail) return card(r.mail);
+          return <Happened key={`${r.event!.at}|${r.event!.kind}|${r.event!.title}`} event={r.event!} />;
+        })}
         {week && rows.length === 0 && <li className={`py-6 text-center ${TEXT.meta}`}>그 주의 기록 0건</li>}
         {phase === 'thinking' && (
           <li className="rounded-box border-l-[3px] border-brand-400 bg-brand-50/70 px-3.5 py-2.5">
@@ -334,6 +372,7 @@ function Said({ message: m }: { message: AgentMessage }) {
         )}
         {m.meta?.added?.length ? <Tag tone="ok">할 일 {m.meta.added.length}건 적음</Tag> : null}
         {m.meta?.done?.length ? <Tag tone="ok">할 일 {m.meta.done.length}건 끝냄</Tag> : null}
+        {m.meta?.mails?.length ? <Tag tone="ok">메일 초안 {m.meta.mails.length}통</Tag> : null}
         {m.role === 'agent' && <span className="ml-auto"><CopyBtn text={m.body} /></span>}
       </div>
       {m.body && <p className={`mt-1 whitespace-pre-wrap break-keep text-base leading-relaxed ${look.text}`}><Linked text={m.body} /></p>}
@@ -380,6 +419,7 @@ const EVENT_LOOK: Record<AgentEvent['kind'], { label: string; tone: 'ok' | 'mute
   'duty-added': { label: '업무 정의 추가', tone: 'mute' },
   'duty-edited': { label: '업무 정의 고침', tone: 'mute' },
   'duty-deleted': { label: '업무 정의 지움', tone: 'mute' },
+  'mail-sent': { label: '메일 보냄', tone: 'ok' },
 };
 
 /** 주간 기록에서 말 사이에 끼는 일 한 줄 — 업무 정의가 바뀌었으면 앞뒤를 펼쳐 본다 */

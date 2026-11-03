@@ -723,3 +723,40 @@ export const agentFiles = pgTable('agent_files', {
   byAgent: index('agent_files_agent_idx').on(t.agentId, t.at),
   byMessage: index('agent_files_message_idx').on(t.messageId),
 }));
+
+/**
+ * 콘솔이 메일을 보내는 계정 — 한백 Gmail 한 줄(id 'gmail', migrations/0106). 토큰은 잠근 갱신 토큰이다(lib/agents/secret-box) —
+ * 화면·응답으로 나가지 않는다(store/agent-mail).
+ */
+export const mailAccounts = pgTable('mail_accounts', {
+  id: text('id').primaryKey(),
+  email: text('email').notNull(),
+  token: text('token').notNull(),
+  scopes: text('scopes').notNull(),
+  connectedBy: text('connected_by').notNull(),
+  connectedAt: timestamp('connected_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** 보낼 메일 — 에이전트가 초안을 올리고 한백이 승인하면 나간다(migrations/0106, store/agent-mail) */
+export const agentMails = pgTable('agent_mails', {
+  id: text('id').primaryKey(),
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  messageId: text('message_id').references(() => agentMessages.id, { onDelete: 'set null' }),
+  status: text('status').notNull().default('draft'),
+  to: jsonb('to_addrs').$type<string[]>().notNull().default([]),
+  cc: jsonb('cc_addrs').$type<string[]>().notNull().default([]),
+  subject: text('subject').notNull(),
+  body: text('body').notNull(),
+  fileIds: jsonb('file_ids').$type<string[]>().notNull().default([]),
+  error: text('error'),
+  from: text('from_addr'),
+  gmailId: text('gmail_id'),
+  gmailThreadId: text('gmail_thread_id'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  sentBy: text('sent_by'),
+}, (t) => ({
+  byAgent: index('agent_mails_agent_idx').on(t.agentId, t.createdAt),
+  byMessage: index('agent_mails_message_idx').on(t.messageId),
+}));

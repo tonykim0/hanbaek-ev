@@ -157,8 +157,14 @@ export function statementUrl(b: Pick<Batch, 'org' | 'paidAt' | 'kind'>): string 
  */
 function settlementBrief(data: ScopeData): string {
   const out = [`[기성관리 — 한백이 운영사에게서 받을 돈의 할 일 ${data.receivables.length}건, ${data.today} 콘솔 기준]`];
+  /*
+   * 줄마다 관리번호와 운영사를 단다 — 청구 메일은 운영사에게 가는데, 할 일 줄에는 현장 이름뿐이라 에이전트가 「어느 운영사 건인지
+   * 자료에 없다」고 했다(2026-11-03 메일 초안 첫 시험). 할 일의 id 는 「갈래|현장 id」다(lib/todo-receivables).
+   */
+  const siteOf = new Map(data.projects.map((p) => [p.id, p]));
   for (const r of data.receivables) {
-    out.push(`- ${[r.name, r.kind, r.what, r.urgencyLabel].filter(Boolean).join(' · ')}`);
+    const p = siteOf.get(r.id.slice(r.id.indexOf('|') + 1));
+    out.push(`- ${[p?.mgmtNo, r.name, p && `운영사 ${p.cpo}`, r.kind, r.what, r.urgencyLabel].filter(Boolean).join(' · ')}`);
   }
   if (data.receivables.length === 0) out.push('- 없음');
 

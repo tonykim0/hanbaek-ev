@@ -18,16 +18,10 @@ import { cookies } from 'next/headers';
 import { signPayload, verifyPayload } from './crypto';
 import { accountForSession } from './users';
 import { SESSION_COOKIE, SESSION_TTL_SEC, type Actor, type SessionPayload, type User, type Viewer } from './types';
+import { getSecret } from './secret';
 
-/** 운영에서 AUTH_SECRET 이 없으면 서명 키가 없는 것이므로 기동을 막는다 */
-export function getSecret(): string {
-  const secret = process.env.AUTH_SECRET;
-  if (secret && secret.length >= 16) return secret;
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error('AUTH_SECRET 이 없습니다 (16자 이상). 운영에서는 필수입니다.');
-  }
-  return 'dev-only-insecure-secret-do-not-ship';
-}
+// 열쇠 글은 lib/auth/secret 에 있다 — 저장소가 Next 밖에서도 쓰게(스크립트가 이 파일을 불러 죽지 않게)
+export { getSecret };
 
 /** asId 를 주면 대행 쿠키 — 바탕(id·role)은 그대로 이 사용자(관리자)다 */
 export async function createSessionToken(user: User, asId?: string): Promise<string> {

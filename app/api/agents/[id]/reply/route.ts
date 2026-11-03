@@ -5,6 +5,8 @@
  * lib/agents/file-text)를 들고 부른다.
  * 대화 중에 에이전트가 적거나 끝낸 할 일은 이 요청을 보낸 관리자의 이름으로 감사기록에 남고, 적은 쪽에는 에이전트
  * 이름이 선다(store/agents). 답은 대화에 남는다.
+ * 에이전트가 올린 메일 초안(draft_mail)은 답을 남긴 뒤 그 답에 잇는다 — 대화에서 그 답 밑에 서고, 한백이 승인해야 나간다
+ * (store/agent-mail). 응답에 같이 실어 화면이 바로 그린다.
  */
 import { getRepository } from '@/lib/data';
 import { adminWrite } from '@/lib/api/write-route';
@@ -30,6 +32,7 @@ export const POST = adminWrite<{ id: string }, undefined>(
       if (p.mgmtNo) sites.set(p.mgmtNo.toUpperCase(), p.id);
     }
     const agentId = detail.agent.id;
+    const drafted: string[] = [];
     const turn = await agentReply({
       agent: detail.agent,
       duties: detail.duties,
@@ -40,10 +43,18 @@ export const POST = adminWrite<{ id: string }, undefined>(
       hands: {
         addTask: async (t) => (await repo.addAgentTask({ agentId, ...t, byAgent: true }, actor)).id,
         completeTask: async (id) => (await repo.setAgentTaskDone({ agentId, id, done: true, byAgent: true }, actor)).title,
+        draftMail: async (m) => {
+          const made = await repo.addAgentMail({ agentId, ...m }, actor);
+          drafted.push(made.id);
+          return made.id;
+        },
         siteOf: (ref) => sites.get(ref.trim().toUpperCase()) ?? null,
       },
     });
     const message = await repo.addAgentMessage({ agentId, role: 'agent', body: turn.text, meta: turn.meta }, actor);
-    return { message };
+    if (drafted.length === 0) return { message, mails: [] };
+    await repo.linkAgentMails({ agentId, ids: drafted, messageId: message.id }, actor);
+    const mails = (await repo.getAgent(agentId, actor)).mails.filter((m) => drafted.includes(m.id));
+    return { message, mails };
   }
 );
