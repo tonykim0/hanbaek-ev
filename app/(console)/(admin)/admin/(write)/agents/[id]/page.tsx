@@ -16,7 +16,7 @@ import { AgentMark } from '@/components/agents/kit';
 import { MailAccount } from '@/components/agents/MailAccount';
 import { isLive, ledOf, roleLineOf } from '@/components/agents/status';
 
-export const metadata = { title: '에이전트 — 한백 전기차사업관리시스템' };
+export const metadata = { title: '에이전트' };
 export const dynamic = 'force-dynamic';
 
 /**

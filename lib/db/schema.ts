@@ -653,7 +653,7 @@ export const auditLog = pgTable('audit_log', {
 
 // ── 에이전트 ────────────────────────────────────────────────────
 /**
- * 에이전트 — 한백의 일을 나눠 맡는 AI 담당 (migrations/0103, 한백 지시 2026-11-01·02). 운영사 다섯 · 정산 · 열린구매 ·
+ * 에이전트 — 한백의 일을 나눠 맡는 AI 담당 (migrations/0109, 한백 지시 2026-11-01·02). 운영사 다섯 · 정산 · 열린구매 ·
  * 전략·기획을 심었다. 에이전트가 보는 현장·지급·기성은 여기 없다 — 부를 때마다 콘솔이 셈한 것을 읽는다(lib/agents/scope).
  * 여기 남는 것은 한백이 적는 업무 정의 · 할 일 · 오간 말뿐이다.
  */
@@ -708,7 +708,7 @@ export const agentMessages = pgTable('agent_messages', {
   byThread: index('agent_messages_thread_idx').on(t.agentId, t.at),
 }));
 
-/** 담당에게 넘긴 파일 — 지시나 기록에 붙는다. 파일은 Blob 의 agent-files/<담당>/ 아래(migrations/0105) */
+/** 담당에게 넘긴 파일 — 지시나 기록에 붙는다. 파일은 Blob 의 agent-files/<담당>/ 아래(migrations/0110) */
 export const agentFiles = pgTable('agent_files', {
   id: text('id').primaryKey(),
   agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
@@ -725,7 +725,7 @@ export const agentFiles = pgTable('agent_files', {
 }));
 
 /**
- * 콘솔이 메일을 보내는 계정 — 한백 Gmail 한 줄(id 'gmail', migrations/0106). 토큰은 잠근 갱신 토큰이다(lib/agents/secret-box) —
+ * 콘솔이 메일을 보내는 계정 — 한백 Gmail 한 줄(id 'gmail', migrations/0111). 토큰은 잠근 갱신 토큰이다(lib/agents/secret-box) —
  * 화면·응답으로 나가지 않는다(store/agent-mail).
  */
 export const mailAccounts = pgTable('mail_accounts', {
@@ -737,7 +737,7 @@ export const mailAccounts = pgTable('mail_accounts', {
   connectedAt: timestamp('connected_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** 보낼 메일 — 에이전트가 초안을 올리고 한백이 승인하면 나간다(migrations/0106, store/agent-mail) */
+/** 보낼 메일 — 에이전트가 초안을 올리고 한백이 승인하면 나간다(migrations/0111, store/agent-mail) */
 export const agentMails = pgTable('agent_mails', {
   id: text('id').primaryKey(),
   agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),

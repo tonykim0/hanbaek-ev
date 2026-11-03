@@ -1,7 +1,7 @@
 /**
  * 에이전트의 모양 — 서버·화면이 같이 본다. 아무것도 끌어오지 않는다(화면 번들에 저장소가 딸려 오지 않게).
  *
- * 에이전트 = 한백의 일을 나눠 맡는 AI 담당 (한백 지시 2026-11-01·02, migrations/0103). 담당마다 셋이 남는다:
+ * 에이전트 = 한백의 일을 나눠 맡는 AI 담당 (한백 지시 2026-11-01·02, migrations/0109). 담당마다 셋이 남는다:
  *   업무 정의  한백이 적는다 — 에이전트는 이것을 지시로 읽는다
  *   할 일      한백이 적거나, 대화 중에 에이전트가 적는다
  *   대화       지시와 보고가 그대로 남는다 — 커뮤니케이션 기록이다
@@ -89,7 +89,7 @@ export interface AgentMessageMeta {
 }
 
 /**
- * 보낼 메일의 자리 (migrations/0106) —
+ * 보낼 메일의 자리 (migrations/0111) —
  *   draft      승인 대기. 에이전트가 올렸고 한백이 아직 누르지 않았다
  *   sending    보내는 중 — 두 번 나가지 않게 이 상태로 먼저 잡는다
  *   sent       나갔다
@@ -133,7 +133,7 @@ export interface MailAccountInfo {
   connectedBy: string;
 }
 
-/** 담당에게 넘긴 파일 — 지시나 기록에 붙는다(migrations/0105) */
+/** 담당에게 넘긴 파일 — 지시나 기록에 붙는다(migrations/0110) */
 export interface AgentFile {
   id: string;
   name: string;

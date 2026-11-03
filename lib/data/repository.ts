@@ -486,7 +486,7 @@ export interface ProjectRepository {
   logRetouch(entry: RetouchLog, actor: Actor): Promise<void>;
 
   /*
-   * 에이전트 — 한백의 일을 나눠 맡는 AI 담당 (store/agents · migrations/0103) [한백 관리자].
+   * 에이전트 — 한백의 일을 나눠 맡는 AI 담당 (store/agents · migrations/0109) [한백 관리자].
    * 업무 정의 · 할 일 · 오간 말만 남긴다. 에이전트가 보는 현장·지급·기성은 lib/agents/scope 가 그때그때 읽는다.
    */
   /** 담당 일곱 — 업무 정의 수 · 열린 할 일 · 마지막 말 */
@@ -517,7 +517,7 @@ export interface ProjectRepository {
   ): Promise<AgentMessage>;
 
   /*
-   * 에이전트 메일 (store/agent-mail · migrations/0106) [한백 관리자] — 담당이 초안을 올리고 ★한백이 승인해야 나간다★.
+   * 에이전트 메일 (store/agent-mail · migrations/0111) [한백 관리자] — 담당이 초안을 올리고 ★한백이 승인해야 나간다★.
    * 보내는 계정은 콘솔에 연결한 Gmail 하나다(lib/agents/gmail). 갱신 토큰은 잠가 두고, 보낼 때만 mailCredential 이 푼다.
    */
   /** 콘솔이 메일을 보내는 계정 — 없으면 null. 토큰은 싣지 않는다 */
