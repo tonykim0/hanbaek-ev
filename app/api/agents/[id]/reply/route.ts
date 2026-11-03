@@ -7,12 +7,16 @@
  * 이름이 선다(store/agents). 답은 대화에 남는다.
  * 에이전트가 올린 메일 초안(draft_mail)은 답을 남긴 뒤 그 답에 잇는다 — 대화에서 그 답 밑에 서고, 한백이 승인해야 나간다
  * (store/agent-mail). 응답에 같이 실어 화면이 바로 그린다.
+ * 양식 메일이 있는 운영사 담당(나이스 · 현대엔지니어링 — lib/site-mail)은 site_mail 도 쥔다: 서류가 채워져 한백이 다시 요청하면 그
+ * 현장의 서류를 붙인 양식 초안을 쓴다(lib/site-mail-run requestSiteMail — 단추와 같은 길). 그 초안도 이 답 밑에 선다.
  */
 import { getRepository } from '@/lib/data';
 import { adminWrite } from '@/lib/api/write-route';
 import { agentReply, HISTORY_TURNS } from '@/lib/agents/brain';
 import { briefOf } from '@/lib/agents/brief';
 import { loadScope } from '@/lib/agents/scope';
+import { siteMailOfCpo } from '@/lib/site-mail';
+import { requestSiteMail } from '@/lib/site-mail-run';
 
 export const maxDuration = 300;
 
@@ -33,6 +37,7 @@ export const POST = adminWrite<{ id: string }, undefined>(
     }
     const agentId = detail.agent.id;
     const drafted: string[] = [];
+    const siteSpec = detail.agent.kind === 'operator' ? siteMailOfCpo(detail.agent.cpo) : null;
     const turn = await agentReply({
       agent: detail.agent,
       duties: detail.duties,
@@ -49,6 +54,14 @@ export const POST = adminWrite<{ id: string }, undefined>(
           return made.id;
         },
         siteOf: (ref) => sites.get(ref.trim().toUpperCase()) ?? null,
+        ...(siteSpec ? {
+          siteMail: async (projectId: string) => {
+            const { plan, mail } = await requestSiteMail(projectId, actor, siteSpec);
+            if (!mail) throw new Error('초안을 쓰지 못했습니다.');
+            drafted.push(mail.id);
+            return { id: mail.id, subject: mail.subject, plan, to: mail.to };
+          },
+        } : {}),
       },
     });
     const message = await repo.addAgentMessage({ agentId, role: 'agent', body: turn.text, meta: turn.meta }, actor);

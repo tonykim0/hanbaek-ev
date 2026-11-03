@@ -14,20 +14,26 @@
  *
  * 계정은 메일 주소와 카카오 앱 비밀번호다(한백 「내 다음카카오 이메일로만 보내면 되는거고」). 앱 비밀번호는 잠가서 둔다
  * (lib/agents/secret-box · 열쇠는 AUTH_SECRET). 보낼 때만 mailCredential 이 풀어 라우트에 준다 — 화면 · 응답에는 실리지 않는다.
+ *
+ * ★현장 양식 메일★(lib/site-mail — 나이스 계약서 초안 · 현대엔지니어링 설치승인서)은 siteMail 하나가 쓴다: 계약서가 접수되면
+ * 저절로(할 일 · 대화 한 줄 · 서류가 없으면 알림까지), 한백이 다시 요청하면 초안만. 그 양식의 메일이 나가면 finishAgentMail 이
+ * 그 현장 · 양식의 할 일을 닫는다.
  */
-import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
-import { agentFiles, agentMails, agents, mailAccounts } from '@/lib/db/schema';
+import { agentFiles, agentMails, agentMessages, agents, agentTasks, mailAccounts, projects } from '@/lib/db/schema';
 import { stampOf } from '@/lib/date';
 import { getSecret } from '@/lib/auth/secret';
 import { addressesOf, MAIL_LIMITS } from '@/lib/agents/mime';
 import { seal, unseal } from '@/lib/agents/secret-box';
 import { sizeLabel } from '@/lib/agents/files';
-import type { AgentFile, AgentMail, AgentMailStatus, MailAccountInfo } from '@/types/agents';
+import { intakeSay, missingAlarm, missingError, missingNoteOf, planSiteDraft, siteMailOfKind, taskTitleOf } from '@/lib/site-mail';
+import type { AgentFile, AgentMail, AgentMailStatus, AgentMessageMeta, MailAccountInfo } from '@/types/agents';
 import { AGENT_MAIL_STATUSES } from '@/types/agents';
-import type { ProjectRepository } from '../repository';
+import type { ProjectRepository, SiteMailResult } from '../repository';
 import { assertAdmin } from './shared';
+import { notifyAgentAlarm, retractAgentAlarm } from './notifications';
 
 /** 메일 계정 줄 — 콘솔에 하나 */
 const ACCOUNT_ID = 'mail';
@@ -122,47 +128,132 @@ export const agentMailStore: Pick<
   ProjectRepository,
   | 'getMailAccount' | 'saveMailAccount' | 'deleteMailAccount' | 'mailCredential'
   | 'addAgentMail' | 'linkAgentMails' | 'editAgentMail' | 'setAgentMailDiscarded' | 'claimAgentMail' | 'finishAgentMail'
-  | 'addSiteMail' | 'projectMails'
+  | 'siteMail' | 'projectMails'
 > = {
   /**
-   * 현장 메일 — 계약서 초안처럼 현장 서류를 붙여 보내는 양식 메일을 그 담당의 초안으로 올린다(한백 2026-11-03 「나이스인프라는 계약서
-   * 접수 시, 워드파일을 초안으로 받고 있어. 그 파일을 첨부한 메일 보내고싶어」). 사람이 누른 것이라 에이전트 답에 잇지 않는다 —
-   * 그 담당의 대화에는 올린 시각의 자리에 선다.
-   * 같은 현장 · 같은 양식의 보내지 않은 초안이 있으면 새로 만들지 않고 그것을 돌려준다(두 번 눌러도 하나).
-   * 받는 사람 · 참조는 같은 양식으로 마지막에 보낸 메일의 것을 쓴다 — 처음이면 비어 있다(카드에서 넣는다).
+   * 현장 양식 메일 (lib/site-mail) — 지금 서류로 쓴 초안(letter)을 그 담당의 초안으로 둔다. 한 트랜잭션 · 그 현장 줄을 잡고 본다
+   * (같은 현장 · 양식의 초안을 동시에 둘 만들지 않게).
+   * 무엇을 할지는 planSiteDraft 다: 보내지 않은 초안이 같으면 그대로 · 다르면 버리고 새로(받는 사람은 이어받는다) · 같은 서류로
+   * 이미 보냈으면 저절로 돌 때는 그만 · 아니면 새로(받는 사람은 같은 양식으로 마지막에 보낸 메일의 것 — 처음이면 비어 있다).
+   *
+   * intake(계약서 접수 때 저절로 — lib/site-mail-run)면 더 한다: 할 일(같은 현장 · 양식의 열린 것이 없을 때) · 대화 한 줄(말의 종류
+   * auto — 새로 한 것이 있을 때만, 같은 접수가 두 번 불려도 한 줄) · 서류가 없으면 한백 관리자 알림. intake 가 아니면(한백의 요청)
+   * 서류가 없을 때 사람 말로 던진다 — 대화의 도구 · 단추가 그 말을 그대로 보인다.
    */
-  async addSiteMail(input, actor): Promise<AgentMail> {
+  async siteMail(input, actor): Promise<SiteMailResult> {
     assertAdmin(actor, '현장 메일');
-    const agentName = await agentNameOf(input.agentId);
+    const spec = siteMailOfKind(input.kind);
+    if (!spec) throw new Error('모르는 양식의 메일입니다.');
+    const agentName = await agentNameOf(spec.agentId);
+    const letterIn = input.letter;
+    const docFiles = letterIn ? letterIn.docFiles.slice(0, MAIL_LIMITS.files) : [];
+    if (letterIn) {
+      const total = docFiles.reduce((n, f) => n + (f.size || 0), 0);
+      if (total > MAIL_LIMITS.attachBytes) throw new Error(`붙일 서류는 합쳐 ${sizeLabel(MAIL_LIMITS.attachBytes)}까지입니다.`);
+    }
     const db = getDb();
-    const docFiles = input.docFiles.slice(0, MAIL_LIMITS.files);
-    if (docFiles.length === 0) throw new Error('붙일 서류가 없습니다.');
-    const total = docFiles.reduce((n, f) => n + (f.size || 0), 0);
-    if (total > MAIL_LIMITS.attachBytes) throw new Error(`붙일 서류는 합쳐 ${sizeLabel(MAIL_LIMITS.attachBytes)}까지입니다.`);
-    const id = await db.transaction(async (tx) => {
-      /* 같은 현장 · 양식의 초안을 동시에 둘 만들지 않게 — 그 현장 줄을 잡고 본다 */
-      await tx.execute(sql`select 1 from projects where id = ${input.projectId} for update`);
-      const [open] = await tx.select({ id: agentMails.id }).from(agentMails)
-        .where(and(eq(agentMails.projectId, input.projectId), eq(agentMails.kind, input.kind), inArray(agentMails.status, ['draft', 'failed'])))
-        .orderBy(desc(agentMails.createdAt)).limit(1);
-      if (open) return open.id;
-      const [last] = await tx.select({ to: agentMails.to, cc: agentMails.cc }).from(agentMails)
-        .where(and(eq(agentMails.kind, input.kind), eq(agentMails.status, 'sent')))
-        .orderBy(desc(agentMails.sentAt)).limit(1);
-      const letter = letterOf({ to: last?.to ?? [], cc: last?.cc ?? [], subject: input.subject, body: input.body }, { emptyTo: true });
-      const made = crypto.randomUUID();
-      await tx.insert(agentMails).values({
-        id: made, agentId: input.agentId, status: 'draft', ...letter, fileIds: [], docFiles,
-        projectId: input.projectId, kind: input.kind,
-      });
+    const out = await db.transaction(async (tx) => {
+      const [site] = await tx.select({ id: projects.id, name: projects.name }).from(projects)
+        .where(eq(projects.id, input.projectId)).for('update');
+      if (!site) throw new Error('현장을 찾을 수 없습니다.');
+      const rows = await tx.select().from(agentMails)
+        .where(and(eq(agentMails.projectId, site.id), eq(agentMails.kind, spec.kind)))
+        .orderBy(desc(agentMails.createdAt));
+      const open = rows.find((r) => r.status === 'draft' || r.status === 'failed') ?? null;
+      const plan = planSiteDraft(
+        letterIn ? { ...letterIn, docFiles } : null,
+        {
+          open: open && { subject: open.subject, body: open.body, docFiles: open.docFiles ?? [] },
+          sent: rows.filter((r) => r.status === 'sent').map((r) => (r.docFiles ?? []).map((f) => f.url)),
+        },
+        !input.intake,
+      );
+      if (plan === 'missing' && !input.intake) throw new Error(missingError(spec));
+      const none = { plan, mailId: null as string | null, taskId: null as string | null, messageId: null as string | null, alarmed: 0 };
+      if (plan === 'sent') return none;
+
+      /* 버린다 — 서류가 바뀌었거나(replace) 칸이 비었는데(missing) 보내지 않은 초안이 남았을 때. 그 초안의 파일은 이제 칸에 없다 */
+      const discarded = open !== null && (plan === 'replace' || plan === 'missing');
+      if (open && discarded) {
+        await tx.update(agentMails).set({ status: 'discarded', updatedAt: new Date() }).where(eq(agentMails.id, open.id));
+        await writeAudit(tx, {
+          projectId: site.id, actor, action: '에이전트 메일 버림', field: agentName,
+          oldValue: letterLine({ subject: open.subject, to: open.to ?? [], cc: open.cc ?? [] }),
+          newValue: plan === 'replace' ? '서류가 바뀌어 새로 씀' : `${spec.doc} 없음`,
+        });
+      }
+      let mailId: string | null = plan === 'keep' && open ? open.id : null;
+      let to: string[] = plan === 'keep' && open ? open.to ?? [] : [];
+      if ((plan === 'create' || plan === 'replace') && letterIn) {
+        /* 받는 사람 — 버린 초안의 것(한백이 넣은 주소를 잃지 않게), 아니면 같은 양식으로 마지막에 보낸 메일의 것 */
+        const [last] = open
+          ? [{ to: open.to ?? [], cc: open.cc ?? [] }]
+          : await tx.select({ to: agentMails.to, cc: agentMails.cc }).from(agentMails)
+            .where(and(eq(agentMails.kind, spec.kind), eq(agentMails.status, 'sent')))
+            .orderBy(desc(agentMails.sentAt)).limit(1);
+        const letter = letterOf({ to: last?.to ?? [], cc: last?.cc ?? [], subject: letterIn.subject, body: letterIn.body }, { emptyTo: true });
+        mailId = crypto.randomUUID();
+        to = letter.to;
+        await tx.insert(agentMails).values({
+          id: mailId, agentId: spec.agentId, status: 'draft', ...letter, fileIds: [], docFiles, projectId: site.id, kind: spec.kind,
+        });
+        await writeAudit(tx, {
+          projectId: site.id, actor, action: '현장 메일 초안', field: agentName, oldValue: null,
+          newValue: `${letterLine(letter)} · 첨부 ${docFiles.map((f) => f.name).join(', ')}`.slice(0, 2000),
+        });
+        // 서류가 채워져 메일을 쓰게 됐다 — 「없어서 못 보냄」 알림과 할 일의 「없음」 덧붙임은 이제 거짓말이다
+        await retractAgentAlarm(tx, { projectId: site.id, docKind: spec.slot });
+        await tx.update(agentTasks).set({ note: null }).where(and(
+          eq(agentTasks.agentId, spec.agentId), eq(agentTasks.projectId, site.id), eq(agentTasks.kind, spec.kind),
+          isNull(agentTasks.doneAt), eq(agentTasks.note, missingNoteOf(spec)),
+        ));
+      }
+      if (!input.intake) return { ...none, mailId };
+
+      /* 할 일 — 같은 현장 · 양식의 열린 것이 없을 때만. 그 양식의 메일이 나가면 finishAgentMail 이 닫는다 */
+      const [openTask] = await tx.select({ id: agentTasks.id }).from(agentTasks).where(and(
+        eq(agentTasks.agentId, spec.agentId), eq(agentTasks.projectId, site.id), eq(agentTasks.kind, spec.kind), isNull(agentTasks.doneAt),
+      )).limit(1);
+      const title = taskTitleOf(spec);
+      let taskId: string | null = null;
+      if (!openTask) {
+        taskId = crypto.randomUUID();
+        const note = plan === 'missing' ? missingNoteOf(spec) : null;
+        await tx.insert(agentTasks).values({
+          id: taskId, agentId: spec.agentId, title, note, projectId: site.id, kind: spec.kind, author: agentName,
+        });
+        await writeAudit(tx, {
+          projectId: site.id, actor, action: '에이전트 할 일 (에이전트가 적음)', field: agentName, oldValue: null,
+          newValue: [title, site.name, note].filter(Boolean).join(' · ').slice(0, 2000),
+        });
+      }
+
+      /* 새로 한 것이 없으면 말하지 않는다 — 같은 접수가 두 번 불려도(두 번 누름) 대화에 한 줄 */
+      const wrote = plan === 'create' || plan === 'replace';
+      if (!wrote && taskId === null && !discarded) return { ...none, mailId };
+      const body = intakeSay(spec, site.name, { plan, to, taskAdded: taskId !== null, empty: input.intake.empty });
+      const messageId = crypto.randomUUID();
+      const meta: AgentMessageMeta = {
+        site: { id: site.id, name: site.name },
+        ...(taskId ? { added: [title] } : {}),
+        ...(wrote && letterIn ? { mails: [letterIn.subject] } : {}),
+      };
+      await tx.insert(agentMessages).values({ id: messageId, agentId: spec.agentId, role: 'auto', author: agentName, body, meta });
       await writeAudit(tx, {
-        projectId: input.projectId, actor, action: '현장 메일 초안', field: agentName, oldValue: null,
-        newValue: `${letterLine(letter)} · 첨부 ${docFiles.map((f) => f.name).join(', ')}`.slice(0, 2000),
+        projectId: site.id, actor, action: '에이전트 자동', field: agentName, oldValue: null, newValue: body.slice(0, 2000),
       });
-      return made;
+      /* 초안은 이 말 밑에 선다 — 그대로 둔 초안은 아직 어느 말에도 안 이어졌을 때만(사람이 단추로 먼저 쓴 것) */
+      if (mailId && (wrote || (open !== null && open.messageId === null))) {
+        await tx.update(agentMails).set({ messageId }).where(eq(agentMails.id, mailId));
+      }
+      /* 서류가 없어 못 쓴 것은 한백 관리자에게 알린다(한백 「없어서 못보낸다고 알람을 줘야하고」) */
+      const alarmed = plan === 'missing'
+        ? await notifyAgentAlarm(tx, { projectId: site.id, docKind: spec.slot, ...missingAlarm(spec, agentName) })
+        : 0;
+      return { plan, mailId, taskId, messageId, alarmed };
     });
-    const [mail] = await mailsOf([await mailRow(input.agentId, id)]);
-    return mail;
+    const mail = out.mailId ? (await mailsOf([await mailRow(spec.agentId, out.mailId)]))[0] : null;
+    return { plan: out.plan, mail, taskId: out.taskId, messageId: out.messageId, alarmed: out.alarmed };
   },
 
   /** 그 현장의 그 양식 메일 — 오래된 것이 앞 */
@@ -336,6 +427,21 @@ export const agentMailStore: Pick<
           sentAt: new Date(), sentBy: actor.name, updatedAt: new Date(),
         }).where(eq(agentMails.id, old.id));
         await writeAudit(tx, { projectId: null, actor, action: '에이전트 메일 보냄', field: agentName, oldValue: null, newValue: line });
+        /* 현장 양식 메일이면 그 현장 · 양식의 할 일이 끝난다 — 접수 때 담당이 적은 「… 메일 보내기」(lib/site-mail) */
+        if (old.projectId && old.kind) {
+          const closed = await tx.update(agentTasks).set({ doneAt: new Date() }).where(and(
+            eq(agentTasks.agentId, old.agentId), eq(agentTasks.projectId, old.projectId), eq(agentTasks.kind, old.kind), isNull(agentTasks.doneAt),
+          )).returning({ title: agentTasks.title });
+          if (closed.length) {
+            const [site] = await tx.select({ name: projects.name }).from(projects).where(eq(projects.id, old.projectId));
+            for (const t of closed) {
+              await writeAudit(tx, {
+                projectId: old.projectId, actor, action: '에이전트 할 일 끝냄', field: agentName,
+                oldValue: [t.title, site?.name].filter(Boolean).join(' · '), newValue: '끝냄 — 메일 보냄',
+              });
+            }
+          }
+        }
       } else {
         const error = input.result.error.slice(0, 500);
         await tx.update(agentMails).set({ status: 'failed', error, updatedAt: new Date() }).where(eq(agentMails.id, old.id));

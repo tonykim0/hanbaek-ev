@@ -12,6 +12,7 @@
  *     전부 보내놓고 화면에서 가리면 안 된다.
  */
 import type { Biz } from '@/lib/biz';
+import type { DraftPlan } from '@/lib/site-mail';
 import type { RetouchLog } from '@/lib/retouch/types';
 import type { ConsultDup } from '@/lib/consult-dup';
 import type {
@@ -33,6 +34,23 @@ import type { Role } from '@/lib/roles';
 
 /** 알림을 받는 사람 — 세고 읽는 쪽(세션의 id·구분·소속) */
 export interface Recipient { id: string; role: Role; org: string | null }
+
+/** 현장 양식 메일에 붙이는 현장 서류 한 장 — 그때의 칸 파일(크기 · 형식은 Blob 에 물어 적는다) */
+export interface SiteDocFile {
+  name: string;
+  url: string;
+  size: number;
+  contentType: string | null;
+}
+
+/** 현장 양식 메일을 둔 결과 (siteMail · lib/site-mail planSiteDraft) — 쓰거나 그대로 둔 초안 · 적은 할 일 · 남긴 말 · 보낸 알림 수 */
+export interface SiteMailResult {
+  plan: DraftPlan;
+  mail: AgentMail | null;
+  taskId: string | null;
+  messageId: string | null;
+  alarmed: number;
+}
 
 export type { Actor };
 
@@ -549,16 +567,20 @@ export interface ProjectRepository {
   /** 보내기 전에 그 줄을 「보내는 중」으로 잡는다 — 같은 메일을 둘이 잡지 못한다 */
   claimAgentMail(input: { agentId: string; id: string }, actor: Actor): Promise<AgentMail>;
   /**
-   * 현장 메일 초안 — 계약서 초안처럼 현장 서류를 붙여 보내는 양식 메일(kind)을 그 담당의 초안으로 올린다 [한백 관리자].
-   * 같은 현장 · 양식의 보내지 않은 초안이 있으면 그것을 돌려준다. 받는 사람은 같은 양식으로 마지막에 보낸 메일의 것(처음이면 비어 있다)
+   * 현장 양식 메일 (lib/site-mail — 나이스 계약서 초안 · 현대엔지니어링 설치승인서) [한백 관리자 · 자동].
+   * 지금 서류로 쓴 초안(letter — 붙일 서류가 없으면 null)을 그 양식(kind)의 담당 초안으로 둔다: 같은 초안이 있으면 그대로 · 다르면
+   * 버리고 새로 · 같은 서류로 보냈으면 저절로 돌 때는 그만. 받는 사람은 버린 초안 또는 같은 양식으로 마지막에 보낸 메일의 것.
+   * intake(계약서 접수 때 저절로)면 할 일 · 대화 한 줄(auto) · 서류가 없을 때 한백 관리자 알림까지. 아니면(한백의 요청) 서류가
+   * 없을 때 사람 말로 던진다.
    */
-  addSiteMail(
+  siteMail(
     input: {
-      agentId: string; projectId: string; kind: string; subject: string; body: string;
-      docFiles: Array<{ name: string; url: string; size: number; contentType: string | null }>;
+      kind: string; projectId: string;
+      letter: { subject: string; body: string; docFiles: SiteDocFile[] } | null;
+      intake: { empty: string[] } | null;
     },
     actor: Actor
-  ): Promise<AgentMail>;
+  ): Promise<SiteMailResult>;
   /** 그 현장의 그 양식 메일 — 오래된 것이 앞 [한백 관리자] */
   projectMails(projectId: string, kind: string, actor: Actor): Promise<AgentMail[]>;
   /** 사전현장컨설팅 결과서 「6. 중복설치」를 읽은 것을 현장에 남긴다(lib/consult-dup-run) [한백 관리자 · 자동 대조] */

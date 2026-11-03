@@ -131,6 +131,29 @@ export async function fanOutNoticeMessage(tx: TxLike, input: {
   return rows.length;
 }
 
+/**
+ * 에이전트 담당이 못 한 일을 한백 관리자에게 — 접수된 현장의 양식 메일에 붙일 서류가 없을 때(store/agent-mail siteMail · lib/site-mail,
+ * 한백 2026-11-04 「없어서 못보낸다고 알람을 줘야하고」). 그 일을 하는 트랜잭션 안에서 부른다.
+ * 한백 관리자만 받는다 — 협력사의 일이 아니고(서류를 받아 다시 요청하는 것은 한백이다), 열람 전용은 글을 남기는 자리에 서지 않는다.
+ * 누르면 그 현장의 계약 탭이다(서류 칸이 거기 있다). docKind 는 그 서류 칸 — 메일을 쓰게 되면 retractAgentAlarm 이 거둔다.
+ */
+export async function notifyAgentAlarm(tx: TxLike, input: {
+  projectId: string; docKind: string; title: string; body: string;
+}): Promise<number> {
+  const rows = await tx.select({ id: users.id }).from(users).where(and(eq(users.role, 'admin'), eq(users.active, true)));
+  return insertFor(tx, rows.map((r) => r.id), {
+    projectId: input.projectId, kind: 'agent', scope: '계약', docKind: input.docKind, title: input.title, body: input.body,
+  });
+}
+
+/** 서류가 채워져 메일을 쓰게 되면 「없어서 못 보냄」의 안 읽은 알림을 거둔다 — 풀린 일을 알리면 거짓말이다(반려를 거두는 것과 같다) */
+export async function retractAgentAlarm(tx: TxLike, input: { projectId: string; docKind: string }): Promise<void> {
+  await tx.delete(notifications).where(and(
+    eq(notifications.projectId, input.projectId), eq(notifications.kind, 'agent'),
+    eq(notifications.docKind, input.docKind), isNull(notifications.readAt),
+  ));
+}
+
 /** 풀린 반려·취소된 보완요청의 안 읽은 알림을 거둔다 — docKind 를 주면 그 서류 것만 */
 export async function retractReview(tx: TxLike, input: {
   projectId: string; kind: 'reject' | 'ask'; docKind?: string | null;
@@ -142,7 +165,7 @@ export async function retractReview(tx: TxLike, input: {
   await tx.delete(notifications).where(and(...conds));
 }
 
-const KINDS: NotificationKind[] = ['note', 'reject', 'ask', 'notice', 'approval', 'queue'];
+const KINDS: NotificationKind[] = ['note', 'reject', 'ask', 'notice', 'approval', 'queue', 'agent'];
 
 export const notificationStore: Pick<
   ProjectRepository,
@@ -180,8 +203,8 @@ export const notificationStore: Pick<
         noteId: r.noteId,
         title: r.title,
         scope: kind === 'notice' ? null : isNoteScope(scope) ? scope : '시공',
-        // 반려·보완요청·환경부 대기번호·승인은 한백만 한다 · 공지 메시지는 그 글을 쓴 쪽
-        author: kind === 'note' ? r.noteAuthor ?? '' : kind === 'notice' ? r.msgAuthor ?? '' : '한백',
+        // 반려·보완요청·환경부 대기번호·승인은 한백만 한다 · 공지 메시지는 그 글을 쓴 쪽 · 담당이 못 한 일은 AI 담당
+        author: kind === 'note' ? r.noteAuthor ?? '' : kind === 'notice' ? r.msgAuthor ?? '' : kind === 'agent' ? 'AI 담당' : '한백',
         body: (kind === 'note' ? r.noteBody : kind === 'notice' ? r.msgBody : r.ownBody) ?? '',
         at: stampOf(r.createdAt),
         read: r.readAt !== null,

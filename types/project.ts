@@ -1504,7 +1504,11 @@ export function isNoteScope(v: unknown): v is NoteScope {
  * note(진행현황 글) · reject(서류 반려) · ask(누락 서류 보완요청) · notice(공지 메시지, migrations/0094) ·
  * approval(환경부 승인일을 처음 넣음 — lib/notify approvalNotice) · queue(환경부 대기번호를 처음 넣음 — queueNotice)
  */
-export type NotificationKind = 'note' | 'reject' | 'ask' | 'notice' | 'approval' | 'queue';
+/**
+ * 알림의 갈래 — note 진행현황 글 · reject 반려 · ask 누락 서류 보완요청 · notice 공지 메모 · approval 환경부 승인 · queue 대기번호 ·
+ * agent 에이전트 담당이 못 한 일(접수된 현장의 양식 메일에 붙일 서류가 없음 — 한백 관리자에게, lib/site-mail · migrations/0113)
+ */
+export type NotificationKind = 'note' | 'reject' | 'ask' | 'notice' | 'approval' | 'queue' | 'agent';
 
 export interface NoteNotification {
   id: string;

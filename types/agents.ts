@@ -64,8 +64,11 @@ export interface AgentTask {
  *   user   한백의 지시. 에이전트가 답한다
  *   note   기록만. 에이전트를 부르지 않는다(운영사 담당자와 통화한 내용 같은 것)
  *   agent  에이전트의 말
+ *   auto   자동 — 콘솔이 규칙대로 그 담당의 이름으로 한 일(계약서가 접수되면 할 일 · 양식 메일 초안, lib/site-mail).
+ *          모델을 부르지 않는다 — 답 수 · 비용(사용량 표)에 세지 않는다
  */
-export type AgentMessageRole = 'user' | 'note' | 'agent';
+export type AgentMessageRole = 'user' | 'note' | 'agent' | 'auto';
+export const AGENT_MESSAGE_ROLES = ['user', 'note', 'agent', 'auto'] as const satisfies readonly AgentMessageRole[];
 
 export interface AgentSource {
   url: string;
@@ -93,6 +96,8 @@ export interface AgentMessageMeta {
   tokens?: { input: number; output: number; cacheRead: number; cacheWrite: number };
   /** 웹 검색 횟수 — 한 번에 1센트(전략·기획만) */
   searches?: number;
+  /** 자동의 말이 짚는 현장 — 대화에서 현장 상세로 가는 고리 */
+  site?: { id: string; name: string };
 }
 
 /**
@@ -114,7 +119,7 @@ export interface AgentUsage {
  *   draft      승인 대기. 에이전트가 올렸고 한백이 아직 누르지 않았다
  *   sending    보내는 중 — 두 번 나가지 않게 이 상태로 먼저 잡는다
  *   sent       나갔다
- *   failed     구글이 받지 않았다 — 고쳐서 다시 보낼 수 있다
+ *   failed     메일 서버가 받지 않았다 — 고쳐서 다시 보낼 수 있다
  *   discarded  버렸다 — 되살릴 수 있다(화면 규칙 7)
  */
 export type AgentMailStatus = 'draft' | 'sending' | 'sent' | 'failed' | 'discarded';
@@ -188,10 +193,11 @@ export interface AgentWeek {
   start: string;
   /** 그 주 일요일 YYYY-MM-DD */
   end: string;
-  /** 한백의 지시 · 기록만 · 에이전트의 답 */
+  /** 한백의 지시 · 기록만 · 에이전트의 답 · 자동(콘솔이 담당의 이름으로 한 일) */
   user: number;
   note: number;
   agent: number;
+  auto: number;
   /** 그 주에 적힌 할 일 · 끝난 할 일 */
   tasksAdded: number;
   tasksDone: number;

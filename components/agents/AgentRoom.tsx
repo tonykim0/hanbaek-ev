@@ -16,6 +16,8 @@
  *
  * ★메일 초안★(한백 2026-11-03) — 담당이 올린 초안은 그것을 쓴 답 바로 밑에 선다(MailCard). 한백이 「승인하고 보내기」를 눌러야
  * 나간다. 답에 이어지지 못한 초안(답을 남기다 끊긴 것)은 올린 시각의 자리에 따로 선다.
+ * ★자동의 말★(2026-11-04 · lib/site-mail) — 계약서가 접수되면 콘솔이 그 담당의 이름으로 할 일 · 양식 메일 초안을 남긴다(말의 종류
+ * auto). 에이전트의 말과 같은 띠에 「자동」 꼬리표와 그 현장으로 가는 고리를 단다. 초안 카드는 그 말 밑에 선다.
  * 말은 띠 모양이다(ui.tsx Note 처럼 왼쪽 선 — 판 안이라 사방 테두리를 두르지 않는다). 에이전트의 말만 초록 바탕에 반짝이를 단다.
  */
 import Link from 'next/link';
@@ -138,7 +140,8 @@ export function AgentRoom({ agentId, agentName, messages, mails, connected, week
       return;
     }
     setList((l) => [...l, r.message]);
-    if (r.mails.length) setMailList((l) => [...l, ...r.mails]);
+    // 이미 있던 초안(같은 양식 초안을 그대로 둔 것)은 이 답 밑으로 옮겨 온다 — 같은 카드가 둘 서지 않게 id 로 갈아 끼운다
+    if (r.mails.length) setMailList((l) => [...l.filter((m) => !r.mails.some((x) => x.id === m.id)), ...r.mails]);
     router.refresh(); // 에이전트가 할 일을 적었을 수 있다 — 오른쪽 할 일과 머리말을 다시 그린다
   }
 
@@ -347,6 +350,7 @@ function Linked({ text }: { text: string }) {
 /* 말의 모양 — 누가 말했는지는 띠의 선과 바탕, 머리의 표시(반짝이 에이전트 · ▸ 지시 · ✎ 기록)로 가른다 */
 const ROLE_LOOK = {
   agent: { band: 'border-brand-400 bg-brand-50/70', who: 'text-brand-800', text: 'text-slate-800' },
+  auto: { band: 'border-brand-400 bg-brand-50/70', who: 'text-brand-800', text: 'text-slate-800' },
   user: { band: 'border-slate-300', who: 'text-slate-800', text: 'text-slate-800' },
   note: { band: 'border-dashed border-slate-300 bg-slate-50', who: 'text-slate-500', text: 'text-slate-600' },
 } as const;
@@ -359,11 +363,12 @@ function Said({ message: m }: { message: AgentMessage }) {
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-tiny">
         <span className="font-semibold tabular-nums text-slate-500">{m.at}</span>
         <span className={`inline-flex items-center gap-1 font-bold ${look.who}`}>
-          {m.role === 'agent' && <Spark className="h-3 w-3 self-center text-brand-500" />}
+          {(m.role === 'agent' || m.role === 'auto') && <Spark className="h-3 w-3 self-center text-brand-500" />}
           {m.role === 'user' && <span aria-hidden>▸</span>}
           {m.role === 'note' && <span aria-hidden>✎ 기록 ·</span>}
           {m.author}
         </span>
+        {m.role === 'auto' && <Tag>자동</Tag>}
         {(secs !== null || m.meta?.usd !== undefined) && (
           <span className="font-semibold tabular-nums text-slate-500">
             {secs !== null && `${secs}초`}
@@ -374,6 +379,11 @@ function Said({ message: m }: { message: AgentMessage }) {
         {m.meta?.done?.length ? <Tag tone="ok">할 일 {m.meta.done.length}건 끝냄</Tag> : null}
         {m.meta?.mails?.length ? <Tag tone="ok">메일 초안 {m.meta.mails.length}통</Tag> : null}
         {m.role === 'agent' && <span className="ml-auto"><CopyBtn text={m.body} /></span>}
+        {m.role === 'auto' && m.meta?.site && (
+          <Link href={`/projects/${encodeURIComponent(m.meta.site.id)}?tab=intake`} className={`ml-auto text-small font-bold ${LINK}`}>
+            현장 보기 →
+          </Link>
+        )}
       </div>
       {m.body && <p className={`mt-1 whitespace-pre-wrap break-keep text-base leading-relaxed ${look.text}`}><Linked text={m.body} /></p>}
       {m.files.length > 0 && (

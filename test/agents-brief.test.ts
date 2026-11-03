@@ -218,4 +218,11 @@ describe('지난 대화를 에이전트에게 넘기는 모양', () => {
     expect(m[0]).toEqual({ role: 'user', content: '[기록 — 김한백 · 2026-11-02 10:00] SK 김과장 통화 — 견적 회신 금요일' });
     expect(m[1].role).toBe('user');
   });
+
+  it('자동의 말(콘솔이 담당의 이름으로 한 일)은 모델의 말이 아니라 표지를 단 기록으로 간다 — 맨 앞이어도 남는다', () => {
+    const auto: AgentMessage = { ...said('auto', 'HB-1 현장 — 계약서가 접수됐습니다.'), author: '나이스인프라 담당' };
+    const m = toMessages([auto, said('user', '받는 사람 누구야')]);
+    expect(m[0]).toEqual({ role: 'user', content: '[자동 — 나이스인프라 담당 · 2026-11-02 10:00] HB-1 현장 — 계약서가 접수됐습니다.' });
+    expect(m).toHaveLength(2);
+  });
 });

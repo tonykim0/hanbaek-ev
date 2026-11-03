@@ -1,8 +1,10 @@
 /**
  * 에이전트가 답한다 (서버 전용) — 업무 정의 · 열린 할 일 · 지금 콘솔 자료 · 지난 대화를 읽고 한백의 지시에 답한다.
  *
- * ★손에 쥔 것은 할 일 목록과 메일 초안뿐이다★ — add_task · complete_task · draft_mail. 반려 · 확정 · 단계 이동 · 지급 같은
- * 콘솔의 값은 못 바꾼다(그건 사람이 콘솔에서 누른다 — 판독이 반려하지 않는 것과 같은 원칙). 전략·기획만 웹 검색을 더 쥔다.
+ * ★손에 쥔 것은 할 일 목록과 메일 초안뿐이다★ — add_task · complete_task · draft_mail, 양식 메일이 있는 운영사 담당은 site_mail
+ * (나이스 계약서 초안 · 현대엔지니어링 설치승인서 — lib/site-mail). 반려 · 확정 · 단계 이동 · 지급 같은 콘솔의 값은 못 바꾼다(그건
+ * 사람이 콘솔에서 누른다 — 판독이 반려하지 않는 것과 같은 원칙). 전략·기획만 웹 검색을 더 쥔다.
+ * 계약서가 접수되면 콘솔이 그 담당의 이름으로 할 일 · 양식 메일 초안을 저절로 남긴다(말의 종류 auto) — 대화에서는 「[자동 …]」으로 읽는다.
  * ★메일은 초안까지다★ — 나가는 것은 한백이 그 초안의 「승인하고 보내기」를 눌렀을 때뿐이다(한백 2026-11-03 「난 그거에 대해
  * 승인을 하고 너가 메일을 보내는건데」 · app/api/agents/[id]/mails/[mailId]/send).
  *
@@ -21,6 +23,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logLlmCall, usdOf } from '@/lib/llm-usage';
 import { agentFileRead } from './files';
 import { fileTextsOf } from './file-text';
+import { josa, siteMailOfCpo, type SiteMailSpec } from '@/lib/site-mail';
 import type { Agent, AgentDuty, AgentFile, AgentMessage, AgentMessageMeta, AgentSource, AgentTask } from '@/types/agents';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -49,10 +52,13 @@ type CreateParams = Omit<Anthropic.MessageCreateParamsNonStreaming, 'tools'> & {
 /** 갈래마다의 일 — 업무 정의가 그 위에 얹힌다 */
 function roleOf(agent: Agent): string {
   switch (agent.kind) {
-    case 'operator':
+    case 'operator': {
+      const spec = siteMailOfCpo(agent.cpo);
       return `${agent.cpo} 운영사와 관련된 일을 맡는다. ${agent.cpo} 현장들이 접수부터 준공까지 막히지 않고 흘러가게 챙기고, `
         + `${agent.cpo} 쪽과 오간 일을 기록한다. [현장] 자료의 「칸」은 그 현장이 선 단계, 「차례」는 지금 움직여야 할 쪽 `
-        + '(한백 · 영업사 · 시공사), 「정체」는 마지막 진척 뒤 지난 날수다.';
+        + '(한백 · 영업사 · 시공사), 「정체」는 마지막 진척 뒤 지난 날수다.'
+        + (spec ? `\n${siteMailRole(spec)}` : '');
+    }
     case 'settlement':
       return '정산을 맡는다 — 세 가지다.\n'
         + '1) 기성관리: 한백이 운영사에게서 받을 돈(기성)을 챙긴다. [기성관리] 자료가 청구 · 수금할 차례다.\n'
@@ -70,6 +76,14 @@ function roleOf(agent: Agent): string {
   }
 }
 
+/** 양식 메일이 있는 운영사 담당의 몫 — 접수 때 저절로 쓰는 것과, 서류가 채워져 한백이 다시 요청할 때 쓰는 도구 */
+function siteMailRole(spec: SiteMailSpec): string {
+  return `현장 양식 메일: 계약서가 접수된 ${spec.cpo} 현장마다 「${spec.label}」(${spec.doc} 첨부)을 보낸다. 접수되면 콘솔이 네 이름으로 `
+    + `할 일을 적고 초안을 쓴다(「[자동 …]」). ${josa(spec.doc, '이', '가')} 없으면 못 보낸다고 남기고 할 일을 열어 둔다. `
+    + `${josa(spec.doc, '이', '가')} 채워져 한백이 다시 요청하면 site_mail 로 초안을 올린다 — 이 메일은 draft_mail 로 쓰지 않는다. `
+    + `그 메일이 나가면 「${spec.label} 보내기」 할 일은 저절로 끝난다 — complete_task 로 끝내지 않아도 된다.`;
+}
+
 const RULES = `일하는 법:
 - 한국어로, 짧고 구체적으로 답한다. 현장은 관리번호와 이름으로 짚는다.
 - 숫자와 사실은 자료와 대화에 있는 것만 쓴다. 자료에 없으면 없다고 말하고 지어내지 않는다.
@@ -80,6 +94,7 @@ const RULES = `일하는 법:
 - 「[기록 …]」으로 시작하는 말은 한백이 남긴 기록이다(운영사 담당자와 통화한 내용 같은 것). 답을 바라는 말이 아니지만 근거로 쓴다.
 - 「[넘긴 파일 …]」은 한백이 너에게 준 파일이다. 읽을 수 있으면 읽고 근거로 쓴다. 이름만 알고 열지 못한 파일은 그렇다고 말한다.
 - 「[지금 …]」으로 시작하는 덩이는 마지막 지시를 받은 때의 콘솔 자료다 — 한백이 쓴 말이 아니다.
+- 「[자동 …]」으로 시작하는 말은 콘솔이 규칙대로 네 이름으로 한 일이다(계약서가 접수되면 할 일 · 양식 메일 초안). 네가 한 일로 알고 이어서 챙긴다.
 - 메일은 draft_mail 로 초안만 올린다. 너는 메일을 보내지 못한다 — 한백이 초안을 보고 「승인하고 보내기」를 눌러야 나간다.
   업무 정의에 메일을 보내는 경우와 양식이 있으면 그대로 따르고, 한백이 메일을 쓰라고 할 때나 업무 정의가 정한 경우에만 올린다.
   받는 사람 주소는 업무 정의 · 대화 · 자료에 적힌 것만 쓴다. 모르면 초안을 올리지 말고 누구에게 보낼지 묻는다.
@@ -130,6 +145,8 @@ function fileBlocks(f: AgentFile, texts?: Map<string, string>): Anthropic.Conten
 export function toMessages(history: AgentMessage[], texts?: Map<string, string>): Anthropic.MessageParam[] {
   const out: Anthropic.MessageParam[] = history.map((m) => {
     if (m.role === 'agent') return { role: 'assistant' as const, content: m.body };
+    // 자동의 말은 모델이 쓴 말이 아니다 — 표지를 단 기록으로 넣는다(대화 맨 앞에 와도 빠지지 않게)
+    if (m.role === 'auto') return { role: 'user' as const, content: `[자동 — ${m.author} · ${m.at}] ${m.body}` };
     const head = m.role === 'note' ? `[기록 — ${m.author} · ${m.at}] ${m.body}` : `[${m.author} · ${m.at}] ${m.body}`;
     if (!m.files?.length) return { role: 'user' as const, content: head };
     return {
@@ -158,6 +175,11 @@ export interface AgentHands {
   draftMail(input: { to: unknown; cc: unknown; subject: string; body: string; fileIds: string[] }): Promise<string>;
   /** 관리번호(또는 현장 id) → 현장 id. 모르면 null */
   siteOf(ref: string): string | null;
+  /**
+   * 현장 양식 메일 초안 — 양식이 있는 운영사 담당만(lib/site-mail). 지금 서류로 쓰고, 붙일 서류가 없으면 사람 말로 던진다.
+   * plan: create 새로 · replace 앞의 보내지 않은 초안을 버리고 새로 · keep 같은 초안이 이미 있다
+   */
+  siteMail?(projectId: string): Promise<{ id: string; subject: string; plan: string; to: string[] }>;
 }
 
 /** 한 답에 올리는 메일 초안 상한 — 잘못 돈 답이 초안을 쏟아 내지 않게 */
@@ -208,6 +230,22 @@ const TASK_TOOLS = [
   },
 ];
 
+/** 현장 양식 메일 도구 — 그 운영사의 양식(spec)으로만 쓴다 */
+function siteMailTool(spec: SiteMailSpec) {
+  return {
+    name: 'site_mail',
+    description: `현장 하나의 「${spec.label}」 초안을 올린다 — 그 현장의 ${spec.doc} 파일을 붙이고 본문은 정해진 양식이다. `
+      + '받는 사람은 같은 양식으로 마지막에 보낸 주소로 찬다(처음이면 비어 있어 한백이 카드에서 넣는다). '
+      + `${josa(spec.doc, '이', '가')} 아직 없으면 실패하고 그 까닭을 돌려준다 — 그대로 전한다. `
+      + '한백이 그 현장의 메일을 (다시) 보내 달라고 할 때 쓴다. 너는 보내지 못한다 — 한백이 승인해야 나간다.',
+    input_schema: {
+      type: 'object',
+      properties: { site: { type: 'string', description: '현장의 관리번호, 예: HB-2026-123' } },
+      required: ['site'],
+    },
+  };
+}
+
 /*
  * 한 답에 검색 여덟 번까지 — 다섯 번이었을 때 첫 시험(2026-11-02 보조금 정책)에서 「검색이 횟수 제한으로 중간에
  * 끊겼다」고 스스로 적었다. 한 번에 1센트, 그 답은 46초 · $0.20 이었다.
@@ -250,7 +288,12 @@ export async function agentReply(input: {
         + `${roleOf(agent)}\n\n${RULES}\n\n${dutiesBlock(input.duties)}`,
     },
   ];
-  const tools: unknown[] = agent.kind === 'strategy' ? [...TASK_TOOLS, WEB_SEARCH] : [...TASK_TOOLS];
+  const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
+  const tools: unknown[] = [
+    ...TASK_TOOLS,
+    ...(siteSpec ? [siteMailTool(siteSpec)] : []),
+    ...(agent.kind === 'strategy' ? [WEB_SEARCH] : []),
+  ];
   const said = toMessages(input.history, await fileTextsOf(input.history));
   if (said.length === 0 || said[said.length - 1].role !== 'user') {
     throw new Error('답할 지시가 없습니다.');
@@ -303,6 +346,22 @@ export async function agentReply(input: {
         return {
           type: 'tool_result', tool_use_id: block.id,
           content: `초안을 올렸다 (id=${id}) — 한백이 승인하면 나간다. 아직 보내지 않았다.`,
+        };
+      }
+      if (block.name === 'site_mail' && siteSpec && hands.siteMail) {
+        if (mails.length >= MAILS_PER_TURN) return fail(`한 답에 메일 초안은 ${MAILS_PER_TURN}통까지다.`);
+        const ref = str(args.site);
+        const projectId = ref ? hands.siteOf(ref) : null;
+        if (!projectId) return fail(`현장 ${ref || '(비어 있음)'} 를 찾지 못했다 — 관리번호를 확인한다.`);
+        const made = await hands.siteMail(projectId);
+        mails.push(made.subject);
+        const who = made.to.length ? `받는 사람 ${made.to.join(', ')}` : '받는 사람 미지정(한백이 카드에서 넣는다)';
+        return {
+          type: 'tool_result', tool_use_id: block.id,
+          content: made.plan === 'keep'
+            ? `같은 초안이 이미 올라와 있다 (id=${made.id}, ${who}) — 그대로 두었다. 한백이 승인하면 나간다.`
+            : `초안을 올렸다 (id=${made.id}, ${who})${made.plan === 'replace' ? ' — 앞의 보내지 않은 초안은 서류가 달라 버렸다' : ''}. `
+              + '아직 보내지 않았다 — 한백이 승인하면 나간다.',
         };
       }
       return fail(`모르는 도구: ${block.name}`);

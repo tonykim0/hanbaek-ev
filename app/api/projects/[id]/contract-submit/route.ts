@@ -12,7 +12,7 @@ import { getRepository } from '@/lib/data';
 import { sessionWrite, BadRequest } from '@/lib/api/write-route';
 import { schedulePreInstallCheck } from '@/lib/preinstall-run';
 import { scheduleParkingCheck } from '@/lib/parking-run';
-import { scheduleConsultDup } from '@/lib/consult-dup-run';
+import { scheduleSiteMailIntake } from '@/lib/site-mail-run';
 
 /** 접수하면 기설치 대조가 응답 뒤에 돈다 — 판독까지 가는 길이라 예산을 넉넉히 */
 export const maxDuration = 300;
@@ -28,7 +28,11 @@ export const POST = sessionWrite<{ id: string }, { submitted?: unknown }>(
     if (body.submitted) schedulePreInstallCheck(params.id);
     // 건축물대장 대조도 같다 — 건축물대장·결과서·신청서로(lib/parking-run, 한백 지시 2026-10-16)
     if (body.submitted) scheduleParkingCheck(params.id);
-    // 결과서 「6. 중복설치」도 — 이 기능 전에 올린 결과서까지(lib/consult-dup-run, 한백 지시 2026-11-03)
-    if (body.submitted) scheduleConsultDup(params.id);
+    /*
+     * ★운영사 담당이 양식 메일을 저절로★ (한백 지시 2026-11-04 · lib/site-mail) — 나이스는 계약서 초안, 현대엔지니어링은 설치승인서.
+     * 그 담당이 할 일을 적고 초안을 쓰고 대화에 남긴다. 서류가 없으면 못 보낸다고 한백 관리자에게 알린다. 나이스는 쓰기 전에 결과서
+     * 「6. 중복설치」(제출 정보 7번)를 읽는다 — 이 기능 전에 올린 결과서까지.
+     */
+    if (body.submitted) scheduleSiteMailIntake(params.id);
   }
 );

@@ -15,6 +15,7 @@ function countsOf(w: AgentWeek): string {
   return [
     w.user && `지시 ${w.user}`,
     w.agent && `답 ${w.agent}`,
+    w.auto && `자동 ${w.auto}`,
     w.note && `기록 ${w.note}`,
     w.tasksAdded && `할 일 적음 ${w.tasksAdded}`,
     w.tasksDone && `끝냄 ${w.tasksDone}`,

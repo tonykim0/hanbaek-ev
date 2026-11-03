@@ -1,5 +1,5 @@
 /**
- * 나이스인프라 계약서 초안 메일 · 결과서 중복설치의 문 (app/api/projects/[id]/nice-draft-mail · store/agent-mail addSiteMail ·
+ * 나이스인프라 계약서 초안 메일 · 결과서 중복설치의 문 (app/api/projects/[id]/nice-draft-mail · store/agent-mail siteMail ·
  * store/consult-dup). 한백 지시 2026-11-03.
  *
  * 보는 것: 관리자만 · 나이스 현장만 · 「계약서 초안」 칸이 비면 거절 · 초안은 그 칸의 파일을 붙여 나이스인프라 담당에 하나만 선다(두 번
@@ -81,7 +81,7 @@ describe('계약서 초안 메일', () => {
       await signIn(USERS.admin);
       const r = await call(draftMail, { params: { id } });
       expect(r.status).toBe(422);
-      expect(r.json?.error).toBe('계약서 초안(워드)이 없습니다 — 먼저 올려 주세요.');
+      expect(r.json?.error).toBe('계약서 초안이 없습니다 — 먼저 올려 주세요.');
     }, NICE);
   });
 

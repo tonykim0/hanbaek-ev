@@ -689,6 +689,8 @@ export const agentTasks = pgTable('agent_tasks', {
   title: text('title').notNull(),
   note: text('note'),
   projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  /** 양식 메일의 할 일이면 그 양식 이름(agent_mails.kind 와 같은 말 · lib/site-mail) — 그 메일이 나가면 저절로 끝난다. 사람이 적은 것은 null */
+  kind: text('kind'),
   due: text('due'),
   doneAt: timestamp('done_at', { withTimezone: true }),
   author: text('author').notNull(),

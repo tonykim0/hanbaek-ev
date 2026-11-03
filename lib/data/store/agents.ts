@@ -20,7 +20,7 @@ import type {
   Agent, AgentDetail, AgentDuty, AgentEvent, AgentFile, AgentKind, AgentMessage, AgentMessageMeta, AgentMessageRole,
   AgentSummary, AgentTask, AgentUsage, AgentWeek,
 } from '@/types/agents';
-import { AGENT_KINDS } from '@/types/agents';
+import { AGENT_KINDS, AGENT_MESSAGE_ROLES } from '@/types/agents';
 import { AGENT_FILES_PER_MESSAGE, agentFileName, agentFilePrefix } from '@/lib/agents/files';
 import { mondayOf, shiftDay } from '@/lib/agents/weeks';
 import type { CpoName } from '@/types/project';
@@ -113,10 +113,14 @@ async function agentRow(id: string): Promise<Agent> {
   return agentOf(row);
 }
 
+/** 모르는 종류는 기록으로 — 답을 바라지도, 에이전트의 말로 읽히지도 않게 */
+const roleOf = (v: string): AgentMessageRole =>
+  ((AGENT_MESSAGE_ROLES as readonly string[]).includes(v) ? v : 'note') as AgentMessageRole;
+
 function messageOf(r: typeof agentMessages.$inferSelect, files: AgentFile[] = []): AgentMessage {
   return {
     id: r.id,
-    role: (['user', 'note', 'agent'].includes(r.role) ? r.role : 'note') as AgentMessageRole,
+    role: roleOf(r.role),
     author: r.author,
     body: r.body,
     at: stampOf(r.at),
@@ -239,7 +243,7 @@ export const agentStore: Pick<
         pendingMails: mailOf.get(r.id) ?? 0,
         last: last
           ? {
-            role: (['user', 'note', 'agent'].includes(last.role) ? last.role : 'note') as AgentMessageRole,
+            role: roleOf(last.role),
             at: stampOf(last.at),
             line: last.body.replace(/\s+/g, ' ').trim().slice(0, 80),
           }
@@ -310,7 +314,7 @@ export const agentStore: Pick<
       let x = weeks.get(w);
       if (!x) {
         x = {
-          start: w, end: shiftDay(w, 6), user: 0, note: 0, agent: 0, tasksAdded: 0, tasksDone: 0, dutyChanges: 0, files: 0, mails: 0, usd: 0,
+          start: w, end: shiftDay(w, 6), user: 0, note: 0, agent: 0, auto: 0, tasksAdded: 0, tasksDone: 0, dutyChanges: 0, files: 0, mails: 0, usd: 0,
         };
         weeks.set(w, x);
       }
@@ -320,6 +324,7 @@ export const agentStore: Pick<
       const x = weekRow(r.week);
       if (r.role === 'user') x.user += r.n;
       else if (r.role === 'agent') x.agent += r.n;
+      else if (r.role === 'auto') x.auto += r.n;
       else x.note += r.n;
       x.usd += Number(r.usd ?? 0);
     }
@@ -481,6 +486,8 @@ export const agentStore: Pick<
 
   async addAgentMessage(input, actor): Promise<AgentMessage> {
     assertAdmin(actor, '에이전트 대화');
+    // 자동의 말은 그 일을 하는 트랜잭션이 남긴다(store/agent-mail siteMail) — 여기로 오면 사람 이름이 붙은 가짜 자동이 된다
+    if (input.role === 'auto') throw new Error('자동의 말은 여기서 남기지 않습니다.');
     const agent = await agentRow(input.agentId);
     const fromAgent = input.role === 'agent';
     const body = clip(input.body, fromAgent ? MAX.agentSaid : MAX.said, '글');
