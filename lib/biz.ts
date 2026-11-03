@@ -37,8 +37,8 @@ export const isShared = (pathname: string) => SHARED_PATHS.some((p) => under(pat
 
 export const asBiz = (v: string | undefined | null): Biz => (v === 'solar' ? 'solar' : 'ev');
 
-/** 전환 단추를 누르면 가는 곳 — 그 사업의 첫 화면 */
-export const BIZ_HOME: Record<Biz, string> = { ev: '/projects', solar: SOLAR_ROOT };
+/** 전환 단추를 누르면 가는 곳 — 그 사업의 첫 화면. 태양광은 설치 검토다(지금 실제로 쓰는 화면 — 현장관리는 아직 틀뿐) */
+export const BIZ_HOME: Record<Biz, string> = { ev: '/projects', solar: `${SOLAR_ROOT}/check` };
 
 export const BIZ_LABEL: Record<Biz, string> = { ev: '전기차', solar: '태양광' };
 

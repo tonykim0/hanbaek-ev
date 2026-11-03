@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { asBiz, bizOf, isShared } from '@/lib/biz';
+import { asBiz, BIZ_HOME, bizOf, isShared } from '@/lib/biz';
 import { HANBAEK_ONLY } from '@/lib/routes-map';
 
 describe('bizOf — 사업은 주소로 가른다', () => {
   it('/solar 아래는 태양광', () => {
     expect(bizOf('/solar')).toBe('solar');
     expect(bizOf('/solar/abc')).toBe('solar');
+  });
+  it('전환 단추가 가는 첫 화면은 제 사업이다 — 태양광은 설치 검토', () => {
+    expect(BIZ_HOME.solar).toBe('/solar/check');
+    expect(bizOf(BIZ_HOME.solar, 'ev')).toBe('solar');
+    expect(bizOf(BIZ_HOME.ev, 'solar')).toBe('ev');
   });
   it('나머지는 전기차 — 마지막 사업이 태양광이어도', () => {
     expect(bizOf('/projects', 'solar')).toBe('ev');
