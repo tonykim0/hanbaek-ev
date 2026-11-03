@@ -56,7 +56,7 @@ export const getSessionUser = cache(async (): Promise<SessionPayload | null> => 
   // 못 봤으면 쿠키에 실린 값을 그대로 쓴다 — DB 가 한 번 끊겼다고 전원을 내보내지 않는다
   // 이름·구분·소속은 지금 값이 정본이다. 쿠키의 값은 발급 시점의 것이라 낡을 수 있다.
   const base =
-    live === 'unknown' ? signed : { ...signed, name: live.name, role: live.role, org: live.org };
+    live === 'unknown' ? signed : { ...signed, name: live.name, role: live.role, org: live.org, solar: live.solar };
 
   /*
    * 대행 — 바탕이 관리자이고 대상 계정이 지금도 살아 있을 때만 그 계정의 눈이 된다.
@@ -72,6 +72,7 @@ export const getSessionUser = cache(async (): Promise<SessionPayload | null> => 
         name: asLive.name,
         role: asLive.role,
         org: asLive.org,
+        solar: asLive.solar,
         via: { id: base.id, name: base.name },
       };
     }

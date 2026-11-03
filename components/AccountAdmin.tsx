@@ -158,6 +158,7 @@ export default function AccountAdmin({
                   <Th>이름</Th>
                   <Th>구분</Th>
                   <Th>소속</Th>
+                  <Th>태양광</Th>
                   <Th>만든 날</Th>
                   <Th>상태</Th>
                   <Th>동작</Th>
@@ -170,7 +171,7 @@ export default function AccountAdmin({
                 {rows.length === 0 && (
                   <tr>
                     {/* 세었고 없다 — 「아직 없습니다」라고 적지 않는다(규칙 6·10번) */}
-                    <td colSpan={7} className="px-3 py-6 text-small font-bold text-slate-400">
+                    <td colSpan={8} className="px-3 py-6 text-small font-bold text-slate-400">
                       0건
                     </td>
                   </tr>
@@ -475,6 +476,22 @@ function AccountRow({
           )}
         </Td>
 
+        {/*
+          * 태양광 참여(2026-11-03 「에코일렉은 태양광도 같이할거야」) — 켜면 그 계정에 사업 전환이 보이고 제 소속의
+          * 태양광 현장을 본다. 한백은 늘 보므로 켜고 끌 것이 없다(해당없음). 파일 계정은 화면에서 못 바꾼다.
+          */}
+        <Td>
+          {isHanbaek(a.role) ? (
+            <Empty kind="na" />
+          ) : a.source === '파일' ? (
+            a.solar ? '참여' : '안 함'
+          ) : (
+            <Choice on={!!a.solar} disabled={busy} onClick={() => patch({ solar: !a.solar })}>
+              {a.solar ? '참여' : '안 함'}
+            </Choice>
+          )}
+        </Td>
+
         <Td className="tabular-nums text-slate-400">
           {a.createdAt ?? <span title="환경변수·개발 시드 계정">배포 설정</span>}
         </Td>
@@ -547,7 +564,7 @@ function AccountRow({
       </tr>
       {pwOpen && (
         <tr>
-          <td colSpan={7} className="px-3 pb-3">
+          <td colSpan={8} className="px-3 pb-3">
             {pwDone ? (
               <span className="flex items-center gap-2.5">
                 <Saved>
@@ -592,14 +609,14 @@ function AccountRow({
       )}
       {error && (
         <tr>
-          <td colSpan={7} className="px-3 pb-2.5">
+          <td colSpan={8} className="px-3 pb-2.5">
             <Err>{error}</Err>
           </td>
         </tr>
       )}
       {actAs.error && (
         <tr>
-          <td colSpan={7} className="px-3 pb-2.5">
+          <td colSpan={8} className="px-3 pb-2.5">
             <Err>{actAs.error}</Err>
           </td>
         </tr>

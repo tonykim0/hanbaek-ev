@@ -25,7 +25,30 @@ export const users = pgTable('users', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   /** 공지 화면을 마지막으로 연 시각 — 그보다 뒤의 공지가 「안 읽은 것」(상단바 배지) */
   noticesReadAt: timestamp('notices_read_at', { withTimezone: true }),
+  /** 태양광 사업 참여 — 켜면 사업 전환이 보이고 제 소속의 태양광 현장을 본다(migrations/0105). 한백은 안 봐도 늘 본다 */
+  solar: boolean('solar').notNull().default(false),
 });
+
+/**
+ * 태양광 현장 — 상담 접수로 들어온다 (migrations/0105, 한백 지시 2026-11-03 「현장관리에서 상담 개소 접수」).
+ * 전기차 현장(projects)과 섞지 않는다 — 운영사 · 단가 케이스 · 기성의 모델이 없다(CLAUDE.md 「사업이 둘이다」).
+ * id 는 SL-연도-순번(시퀀스 solar_sites_seq — 지운 번호를 다시 쓰지 않는다). org 는 담당 협력사, 한백이 직접 받으면 null.
+ */
+export const solarSites = pgTable('solar_sites', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  address: text('address').notNull(),
+  kind: text('kind').notNull(),              // roof | ground
+  customer: text('customer'),
+  phone: text('phone'),
+  memo: text('memo'),
+  org: text('org'),
+  createdBy: text('created_by').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }),
+}, (t) => ({
+  byOrg: index('solar_sites_org_idx').on(t.org, t.createdAt),
+}));
 
 /**
  * 공지 — 한백이 협력사 전체에 알리는 글 (migrations/0051).

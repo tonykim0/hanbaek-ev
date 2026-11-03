@@ -21,12 +21,22 @@ function linesOf(s: Suggestion): { main: string; sub: string | null } {
 }
 
 /**
- * 태양광 설치 검토 — 주소 하나를 넣으면 필지 · 건물 · 용도지역 · 계통 · 조례를 보고 판정과 설치 가능 용량을 낸다.
+ * 태양광 부지 검토 — 주소 하나를 넣으면 필지 · 건물 · 용도지역 · 계통 · 조례를 보고 판정과 설치 가능 용량을 낸다.
  * 검토 사이트(solar-site)에서 콘솔로 들였다(2026-11-03, 한백 「태양광 설치 검토 기능을 이 페이지에」). DB 에는 아무것도 안 남긴다.
  *
  * @param mapKey 카카오 JavaScript 키 — 서버(page)가 환경변수에서 넘긴다. 브라우저에 보이는 것이 정상인 키다(도메인으로 묶인다)
  */
-export default function Checker({ mapKey }: { mapKey: string | null }) {
+export default function Checker({
+  mapKey,
+  initial = null,
+  canRegister = false,
+}: {
+  mapKey: string | null;
+  /** 들고 온 주소 — 그 갈래의 검색창에 넣고 한 번 돈다(현장 상세의 「부지 검토」) */
+  initial?: { q: string; mode: Mode } | null;
+  /** 결과에서 상담 접수로 가는 길을 세우는가 — 쓰는 계정만(열람 전용은 아니다) */
+  canRegister?: boolean;
+}) {
   /** 도는 검토의 갈래 — 결과 자리가 하나라 한 번에 하나만 돈다 */
   const [busy, setBusy] = useState<Mode | null>(null);
   const [error, setError] = useState<{ mode: Mode; text: string } | null>(null);
@@ -58,17 +68,33 @@ export default function Checker({ mapKey }: { mapKey: string | null }) {
     }
   }
 
+  // 들고 온 주소는 처음 한 번만 — 다시 그려질 때마다 돌면 바깥 자료의 하루 한도를 깎는다
+  const started = useRef(false);
+  useEffect(() => {
+    if (!initial || started.current) return;
+    started.current = true;
+    void run(initial.mode, initial.q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 처음 한 번
+  }, []);
+
   return (
     <div>
       {/* 위에서 아래로(한백 지시) — 주소 칸이 넓어야 긴 주소·후보 목록이 잘리지 않는다 */}
       <div className="grid gap-3">
         {BOXES.map((b) => (
-          <SearchBox key={b.mode} {...b} busy={busy} error={error?.mode === b.mode ? error.text : null} onRun={run} />
+          <SearchBox
+            key={b.mode}
+            {...b}
+            initialQuery={initial?.mode === b.mode ? initial.q : ''}
+            busy={busy}
+            error={error?.mode === b.mode ? error.text : null}
+            onRun={run}
+          />
         ))}
       </div>
 
       {/* 검토마다 새로 — 앞 결과에서 고른 지붕이 남지 않게 */}
-      {report && <ReportView key={report.checkedAt} report={report} mapKey={mapKey} />}
+      {report && <ReportView key={report.checkedAt} report={report} mapKey={mapKey} canRegister={canRegister} />}
     </div>
   );
 }
@@ -79,6 +105,7 @@ function SearchBox({
   title,
   sub,
   placeholder,
+  initialQuery,
   busy,
   error,
   onRun,
@@ -87,18 +114,19 @@ function SearchBox({
   title: string;
   sub: string;
   placeholder: string;
+  initialQuery: string;
   busy: Mode | null;
   error: string | null;
   onRun: (mode: Mode, q: string, picked?: Suggestion) => void;
 }) {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [items, setItems] = useState<Suggestion[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const seq = useRef(0);
-  /** 후보를 고른 직후에는 입력칸 글자가 바뀌어도 다시 찾지 않는다 */
-  const skipNext = useRef(false);
+  /** 후보를 고른 직후(그리고 들고 온 주소로 시작할 때)는 입력칸 글자가 있어도 후보를 찾지 않는다 */
+  const skipNext = useRef(initialQuery !== '');
   const boxRef = useRef<HTMLDivElement>(null);
   const listId = `suggest-${mode}`;
 

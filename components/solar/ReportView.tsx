@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Badge } from '@/components/ui';
+import { Badge, BtnLink } from '@/components/ui';
 import { AREA_PER_KW, LAYOUT, MODULE, TILT_DEG } from '@/lib/solar/assumptions';
 import { withCapacity } from '@/lib/solar/capacity-checks';
 import { estimateCapacity } from '@/lib/solar/estimate';
@@ -29,7 +29,7 @@ const BECAUSE: Record<Level, string> = {
  * 답(판정과 용량)이 맨 위에 한 판으로 서고, 그 근거가 밑으로 간다. 같은 값은 한 자리에만 둔다 —
  * 용량은 결과 판, 계통 사정 문장은 검토 항목(판정 밑에는 항목 이름만).
  */
-export default function ReportView({ report, mapKey }: { report: Report; mapKey: string | null }) {
+export default function ReportView({ report, mapKey, canRegister = false }: { report: Report; mapKey: string | null; canRegister?: boolean }) {
   // 지붕형은 지도에서 고른 지붕의 패널 장수가 용량이다 — 고를 때마다 용량·발전량·계통·허가·종합 판정을 다시 센다
   const plan = useRoofPlan(report.mode === 'roof' ? report.map : null);
   // 지상형은 지도에 그려 확정한 네모의 넓이가 용량이다 — 네모가 없으면 필지 면적으로 센다
@@ -91,7 +91,7 @@ export default function ReportView({ report, mapKey }: { report: Report; mapKey:
 
   return (
     <section className="mt-6 space-y-4">
-      <Summary report={report} verdict={verdict} checks={checks} estimate={estimate} basis={basis} />
+      <Summary report={report} verdict={verdict} checks={checks} estimate={estimate} basis={basis} canRegister={canRegister} />
 
       {/* 검토마다 새로 그린다 — 앞 결과의 도형이 남지 않게 */}
       {report.map && (
@@ -124,12 +124,14 @@ function Summary({
   checks,
   estimate,
   basis,
+  canRegister,
 }: {
   report: Report;
   verdict: Verdict;
   checks: Check[];
   estimate: Estimate | null;
   basis: string;
+  canRegister: boolean;
 }) {
   const { place } = report;
   const tone = LEVEL_TONE[verdict.level];
@@ -140,10 +142,26 @@ function Summary({
   return (
     <div className={`${PANEL} p-5`}>
       {/* 검색창이 둘이라(지붕형 · 지상형) 어느 쪽 검토인지 이름 앞에 단다 — 동글면 상태(누르지 않는다) */}
-      <h2 className={`flex flex-wrap items-center gap-2 ${TEXT.place}`}>
-        <Badge>{report.mode === 'roof' ? '지붕형' : '지상형'}</Badge>
-        {place.buildingName ?? place.roadAddress ?? place.query}
-      </h2>
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
+        <h2 className={`flex flex-wrap items-center gap-2 ${TEXT.place}`}>
+          <Badge>{report.mode === 'roof' ? '지붕형' : '지상형'}</Badge>
+          {place.buildingName ?? place.roadAddress ?? place.query}
+        </h2>
+        {/* 검토한 부지를 그대로 상담으로 — 주소 · 건물명 · 설치 형태를 들고 접수 폼으로 간다(현장관리) */}
+        {canRegister && (
+          <BtnLink
+            kind="side"
+            size="sm"
+            href={`/solar/sites/new?${new URLSearchParams({
+              address: place.roadAddress ?? place.jibunAddress ?? place.query,
+              name: place.buildingName ?? '',
+              kind: report.mode,
+            })}`}
+          >
+            이 부지로 상담 접수
+          </BtnLink>
+        )}
+      </div>
       <p className={`mt-0.5 ${TEXT.label}`}>{[place.roadAddress, place.jibunAddress].filter(Boolean).join(' · ')}</p>
 
       <div className="mt-4 flex flex-wrap items-end justify-between gap-x-8 gap-y-4 border-t border-slate-100 pt-4">

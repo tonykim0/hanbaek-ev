@@ -65,8 +65,10 @@ const TOOLS_DOC = [
   { href: '/scan', label: '사진 → 스캔본' },
 ];
 
-export default function TopBar({ role, biz, onMenu }: {
+export default function TopBar({ role, biz, solar = false, onMenu }: {
   role: Role;
+  /** 두 사업을 다 보는가(lib/biz seesSolar) — 한백 · 태양광 참여 협력사. 사업 전환은 그 계정에만 선다 */
+  solar?: boolean;
   /** 지금 사업 — 바의 색과 도구가 갈린다(lib/biz) */
   biz: Biz;
   /** 좁은 화면에서 사이드바 서랍을 연다 — 넓은 화면에는 사이드바가 늘 서 있어 단추가 없다 */
@@ -100,10 +102,11 @@ export default function TopBar({ role, biz, onMenu }: {
         */}
       {/*
         * 사업 전환 — 바의 맨 왼쪽(한백 「모드를 바꾸게 할까? 태양광/전기차」). 바가 곧 사업의 색이라 그 바 위에 선다.
-        * 두 사업을 다 보는 한백(관리자 · 열람 전용)에게만 — 협력사는 자기 사업 하나라 바꿀 것이 없다.
+        * 두 사업을 다 보는 계정에게만 — 한백(관리자 · 열람 전용)과 태양광 참여를 켠 협력사(2026-11-03 에코일렉).
+        * 나머지 협력사는 자기 사업 하나라 바꿀 것이 없다.
         * 색만으로 가르지 않는다: 고른 쪽은 글자가 늘 보이고(흰 바탕), aria-current 로도 말한다.
         */}
-      {isHanbaek(role) && (
+      {solar && (
         <nav aria-label="사업" className={`mr-2 flex shrink-0 rounded-ctl p-0.5 ${BIZ_FRAME[biz].track}`}>
           {BIZES.map((b) => (
             <Link

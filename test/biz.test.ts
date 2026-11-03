@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asBiz, BIZ_HOME, bizOf, isShared } from '@/lib/biz';
+import { asBiz, BIZ_HOME, bizOf, isShared, seesSolar } from '@/lib/biz';
 import { HANBAEK_ONLY } from '@/lib/routes-map';
 
 describe('bizOf — 사업은 주소로 가른다', () => {
@@ -7,7 +7,7 @@ describe('bizOf — 사업은 주소로 가른다', () => {
     expect(bizOf('/solar')).toBe('solar');
     expect(bizOf('/solar/abc')).toBe('solar');
   });
-  it('전환 단추가 가는 첫 화면은 제 사업이다 — 태양광은 설치 검토', () => {
+  it('전환 단추가 가는 첫 화면은 제 사업이다 — 태양광은 부지 검토', () => {
     expect(BIZ_HOME.solar).toBe('/solar/check');
     expect(bizOf(BIZ_HOME.solar, 'ev')).toBe('solar');
     expect(bizOf(BIZ_HOME.ev, 'solar')).toBe('ev');
@@ -31,6 +31,17 @@ describe('bizOf — 사업은 주소로 가른다', () => {
   });
 });
 
-describe('태양광은 아직 한백만 — 엣지에서도 막힌다', () => {
-  it('/solar 가 한백 전용 목록에 있다', () => expect(HANBAEK_ONLY as readonly string[]).toContain('/solar'));
+describe('태양광을 보는 계정 — 한백 + 태양광 참여 협력사 (2026-11-03 에코일렉)', () => {
+  it('한백의 눈은 참여 표시와 상관없이 본다', () => {
+    expect(seesSolar({ role: 'admin' })).toBe(true);
+    expect(seesSolar({ role: 'viewer', solar: false })).toBe(true);
+  });
+  it('협력사는 참여를 켠 계정만', () => {
+    expect(seesSolar({ role: 'salesCons', solar: true })).toBe(true);
+    expect(seesSolar({ role: 'salesCons', solar: false })).toBe(false);
+    expect(seesSolar({ role: 'cons' })).toBe(false);
+  });
+  it('/solar 는 엣지의 한백 전용 목록에 없다 — 참여 여부는 매 요청 DB 에서 읽는 값이라 레이아웃이 문이다', () => {
+    expect(HANBAEK_ONLY as readonly string[]).not.toContain('/solar');
+  });
 });

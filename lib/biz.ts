@@ -8,6 +8,8 @@
  * 회사 색이자 「통과·진행」 상태 색이라(components/ui.tsx 의 ok), 사업마다 바꾸면 상태 색의 뜻(빨강 막힘 · 노랑 봐야 함 ·
  * 하늘 계약)이 사업마다 달라진다. 태양광의 귤색(sun, tailwind.config)은 틀에만 선다.
  */
+import { isHanbaek, type Role } from '@/lib/roles';
+
 export type Biz = 'ev' | 'solar';
 
 /**
@@ -18,6 +20,12 @@ export type Biz = 'ev' | 'solar';
 export const SYSTEM_NAME = '한백 신재생사업관리시스템';
 
 export const BIZES: readonly Biz[] = ['ev', 'solar'];
+
+/**
+ * 태양광을 보는가 — 한백의 눈(관리자 · 열람 전용)은 늘, 협력사는 계정설정에서 태양광 참여를 켠 계정만(users.solar).
+ * 화면의 문((console)/solar/layout) · API 의 문(lib/solar/api-gate) · 사업 전환 단추가 이것 하나를 본다.
+ */
+export const seesSolar = (s: { role: Role; solar?: boolean }): boolean => isHanbaek(s.role) || s.solar === true;
 
 export const SOLAR_ROOT = '/solar';
 
@@ -44,7 +52,7 @@ export const isShared = (pathname: string) => SHARED_PATHS.some((p) => under(pat
 
 export const asBiz = (v: string | undefined | null): Biz => (v === 'solar' ? 'solar' : 'ev');
 
-/** 전환 단추를 누르면 가는 곳 — 그 사업의 첫 화면. 태양광은 설치 검토다(지금 실제로 쓰는 화면 — 현장관리는 아직 틀뿐) */
+/** 전환 단추를 누르면 가는 곳 — 그 사업의 첫 화면. 태양광은 부지 검토다(지금 실제로 쓰는 화면 — 현장관리는 아직 틀뿐) */
 export const BIZ_HOME: Record<Biz, string> = { ev: '/projects', solar: `${SOLAR_ROOT}/check` };
 
 export const BIZ_LABEL: Record<Biz, string> = { ev: '전기차', solar: '태양광' };

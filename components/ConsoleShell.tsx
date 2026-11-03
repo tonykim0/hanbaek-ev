@@ -242,18 +242,18 @@ const GROUPS: Group[] = [
 ];
 
 /**
- * 태양광 사업의 사이드바(2026-11-03 시작) — 설치 검토(첫 화면) · 현장관리, 사업과 상관없는 기준 · 계정(협력사 정보 · 계정설정).
+ * 태양광 사업의 사이드바(2026-11-03 시작) — 부지 검토(첫 화면) · 현장관리, 사업과 상관없는 기준 · 계정(협력사 정보 · 계정설정).
  * 사이드바는 앞머리가 맞으면 고른 것으로 칠하므로(pathname.startsWith) 태양광 메뉴는 서로의 앞머리가 되지 않게 둔다 —
  * 그래서 /solar 자체는 메뉴가 아니고 첫 화면으로 보낸다.
  * 공지 · 알림은 묶음 밖 맨 위라 두 사업이 같이 쓴다. 전기차의 접수 · 정산 · 단가표는 전기차의 일이라 여기 없다.
- * 태양광은 아직 한백만 본다(/solar 는 (admin) 그룹 안) — 협력사 계정이 생기면 묶음마다 문을 다시 정한다.
+ * 태양광은 한백과 태양광 참여를 켠 협력사가 본다(2026-11-03 에코일렉 — 문은 (console)/solar/layout). 협력사에게는 진행 묶음만 선다.
  */
 const SOLAR_GROUPS: Group[] = [
   {
+    // 태양광 참여 협력사도 본다 — 태양광 구역의 문은 (console)/solar/layout(seesSolar)이다
     label: '진행',
-    hanbaekOnly: true,
     items: [
-      { href: '/solar/check', label: '설치 검토', short: '검토' },
+      { href: '/solar/check', label: '부지 검토', short: '부지' },
       { href: '/solar/sites', label: '현장관리', short: '현장' },
     ],
   },
@@ -268,10 +268,12 @@ const SOLAR_GROUPS: Group[] = [
 ];
 
 export default function ConsoleShell({
-  org, role, actAs = null, lastBiz = 'ev', children,
+  org, role, solar = false, actAs = null, lastBiz = 'ev', children,
 }: {
   org: string | null;
   role: Role;
+  /** 태양광을 보는가(lib/biz seesSolar) — 한백 · 태양광 참여 협력사. 아니면 사업 전환이 없고 틀은 늘 전기차다 */
+  solar?: boolean;
   /** 대행 중이면 그 계정 이름 — 관리자가 협력사의 눈으로 보고 있다 */
   actAs?: { name: string } | null;
   /** 마지막에 있던 사업 — 같이 쓰는 화면(공지 · 알림 …)의 틀을 이것으로 그린다(lib/biz) */
@@ -284,7 +286,8 @@ export default function ConsoleShell({
    * 화면에 들어서면 그것이 마지막 사업이 되고, 쿠키에 적어 다음 첫 그림(서버)도 맞춘다.
    */
   const [last, setLast] = useState<Biz>(lastBiz);
-  const biz = bizOf(pathname, last);
+  // 태양광을 안 보는 계정은 늘 전기차 — 끈 뒤에 남은 쿠키(hb-biz=solar)로 공지 화면의 틀이 귤색이 되지 않게
+  const biz = solar ? bizOf(pathname, last) : 'ev';
   const frame = BIZ_FRAME[biz];
   useEffect(() => {
     if (isShared(pathname)) return;
@@ -584,7 +587,7 @@ export default function ConsoleShell({
           '--console-top': actAs ? '79px' : '48px',
         } as CSSProperties}
       >
-        <TopBar role={role} biz={biz} onMenu={() => setDrawer(true)} />
+        <TopBar role={role} biz={biz} solar={solar} onMenu={() => setDrawer(true)} />
         {/*
           * 대행 띠 — 지금 눈이 내 것이 아님을 어느 화면에서든 보인다. 사이드바에 관리
           * 묶음이 사라지므로(눈이 협력사다) 돌아오는 길은 이 띠 하나뿐이다.

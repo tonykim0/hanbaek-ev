@@ -34,6 +34,11 @@ export interface UserStore {
   /** 사용 중지·재개. [한백 전용] 지우지 않는다 — 감사 기록이 계정 ID 를 가리킨다. */
   setActive(loginId: string, active: boolean, actor: Actor): Promise<void>;
   /**
+   * 태양광 사업 참여 켜고 끄기. [한백 전용] 협력사 계정만 — 한백 계정은 늘 본다(켜고 끌 것이 없다).
+   * 켜면 그 계정에 사업 전환이 보이고 제 소속의 태양광 현장을 본다(2026-11-03 「에코일렉은 태양광도 같이할거야」).
+   */
+  setSolar(loginId: string, on: boolean, actor: Actor): Promise<void>;
+  /**
    * 구분·소속·이름 고치기. [한백 전용]
    *
    * ★고칠 수 있어야 하는 이유★
@@ -141,7 +146,7 @@ async function findInDb(id: string): Promise<DbLookup> {
     if (!row) return 'missing';
     if (!row.active) return 'disabled';
     return {
-      id: row.id, name: row.name, role: row.role as Role, org: row.org,
+      id: row.id, name: row.name, role: row.role as Role, org: row.org, solar: row.solar,
       hash: row.passwordHash,
     };
   } catch (err) {
@@ -170,7 +175,7 @@ const findInFile = (id: string): StoredUser | null =>
  */
 export async function accountForSession(
   loginId: string
-): Promise<{ name: string; role: Role; org: string | null } | 'gone' | 'unknown'> {
+): Promise<{ name: string; role: Role; org: string | null; solar: boolean } | 'gone' | 'unknown'> {
   const id = loginId.trim().toLowerCase();
   const inDb = await findInDb(id);
 
@@ -178,14 +183,14 @@ export async function accountForSession(
   /* 못 본 것은 판정하지 않는다. 파일에 있으면 그 값을 쓰고, 없으면 세션을 그대로 둔다. */
   if (inDb === 'unavailable') {
     const file = findInFile(id);
-    return file ? { name: file.name, role: file.role, org: file.org } : 'unknown';
+    return file ? { name: file.name, role: file.role, org: file.org, solar: file.solar ?? false } : 'unknown';
   }
   /* 확인했고 없다 — 파일에도 없으면 지워진 계정이다 */
   if (inDb === 'missing') {
     const file = findInFile(id);
-    return file ? { name: file.name, role: file.role, org: file.org } : 'gone';
+    return file ? { name: file.name, role: file.role, org: file.org, solar: file.solar ?? false } : 'gone';
   }
-  return { name: inDb.name, role: inDb.role, org: inDb.org };
+  return { name: inDb.name, role: inDb.role, org: inDb.org, solar: inDb.solar ?? false };
 }
 
 function assertAdmin(actor: Actor, what: string): void {
@@ -218,14 +223,14 @@ export const userStore: UserStore = {
 
   async list() {
     const seed: AccountView[] = loadUsers().map((u) => ({
-      id: u.id, name: u.name, role: u.role, org: u.org,
+      id: u.id, name: u.name, role: u.role, org: u.org, solar: u.solar ?? false,
       active: true, createdAt: null, source: '파일',
     }));
     if (!hasDatabase()) return seed;
 
     const rows = await getDb().select().from(users);
     const fromDb: AccountView[] = rows.map((r) => ({
-      id: r.id, name: r.name, role: r.role as Role, org: r.org,
+      id: r.id, name: r.name, role: r.role as Role, org: r.org, solar: r.solar,
       active: r.active, createdAt: dayOf(r.createdAt), source: 'db',
     }));
     // 같은 ID 가 양쪽에 있으면 DB 가 이긴다 — find 와 같은 순서여야 화면이 사실을 말한다
@@ -381,6 +386,28 @@ export const userStore: UserStore = {
       throw new Error('DB 에 없는 계정입니다 — 배포 설정(AUTH_USERS)에 있는 계정은 여기서 못 바꿉니다.');
     }
     await db.update(users).set({ active }).where(eq(users.id, id));
+  },
+
+  async setSolar(loginId, on, actor) {
+    assertAdmin(actor, '태양광 참여 바꾸기');
+    if (!hasDatabase()) throw new Error('계정 저장소(DB)가 연결되지 않았습니다.');
+    const id = loginId.trim().toLowerCase();
+    const db = getDb();
+    const [row] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    if (!row) {
+      throw new Error('DB 에 없는 계정입니다 — 배포 설정(AUTH_USERS)에 있는 계정은 여기서 못 바꿉니다.');
+    }
+    if (isHanbaek(row.role as Role)) throw new Error('한백 계정은 태양광을 늘 봅니다 — 켜고 끌 것이 없습니다.');
+    if (row.solar === on) return;
+    await db.update(users).set({ solar: on }).where(eq(users.id, id));
+    await writeAudit(db, {
+      projectId: null,
+      actor,
+      action: `계정 ${id}`,
+      field: 'solar',
+      oldValue: row.solar ? '참여' : '안 함',
+      newValue: on ? '참여' : '안 함',
+    });
   },
 
   async authenticate(loginId, password) {

@@ -13,6 +13,11 @@ export interface User {
   role: Role;
   /** 협력사 소속. 한백 관리자는 null — 소속으로 현장을 가르지 않는다. */
   org: string | null;
+  /**
+   * 태양광 사업 참여(users.solar, 2026-11-03) — 협력사 계정에만 뜻이 있다. 한백은 이 값과 상관없이 늘 본다
+   * (lib/biz seesSolar). 파일 계정(배포 설정 · 개발 시드)에는 없다 — 꺼짐이다.
+   */
+  solar?: boolean;
 }
 
 /** 세션 쿠키에 담기는 것 (비밀번호 해시는 절대 안 들어간다) */
@@ -31,6 +36,11 @@ export interface SessionPayload {
   asId?: string;
   /** 대행 중일 때만 — 진짜 사람(관리자). 쿠키에 싣지 않고 매 요청 유도한다. */
   via?: { id: string; name: string };
+  /**
+   * 태양광 참여 — 쿠키에 싣지 않고 매 요청 그 계정의 지금 값으로 채운다(getSessionUser). 쿠키에 실으면 계정설정에서
+   * 켠 것이 다시 로그인할 때까지 안 먹는다.
+   */
+  solar?: boolean;
 }
 
 /**

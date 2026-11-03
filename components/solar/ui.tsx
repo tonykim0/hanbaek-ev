@@ -2,7 +2,7 @@ import { Badge, Segments, TEXT as CONSOLE, type Tone } from '@/components/ui';
 import type { CheckStatus, Level } from '@/lib/solar/types';
 
 /**
- * 설치 검토 화면의 모양 — 콘솔 부품(components/ui)을 그대로 쓰고, 콘솔에 없는 역할 몇 개만 콘솔의 글자 단계로 더한다.
+ * 부지 검토 화면의 모양 — 콘솔 부품(components/ui)을 그대로 쓰고, 콘솔에 없는 역할 몇 개만 콘솔의 글자 단계로 더한다.
  *
  * 검토 사이트(solar-site)에서 들였다(2026-11-03). 거기서는 판 · 글자 · 상태 알약 · 판정 색을 따로 골랐는데(호박색 단추 ·
  * 둥근 링 판 · 14/16px 글자), 콘솔 안에 들어오면 한 화면만 다른 옷을 입는다 — 단추는 초록 Btn, 판은 PANEL, 상태는 Badge,
