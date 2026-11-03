@@ -36,8 +36,10 @@ async function call(url: string, method: 'POST' | 'PATCH', body?: unknown): Prom
   }
 }
 
-export function MailCard({ agentId, mail, connected, onChange }: {
+export function MailCard({ agentId, mail, connected, onChange, indent = true }: {
   agentId: string;
+  /** 대화에서는 그 답 밑으로 들여쓴다 — 현장 화면에서는 들여쓰지 않는다 */
+  indent?: boolean;
   mail: AgentMail;
   /** 콘솔에 보내는 메일이 연결돼 있는가 */
   connected: boolean;
@@ -78,7 +80,7 @@ export function MailCard({ agentId, mail, connected, onChange }: {
   const who = [mail.to.join(', '), mail.cc.length ? `참조 ${mail.cc.join(', ')}` : ''].filter(Boolean).join(' · ');
 
   return (
-    <li className={`ml-4 rounded-box border-l-[3px] px-3.5 py-3 ${look.band}`}>
+    <li className={`${indent ? 'ml-4 ' : ''}rounded-box border-l-[3px] px-3.5 py-3 ${look.band}`}>
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <Tag tone={look.tone}>{look.label}</Tag>
         <span className={`${TEXT.meta} tabular-nums`}>{mail.createdAt}</span>
@@ -107,7 +109,7 @@ export function MailCard({ agentId, mail, connected, onChange }: {
         <>
           <dl className="mt-2 grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 gap-y-1">
             <dt className={TEXT.label}>받는 사람</dt>
-            <dd className="break-all text-small font-semibold text-slate-800">{mail.to.join(', ')}</dd>
+            <dd className="break-all text-small font-semibold text-slate-800">{mail.to.length ? mail.to.join(', ') : <Tag tone="warn">미지정</Tag>}</dd>
             {mail.cc.length > 0 && (
               <>
                 <dt className={TEXT.label}>참조</dt>
@@ -146,8 +148,10 @@ export function MailCard({ agentId, mail, connected, onChange }: {
           )}
           {open && !editing && (
             <>
-              <Btn size="sm" disabled={!connected || busy !== null} onClick={() => { setError(null); setAsking(true); }}>
-                {!connected ? '메일 연결 전 — 보낼 수 없음' : mail.status === 'failed' ? '다시 보내기' : '승인하고 보내기'}
+              <Btn size="sm" disabled={!connected || mail.to.length === 0 || busy !== null} onClick={() => { setError(null); setAsking(true); }}>
+                {!connected ? '메일 연결 전 — 보낼 수 없음'
+                  : mail.to.length === 0 ? '받는 사람 미지정 — 보낼 수 없음'
+                    : mail.status === 'failed' ? '다시 보내기' : '승인하고 보내기'}
               </Btn>
               <Btn size="sm" kind="quiet" disabled={busy !== null} onClick={edit}>고치기</Btn>
             </>

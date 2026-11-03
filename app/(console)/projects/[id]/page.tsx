@@ -3,6 +3,7 @@ import ProjectDetailView, { type TabKey } from '@/components/project/DetailView'
 import { getRepository } from '@/lib/data';
 import { actorOf, getSessionUser, viewerOf } from '@/lib/auth/session';
 import { canWrite, effectiveVisibility, isHanbaek, normalizeOrg } from '@/lib/roles';
+import { NICE_DRAFT_MAIL } from '@/lib/nice-submit';
 import { canChangeContractDocs, type ProcessEdit } from '@/lib/process';
 import { matchingRules, type RuleOptions } from '@/lib/pricing-match';
 import type { SettlementRuleChoice } from '@/types/project';
@@ -100,6 +101,16 @@ export default async function ProjectPage({
   const batchFinals = await getRepository().listBatchFinals(actorOf(session));
 
   /*
+   * 나이스인프라 계약서 초안 메일 — 한백 관리자에게만(한백 지시 2026-11-03). 이 현장의 그 양식 메일과 보내는 메일의 연결 여부.
+   */
+  const niceMail = canEdit && detail.project.cpo === '나이스인프라'
+    ? {
+      mails: await getRepository().projectMails(detail.project.id, NICE_DRAFT_MAIL, actorOf(session)),
+      connected: (await getRepository().getMailAccount(actorOf(session))) !== null,
+    }
+    : null;
+
+  /*
    * 공정 입력 권한 — 한백은 전부, 그 현장의 시공사는 한백 전용 두 칸을 뺀 전부.
    * 실제 판정은 저장소(assertProcessWrite)가 다시 한다 — 여기 값은 화면이 칸을
    * 잠그는 데만 쓴다. 영업만(sales)은 공정을 적지 않는다.
@@ -135,6 +146,7 @@ export default async function ProjectPage({
        * 이미 접근 판정을 지난 것이므로(저장소가 걸렀다) 열람 전용만 가른다.
        */
       canSubmit={canWrite(session.role)}
+      niceMail={niceMail}
       /*
        * 계약 서류를 바꿀 수 있는가 — ★운영사에 낸 뒤로 협력사는 못 바꾼다★
        * (한백 지시 2026-08-29). 판정은 lib/process 한 곳이고, 저장소도 같은 것을 본다 —

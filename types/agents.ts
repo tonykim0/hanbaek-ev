@@ -128,6 +128,9 @@ export interface AgentMail {
   id: string;
   /** 초안을 쓴 에이전트의 답 — 대화에서 그 답 밑에 선다. 답이 지워졌으면 null */
   messageId: string | null;
+  /** 현장 메일(계약서 초안처럼 현장 서류를 붙인 양식 메일)이면 그 현장과 양식 이름 — 아니면 null */
+  projectId: string | null;
+  kind: string | null;
   status: AgentMailStatus;
   to: string[];
   cc: string[];

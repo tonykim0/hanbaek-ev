@@ -164,6 +164,7 @@ export function toProject(r: ProjectRow): Project {
     mail: r.mail,
     preInstall: r.preInstall as PreInstall,
     preNote: r.preNote,
+    consultDup: r.consultDup ?? null,
     preChecked: r.preChecked,
     powerType: r.powerType as PowerType | null,
     replType: r.replType as ReplType | null,

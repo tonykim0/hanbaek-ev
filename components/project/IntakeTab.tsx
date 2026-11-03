@@ -8,7 +8,7 @@
  */
 import { useState } from 'react';
 import { reviewKindLabel } from '@/lib/review-labels';
-import type { ContractState, InstallLoc, ProcessStatus, ProjectDetail, ProjectDocument } from '@/types/project';
+import type { ContractState, ProcessStatus, ProjectDetail, ProjectDocument } from '@/types/project';
 import { BUILDING_TYPES, CONTRACT_PARTIES, replLabel, TERM_YEARS } from '@/types/project';
 import { contractDocsLockedWhy, gateContextOf, nextStatusOf, prevStatusOf } from '@/lib/process';
 import { HANDOFF_STATUS } from '@/lib/board';
@@ -16,6 +16,7 @@ import { evaluateDocs, needsPreInstallCheck, type DocReq } from '@/lib/doc-rules
 import { bundledAsPdf, checkedFilesOf, preCheckBlocker } from '@/lib/preinstall-check';
 import { parkingBlocker, parkingFilesOf, registerRejectOf } from '@/lib/parking-check';
 import { ParkingCheckBlock } from './ParkingCheck';
+import { NiceSubmitInfo, type NiceMailState } from './NiceSubmit';
 import { needsCpoSeal } from '@/lib/cpo-seal';
 import { DocDelete, DocFileActions, DocUpload, DownloadAll } from '@/components/DocFiles';
 import { useAction } from '@/lib/use-action';
@@ -24,7 +25,7 @@ import { DocReview } from './DocReview';
 import { ReviewHistory } from './ReviewHistory';
 import { PreInstall } from './PreInstall';
 import { docCardTone, docState, RejectReason, ResubmitReason } from './parts';
-import { Btn, Err, FIELD, GroupHead, Note, PANEL, Saved, Tag, TEXT } from '@/components/ui';
+import { Btn, Err, FIELD, GroupHead, Note, Tag, TEXT } from '@/components/ui';
 
 // ── 계약 탭 ─────────────────────────────────────────────────────
 /**
@@ -419,8 +420,10 @@ function FactGroup(
 
 export function IntakeTab({
   project, evaluated, byKind, contract, projectId, siteName, canReview, canSubmit, canEditDocs,
-  canFillEmpty = false, knownOrgs, status, lines, preinstallCheck = null, parkingCheck = null,
+  canFillEmpty = false, knownOrgs, status, lines, preinstallCheck = null, parkingCheck = null, niceMail = null,
 }: {
+  /** 나이스인프라 현장 · 한백 관리자에게만 — 계약서 초안 메일(components/project/NiceSubmit) */
+  niceMail?: NiceMailState | null;
   /** 기설치 이력 엑셀 ↔ 증빙의 마지막 대조 — 기설치 조사 구역이 그린다 */
   preinstallCheck?: ProjectDetail['preinstallCheck'];
   /** 건축물대장 대조(건축물대장·결과서·신청서)의 마지막 결과 — 서류 묶음 밑에 선다 */
@@ -1005,7 +1008,13 @@ export function IntakeTab({
         비워 둔다: 없는 값을 지어내면 그대로 복사돼 나간다.
       */}
       {project.cpo === '나이스인프라' && (
-        <NiceSubmitInfo project={project} lines={lines} />
+        <NiceSubmitInfo
+          projectId={projectId}
+          project={project}
+          lines={lines}
+          draftFiles={byKind.get('contractDraft')?.files.length ?? 0}
+          mail={niceMail}
+        />
       )}
 
       <section>
@@ -1032,68 +1041,6 @@ export function IntakeTab({
  * 나이스 현장에서만 선다. 다른 운영사는 이 양식을 안 받는다.
  */
 /** 설치위치를 나이스가 쓰는 말로 — 결과서와 같은 낱말이다 */
-const NICE_LOC: Record<InstallLoc, string> = {
-  실내: '옥내',
-  실외: '옥외',
-  '실내·실외': '옥내/옥외',
-};
-
-function NiceSubmitInfo({
-  project, lines,
-}: {
-  project: ProjectDetail['project'];
-  lines: ProjectDetail['lines'];
-}) {
-  const [copied, setCopied] = useState(false);
-  const qty = lines.reduce((n, l) => n + l.qty, 0);
-  const bizLabel = project.bizType === '자체투자' ? '투자' : project.bizType === '환경부' ? '보조' : '';
-  /* 기설치는 「있음」일 때만 내용이 있다 — 조사해서 없는 것은 「없음」이 답이다 */
-  const pre = project.preInstall === '있음' ? (project.preNote ?? '') : '없음';
-  const loc = project.installLoc === null ? '' : NICE_LOC[project.installLoc];
-
-  const text = [
-    `1. 장소명 : ${project.name}`,
-    `2. 주소 : ${project.addr ?? ''}`,
-    `3. 주차면수 : ${project.parkTotal ? `${project.parkTotal}면` : ''}`,
-    `4. 설치기수 : ${qty > 0 ? `${qty}기` : ''}`,
-    `5. 설치위치 : ${loc}`,
-    `6. 설치유형 : ${bizLabel}`,
-    `7. 기설치 현황 : ${pre}`,
-    '8. 기타 : ',
-  ].join('\n');
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      setCopied(false); // 권한이 없으면 글이 그대로 보이니 손으로 긁으면 된다
-    }
-  }
-
-  return (
-    <section>
-      <div className="mb-3 flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-        <h2 className="text-h3 font-black text-slate-900">나이스인프라 제출 정보</h2>
-        <Btn size="sm" kind="quiet" onClick={() => void copy()}>복사</Btn>
-        {copied && <Saved>복사됨</Saved>}
-      </div>
-      {/*
-        읽는 글이 아니라 옮길 글이라 고정폭으로 둔다 — 줄 번호가 세로로 서야 빠진 줄이 보인다.
-        고를 수 있게 두 곳(단추·긁기) 다 열어 둔다.
-      */}
-      <pre className={`${PANEL} overflow-x-auto whitespace-pre-wrap break-all p-4 font-mono text-small leading-relaxed text-slate-800`}>
-        {text}
-      </pre>
-      {/* 비어 있는 줄은 여기서 말한다 — 글 안에 「미지정」을 적으면 그대로 나간다 */}
-      <p className="mt-1.5 text-tiny text-slate-400">
-        {loc ? '8번(기타)은' : '5번(설치위치 — 머리말에서 입력)과 8번(기타)은'} 비어 있습니다 — 복사한 뒤 채워 보내세요.
-      </p>
-    </section>
-  );
-}
-
 /**
  * 계약서 접수 — 내는 쪽이 누른다(그 현장의 협력사 · 한백).
  *

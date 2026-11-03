@@ -11,6 +11,7 @@
  */
 import type { PreInstallCheck } from '@/lib/preinstall-check';
 import type { ParkingCheck } from '@/lib/parking-check';
+import type { ConsultDup } from '@/lib/consult-dup';
 
 export type CpoName =
   | '플러그링크'
@@ -240,6 +241,11 @@ export interface Project {
   mail: string | null;
   preInstall: PreInstall;
   preNote: string | null;
+  /**
+   * 사전현장컨설팅 결과서 「6. 중복설치」를 판독이 읽은 것 — 나이스인프라 제출 정보 7번 「기설치 현황」의 정본
+   * (한백 2026-11-03 · lib/consult-dup). 아직 못 읽었으면 null.
+   */
+  consultDup?: ConsultDup | null;
   /**
    * 기설치 조사를 했는가.
    *

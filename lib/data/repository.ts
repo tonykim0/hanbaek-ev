@@ -13,6 +13,7 @@
  */
 import type { Biz } from '@/lib/biz';
 import type { RetouchLog } from '@/lib/retouch/types';
+import type { ConsultDup } from '@/lib/consult-dup';
 import type {
   AgentDetail, AgentMail, AgentMessage, AgentMessageMeta, AgentMessageRole, AgentSummary, AgentUsage, MailAccountInfo,
 } from '@/types/agents';
@@ -547,6 +548,21 @@ export interface ProjectRepository {
   setAgentMailDiscarded(input: { agentId: string; id: string; discarded: boolean }, actor: Actor): Promise<AgentMail>;
   /** 보내기 전에 그 줄을 「보내는 중」으로 잡는다 — 같은 메일을 둘이 잡지 못한다 */
   claimAgentMail(input: { agentId: string; id: string }, actor: Actor): Promise<AgentMail>;
+  /**
+   * 현장 메일 초안 — 계약서 초안처럼 현장 서류를 붙여 보내는 양식 메일(kind)을 그 담당의 초안으로 올린다 [한백 관리자].
+   * 같은 현장 · 양식의 보내지 않은 초안이 있으면 그것을 돌려준다. 받는 사람은 같은 양식으로 마지막에 보낸 메일의 것(처음이면 비어 있다)
+   */
+  addSiteMail(
+    input: {
+      agentId: string; projectId: string; kind: string; subject: string; body: string;
+      docFiles: Array<{ name: string; url: string; size: number; contentType: string | null }>;
+    },
+    actor: Actor
+  ): Promise<AgentMail>;
+  /** 그 현장의 그 양식 메일 — 오래된 것이 앞 [한백 관리자] */
+  projectMails(projectId: string, kind: string, actor: Actor): Promise<AgentMail[]>;
+  /** 사전현장컨설팅 결과서 「6. 중복설치」를 읽은 것을 현장에 남긴다(lib/consult-dup-run) [한백 관리자 · 자동 대조] */
+  saveConsultDup(projectId: string, value: ConsultDup, actor: Actor): Promise<void>;
   /** 보낸 뒤 닫는다 — 보냄(감사기록 · 주간 기록) 또는 보내지 못함(다시 보낼 수 있다) */
   finishAgentMail(
     input: {

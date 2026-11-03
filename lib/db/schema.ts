@@ -15,6 +15,7 @@ import {
 import type { NoticeFile } from '@/types/project';
 import type { SiteFile } from '@/lib/solar/sites';
 import type { AgentMessageMeta } from '@/types/agents';
+import type { ConsultDup } from '@/lib/consult-dup';
 
 // ── 계정 ────────────────────────────────────────────────────────
 export const users = pgTable('users', {
@@ -219,6 +220,8 @@ export const projects = pgTable('projects', {
   mail: text('mail'),
   preInstall: text('pre_install').notNull().default('없음'),
   preNote: text('pre_note'),
+  /** 사전현장컨설팅 결과서 「6. 중복설치」를 읽은 것 — 나이스 제출 정보 7번의 정본 (migrations/0112 · lib/consult-dup) */
+  consultDup: jsonb('consult_dup').$type<ConsultDup>(),
   /**
    * 기설치 조사를 했는가.
    *
@@ -753,6 +756,10 @@ export const agentMails = pgTable('agent_mails', {
   from: text('from_addr'),
   /** 메일 서버가 붙인 접수 표시(250 답의 글) */
   sentRef: text('sent_ref'),
+  /** 현장 메일이면 그 현장 · 양식 이름(nice-contract-draft) · 붙일 현장 서류(그때의 파일) — migrations/0112 */
+  projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
+  kind: text('kind'),
+  docFiles: jsonb('doc_files').$type<Array<{ name: string; url: string; size: number; contentType: string | null }>>().notNull().default([]),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   sentAt: timestamp('sent_at', { withTimezone: true }),

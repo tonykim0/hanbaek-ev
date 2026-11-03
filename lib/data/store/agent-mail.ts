@@ -15,7 +15,7 @@
  * 계정은 메일 주소와 카카오 앱 비밀번호다(한백 「내 다음카카오 이메일로만 보내면 되는거고」). 앱 비밀번호는 잠가서 둔다
  * (lib/agents/secret-box · 열쇠는 AUTH_SECRET). 보낼 때만 mailCredential 이 풀어 라우트에 준다 — 화면 · 응답에는 실리지 않는다.
  */
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
 import { agentFiles, agentMails, agents, mailAccounts } from '@/lib/db/schema';
@@ -46,17 +46,25 @@ function fileOf(r: typeof agentFiles.$inferSelect): AgentFile {
   return { id: r.id, name: r.name, url: r.url, size: r.size, contentType: r.contentType };
 }
 
-/** 줄 → 화면의 모양. 붙일 파일은 id 순서 그대로 — 지워진 파일은 빠진다 */
+/**
+ * 줄 → 화면의 모양. 붙일 파일은 넘긴 파일(id 순서 그대로 — 지워진 파일은 빠진다) 다음에 현장 서류(그때 적어 둔 파일)다.
+ * 현장 서류에는 id 가 없어 「doc:순번」으로 단다(화면의 열쇠로만 쓴다).
+ */
 export function mailOf(r: MailRow, files: Map<string, AgentFile>): AgentMail {
   return {
     id: r.id,
     messageId: r.messageId,
+    projectId: r.projectId ?? null,
+    kind: r.kind ?? null,
     status: statusOf(r.status),
     to: r.to ?? [],
     cc: r.cc ?? [],
     subject: r.subject,
     body: r.body,
-    files: (r.fileIds ?? []).map((id) => files.get(id)).filter((f): f is AgentFile => Boolean(f)),
+    files: [
+      ...(r.fileIds ?? []).map((id) => files.get(id)).filter((f): f is AgentFile => Boolean(f)),
+      ...(r.docFiles ?? []).map((f, i) => ({ id: `doc:${i}`, name: f.name, url: f.url, size: f.size, contentType: f.contentType })),
+    ],
     error: r.error,
     from: r.from,
     createdAt: stampOf(r.createdAt),
@@ -86,10 +94,14 @@ async function mailRow(agentId: string, id: string): Promise<MailRow> {
   return row;
 }
 
-/** 받는 사람 · 참조 · 제목 · 본문을 고른다 — 초안을 올릴 때와 고칠 때가 같은 판정을 쓴다 */
-function letterOf(input: { to: unknown; cc?: unknown; subject: string; body: string }) {
+/**
+ * 받는 사람 · 참조 · 제목 · 본문을 고른다 — 초안을 올릴 때와 고칠 때가 같은 판정을 쓴다.
+ * 받는 사람은 에이전트의 초안 · 고치기에서는 꼭 있어야 하고(지어내지 않게), 사람이 누른 현장 메일은 처음에 비어 있을 수 있다
+ * (같은 양식으로 보낸 적이 없을 때 — 카드에서 「고치기」로 넣는다. 보내기는 받는 사람이 있어야 열린다).
+ */
+function letterOf(input: { to: unknown; cc?: unknown; subject: string; body: string }, opts: { emptyTo?: boolean } = {}) {
   const to = addressesOf(input.to, '받는 사람');
-  if (to.length === 0) throw new Error('받는 사람을 적어주세요.');
+  if (to.length === 0 && !opts.emptyTo) throw new Error('받는 사람을 적어주세요.');
   const toKeys = new Set(to.map((a) => a.toLowerCase()));
   const cc = addressesOf(input.cc, '참조').filter((a) => !toKeys.has(a.toLowerCase()));
   if (to.length + cc.length > MAIL_LIMITS.recipients) throw new Error(`받는 사람과 참조는 합쳐 ${MAIL_LIMITS.recipients}명까지입니다.`);
@@ -110,7 +122,58 @@ export const agentMailStore: Pick<
   ProjectRepository,
   | 'getMailAccount' | 'saveMailAccount' | 'deleteMailAccount' | 'mailCredential'
   | 'addAgentMail' | 'linkAgentMails' | 'editAgentMail' | 'setAgentMailDiscarded' | 'claimAgentMail' | 'finishAgentMail'
+  | 'addSiteMail' | 'projectMails'
 > = {
+  /**
+   * 현장 메일 — 계약서 초안처럼 현장 서류를 붙여 보내는 양식 메일을 그 담당의 초안으로 올린다(한백 2026-11-03 「나이스인프라는 계약서
+   * 접수 시, 워드파일을 초안으로 받고 있어. 그 파일을 첨부한 메일 보내고싶어」). 사람이 누른 것이라 에이전트 답에 잇지 않는다 —
+   * 그 담당의 대화에는 올린 시각의 자리에 선다.
+   * 같은 현장 · 같은 양식의 보내지 않은 초안이 있으면 새로 만들지 않고 그것을 돌려준다(두 번 눌러도 하나).
+   * 받는 사람 · 참조는 같은 양식으로 마지막에 보낸 메일의 것을 쓴다 — 처음이면 비어 있다(카드에서 넣는다).
+   */
+  async addSiteMail(input, actor): Promise<AgentMail> {
+    assertAdmin(actor, '현장 메일');
+    const agentName = await agentNameOf(input.agentId);
+    const db = getDb();
+    const docFiles = input.docFiles.slice(0, MAIL_LIMITS.files);
+    if (docFiles.length === 0) throw new Error('붙일 서류가 없습니다.');
+    const total = docFiles.reduce((n, f) => n + (f.size || 0), 0);
+    if (total > MAIL_LIMITS.attachBytes) throw new Error(`붙일 서류는 합쳐 ${sizeLabel(MAIL_LIMITS.attachBytes)}까지입니다.`);
+    const id = await db.transaction(async (tx) => {
+      /* 같은 현장 · 양식의 초안을 동시에 둘 만들지 않게 — 그 현장 줄을 잡고 본다 */
+      await tx.execute(sql`select 1 from projects where id = ${input.projectId} for update`);
+      const [open] = await tx.select({ id: agentMails.id }).from(agentMails)
+        .where(and(eq(agentMails.projectId, input.projectId), eq(agentMails.kind, input.kind), inArray(agentMails.status, ['draft', 'failed'])))
+        .orderBy(desc(agentMails.createdAt)).limit(1);
+      if (open) return open.id;
+      const [last] = await tx.select({ to: agentMails.to, cc: agentMails.cc }).from(agentMails)
+        .where(and(eq(agentMails.kind, input.kind), eq(agentMails.status, 'sent')))
+        .orderBy(desc(agentMails.sentAt)).limit(1);
+      const letter = letterOf({ to: last?.to ?? [], cc: last?.cc ?? [], subject: input.subject, body: input.body }, { emptyTo: true });
+      const made = crypto.randomUUID();
+      await tx.insert(agentMails).values({
+        id: made, agentId: input.agentId, status: 'draft', ...letter, fileIds: [], docFiles,
+        projectId: input.projectId, kind: input.kind,
+      });
+      await writeAudit(tx, {
+        projectId: input.projectId, actor, action: '현장 메일 초안', field: agentName, oldValue: null,
+        newValue: `${letterLine(letter)} · 첨부 ${docFiles.map((f) => f.name).join(', ')}`.slice(0, 2000),
+      });
+      return made;
+    });
+    const [mail] = await mailsOf([await mailRow(input.agentId, id)]);
+    return mail;
+  },
+
+  /** 그 현장의 그 양식 메일 — 오래된 것이 앞 */
+  async projectMails(projectId, kind, actor): Promise<AgentMail[]> {
+    assertAdmin(actor, '현장 메일');
+    const rows = await getDb().select().from(agentMails)
+      .where(and(eq(agentMails.projectId, projectId), eq(agentMails.kind, kind)))
+      .orderBy(asc(agentMails.createdAt));
+    return mailsOf(rows);
+  },
+
   async getMailAccount(actor): Promise<MailAccountInfo | null> {
     assertAdmin(actor, '메일 계정');
     const [row] = await getDb().select().from(mailAccounts).where(eq(mailAccounts.id, ACCOUNT_ID)).limit(1);
@@ -248,6 +311,7 @@ export const agentMailStore: Pick<
       if (st === 'sent') throw new Error('이미 보낸 메일입니다.');
       if (st === 'discarded') throw new Error('버린 메일입니다 — 되살린 뒤 보내 주세요.');
       if (st === 'sending' && Date.now() - old.updatedAt.getTime() < STALE_SENDING_MS) throw new Error('보내는 중입니다 — 잠시 뒤 다시 보세요.');
+      if ((old.to ?? []).length === 0) throw new Error('받는 사람이 없습니다 — 「고치기」로 받는 사람을 넣어 주세요.');
       const [claimed] = await tx.update(agentMails).set({ status: 'sending', error: null, updatedAt: new Date() })
         .where(eq(agentMails.id, old.id)).returning();
       return claimed;

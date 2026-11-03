@@ -43,6 +43,7 @@ import { ProgressLog } from './ProgressLog';
  */
 const NOTE_SCOPE_OF_TAB = { intake: '계약', construction: '시공', receivable: '기성' } as const;
 import { ReceivableTab, SettlementTab } from './SettlementTab';
+import type { NiceMailState } from './NiceSubmit';
 import { elapsedLabel } from '@/lib/date';
 
 /** settlement = 협력사 지급(주소가 이미 퍼져 있어 키는 안 바꾼다) · receivable = 기성(한백만) */
@@ -64,6 +65,7 @@ export default function ProjectDetailView({
   canSubmit,
   canEditDocs,
   canFillEmpty = false,
+  niceMail = null,
 }: {
   detail: ProjectDetail;
   /** 세션에서 계산된 가시성. 화면에서 고를 수 있는 값이 아니다. */
@@ -106,6 +108,8 @@ export default function ProjectDetailView({
   canEditDocs: boolean;
   /** 빈 칸에는 올릴 수 있는가 — 잠긴 뒤의 예외(IntakeTab 의 같은 이름 주석 참조) */
   canFillEmpty?: boolean;
+  /** 나이스인프라 현장 · 한백 관리자에게만 — 계약서 초안 메일(components/project/NiceSubmit) */
+  niceMail?: NiceMailState | null;
 }) {
   /*
    * 주소에 탭이 없으면 국면이 정한다 — stage 를 그대로 쓰지 않는다.
@@ -371,6 +375,7 @@ export default function ProjectDetailView({
               lines={lines}
               preinstallCheck={detail.preinstallCheck ?? null}
               parkingCheck={detail.parkingCheck ?? null}
+              niceMail={niceMail}
             />
           )}
           {tab === 'construction' && <ConstructionTab detail={detail} edit={processEdit} />}

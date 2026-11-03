@@ -23,6 +23,7 @@ import { canAccessProject, canWrite } from '@/lib/roles';
 import { attachDocument } from '@/lib/attach-doc';
 import { schedulePreInstallCheck } from '@/lib/preinstall-run';
 import { scheduleParkingCheck } from '@/lib/parking-run';
+import { scheduleConsultDup } from '@/lib/consult-dup-run';
 import { PARKING_SLOTS } from '@/lib/parking-check';
 import { scheduleCpoSealRead } from '@/lib/cpo-seal-run';
 import { scheduleFactRead } from '@/lib/fact-read-run';
@@ -136,6 +137,8 @@ export async function POST(
   if (attached > 0 && CHECKED_KINDS.some((k) => byKind.has(k))) schedulePreInstallCheck(params.id);
   /* 건축물대장·결과서·신청서가 들어왔으면 건축물대장 대조를 저절로 — 응답 뒤에(lib/parking-run) */
   if (attached > 0 && PARKING_SLOTS.some((k) => byKind.has(k))) scheduleParkingCheck(params.id);
+  /* 결과서가 들어왔으면 「6. 중복설치」를 읽는다 — 나이스 제출 정보 7번(lib/consult-dup-run) */
+  if (attached > 0 && byKind.has('consult')) scheduleConsultDup(params.id);
   /* 계약서가 들어왔으면 운영사 직인을 읽는다 — 현대엔지니어링·SK 현장만(lib/cpo-seal-run) */
   if (attached > 0 && byKind.has('contract')) scheduleCpoSealRead(params.id);
   /* 사업자등록증·계약서·설치신청서가 들어왔고 대표자·계약일·주소 등이 비었으면(접수 판독이 못 읽었으면) 그 파일을 읽는다(lib/fact-read-run) */

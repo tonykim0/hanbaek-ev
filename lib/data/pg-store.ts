@@ -57,6 +57,7 @@ import { recvPresetStore } from './store/recv-presets';
 import { retouchStore } from './store/retouch';
 import { agentStore } from './store/agents';
 import { agentMailStore } from './store/agent-mail';
+import { consultDupStore } from './store/consult-dup';
 import { surveyDraftStore } from './store/survey-drafts';
 import { noticeStore } from './store/notices';
 import { fanOutNote, notificationStore, notifyMilestone } from './store/notifications';
@@ -224,8 +225,10 @@ export const pgRepository: ProjectRepository = {
   ...retouchStore,
   // 에이전트의 업무 정의 · 할 일 · 대화는 store/agents.ts 에 있다
   ...agentStore,
-  // 에이전트 메일(초안 · 승인 · 보냄)과 보내는 Gmail 계정은 store/agent-mail.ts 에 있다
+  // 에이전트 메일(초안 · 승인 · 보냄 · 현장 메일)과 보내는 메일 계정은 store/agent-mail.ts 에 있다
   ...agentMailStore,
+  // 사전현장컨설팅 결과서 「6. 중복설치」를 읽은 것은 store/consult-dup.ts 에 있다
+  ...consultDupStore,
 
   async listProjects(viewer: Viewer): Promise<ProjectSummary[]> {
     if (!isHanbaek(viewer.role) && !viewer.org) return [];

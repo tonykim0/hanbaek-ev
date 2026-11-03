@@ -12,6 +12,7 @@ import { getRepository } from '@/lib/data';
 import { sessionWrite, BadRequest } from '@/lib/api/write-route';
 import { schedulePreInstallCheck } from '@/lib/preinstall-run';
 import { scheduleParkingCheck } from '@/lib/parking-run';
+import { scheduleConsultDup } from '@/lib/consult-dup-run';
 
 /** 접수하면 기설치 대조가 응답 뒤에 돈다 — 판독까지 가는 길이라 예산을 넉넉히 */
 export const maxDuration = 300;
@@ -27,5 +28,7 @@ export const POST = sessionWrite<{ id: string }, { submitted?: unknown }>(
     if (body.submitted) schedulePreInstallCheck(params.id);
     // 건축물대장 대조도 같다 — 건축물대장·결과서·신청서로(lib/parking-run, 한백 지시 2026-10-16)
     if (body.submitted) scheduleParkingCheck(params.id);
+    // 결과서 「6. 중복설치」도 — 이 기능 전에 올린 결과서까지(lib/consult-dup-run, 한백 지시 2026-11-03)
+    if (body.submitted) scheduleConsultDup(params.id);
   }
 );
