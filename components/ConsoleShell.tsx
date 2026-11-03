@@ -25,7 +25,7 @@ import type { Role } from '@/lib/roles';
 import { canWrite, isHanbaek, ROLE_LABEL } from '@/lib/roles';
 import { TODO_GROUPS, type TodoGroup } from '@/lib/todo-types';
 import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
-import { BIZ_COOKIE, BIZ_FRAME, BIZ_HOME, BIZ_TITLE, bizOf, isShared, type Biz } from '@/lib/biz';
+import { BIZ_ALERTS, BIZ_COOKIE, BIZ_FRAME, BIZ_HOME, BIZ_TITLE, bizOf, isShared, type Biz } from '@/lib/biz';
 import TopBar from '@/components/TopBar';
 
 const COLLAPSE_KEY = 'hb-console-sidebar-collapsed';
@@ -380,7 +380,8 @@ export default function ConsoleShell({
     let alive = true;
     const load = () => {
       if (document.visibilityState === 'hidden') return;
-      void fetch('/api/notifications/unread')
+      // 지금 사업의 알림만 센다 — 전기차 화면의 배지에 태양광 알림이 섞이지 않게(migrations/0107)
+      void fetch(`/api/notifications/unread?biz=${biz}`)
         .then((r) => (r.ok ? (r.json() as Promise<{ count: number }>) : null))
         .then((d) => {
           if (alive && d) setAlerts(d.count);
@@ -399,7 +400,7 @@ export default function ConsoleShell({
       window.removeEventListener(NOTIFICATIONS_CHANGED, load);
       document.removeEventListener('visibilitychange', load);
     };
-  }, [pathname]);
+  }, [pathname, biz]);
 
   useEffect(() => {
     if (ready) localStorage.setItem(COLLAPSE_KEY, open ? '0' : '1');
@@ -457,7 +458,7 @@ export default function ConsoleShell({
           <div className="mb-3 border-b border-slate-100 pb-3">
             <TopItem href="/notices" label="공지" count={unread} expanded={expanded} active={pathname.startsWith('/notices')} on={frame.on} />
             {/* 알림 — 진행현황에 상대방이 남긴 글(lib/notify.ts). 공지와 같은 꼴, 공지 바로 밑 */}
-            <TopItem href="/notifications" label="알림" count={alerts} expanded={expanded} active={pathname.startsWith('/notifications')} on={frame.on} />
+            <TopItem href={BIZ_ALERTS[biz]} label="알림" count={alerts} expanded={expanded} active={pathname.startsWith(BIZ_ALERTS[biz])} on={frame.on} />
           </div>
 
           {groups.map((g) => (

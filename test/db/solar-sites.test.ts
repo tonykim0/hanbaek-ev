@@ -8,10 +8,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, eq, inArray } from 'drizzle-orm';
 import { POST } from '@/app/api/solar/sites/route';
 import { DELETE, PATCH } from '@/app/api/solar/sites/[id]/route';
+import { POST as FILES } from '@/app/api/solar/sites/[id]/files/route';
 import { SITE_NOT_FOUND, solarSiteStore } from '@/lib/data/solar-sites';
 import { getDb } from '@/lib/db/client';
 import { auditLog, solarSites, users } from '@/lib/db/schema';
-import { call, RUN, signIn, USERS, viewerOf } from './kit';
+import { actorOf, call, RUN, signIn, USERS, viewerOf } from './kit';
 
 const made: string[] = [];
 const body = (over: Record<string, unknown> = {}) => ({
@@ -125,5 +126,60 @@ describe('고치기 · 지우기 — 담당 협력사와 한백', () => {
     const next = String((await create(USERS.ecoelec)).json?.id);
     const seq = (id: string) => Number(id.split('-').pop());
     expect(seq(next)).toBeGreaterThan(seq(first));
+  });
+});
+
+describe('파일 — 붙이기 · 빼기 (한 줄 update)', () => {
+  const fileOf = (id: string, n: number) => ({
+    url: `https://x.public.blob.vercel-storage.com/solar-sites/${id}/t${n}.pdf`,
+    name: `고지서${n}.pdf`,
+    size: 1000 * n,
+    at: new Date().toISOString(),
+    by: 'ecoelec',
+  });
+
+  it('동시에 두 장을 붙여도 둘 다 남고, 같은 주소는 한 번만, 남의 현장 · 다른 자리는 막는다, 빼면 그 장만 빠진다', async () => {
+    const id = String((await create(USERS.ecoelec)).json?.id);
+    const eco = actorOf(USERS.ecoelec);
+    await Promise.all([solarSiteStore.attachFile(id, fileOf(id, 1), eco), solarSiteStore.attachFile(id, fileOf(id, 2), eco)]);
+    expect((await solarSiteStore.attachFile(id, fileOf(id, 1), eco)).already).toBe(true);
+    expect((await solarSiteStore.get(id, viewerOf(USERS.ecoelec)))?.files.map((f) => f.name).sort()).toEqual(['고지서1.pdf', '고지서2.pdf']);
+
+    await expect(solarSiteStore.attachFile(id, fileOf(id, 3), actorOf(USERS.daesang))).rejects.toThrow(SITE_NOT_FOUND);
+    await expect(
+      solarSiteStore.attachFile(id, { ...fileOf(id, 4), url: 'https://x.public.blob.vercel-storage.com/solar-sites/SL-1999-001/t.pdf' }, eco),
+    ).rejects.toThrow('자리');
+
+    await solarSiteStore.removeFile(id, fileOf(id, 1).url, eco);
+    expect((await solarSiteStore.get(id, viewerOf(USERS.ecoelec)))?.files.map((f) => f.name)).toEqual(['고지서2.pdf']);
+    await expect(solarSiteStore.removeFile(id, fileOf(id, 1).url, eco)).rejects.toThrow('없습니다');
+
+    const logs = await getDb().select().from(auditLog).where(eq(auditLog.action, `태양광 ${id}`));
+    expect(logs.filter((l) => l.field === '파일 올림').length).toBe(2);
+    expect(logs.filter((l) => l.field === '파일 뺌').map((l) => l.oldValue)).toEqual(['고지서1.pdf']);
+
+    // 현장을 지우면 남은 파일 주소를 돌려준다 — 라우트가 기록을 지운 뒤 Blob 을 걷는다
+    expect(await solarSiteStore.remove(id, eco)).toEqual([fileOf(id, 2).url]);
+    made.splice(made.indexOf(id), 1);
+  });
+
+  it('파일 라우트 — 열람 전용은 403, 토큰 자리가 그 현장 밖이면 400, 남의 주소는 400', async () => {
+    const id = String((await create(USERS.ecoelec)).json?.id);
+    const ask = (body: unknown, step = false) =>
+      FILES(
+        new Request(`http://test.local/api${step ? '?step=token' : ''}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+        { params: { id } },
+      );
+    await signIn(USERS.viewer);
+    expect((await ask({ pathname: `solar-sites/${id}/a.pdf` }, true)).status).toBe(403);
+    await signIn(USERS.ecoelec);
+    expect((await ask({ pathname: 'solar-sites/SL-1999-001/a.pdf' }, true)).status).toBe(400);
+    expect((await ask({ pathname: `solar-sites/${id}/../x.pdf` }, true)).status).toBe(400);
+    expect((await ask({ blobUrl: 'https://evil.example.com/solar-sites/x.pdf', filename: 'x.pdf' })).status).toBe(400);
+    expect((await ask({ blobUrl: `https://x.public.blob.vercel-storage.com/projects/HB-1/a.pdf`, filename: 'a.pdf' })).status).toBe(400);
   });
 });

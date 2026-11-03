@@ -11,6 +11,35 @@ export const SITE_KINDS: readonly SiteKind[] = ['roof', 'ground'];
 /** 부지 검토의 두 검색창과 같은 이름 — 지붕형(건물 지붕) · 지상형(땅) */
 export const SITE_KIND_LABEL: Record<SiteKind, string> = { roof: '지붕형', ground: '지상형' };
 
+/**
+ * 현장에 붙은 파일 한 장 — 상담 때 받은 사진 · 전기요금 고지서 · 도면 같은 것(형식을 묻지 않는다 — 전기차 서류 칸과 같다).
+ * url · size 는 서버가 우리 저장소에서 찾은 값이다(브라우저가 준 주소를 그대로 적지 않는다).
+ */
+export type SiteFile = {
+  url: string;
+  /** 올린 사람이 붙인 이름(파일 이름) */
+  name: string;
+  size: number;
+  /** 붙인 시각(ISO) · 붙인 계정(로그인 ID) */
+  at: string;
+  by: string;
+};
+
+/** 파일이 사는 자리 — Blob 의 solar-sites/{현장}/ 아래만 그 현장의 파일로 받는다 */
+export const siteFilePrefix = (siteId: string): string => `solar-sites/${siteId}/`;
+
+/**
+ * 올릴 자리 — 시각을 붙여 같은 이름끼리 덮지 않는다. 이름은 확장자만 남긴다(한글 · 빈칸이 주소에 실리면 깨진다 —
+ * 보이는 이름은 SiteFile.name 이 따로 갖는다).
+ */
+export function siteFilePathname(siteId: string, filename: string, now: number = Date.now()): string {
+  const ext = /\.([A-Za-z0-9]{1,8})$/.exec(filename)?.[1]?.toLowerCase();
+  return `${siteFilePrefix(siteId)}${now}-${Math.random().toString(36).slice(2, 8)}${ext ? `.${ext}` : ''}`;
+}
+
+/** 파일 한 장의 한도 — 전기차 서류 칸과 같다(types/project MAX_DOC_BYTES) */
+export const SITE_FILE_MAX_BYTES = 100 * 1024 * 1024;
+
 export type SolarSite = {
   /** SL-2026-001 — 지운 현장의 번호를 다시 쓰지 않는다(시퀀스) */
   id: string;
@@ -29,6 +58,7 @@ export type SolarSite = {
   /** 접수 시각(ISO) */
   createdAt: string;
   updatedAt: string | null;
+  files: SiteFile[];
 };
 
 export type SiteInput = {

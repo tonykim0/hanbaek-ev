@@ -11,6 +11,7 @@
  *  2. 권한은 화면이 아니라 이 계층에서 건다. 협력사에게는 자기 현장만 나가야지,
  *     전부 보내놓고 화면에서 가리면 안 된다.
  */
+import type { Biz } from '@/lib/biz';
 import type { RetouchLog } from '@/lib/retouch/types';
 import type {
   NoteScope,
@@ -493,15 +494,15 @@ export interface ProjectRepository {
   deleteSurveyDraft(id: string, actor: Actor): Promise<void>;
 
   /** 내 알림 — 진행현황 글·서류 반려·보완요청이 나에게 온 것, 최신이 위. 협력사는 지금 볼 수 있는 현장의 것만 */
-  listNotifications(me: Recipient, limit?: number): Promise<NoteNotification[]>;
-  /** 내가 안 읽은 알림 수 — 사이드바 배지 */
-  countUnreadNotifications(me: Recipient): Promise<number>;
+  listNotifications(me: Recipient, limit?: number, biz?: Biz): Promise<NoteNotification[]>;
+  /** 내가 안 읽은 알림 수 — 사이드바 배지. 사업마다 센다(없으면 전기차) */
+  countUnreadNotifications(me: Recipient, biz?: Biz): Promise<number>;
   /**
    * 알림을 읽었다고 찍는다 — 범위: 알림 하나 · 현장 하나(갈래까지) · 없으면 전부. 찍은 수를 돌려준다.
    * ★열람 전용도 부른다★ — 제 읽음 표시다(공지와 같다). 대행 중에는 라우트가 부르지 않는다.
    */
   markNotificationsRead(
-    userId: string, where?: { id?: string; projectId?: string; noticeId?: string; scope?: NoteScope }
+    userId: string, where?: { id?: string; projectId?: string; noticeId?: string; scope?: NoteScope; biz?: Biz }
   ): Promise<number>;
   /** 내가 안 읽은 공지 메시지 id — 공지 화면의 「새 글」·「새 메시지 N」 */
   unreadNoticeMessages(userId: string): Promise<string[]>;

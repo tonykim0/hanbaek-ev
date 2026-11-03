@@ -18,7 +18,7 @@ import { solarSites, users } from '@/lib/db/schema';
 import { isHanbaek, normalizeOrg } from '@/lib/roles';
 import { today } from '@/lib/date';
 import type { Actor, Viewer } from '@/lib/auth/types';
-import { cleanSiteInput, siteIdOf, type SiteInput, type SiteKind, type SolarSite } from '@/lib/solar/sites';
+import { cleanSiteInput, siteFilePrefix, siteIdOf, type SiteFile, type SiteInput, type SiteKind, type SolarSite } from '@/lib/solar/sites';
 
 /** 남의 현장 · 없는 현장 — 같은 말로 답한다 */
 export const SITE_NOT_FOUND = '그 현장을 찾지 못했습니다.';
@@ -37,6 +37,7 @@ const siteOf = (r: Row): SolarSite => ({
   createdBy: r.createdBy,
   createdAt: r.createdAt.toISOString(),
   updatedAt: r.updatedAt ? r.updatedAt.toISOString() : null,
+  files: r.files ?? [],
 });
 
 /** 그 사람이 이 현장을 보는가 — 한백은 전부, 협력사는 제 소속 */
@@ -151,7 +152,8 @@ export const solarSiteStore = {
     });
   },
 
-  async remove(id: string, actor: Actor): Promise<void> {
+  /** 지우기 — 붙은 파일의 주소를 돌려준다(라우트가 기록을 지운 뒤에 Blob 을 걷는다 — 순서를 바꾸면 열 수 없는 파일이 목록에 남는다) */
+  async remove(id: string, actor: Actor): Promise<string[]> {
     if (!hasDatabase()) throw new Error(NO_DB);
     const row = await editable(id, actor);
     const db = getDb();
@@ -159,5 +161,55 @@ export const solarSiteStore = {
       await tx.delete(solarSites).where(eq(solarSites.id, id));
       await writeAudit(tx, { projectId: null, actor, action: `태양광 ${id}`, field: '삭제', oldValue: `${row.name} · ${row.address}` });
     });
+    return (row.files ?? []).map((f) => f.url);
+  },
+
+  /** 고칠 수 있는가만 본다 — 올리기 토큰을 내주기 전에(토큰 발급은 기록을 안 남긴다) */
+  async assertEditable(id: string, actor: Actor): Promise<void> {
+    if (!hasDatabase()) throw new Error(NO_DB);
+    await editable(id, actor);
+  },
+
+  /**
+   * 파일 붙이기 — 주소는 라우트가 우리 저장소에서 찾은 것(그 현장의 자리 solar-sites/{id}/ 아래)만 온다. 여기서도 자리를 본다.
+   * ★한 줄 update★ — files || [새 장]. 읽고-고치고-쓰기면 같은 현장에 동시에 올린 두 장 중 하나가 사라진다(전기차 감사 M10).
+   * 같은 주소가 이미 있으면 다시 안 붙인다(재시도) — already 로 답한다.
+   */
+  async attachFile(id: string, file: SiteFile, actor: Actor): Promise<{ already: boolean }> {
+    if (!hasDatabase()) throw new Error(NO_DB);
+    await editable(id, actor);
+    if (!new URL(file.url).pathname.replace(/^\//, '').startsWith(siteFilePrefix(id))) throw new Error('파일 자리가 이 현장이 아닙니다.');
+    const db = getDb();
+    return db.transaction(async (tx) => {
+      const one = JSON.stringify([file]);
+      const hit = await tx
+        .update(solarSites)
+        .set({ files: sql`${solarSites.files} || ${one}::jsonb`, updatedAt: new Date() })
+        .where(sql`${solarSites.id} = ${id} and not (${solarSites.files} @> ${JSON.stringify([{ url: file.url }])}::jsonb)`)
+        .returning({ id: solarSites.id });
+      if (hit.length === 0) return { already: true };
+      await writeAudit(tx, { projectId: null, actor, action: `태양광 ${id}`, field: '파일 올림', newValue: file.name });
+      return { already: false };
+    });
+  },
+
+  /** 파일 한 장 빼기 — 기록에서 먼저 뺀다(라우트가 그 뒤에 Blob 을 걷는다). 그 현장에 없는 주소면 말로 막는다 */
+  async removeFile(id: string, url: string, actor: Actor): Promise<SiteFile> {
+    if (!hasDatabase()) throw new Error(NO_DB);
+    const row = await editable(id, actor);
+    const gone = (row.files ?? []).find((f) => f.url === url);
+    if (!gone) throw new Error('그 파일이 이 현장에 없습니다.');
+    const db = getDb();
+    await db.transaction(async (tx) => {
+      await tx
+        .update(solarSites)
+        .set({
+          files: sql`coalesce((select jsonb_agg(f) from jsonb_array_elements(${solarSites.files}) f where f->>'url' <> ${url}), '[]'::jsonb)`,
+          updatedAt: new Date(),
+        })
+        .where(eq(solarSites.id, id));
+      await writeAudit(tx, { projectId: null, actor, action: `태양광 ${id}`, field: '파일 뺌', oldValue: gone.name });
+    });
+    return gone;
   },
 };

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Badge, Btn, BtnLink, Confirm, Empty, PANEL, TEXT } from '@/components/ui';
 import { dayOf } from '@/lib/date';
 import { draftOf, SITE_KIND_LABEL, type SolarSite } from '@/lib/solar/sites';
+import SiteFiles from './SiteFiles';
 import SiteForm from './SiteForm';
 
 /**
@@ -17,6 +18,7 @@ export default function SiteDetail({
   isAdmin,
   orgs,
   createdByName,
+  unsent = 0,
 }: {
   site: SolarSite;
   /** 한백 관리자 · 그 현장의 담당 협력사 */
@@ -25,6 +27,8 @@ export default function SiteDetail({
   orgs: string[];
   /** 접수한 사람 — 계정 이름(없으면 로그인 ID) */
   createdByName: string;
+  /** 접수 때 못 올린 파일 수(접수 폼이 ?unsent= 로 데려온다) */
+  unsent?: number;
 }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
@@ -82,6 +86,9 @@ export default function SiteDetail({
                 </div>
               ))}
             </dl>
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <SiteFiles siteId={site.id} files={site.files} canEdit={canEdit} unsent={unsent} />
+            </div>
             <div className="mt-4 border-t border-slate-100 pt-4">
               <p className={TEXT.label}>상담 메모</p>
               <p className={`mt-1.5 whitespace-pre-line ${TEXT.body}`}>{site.memo ?? <Empty kind="wait" />}</p>

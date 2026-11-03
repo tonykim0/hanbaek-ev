@@ -32,8 +32,9 @@ export const SOLAR_ROOT = '/solar';
 /**
  * 두 사업이 같이 쓰는 화면 — 주소에 사업이 없다. 여기서는 마지막에 있던 사업의 틀을 그대로 둔다: 태양광에서 공지를
  * 눌렀는데 틀이 그린으로 바뀌면 사업이 바뀐 것처럼 읽힌다.
+ * 알림은 여기 없다 — 사업마다 따로다(/notifications 전기차 · /solar/notifications 태양광, migrations/0107).
  */
-export const SHARED_PATHS = ['/notices', '/notifications', '/admin/partners', '/admin/accounts'] as const;
+export const SHARED_PATHS = ['/notices', '/admin/partners', '/admin/accounts'] as const;
 
 /** 마지막에 있던 사업 — 같이 쓰는 화면의 틀을 서버가 첫 그림부터 맞게 그리려고 쿠키로 둔다 */
 export const BIZ_COOKIE = 'hb-biz';
@@ -53,6 +54,9 @@ export const isShared = (pathname: string) => SHARED_PATHS.some((p) => under(pat
 export const asBiz = (v: string | undefined | null): Biz => (v === 'solar' ? 'solar' : 'ev');
 
 /** 전환 단추를 누르면 가는 곳 — 그 사업의 첫 화면. 태양광은 부지 검토다(지금 실제로 쓰는 화면 — 현장관리는 아직 틀뿐) */
+/** 사이드바 「알림」이 가는 곳 — 그 사업의 알림(2026-11-03) */
+export const BIZ_ALERTS: Record<Biz, string> = { ev: '/notifications', solar: `${SOLAR_ROOT}/notifications` };
+
 export const BIZ_HOME: Record<Biz, string> = { ev: '/projects', solar: `${SOLAR_ROOT}/check` };
 
 export const BIZ_LABEL: Record<Biz, string> = { ev: '전기차', solar: '태양광' };

@@ -6,12 +6,15 @@
 import { NextResponse } from 'next/server';
 import { getRepository } from '@/lib/data';
 import { getSessionUser } from '@/lib/auth/session';
+import { asBiz } from '@/lib/biz';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+/** ?biz=solar 면 태양광 알림(migrations/0107) — 없으면 전기차 */
+export async function GET(request: Request) {
   const session = await getSessionUser();
   if (!session) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
-  const items = await getRepository().listNotifications({ id: session.id, role: session.role, org: session.org });
+  const biz = asBiz(new URL(request.url).searchParams.get('biz'));
+  const items = await getRepository().listNotifications({ id: session.id, role: session.role, org: session.org }, undefined, biz);
   return NextResponse.json({ items });
 }

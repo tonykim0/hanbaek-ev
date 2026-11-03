@@ -66,6 +66,7 @@ export default async function SolarSitesPage() {
                           <p className="mt-0.5 truncate text-tiny text-slate-500">{site.address}</p>
                           <p className="mt-1.5 flex flex-wrap items-center gap-1">
                             <Tag>{SITE_KIND_LABEL[site.kind]}</Tag>
+                            {site.files.length > 0 && <Tag>파일 {site.files.length}</Tag>}
                             {/* 한백은 전 현장을 본다 — 누구 현장인지 카드에 적는다. 협력사에게는 늘 자기라 안 적는다 */}
                             {hanbaek && <Tag tone={site.org ? 'mute' : 'stage'}>{site.org ?? '한백 직접'}</Tag>}
                             <span className="ml-auto text-micro font-semibold tabular-nums text-slate-500">

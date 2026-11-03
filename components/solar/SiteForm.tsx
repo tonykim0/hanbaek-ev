@@ -1,8 +1,9 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Btn, Choice, Err, FIELD, TEXT } from '@/components/ui';
+import { uploadSiteFile } from '@/lib/solar/site-upload';
 import { SITE_DIRECT, SITE_KIND_LABEL, SITE_KINDS, SITE_LIMITS, type SiteDraft } from '@/lib/solar/sites';
 
 /**
@@ -10,6 +11,10 @@ import { SITE_DIRECT, SITE_KIND_LABEL, SITE_KINDS, SITE_LIMITS, type SiteDraft }
  *
  * 담당 협력사는 한백 관리자에게만 선다 — 협력사가 접수하면 제 소속이 담당이다(저장소가 정한다, 보낸 값을 안 본다).
  * 고르는 목록은 태양광 참여를 켠 협력사다(계정설정). 「한백 직접」은 한백이 손님을 바로 받은 현장이다.
+ *
+ * ★파일★ (2026-11-03 「상담접수할 때 파일도 올릴 수 있도록」) — 접수할 때 고른 파일은 현장이 생긴 뒤에 한 장씩 올린다(자리가
+ * 현장 번호 아래라 번호가 먼저 있어야 한다). 못 올린 장이 있어도 접수는 된 것이라 상세로 가서 그 수를 알린다(?unsent=) —
+ * 거기서 다시 올린다. 고치기에는 이 칸이 없다 — 상세의 「파일」 구역이 그 자리다.
  */
 export default function SiteForm({
   siteId,
@@ -30,7 +35,10 @@ export default function SiteForm({
   const router = useRouter();
   const [d, setD] = useState<SiteDraft>(initial);
   const [busy, setBusy] = useState(false);
+  const [busyLabel, setBusyLabel] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [picked, setPicked] = useState<File[]>([]);
+  const picker = useRef<HTMLInputElement>(null);
   const set = <K extends keyof SiteDraft>(k: K, v: SiteDraft[K]) => setD((x) => ({ ...x, [k]: v }));
 
   const missing = !d.name.trim() ? '현장명' : !d.address.trim() ? '주소' : !d.kind ? '설치 형태' : null;
@@ -64,14 +72,23 @@ export default function SiteForm({
         router.refresh();
         onDone?.();
       } else if (got.id) {
+        let unsent = 0;
+        for (const [i, f] of picked.entries()) {
+          try {
+            await uploadSiteFile(got.id, f, (pct) => setBusyLabel(`파일 올리는 중 ${i + 1}/${picked.length} · ${pct}%`));
+          } catch {
+            unsent += 1;
+          }
+        }
         // 접수한 현장으로 간다 — 적은 것을 바로 보고, 보드의 상담 칸에도 섰다
-        router.push(`/solar/sites/${got.id}`);
+        router.push(`/solar/sites/${got.id}${unsent ? `?unsent=${unsent}` : ''}`);
         router.refresh();
       }
     } catch {
       setError('네트워크 오류입니다. 다시 시도해주세요.');
     } finally {
       setBusy(false);
+      setBusyLabel(null);
     }
   }
 
@@ -105,6 +122,42 @@ export default function SiteForm({
       <Field label="상담 메모">
         <textarea className={`${FIELD} min-h-[6rem]`} value={d.memo} maxLength={SITE_LIMITS.memo} onChange={(e) => set('memo', e.target.value)} />
       </Field>
+      {!siteId && (
+        <div role="group" aria-label="파일" className="grid gap-1.5">
+          <FieldName label="파일" />
+          <div>
+            <Btn kind="side" size="sm" disabled={busy} onClick={() => picker.current?.click()}>
+              파일 고르기
+            </Btn>
+            <input
+              ref={picker}
+              type="file"
+              multiple
+              hidden
+              onChange={(e) => {
+                const list = [...(e.target.files ?? [])];
+                e.target.value = '';
+                setPicked((x) => [...x, ...list]);
+              }}
+            />
+          </div>
+          {picked.length > 0 && (
+            <ul>
+              {picked.map((f, i) => (
+                <li key={`${f.name}-${i}`} className="flex items-center gap-3 border-t border-slate-100 py-1.5 first:border-t-0">
+                  <span className={`min-w-0 truncate ${TEXT.body}`}>{f.name}</span>
+                  <span className={`shrink-0 tabular-nums ${TEXT.meta}`}>{(f.size / 1024 / 1024).toFixed(1)}MB</span>
+                  <span className="ml-auto shrink-0">
+                    <Btn kind="undo" size="sm" disabled={busy} onClick={() => setPicked((x) => x.filter((_, j) => j !== i))}>
+                      빼기
+                    </Btn>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
       {isAdmin && (
         <Field label="담당 협력사">
           <select className={`${FIELD} cursor-pointer`} value={d.org} onChange={(e) => set('org', e.target.value)}>
@@ -121,8 +174,8 @@ export default function SiteForm({
       )}
       <div className="flex flex-wrap items-center gap-2">
         {/* 못 하는 이유를 단추 이름에(화면 규칙 3) */}
-        <Btn type="submit" disabled={!!missing} busy={busy} busyLabel={siteId ? '저장 중…' : '접수 중…'}>
-          {missing ? `${missing} 필요` : siteId ? '저장' : '상담 접수'}
+        <Btn type="submit" disabled={!!missing} busy={busy} busyLabel={busyLabel ?? (siteId ? '저장 중…' : '접수 중…')}>
+          {missing ? `${missing} 필요` : siteId ? '저장' : picked.length ? `상담 접수 · 파일 ${picked.length}개` : '상담 접수'}
         </Btn>
         {onDone && (
           <Btn kind="quiet" onClick={onDone} disabled={busy}>

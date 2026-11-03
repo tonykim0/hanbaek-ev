@@ -13,6 +13,7 @@ import {
   smallint, text, timestamp, uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import type { NoticeFile } from '@/types/project';
+import type { SiteFile } from '@/lib/solar/sites';
 
 // ── 계정 ────────────────────────────────────────────────────────
 export const users = pgTable('users', {
@@ -46,6 +47,8 @@ export const solarSites = pgTable('solar_sites', {
   createdBy: text('created_by').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }),
+  /** 붙은 파일 — SiteFile[] (migrations/0106). Blob 의 solar-sites/{현장}/ 아래. 붙이기 · 빼기는 한 줄 update(경합 없음) */
+  files: jsonb('files').$type<SiteFile[]>().notNull().default([]),
 }, (t) => ({
   byOrg: index('solar_sites_org_idx').on(t.org, t.createdAt),
 }));
@@ -509,6 +512,11 @@ export const notifications = pgTable('notifications', {
   body: text('body'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   readAt: timestamp('read_at', { withTimezone: true }),
+  /**
+   * 어느 사업의 알림인가 — ev 전기차 · solar 태양광(migrations/0107). 전기차는 /notifications, 태양광은 /solar/notifications 에
+   * 서고 배지도 사업마다 센다. 그전에 쌓인 것은 전부 전기차다(기본값).
+   */
+  biz: text('biz').notNull().default('ev'),
 }, (t) => ({
   byUser: index('notifications_user_idx').on(t.userId, t.createdAt),
 }));

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asBiz, BIZ_HOME, bizOf, isShared, seesSolar } from '@/lib/biz';
+import { asBiz, BIZ_ALERTS, BIZ_HOME, bizOf, isShared, seesSolar } from '@/lib/biz';
 import { HANBAEK_ONLY } from '@/lib/routes-map';
 
 describe('bizOf — 사업은 주소로 가른다', () => {
@@ -16,9 +16,8 @@ describe('bizOf — 사업은 주소로 가른다', () => {
     expect(bizOf('/projects', 'solar')).toBe('ev');
     expect(bizOf('/solarx', 'solar')).toBe('ev');
   });
-  it('같이 쓰는 화면(공지 · 알림 · 협력사 정보 · 계정설정)은 마지막 사업 그대로', () => {
+  it('같이 쓰는 화면(공지 · 협력사 정보 · 계정설정)은 마지막 사업 그대로', () => {
     expect(bizOf('/notices', 'solar')).toBe('solar');
-    expect(bizOf('/notifications/x', 'solar')).toBe('solar');
     expect(bizOf('/admin/accounts', 'solar')).toBe('solar');
     expect(bizOf('/notices')).toBe('ev');
     expect(isShared('/admin/partners')).toBe(true);
@@ -28,6 +27,17 @@ describe('bizOf — 사업은 주소로 가른다', () => {
     expect(asBiz('solar')).toBe('solar');
     expect(asBiz('x')).toBe('ev');
     expect(asBiz(undefined)).toBe('ev');
+  });
+});
+
+describe('알림은 사업마다 따로 (2026-11-03 — 지금까지의 알림은 전부 전기차)', () => {
+  it('/notifications 는 전기차 — 태양광에 있다 와도 전기차 틀이다', () => {
+    expect(isShared('/notifications')).toBe(false);
+    expect(bizOf('/notifications', 'solar')).toBe('ev');
+  });
+  it('사이드바 「알림」은 그 사업의 알림으로 간다', () => {
+    expect(BIZ_ALERTS.ev).toBe('/notifications');
+    expect(bizOf(BIZ_ALERTS.solar)).toBe('solar');
   });
 });
 

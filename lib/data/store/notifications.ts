@@ -14,6 +14,9 @@
  * 된다. 한백(관리자)은 전 현장을 본다.
  * 읽음 찍기는 사업 데이터의 쓰기가 아니다 — 열람 전용도 제 것을 찍는다(공지 읽음과 같다). 대행 중에는 찍지
  * 않는다(라우트가 거른다 — 관리자가 들여다본 것은 협력사가 읽은 것이 아니다).
+ *
+ * ★사업으로 가른다★ (2026-11-03, migrations/0107) — 여기서 남기는 알림은 전부 전기차다(현장 · 공지 메모). 목록 · 배지는
+ * 사업 하나씩 본다(전기차 /notifications · 태양광 /solar/notifications). 태양광 알림은 태양광의 일이 생기면 biz 'solar' 로 남긴다.
  */
 import { and, desc, eq, inArray, isNotNull, isNull, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
@@ -22,6 +25,7 @@ import { stampOf } from '@/lib/date';
 import { isHanbaek } from '@/lib/roles';
 import { noteAudience } from '@/lib/notify';
 import { isNoteScope, type NoteNotification, type NoteScope, type NotificationKind } from '@/types/project';
+import type { Biz } from '@/lib/biz';
 import type { ProjectRepository } from '../repository';
 import type { TxLike } from './shared';
 
@@ -56,7 +60,7 @@ async function insertFor(tx: TxLike, userIds: string[], row: {
 }): Promise<number> {
   if (userIds.length === 0) return 0;
   await tx.insert(notifications).values(userIds.map((userId) => ({
-    id: crypto.randomUUID(), userId, ...row,
+    id: crypto.randomUUID(), userId, ...row, biz: 'ev',   // 전기차 현장의 일이다
   })));
   return userIds.length;
 }
@@ -121,7 +125,8 @@ export async function fanOutNoticeMessage(tx: TxLike, input: {
     .where(and(ne(users.role, 'viewer'), eq(users.active, true), ne(users.id, input.actorId)));
   if (rows.length === 0) return 0;
   await tx.insert(notifications).values(rows.map((r) => ({
-    id: crypto.randomUUID(), userId: r.id, kind: 'notice', noticeId: input.noticeId, noticeMsgId: input.msgId,
+    // 공지는 두 사업이 같이 쓰지만 공지 메모 알림은 지금까지처럼 전기차에 선다(한백 「지금까지 모든 알림은 전기차 알림」)
+    id: crypto.randomUUID(), userId: r.id, kind: 'notice', noticeId: input.noticeId, noticeMsgId: input.msgId, biz: 'ev',
   })));
   return rows.length;
 }
@@ -143,7 +148,7 @@ export const notificationStore: Pick<
   ProjectRepository,
   'listNotifications' | 'countUnreadNotifications' | 'markNotificationsRead' | 'unreadOnProject' | 'unreadNoticeMessages'
 > = {
-  async listNotifications(me, limit = 100): Promise<NoteNotification[]> {
+  async listNotifications(me, limit = 100, biz: Biz = 'ev'): Promise<NoteNotification[]> {
     const rows = await getDb()
       .select({
         id: notifications.id, kind: notifications.kind, projectId: notifications.projectId, noteId: notifications.noteId,
@@ -159,7 +164,7 @@ export const notificationStore: Pick<
       .leftJoin(projectNotes, eq(projectNotes.id, notifications.noteId))
       .leftJoin(notices, eq(notices.id, notifications.noticeId))
       .leftJoin(noticeMessages, eq(noticeMessages.id, notifications.noticeMsgId))
-      .where(and(eq(notifications.userId, me.id), accessible(me)))
+      .where(and(eq(notifications.userId, me.id), eq(notifications.biz, biz), accessible(me)))
       .orderBy(desc(notifications.createdAt))
       .limit(limit);
     return rows.map((r) => {
@@ -184,13 +189,13 @@ export const notificationStore: Pick<
     });
   },
 
-  async countUnreadNotifications(me): Promise<number> {
+  async countUnreadNotifications(me, biz: Biz = 'ev'): Promise<number> {
     const [row] = await getDb()
       .select({ n: sql<number>`count(*)::int` })
       .from(notifications)
       .leftJoin(projects, eq(projects.id, notifications.projectId))
       .leftJoin(noticeMessages, eq(noticeMessages.id, notifications.noticeMsgId))
-      .where(and(eq(notifications.userId, me.id), isNull(notifications.readAt), accessible(me)));
+      .where(and(eq(notifications.userId, me.id), eq(notifications.biz, biz), isNull(notifications.readAt), accessible(me)));
     return row?.n ?? 0;
   },
 
@@ -213,6 +218,8 @@ export const notificationStore: Pick<
     if (where.projectId) conds.push(eq(notifications.projectId, where.projectId));
     if (where.noticeId) conds.push(eq(notifications.noticeId, where.noticeId));
     if (where.scope) conds.push(eq(notifications.scope, where.scope));
+    // 「모두 읽음」은 그 사업의 것만 — 전기차 알림 화면에서 누른 것이 태양광 알림을 읽은 것은 아니다
+    if (where.biz) conds.push(eq(notifications.biz, where.biz));
     const done = await getDb().update(notifications).set({ readAt: new Date() }).where(and(...conds))
       .returning({ id: notifications.id });
     return done.length;

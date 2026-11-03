@@ -8,6 +8,7 @@
  * 아니라 열린 일이다. 안 읽은 줄은 굵고 왼쪽에 점이 선다.
  * 줄을 누르면 그 현장의 그 탭으로 간다 — 그 탭을 열면 그 갈래의 알림이 읽힌다(ProgressLog).
  */
+import type { Biz } from '@/lib/biz';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { NoteNotification } from '@/types/project';
@@ -27,8 +28,10 @@ function hrefOf(n: NoteNotification): string {
 /** 열린 일을 알리는 줄인가 — 환경부 대기번호·승인(초록 꼬리표) */
 const opened = (n: NoteNotification) => n.kind === 'approval' || n.kind === 'queue';
 
-export default function NotificationList({ items, viewingAs }: {
+export default function NotificationList({ items, viewingAs, biz = 'ev' }: {
   items: NoteNotification[];
+  /** 이 목록의 사업 — 「모두 읽음」이 그 사업의 것만 찍는다(migrations/0107) */
+  biz?: Biz;
   /** 대행 중이면 그 계정 이름 — 그동안은 읽음을 찍지 않는다(라우트가 거른다) */
   viewingAs: string | null;
 }) {
@@ -41,7 +44,7 @@ export default function NotificationList({ items, viewingAs }: {
     setBusy(true);
     setError(null);
     try {
-      const r = await fetch('/api/notifications/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+      const r = await fetch('/api/notifications/read', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ biz }) });
       if (!r.ok) throw new Error();
       setList((l) => l.map((n) => ({ ...n, read: true })));
       window.dispatchEvent(new Event(NOTIFICATIONS_CHANGED));
