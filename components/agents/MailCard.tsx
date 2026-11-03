@@ -5,7 +5,7 @@
  * (한백 2026-11-03 「난 그거에 대해 승인을 하고 너가 메일을 보내는건데」).
  *
  * 보내기는 되돌릴 수 없어서 한 번 더 묻는다 — 받는 사람을 다시 보여 주고 빨간 「보내기」로 확정한다(ui.tsx Confirm · 화면 규칙 12).
- * 고치기는 누를 때만 칸이 열린다(규칙 4) · 버리기는 줄의 반대쪽 끝이다(규칙 8) · 버린 것은 되살린다(규칙 7). Gmail 이 연결되지
+ * 고치기는 누를 때만 칸이 열린다(규칙 4) · 버리기는 줄의 반대쪽 끝이다(규칙 8) · 버린 것은 되살린다(규칙 7). 보내는 메일이 연결되지
  * 않았으면 단추 이름이 그 까닭을 말한다(규칙 3) — 연결하는 자리는 머리말 밑 「보내는 메일」 한 줄이다(같은 단추를 두 번 두지 않는다).
  * 모양은 띠다 — 판 안이라 사방 테두리를 두르지 않는다(규칙 1). 승인 대기는 노랑, 보냄은 초록, 보내지 못함은 빨강 선이다.
  */
@@ -39,7 +39,7 @@ async function call(url: string, method: 'POST' | 'PATCH', body?: unknown): Prom
 export function MailCard({ agentId, mail, connected, onChange }: {
   agentId: string;
   mail: AgentMail;
-  /** 콘솔에 Gmail 이 연결돼 있는가 */
+  /** 콘솔에 보내는 메일이 연결돼 있는가 */
   connected: boolean;
   onChange: (mail: AgentMail) => void;
 }) {
@@ -147,7 +147,7 @@ export function MailCard({ agentId, mail, connected, onChange }: {
           {open && !editing && (
             <>
               <Btn size="sm" disabled={!connected || busy !== null} onClick={() => { setError(null); setAsking(true); }}>
-                {!connected ? 'Gmail 연결 전 — 보낼 수 없음' : mail.status === 'failed' ? '다시 보내기' : '승인하고 보내기'}
+                {!connected ? '메일 연결 전 — 보낼 수 없음' : mail.status === 'failed' ? '다시 보내기' : '승인하고 보내기'}
               </Btn>
               <Btn size="sm" kind="quiet" disabled={busy !== null} onClick={edit}>고치기</Btn>
             </>

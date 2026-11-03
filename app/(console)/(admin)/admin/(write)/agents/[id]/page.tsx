@@ -24,11 +24,11 @@ export const dynamic = 'force-dynamic';
  * 업무 정의 · 할 일. 주간 기록에서 한 주를 고르면(?week=그 주 월요일) 왼쪽이 그 주의 말과 일로 바뀐다.
  * (한백 지시 2026-11-02 「각 운영사별로 해야 할 업무들과 각 담당자와의 커뮤니케이션을 기록해야해 · 그 업무들에 대한 정의도
  * 내가 담당자별로 지정할거야」 · 「주단위로 뭐했는지도 과거 이력 조회」 · 「파일업로드 기능도」 — 모양은 components/agents/kit)
- * 담당이 올린 메일 초안은 대화의 그 답 밑에 서고 한백이 승인해야 나간다 — 보내는 Gmail 은 머리말 밑 한 줄이다(MailAccount).
+ * 담당이 올린 메일 초안은 대화의 그 답 밑에 서고 한백이 승인해야 나간다 — 보내는 메일(한백의 다음 메일)은 머리말 밑 한 줄이다(MailAccount).
  */
 export default async function AgentPage({ params, searchParams }: {
   params: { id: string };
-  searchParams: { week?: string; mail_error?: string };
+  searchParams: { week?: string };
 }) {
   const session = await getSessionUser();
   if (!session) redirect(`/login?next=/admin/agents/${params.id}`);
@@ -71,7 +71,7 @@ export default async function AgentPage({ params, searchParams }: {
         </div>
       </header>
       <div className="-mt-3 mb-5">
-        <MailAccount account={account} back={`/admin/agents/${agent.id}`} error={searchParams.mail_error ?? null} />
+        <MailAccount account={account} />
       </div>
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">

@@ -1,11 +1,10 @@
 /**
- * 에이전트 메일의 순수한 쪽 — 받는 사람 고르기 · 메일 짓기(lib/agents/mime) · 토큰 잠그기(secret-box) · 구글 연결의 주소와
- * 거절 문구(lib/agents/gmail). 실제로 보내는 길은 test/db/agents-mail.test.ts 가 본다(구글은 흉내).
+ * 에이전트 메일의 순수한 쪽 — 받는 사람 고르기 · 메일 짓기(lib/agents/mime) · 앱 비밀번호 잠그기(secret-box).
+ * 메일 서버와 말하는 쪽은 test/agents-smtp.test.ts(가짜 서버), 승인 · 보내기의 문은 test/db/agents-mail.test.ts 가 본다.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { addressesOf, buildMime, headerText, isMailAddress } from '@/lib/agents/mime';
 import { seal, unseal } from '@/lib/agents/secret-box';
-import { emailOfIdToken, gmailAuthUrl, GoogleError, humanGoogleError, mailBackOf, withMailNote } from '@/lib/agents/gmail';
 
 /** 머리말 값 → 글자(접은 줄을 펴고 낱말을 푼다) */
 function decodeHeader(v: string): string {
@@ -117,46 +116,5 @@ describe('토큰 잠그기', () => {
     expect(unseal(parts.join('.'), 'secret-one-0123456789')).toBeNull();
     expect(unseal('garbage', 'secret-one-0123456789')).toBeNull();
     expect(seal('x', 'k')).not.toBe(seal('x', 'k')); // 매번 새 iv
-  });
-});
-
-describe('구글 연결', () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  it('동의 화면 주소 — 갱신 토큰을 받는 두 값과 보내기 범위 · 확인값', () => {
-    const u = new URL(gmailAuthUrl({ clientId: 'cid', redirectUri: 'http://localhost:3123/api/agents/gmail/callback', state: 'st' }));
-    expect(u.origin + u.pathname).toBe('https://accounts.google.com/o/oauth2/v2/auth');
-    expect(u.searchParams.get('access_type')).toBe('offline');
-    expect(u.searchParams.get('prompt')).toBe('consent');
-    expect(u.searchParams.get('scope')?.split(' ')).toContain('https://www.googleapis.com/auth/gmail.send');
-    expect(u.searchParams.get('state')).toBe('st');
-    expect(u.searchParams.get('redirect_uri')).toBe('http://localhost:3123/api/agents/gmail/callback');
-  });
-
-  it('id_token 의 주소 — 확인 안 된 주소 · 깨진 토큰은 null', () => {
-    const tok = (p: object) => `h.${Buffer.from(JSON.stringify(p)).toString('base64url')}.s`;
-    expect(emailOfIdToken(tok({ email: 'hanbaekevc@gmail.com', email_verified: true }))).toBe('hanbaekevc@gmail.com');
-    expect(emailOfIdToken(tok({ email: 'x@y.com', email_verified: false }))).toBeNull();
-    expect(emailOfIdToken('nope')).toBeNull();
-  });
-
-  it('돌아갈 화면은 에이전트 화면 안만 — 밖으로 내보내지 않는다', () => {
-    expect(mailBackOf('/admin/agents/op-sk')).toBe('/admin/agents/op-sk');
-    expect(mailBackOf('/admin/agents')).toBe('/admin/agents');
-    for (const bad of ['https://evil.com', '//evil.com', '/admin/agents/../accounts', '/projects', null]) {
-      expect(mailBackOf(bad)).toBe('/admin/agents');
-    }
-    expect(withMailNote('/admin/agents', 'mail_error', '다시 눌러 주세요')).toBe(`/admin/agents?mail_error=${encodeURIComponent('다시 눌러 주세요').replace(/%20/g, '+')}`);
-  });
-
-  it('구글의 거절은 사람 말로 — 권한이 풀림 · 한도 · 권한 없음 · 주소 거절', () => {
-    vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    expect(humanGoogleError(new GoogleError(400, 'invalid_grant', 'Token has been expired or revoked.')).message).toContain('「Gmail 연결」을 다시');
-    expect(humanGoogleError(new GoogleError(403, 'PERMISSION_DENIED', 'Daily Limit Exceeded')).message).toContain('보낼 수 있는 양');
-    expect(humanGoogleError(new GoogleError(429, 'RESOURCE_EXHAUSTED', 'User-rate limit exceeded')).message).toContain('보낼 수 있는 양');
-    expect(humanGoogleError(new GoogleError(403, 'PERMISSION_DENIED', 'Request had insufficient authentication scopes.')).message).toContain('보내기 권한');
-    expect(humanGoogleError(new GoogleError(400, 'INVALID_ARGUMENT', 'Invalid To header')).message).toBe('구글이 이 메일을 받지 않았습니다 — Invalid To header');
-    expect(humanGoogleError(new GoogleError(503, 'UNAVAILABLE', 'x')).message).toContain('(503)');
-    expect(humanGoogleError(new Error('이미 사람 말')).message).toBe('이미 사람 말');
   });
 });

@@ -1,5 +1,5 @@
 /**
- * 메일 한 통을 글자로 짓는다 (순수 — test/agents-mail.test.ts 가 본다). Gmail 의 올리기(message/rfc822)에 그대로 실린다
+ * 메일 한 통을 글자로 짓는다 (순수 — test/agents-mail.test.ts 가 본다). 메일 서버에 그대로 실린다
  * (lib/agents/gmail). 받는 사람 칸을 주소 목록으로 고르는 일도 여기서 한다 — 저장소와 화면이 같은 판정을 쓴다.
  *
  * 한글은 머리말에 그대로 못 싣는다 — 제목 · 보내는 이름 · 첨부 이름은 RFC 2047 낱말(=?UTF-8?B?…?=)로, 본문과 첨부는 base64 로
@@ -13,7 +13,7 @@ export const MAIL_LIMITS = {
   subject: 200,
   body: 20000,
   files: 10,
-  /** 첨부 합계 — Gmail 이 보내는 메일 한 통의 첨부 한도 */
+  /** 첨부 합계 — 받는 쪽 메일함이 흔히 받는 한도(Gmail · 네이버 25MB) */
   attachBytes: 25 * 1024 * 1024,
 } as const;
 

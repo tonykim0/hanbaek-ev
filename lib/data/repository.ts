@@ -14,7 +14,7 @@
 import type { Biz } from '@/lib/biz';
 import type { RetouchLog } from '@/lib/retouch/types';
 import type {
-  AgentDetail, AgentMail, AgentMessage, AgentMessageMeta, AgentMessageRole, AgentSummary, MailAccountInfo,
+  AgentDetail, AgentMail, AgentMessage, AgentMessageMeta, AgentMessageRole, AgentSummary, AgentUsage, MailAccountInfo,
 } from '@/types/agents';
 import type {
   NoteScope,
@@ -491,6 +491,8 @@ export interface ProjectRepository {
    */
   /** 담당 일곱 — 업무 정의 수 · 열린 할 일 · 마지막 말 */
   listAgents(actor: Actor): Promise<AgentSummary[]>;
+  /** 사용량 — 이번 달 · 지난달 담당별 답 수 · 비용 어림, 이번 달 토큰(답마다 남긴 meta 를 달로 묶는다) */
+  agentUsage(actor: Actor): Promise<AgentUsage>;
   /** 담당 하나 — 업무 정의 · 할 일 · 최근 대화(넘긴 파일 포함) · 주간 기록. week(그 주 월요일)를 주면 그 주의 말과 일 */
   getAgent(id: string, actor: Actor, opts?: { week?: string | null }): Promise<AgentDetail>;
   /** 업무 정의 넣기 · 고치기(id 가 있으면) — id 를 돌려준다 */
@@ -518,16 +520,17 @@ export interface ProjectRepository {
 
   /*
    * 에이전트 메일 (store/agent-mail · migrations/0111) [한백 관리자] — 담당이 초안을 올리고 ★한백이 승인해야 나간다★.
-   * 보내는 계정은 콘솔에 연결한 Gmail 하나다(lib/agents/gmail). 갱신 토큰은 잠가 두고, 보낼 때만 mailCredential 이 푼다.
+   * 보내는 계정은 콘솔에 연결한 한백의 다음(카카오) 메일 하나다(lib/agents/smtp — 메일 주소 + 카카오 앱 비밀번호).
+   * 앱 비밀번호는 잠가 두고, 보낼 때만 mailCredential 이 푼다.
    */
-  /** 콘솔이 메일을 보내는 계정 — 없으면 null. 토큰은 싣지 않는다 */
+  /** 콘솔이 메일을 보내는 계정 — 없으면 null. 비밀번호는 싣지 않는다 */
   getMailAccount(actor: Actor): Promise<MailAccountInfo | null>;
-  /** Gmail 연결 — 갱신 토큰을 잠가 둔다(한 줄이다 — 다시 연결하면 갈아 끼운다) */
-  saveMailAccount(input: { email: string; refreshToken: string; scopes: string[] }, actor: Actor): Promise<MailAccountInfo>;
-  /** 연결 끊기 — 끊은 계정의 토큰을 돌려준다(라우트가 구글에 거두라고 알린다). 없었으면 null */
-  deleteMailAccount(actor: Actor): Promise<{ email: string; refreshToken: string | null } | null>;
-  /** 보낼 때만 — 풀어 둔 갱신 토큰과 주소. 연결이 없거나 풀 수 없으면 사람 말로 던진다 */
-  mailCredential(actor: Actor): Promise<{ email: string; refreshToken: string }>;
+  /** 메일 연결 — 라우트가 로그인을 해 본 뒤에 부른다. 앱 비밀번호를 잠가 둔다(한 줄이다 — 다시 연결하면 갈아 끼운다) */
+  saveMailAccount(input: { email: string; secret: string; server: string }, actor: Actor): Promise<MailAccountInfo>;
+  /** 연결 끊기 — 없었으면 null */
+  deleteMailAccount(actor: Actor): Promise<{ email: string } | null>;
+  /** 보낼 때만 — 풀어 둔 앱 비밀번호와 주소. 연결이 없거나 풀 수 없으면 사람 말로 던진다 */
+  mailCredential(actor: Actor): Promise<{ email: string; secret: string }>;
   /** 메일 초안 올리기 — 에이전트가 대화 중에(lib/agents/brain draft_mail). 붙일 파일은 그 담당에게 넘긴 파일만 */
   addAgentMail(
     input: { agentId: string; to: unknown; cc?: unknown; subject: string; body: string; fileIds?: string[] },
@@ -548,7 +551,7 @@ export interface ProjectRepository {
   finishAgentMail(
     input: {
       agentId: string; id: string;
-      result: { ok: true; from: string; gmailId: string; threadId: string | null } | { ok: false; error: string };
+      result: { ok: true; from: string; ref: string } | { ok: false; error: string };
     },
     actor: Actor
   ): Promise<AgentMail>;

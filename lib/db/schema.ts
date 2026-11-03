@@ -725,14 +725,15 @@ export const agentFiles = pgTable('agent_files', {
 }));
 
 /**
- * 콘솔이 메일을 보내는 계정 — 한백 Gmail 한 줄(id 'gmail', migrations/0111). 토큰은 잠근 갱신 토큰이다(lib/agents/secret-box) —
- * 화면·응답으로 나가지 않는다(store/agent-mail).
+ * 콘솔이 메일을 보내는 계정 — 한백의 다음(카카오) 메일 한 줄(id 'mail', migrations/0111). token 은 잠근 앱 비밀번호다
+ * (lib/agents/secret-box) — 화면·응답으로 나가지 않는다(store/agent-mail).
  */
 export const mailAccounts = pgTable('mail_accounts', {
   id: text('id').primaryKey(),
   email: text('email').notNull(),
   token: text('token').notNull(),
-  scopes: text('scopes').notNull(),
+  /** 붙는 곳 — smtp.daum.net:465 */
+  server: text('server').notNull(),
   connectedBy: text('connected_by').notNull(),
   connectedAt: timestamp('connected_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -750,8 +751,8 @@ export const agentMails = pgTable('agent_mails', {
   fileIds: jsonb('file_ids').$type<string[]>().notNull().default([]),
   error: text('error'),
   from: text('from_addr'),
-  gmailId: text('gmail_id'),
-  gmailThreadId: text('gmail_thread_id'),
+  /** 메일 서버가 붙인 접수 표시(250 답의 글) */
+  sentRef: text('sent_ref'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   sentAt: timestamp('sent_at', { withTimezone: true }),

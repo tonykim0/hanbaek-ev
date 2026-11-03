@@ -14,11 +14,11 @@ import type { PgColumn } from 'drizzle-orm/pg-core';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
 import { agentDuties, agentFiles, agentMails, agentMessages, agents, agentTasks, auditLog, projects } from '@/lib/db/schema';
-import { stampOf, today } from '@/lib/date';
+import { shiftMonths, stampOf, today } from '@/lib/date';
 import { allSlots } from '../db-slot';
 import type {
   Agent, AgentDetail, AgentDuty, AgentEvent, AgentFile, AgentKind, AgentMessage, AgentMessageMeta, AgentMessageRole,
-  AgentSummary, AgentTask, AgentWeek,
+  AgentSummary, AgentTask, AgentUsage, AgentWeek,
 } from '@/types/agents';
 import { AGENT_KINDS } from '@/types/agents';
 import { AGENT_FILES_PER_MESSAGE, agentFileName, agentFilePrefix } from '@/lib/agents/files';
@@ -136,8 +136,61 @@ function taskOrder(a: AgentTask, b: AgentTask): number {
 export const agentStore: Pick<
   ProjectRepository,
   | 'listAgents' | 'getAgent' | 'saveAgentDuty' | 'deleteAgentDuty'
-  | 'addAgentTask' | 'setAgentTaskDone' | 'deleteAgentTask' | 'addAgentMessage'
+  | 'addAgentTask' | 'setAgentTaskDone' | 'deleteAgentTask' | 'addAgentMessage' | 'agentUsage'
 > = {
+  /*
+   * 사용량 — 이번 달 · 지난달(한국 달력)의 답 수와 비용 어림, 이번 달 토큰 (한백 2026-11-03 「사용량 추적도 해야할듯」).
+   * 따로 표를 두지 않는다 — 답마다 남긴 meta(usd · tokens · searches)를 달로 묶는다. 토큰은 적기 시작한(2026-11-03) 뒤의 답만 있다.
+   */
+  async agentUsage(actor): Promise<AgentUsage> {
+    assertAdmin(actor, '에이전트');
+    const db = getDb();
+    const month = today().slice(0, 7);
+    const prevMonth = shiftMonths(`${month}-01`, -1).slice(0, 7);
+    const monthOf = sql<string>`to_char(${agentMessages.at} at time zone 'Asia/Seoul', 'YYYY-MM')`;
+    const said = eq(agentMessages.role, 'agent');
+    const [rows, sums, [t]] = await allSlots([
+      () => db.select({ id: agents.id, name: agents.name }).from(agents).orderBy(asc(agents.sort)),
+      () => db.select({
+        agentId: agentMessages.agentId,
+        month: monthOf,
+        n: sql<number>`count(*)::int`,
+        usd: sql<number>`coalesce(sum((${agentMessages.meta}->>'usd')::float8), 0)::float8`,
+      }).from(agentMessages)
+        .where(and(said, gte(agentMessages.at, kstStart(`${prevMonth}-01`))))
+        .groupBy(agentMessages.agentId, monthOf),
+      () => db.select({
+        replies: sql<number>`(count(*) filter (where ${agentMessages.meta}->'tokens' is not null))::int`,
+        input: sql<number>`coalesce(sum((${agentMessages.meta}->'tokens'->>'input')::float8), 0)::float8`,
+        output: sql<number>`coalesce(sum((${agentMessages.meta}->'tokens'->>'output')::float8), 0)::float8`,
+        cacheRead: sql<number>`coalesce(sum((${agentMessages.meta}->'tokens'->>'cacheRead')::float8), 0)::float8`,
+        cacheWrite: sql<number>`coalesce(sum((${agentMessages.meta}->'tokens'->>'cacheWrite')::float8), 0)::float8`,
+        searches: sql<number>`coalesce(sum((${agentMessages.meta}->>'searches')::float8), 0)::float8`,
+      }).from(agentMessages).where(and(said, gte(agentMessages.at, kstStart(`${month}-01`)))),
+    ] as const);
+    const cell = (agentId: string, m: string) => sums.find((s) => s.agentId === agentId && s.month === m);
+    return {
+      month,
+      prevMonth,
+      byAgent: rows.map((r) => ({
+        agentId: r.id,
+        name: r.name,
+        replies: cell(r.id, month)?.n ?? 0,
+        usd: Number(cell(r.id, month)?.usd ?? 0),
+        prevReplies: cell(r.id, prevMonth)?.n ?? 0,
+        prevUsd: Number(cell(r.id, prevMonth)?.usd ?? 0),
+      })),
+      tokens: {
+        replies: t?.replies ?? 0,
+        input: Number(t?.input ?? 0),
+        output: Number(t?.output ?? 0),
+        cacheRead: Number(t?.cacheRead ?? 0),
+        cacheWrite: Number(t?.cacheWrite ?? 0),
+        searches: Number(t?.searches ?? 0),
+      },
+    };
+  },
+
   async listAgents(actor): Promise<AgentSummary[]> {
     assertAdmin(actor, '에이전트');
     const db = getDb();

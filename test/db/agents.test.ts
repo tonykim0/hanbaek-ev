@@ -227,3 +227,24 @@ describe('주간 기록', () => {
     expect(open.messages.some((m) => m.body === `${tag} 이번 주 정리`)).toBe(true);
   });
 });
+
+describe('사용량', () => {
+  it('답마다 남긴 비용 · 토큰을 이번 달로 묶는다 — 담당마다, 토큰은 적은 답만 · 관리자만', async () => {
+    const before = await repo.agentUsage(admin);
+    const row0 = before.byAgent.find((r) => r.agentId === AGENT)!;
+    await repo.addAgentMessage({
+      agentId: AGENT, role: 'agent', body: `${mark} 사용량 답`,
+      meta: { model: 'claude-opus-5-5', usd: 0.25, tokens: { input: 1000, output: 200, cacheRead: 5000, cacheWrite: 300 }, searches: 2 },
+    }, admin);
+    const after = await repo.agentUsage(admin);
+    const row1 = after.byAgent.find((r) => r.agentId === AGENT)!;
+    expect(after.month).toBe(today().slice(0, 7));
+    expect(row1.replies - row0.replies).toBe(1);
+    expect(row1.usd - row0.usd).toBeCloseTo(0.25, 6);
+    expect(after.tokens.replies - before.tokens.replies).toBe(1);
+    expect(after.tokens.cacheRead - before.tokens.cacheRead).toBe(5000);
+    expect(after.tokens.searches - before.tokens.searches).toBe(2);
+    expect(after.byAgent[0].agentId).toBe('strategy'); // 조직도 순서
+    await expect(repo.agentUsage(actorOf(USERS.viewer))).rejects.toThrow('한백 관리자만');
+  });
+});

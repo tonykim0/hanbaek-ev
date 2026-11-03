@@ -86,6 +86,27 @@ export interface AgentMessageMeta {
   done?: string[];
   /** 이 답에서 올린 메일 초안의 제목 */
   mails?: string[];
+  /**
+   * 이 답에 든 토큰 — 도구를 쓰고 다시 부른 바퀴까지 합친 것(2026-11-03 부터 적는다 · 그 전 답에는 없다).
+   * 캐시 읽기가 많을수록 싸다(입력 값의 5%) — 사용량 표가 그 몫을 보여 준다.
+   */
+  tokens?: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  /** 웹 검색 횟수 — 한 번에 1센트(전략·기획만) */
+  searches?: number;
+}
+
+/**
+ * 에이전트 사용량 — 한 달(한국 달력) 동안의 답 수 · 비용 어림 · 토큰 (한백 2026-11-03 「사용량 추적도 해야할듯」).
+ * 셈은 답마다 남긴 meta 에서 한다(agent_messages) — 따로 표를 두지 않는다. 비용은 토큰 × 단가표(lib/llm-usage)의 어림이다.
+ */
+export interface AgentUsage {
+  /** 이번 달 · 지난달 'YYYY-MM' */
+  month: string;
+  prevMonth: string;
+  /** 담당마다 — 조직도 순서 */
+  byAgent: Array<{ agentId: string; name: string; replies: number; usd: number; prevReplies: number; prevUsd: number }>;
+  /** 이번 달 토큰 — 토큰을 적기 시작한 뒤의 답만 센다(replies 가 그 답 수) */
+  tokens: { replies: number; input: number; output: number; cacheRead: number; cacheWrite: number; searches: number };
 }
 
 /**
@@ -101,7 +122,7 @@ export const AGENT_MAIL_STATUSES = ['draft', 'sending', 'sent', 'failed', 'disca
 
 /**
  * 담당이 올린 메일 초안 — ★한백이 승인해야 나간다★(한백 2026-11-03 「난 그거에 대해 승인을 하고 너가 메일을 보내는건데」).
- * 보내는 계정은 콘솔에 연결한 Gmail 하나다(MailAccountInfo).
+ * 보내는 계정은 콘솔에 연결한 한백의 다음 메일 하나다(MailAccountInfo).
  */
 export interface AgentMail {
   id: string;

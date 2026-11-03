@@ -12,6 +12,7 @@ import { Tag, TEXT } from '@/components/ui';
 import { HeadlineCounts } from '@/components/agents/HeadlineCounts';
 import { Activity, AgentMark, DotGrid, ORG_LINE, OrgNode, Twig } from '@/components/agents/kit';
 import { MailAccount } from '@/components/agents/MailAccount';
+import { AgentUsage } from '@/components/agents/AgentUsage';
 import { isLive, ledOf, roleLineOf } from '@/components/agents/status';
 
 export const metadata = { title: '에이전트' };
@@ -27,12 +28,14 @@ export const dynamic = 'force-dynamic';
  * 셈(콘솔이 지금 셈한 것, lib/agents/brief headlineOf) · 최근 이레의 활동 칸 · 업무 정의 · 열린 할 일. 누르면 그 담당과의
  * 대화(/admin/agents/[id]). 가로로 서려면 넓어야 해서 xl 아래에서는 같은 조직을 세로로 펼친다. 모양은 components/agents/kit.
  */
-export default async function AgentsPage({ searchParams }: { searchParams: { mail_error?: string } }) {
+export default async function AgentsPage() {
   const session = await getSessionUser();
   if (!session) redirect('/login?next=/admin/agents');
   const actor = actorOf(session);
   const repo = getRepository();
-  const [agents, data, account] = await Promise.all([repo.listAgents(actor), loadScope(actor), repo.getMailAccount(actor)]);
+  const [agents, data, account, usage] = await Promise.all([
+    repo.listAgents(actor), loadScope(actor), repo.getMailAccount(actor), repo.agentUsage(actor),
+  ]);
   const rows = agents.map((a) => ({ a, h: headlineOf(a, data) }));
   const operators = rows.filter((r) => r.a.kind === 'operator');
   const strategy = rows.find((r) => r.a.kind === 'strategy') ?? null;
@@ -79,7 +82,7 @@ export default async function AgentsPage({ searchParams }: { searchParams: { mai
         </dl>
       </header>
       <div className="-mt-3 mb-5">
-        <MailAccount account={account} back="/admin/agents" error={searchParams.mail_error ?? null} />
+        <MailAccount account={account} />
       </div>
 
       {/*
@@ -140,6 +143,9 @@ export default async function AgentsPage({ searchParams }: { searchParams: { mai
           </Twig>
         </ul>
       </DotGrid>
+
+      {/* 조직도 밑 — 이번 달 · 지난달 담당별 답과 비용(어림), 이번 달 토큰 */}
+      <AgentUsage usage={usage} />
     </>
   );
 }

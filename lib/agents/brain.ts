@@ -267,6 +267,9 @@ export async function agentReply(input: {
   const done: string[] = [];
   const mails: string[] = [];
   let usd = 0;
+  /* 바퀴마다의 토큰을 모은다 — 사용량 표가 캐시가 얼마나 먹었는지 보여 준다(store/agents agentUsage) */
+  const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
+  let searchCount = 0;
 
   async function runTool(block: Anthropic.ToolUseBlock): Promise<Anthropic.ToolResultBlockParam> {
     const fail = (why: string): Anthropic.ToolResultBlockParam => ({ type: 'tool_result', tool_use_id: block.id, content: why, is_error: true });
@@ -342,6 +345,11 @@ export async function agentReply(input: {
     const searches = (res.usage as { server_tool_use?: { web_search_requests?: number } } | undefined)
       ?.server_tool_use?.web_search_requests ?? 0;
     usd += usdOf(MODEL, res.usage) + searches * SEARCH_USD;
+    tokens.input += res.usage?.input_tokens ?? 0;
+    tokens.output += res.usage?.output_tokens ?? 0;
+    tokens.cacheRead += res.usage?.cache_read_input_tokens ?? 0;
+    tokens.cacheWrite += res.usage?.cache_creation_input_tokens ?? 0;
+    searchCount += searches;
 
     /* 인용이 붙은 글은 조각으로 온다 — 한 응답의 글 조각은 이어 붙이고, 바퀴 사이는 한 줄 띄운다 */
     let said = '';
@@ -379,6 +387,8 @@ export async function agentReply(input: {
     ...(added.length ? { added } : {}),
     ...(done.length ? { done } : {}),
     ...(mails.length ? { mails } : {}),
+    tokens,
+    ...(searchCount ? { searches: searchCount } : {}),
   };
   if (!text) {
     // 할 일 · 메일 초안은 이미 남았을 수 있다 — 그 사실은 남긴다

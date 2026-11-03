@@ -1,15 +1,15 @@
--- 에이전트 메일 — 담당이 초안을 쓰고, 한백이 승인하면 콘솔이 Gmail 로 보낸다
--- (한백 2026-11-03 「한백 전기차 콘솔에서 직접 보내게하고싶어」 · 「내가 자동메일을 보내는건 특정 경우에만 보내게되는거야.
---  난 그거에 대해 승인을 하고 너가 메일을 보내는건데」).
+-- 에이전트 메일 — 담당이 초안을 쓰고, 한백이 승인하면 콘솔이 한백의 다음(카카오) 메일로 보낸다
+-- (한백 2026-11-03 「한백 전기차 콘솔에서 직접 보내게하고싶어」 · 「내가 자동메일을 보내는건데 특정 경우에만 … 난 그거에 대해
+--  승인을 하고 너가 메일을 보내는건데」 · 「내 다음카카오 이메일로만 보내면 되는거고 형식도 정해져있는건데」).
 --
--- 보내는 계정은 콘솔에 하나다 — 한백 Gmail. 회사 메일(다음 스마트워크)은 한백의 개인 카카오계정에 묶여 있어 쓰지 않는다.
--- 구글 로그인(OAuth)으로 받은 갱신 토큰은 AUTH_SECRET 에서 만든 열쇠로 잠가 둔다(lib/agents/secret-box) — 이 표만 새어도
--- 메일함이 열리지 않는다. 화면에도 응답에도 토큰은 나가지 않는다.
+-- 보내는 계정은 콘솔에 하나다 — 메일 주소와 카카오 앱 비밀번호(메일 프로그램용)로 다음 메일 서버(SMTP)에 붙는다.
+-- 앱 비밀번호는 AUTH_SECRET 에서 만든 열쇠로 잠가 둔다(lib/agents/secret-box) — 이 표만 새어도 메일함이 열리지 않는다.
+-- 화면에도 응답에도 비밀번호는 나가지 않는다.
 create table if not exists mail_accounts (
-  id text primary key,                 -- 'gmail' 한 줄
+  id text primary key,                 -- 'mail' 한 줄
   email text not null,
-  token text not null,                 -- 잠근 갱신 토큰
-  scopes text not null,
+  token text not null,                 -- 잠근 앱 비밀번호
+  server text not null,                -- 붙는 곳 — smtp.daum.net:465
   connected_by text not null,
   connected_at timestamptz not null default now()
 );
@@ -29,8 +29,7 @@ create table if not exists agent_mails (
   file_ids jsonb not null default '[]',
   error text,
   from_addr text,
-  gmail_id text,
-  gmail_thread_id text,
+  sent_ref text,                       -- 메일 서버가 붙인 접수 표시(250 답의 글)
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   sent_at timestamptz,

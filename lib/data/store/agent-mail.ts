@@ -1,5 +1,5 @@
 /**
- * 에이전트 메일 — 담당이 올린 초안 · 한백의 승인 · 보낸 기록, 그리고 콘솔이 보내는 Gmail 계정 (migrations/0111).
+ * 에이전트 메일 — 담당이 올린 초안 · 한백의 승인 · 보낸 기록, 그리고 콘솔이 보내는 메일 계정 (migrations/0111).
  *
  * ★한백 관리자만★ 읽고 쓴다. ★메일은 한백이 승인해야 나간다★(한백 2026-11-03 「난 그거에 대해 승인을 하고 너가 메일을 보내는건데」)
  * — 에이전트의 손(lib/agents/brain draft_mail)은 초안까지고, 나가는 것은 사람이 누른 「승인하고 보내기」뿐이다.
@@ -7,13 +7,13 @@
  * 보내는 순서(라우트 app/api/agents/[id]/mails/[mailId]/send):
  *   claimAgentMail   승인 대기 · 보내지 못함인 줄을 「보내는 중」으로 잡는다 — 줄 잠금 안에서 상태를 보므로 두 번 누르거나
  *                    두 창에서 같이 눌러도 한 번만 잡힌다(그래서 한 번만 나간다)
- *   (라우트가 Gmail 로 보낸다)
+ *   (라우트가 다음 메일 서버로 보낸다 — lib/agents/smtp)
  *   finishAgentMail  보냄 · 보내지 못함으로 닫는다 — 보냄은 감사기록에 남고, 주간 기록이 그것을 읽는다
  * 「보내는 중」에서 멈춘 줄(보내는 도중 함수가 끊긴 것)은 STALE_SENDING_MS 가 지나야 다시 잡힌다 — 그사이 나갔을 수 있어서
- * 화면이 Gmail 보낸편지함을 먼저 보라고 말한다.
+ * 화면이 받는 사람에게 갔는지 먼저 보라고 말한다.
  *
- * 갱신 토큰은 잠가서 둔다(lib/agents/secret-box · 열쇠는 AUTH_SECRET). 보낼 때만 mailCredential 이 풀어 라우트에 준다 —
- * 화면 · 응답에는 실리지 않는다.
+ * 계정은 메일 주소와 카카오 앱 비밀번호다(한백 「내 다음카카오 이메일로만 보내면 되는거고」). 앱 비밀번호는 잠가서 둔다
+ * (lib/agents/secret-box · 열쇠는 AUTH_SECRET). 보낼 때만 mailCredential 이 풀어 라우트에 준다 — 화면 · 응답에는 실리지 않는다.
  */
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
@@ -30,11 +30,11 @@ import type { ProjectRepository } from '../repository';
 import { assertAdmin } from './shared';
 
 /** 메일 계정 줄 — 콘솔에 하나 */
-const ACCOUNT_ID = 'gmail';
+const ACCOUNT_ID = 'mail';
 /** 보내는 중에서 이만큼 멈췄으면 다시 잡을 수 있다 */
 export const STALE_SENDING_MS = 10 * 60 * 1000;
 
-export const NO_ACCOUNT = 'Gmail 연결 전 — 보낼 수 없습니다. 「Gmail 연결」을 먼저 눌러 주세요.';
+export const NO_ACCOUNT = '메일 연결 전 — 보낼 수 없습니다. 「보내는 메일」에서 메일 주소와 앱 비밀번호로 먼저 연결해 주세요.';
 
 type MailRow = typeof agentMails.$inferSelect;
 
@@ -120,20 +120,20 @@ export const agentMailStore: Pick<
   async saveMailAccount(input, actor): Promise<MailAccountInfo> {
     assertAdmin(actor, '메일 계정');
     const email = input.email.trim();
-    if (!email || !input.refreshToken) throw new Error('연결할 계정을 받지 못했습니다 — 다시 연결해 주세요.');
-    const token = seal(input.refreshToken, getSecret());
-    const scopes = input.scopes.join(' ');
+    if (!email || !input.secret) throw new Error('메일 주소와 앱 비밀번호를 적어주세요.');
+    const token = seal(input.secret, getSecret());
+    const server = input.server;
     const db = getDb();
     await db.transaction(async (tx) => {
       const [old] = await tx.select({ email: mailAccounts.email }).from(mailAccounts).where(eq(mailAccounts.id, ACCOUNT_ID)).for('update');
       await tx.insert(mailAccounts)
-        .values({ id: ACCOUNT_ID, email, token, scopes, connectedBy: actor.name })
+        .values({ id: ACCOUNT_ID, email, token, server, connectedBy: actor.name })
         .onConflictDoUpdate({
           target: mailAccounts.id,
-          set: { email, token, scopes, connectedBy: actor.name, connectedAt: new Date() },
+          set: { email, token, server, connectedBy: actor.name, connectedAt: new Date() },
         });
       await writeAudit(tx, {
-        projectId: null, actor, action: '메일 계정 연결', field: 'Gmail', oldValue: old?.email ?? null, newValue: email,
+        projectId: null, actor, action: '메일 계정 연결', field: '보내는 메일', oldValue: old?.email ?? null, newValue: email,
       });
     });
     const saved = await agentMailStore.getMailAccount(actor);
@@ -141,24 +141,24 @@ export const agentMailStore: Pick<
     return saved;
   },
 
-  async deleteMailAccount(actor): Promise<{ email: string; refreshToken: string | null } | null> {
+  async deleteMailAccount(actor): Promise<{ email: string } | null> {
     assertAdmin(actor, '메일 계정');
     const db = getDb();
     return db.transaction(async (tx) => {
       const [gone] = await tx.delete(mailAccounts).where(eq(mailAccounts.id, ACCOUNT_ID)).returning();
       if (!gone) return null;
-      await writeAudit(tx, { projectId: null, actor, action: '메일 계정 끊음', field: 'Gmail', oldValue: gone.email, newValue: null });
-      return { email: gone.email, refreshToken: unseal(gone.token, getSecret()) };
+      await writeAudit(tx, { projectId: null, actor, action: '메일 계정 끊음', field: '보내는 메일', oldValue: gone.email, newValue: null });
+      return { email: gone.email };
     });
   },
 
-  async mailCredential(actor): Promise<{ email: string; refreshToken: string }> {
+  async mailCredential(actor): Promise<{ email: string; secret: string }> {
     assertAdmin(actor, '메일 보내기');
     const [row] = await getDb().select().from(mailAccounts).where(eq(mailAccounts.id, ACCOUNT_ID)).limit(1);
     if (!row) throw new Error(NO_ACCOUNT);
-    const refreshToken = unseal(row.token, getSecret());
-    if (!refreshToken) throw new Error('Gmail 연결을 풀 수 없습니다(콘솔의 열쇠가 바뀌었습니다) — 「Gmail 연결」을 다시 눌러 주세요.');
-    return { email: row.email, refreshToken };
+    const secret = unseal(row.token, getSecret());
+    if (!secret) throw new Error('메일 연결을 풀 수 없습니다(콘솔의 열쇠가 바뀌었습니다) — 「보내는 메일」에서 다시 연결해 주세요.');
+    return { email: row.email, secret };
   },
 
   async addAgentMail(input, actor): Promise<{ id: string; subject: string }> {
@@ -268,8 +268,8 @@ export const agentMailStore: Pick<
       const line = letterLine({ subject: old.subject, to: old.to ?? [], cc: old.cc ?? [] });
       if (input.result.ok) {
         await tx.update(agentMails).set({
-          status: 'sent', error: null, from: input.result.from, gmailId: input.result.gmailId,
-          gmailThreadId: input.result.threadId, sentAt: new Date(), sentBy: actor.name, updatedAt: new Date(),
+          status: 'sent', error: null, from: input.result.from, sentRef: input.result.ref,
+          sentAt: new Date(), sentBy: actor.name, updatedAt: new Date(),
         }).where(eq(agentMails.id, old.id));
         await writeAudit(tx, { projectId: null, actor, action: '에이전트 메일 보냄', field: agentName, oldValue: null, newValue: line });
       } else {

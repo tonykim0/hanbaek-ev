@@ -53,7 +53,7 @@ export function AgentRoom({ agentId, agentName, messages, mails, connected, week
   messages: AgentMessage[];
   /** 실린 말에 딸린 메일 초안 */
   mails: AgentMail[];
-  /** 콘솔에 Gmail 이 연결돼 있는가 — 아니면 초안의 보내기 단추가 그 까닭을 말한다 */
+  /** 콘솔에 보내는 메일이 연결돼 있는가 — 아니면 초안의 보내기 단추가 그 까닭을 말한다 */
   connected: boolean;
   /** 한 주를 골랐을 때 — 그 주와, 대화 사이에 끼는 일 */
   week: { start: string; end: string; events: AgentEvent[] } | null;
