@@ -594,23 +594,27 @@ function ActAsExit() {
  *
  * 두 사업을 다 보는 계정에게만 선다 — 한백(관리자 · 열람 전용)과 태양광 참여를 켠 협력사(lib/biz seesSolar).
  * 나머지 협력사는 자기 사업 하나라 바꿀 것이 없다. 주소로 바꾼다(링크) — 사업은 주소가 정한다(lib/biz).
- * 색만으로 가르지 않는다: 고른 쪽은 흰 바탕에 사업 색 글자이고, aria-current 로도 말한다.
+ * 색만으로 가르지 않는다: 고른 쪽은 채우고 안 고른 쪽은 옅은 바탕이며, aria-current 로도 말한다.
  * 접힌 사이드바(56px)에서는 두 칸을 위아래로 쌓는다 — 세 글자 둘이 나란히는 안 들어간다.
+ *
+ * ★칸마다 제 사업 색이다★ (한백 지시 2026-11-04 「토글버튼에 색 입혀줘」) — 칸에 data-biz 를 따로 달아 brand 가 그 칸의
+ * 사업 색을 읽는다(/design 이 두 사업을 나란히 그리는 방법과 같다 — globals.css). 그래서 태양광 화면에서도 「전기차」 칸은
+ * 그린이다. 고른 칸은 채운다(bg-brand-fill · text-brand-on-fill — 고른 칩 Choice 와 같은 짝이라 귤색 위 글자가 진하다),
+ * 안 고른 칸은 그 색의 옅은 바탕 — 누르면 어느 색 틀로 가는지 미리 보인다. 회색 홈은 걷었다: 색 칸 둘을 회색 상자에
+ * 넣으면 상자가 두 겹이다(화면 규칙 1).
  */
 function BizSwitch({ biz, expanded }: { biz: Biz; expanded: boolean }) {
   return (
-    <nav
-      aria-label="사업"
-      className={`mx-2 mb-1 flex shrink-0 gap-0.5 rounded-ctl bg-slate-100 p-0.5 ${expanded ? '' : 'flex-col'}`}
-    >
+    <nav aria-label="사업" className={`mx-2 mb-1 flex shrink-0 gap-1 ${expanded ? '' : 'flex-col'}`}>
       {BIZES.map((b) => (
         <Link
           key={b}
           href={BIZ_HOME[b]}
+          data-biz={b}
           aria-current={b === biz ? 'page' : undefined}
-          className={`flex-1 whitespace-nowrap rounded-[6px] py-1 text-center font-black transition ${
+          className={`flex-1 whitespace-nowrap rounded-ctl py-1.5 text-center font-black transition ${
             expanded ? 'text-small' : 'text-micro'
-          } ${b === biz ? `bg-white shadow-sm ${BIZ_FRAME[b].pick}` : 'text-slate-500 hover:text-slate-800'}`}
+          } ${b === biz ? 'bg-brand-fill text-brand-on-fill' : 'bg-brand-50 text-brand-800 hover:bg-brand-100'}`}
         >
           {BIZ_LABEL[b]}
         </Link>
