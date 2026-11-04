@@ -1,5 +1,5 @@
 import { SETBACK } from './assumptions';
-import { estimate } from './estimate';
+import { areaLabel, estimate } from './estimate';
 import { buildingUseName } from './building-use';
 import { summarizeRegister, type RegisterBuilding, type RegisterSummary } from './building-register';
 import { devCheckOf, gridCheckOf, gridViewOf, permitCheckOf } from './capacity-checks';
@@ -200,8 +200,6 @@ function buildingsOnParcel(parcelPolys: PolygonCoords[], all: Feature[]): Featur
  */
 const SLATE_LAW = '산업안전보건법 제122조 · 석면안전관리법 제25조';
 
-const pyeong = (m2: number) => `${Math.round(m2).toLocaleString()}㎡ (${Math.round(m2 / 3.3058).toLocaleString()}평)`;
-
 /**
  * 건물 — 건축물대장이 있으면 그것이 정본(면적·구조·지붕재·준공), 없으면 VWorld 도형으로 잰다.
  * @returns on — 필지 위 VWorld 도형(지도에 칠한다). 대장으로 셌을 때도 지도에는 도형을 그린다.
@@ -250,7 +248,7 @@ function roofCheck(
   const registered = rows.filter((r) => r.fromRegister);
   const biggest = (registered.length ? registered : rows).reduce((a, b) => (b.area > a.area ? b : a));
   const age = judgeBuildingAge(biggest.useApr);
-  const size = `${pyeong(area)} · ${rows.length}동${rows.every((r) => r.fromRegister) ? '' : ' (지도 도형으로 잼)'}`;
+  const size = `${areaLabel(area)} · ${rows.length}동${rows.every((r) => r.fromRegister) ? '' : ' (지도 도형으로 잼)'}`;
   // 대장을 봤는데 이 지번에 건물이 없다 — 무허가이거나 다른 지번으로 등록된 건물이다. 영업 전에 등록부터 본다
   const status: Level = unregistered ? 'conditional' : (age?.level ?? 'ok');
   const summary = unregistered ? '건축물대장에 이 지번 건물 없음 — 등록 여부 확인' : status === 'ok' ? `건축면적 ${size}` : age!.why;
@@ -273,7 +271,7 @@ function registerCheck(rows: RegisterBuilding[]): { check: Check; area: number; 
   if (age?.level === 'conditional') flags.push({ why: age.why });
   if (sum.slate) flags.push({ why: '슬레이트 지붕 — 석면이면 철거·교체 뒤 설치가 일반적 (지자체 처리 지원 있음)', law: SLATE_LAW });
   const roof = sum.kinds[0]?.kind !== '기타' ? sum.kinds[0]?.kind : null;
-  const size = `${pyeong(sum.area)} · ${sum.count}동`;
+  const size = `${areaLabel(sum.area)} · ${sum.count}동`;
   // 결론 한 줄(통과면 면적·동수·지붕)에 있는 값은 사실 목록에 다시 적지 않는다 — 걸렸을 때만 결론이 그 자리를 비운다
   const facts: Fact[] = [];
   if (flags.length) facts.push({ label: '건축면적', value: size });
@@ -323,7 +321,7 @@ function siteCheck(parcel: Feature | null, polys: PolygonCoords[]): { check: Che
       summary: j ? j.why : `면적 ${Math.round(area).toLocaleString()}㎡`,
       facts: [
         { label: '필지', value: jibun ?? '—' },
-        { label: '면적', value: `${Math.round(area).toLocaleString()}㎡ (${Math.round(area / 3.3058).toLocaleString()}평) · 지적도 도형으로 잼` },
+        { label: '면적', value: `${areaLabel(area)} · 지적도 도형으로 잼` },
       ],
       source: SRC_VWORLD,
     },

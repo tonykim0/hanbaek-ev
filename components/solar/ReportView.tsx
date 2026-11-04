@@ -4,7 +4,7 @@ import { useMemo } from 'react';
 import { Badge, BtnLink } from '@/components/ui';
 import { AREA_PER_KW, LAYOUT, MODULE, TILT_DEG } from '@/lib/solar/assumptions';
 import { withCapacity } from '@/lib/solar/capacity-checks';
-import { estimateCapacity } from '@/lib/solar/estimate';
+import { areaLabel, estimateCapacity } from '@/lib/solar/estimate';
 import type { Check, CheckStatus, Estimate, GridView, Level, Report, Verdict } from '@/lib/solar/types';
 import { LEVEL_LABEL } from '@/lib/solar/verdict';
 import GridDetail from './GridDetail';
@@ -204,15 +204,26 @@ function Summary({
             )}
           </p>
         </div>
+        {/*
+         * 지붕형은 용량마다 그 용량을 낸 지붕 면적을 값 밑에 적는다(한백 2026-11-04 「건축물대장 면적 기준이랑 AI로 지붕찾기로
+         * 했을 때 지붕면적도 같이」) — AI 배치면 고른 지붕의 넓이 합(지도에서 지붕을 빼고 넣으면 같이 바뀐다), 아니면
+         * 건축물대장 건축면적. 지상형은 근거 줄이 넓이를 말한다.
+         */}
         <dl className="flex flex-wrap gap-x-8 gap-y-3">
-          <Num label="설치 가능 용량" value={estimate ? `${estimate.capacityKw.toLocaleString()} kW` : '—'} sub={estimate ? basis : undefined} />
+          <Num
+            label="설치 가능 용량"
+            value={estimate ? `${estimate.capacityKw.toLocaleString()} kW` : '—'}
+            roofArea={report.mode === 'roof' && estimate ? estimate.usableArea : undefined}
+            sub={estimate ? basis : undefined}
+          />
           <Num label="연 발전량" value={estimate ? `${Math.round(estimate.yearlyKwh / 1000).toLocaleString()} MWh` : '—'} />
           {/* 연 발전량은 설치 가능 용량의 것이라 그 곁에 두고, 견줘 보는 값은 끝에 둔다(좁으면 다음 줄로 접힌다) */}
           {register && (
             <Num
               label="건축물대장 면적 기준"
               value={`${register.capacityKw.toLocaleString()} kW`}
-              sub={`건축면적 ${register.usableArea.toLocaleString()}㎡ · ${AREA_PER_KW.roof}㎡당 1kW`}
+              roofArea={register.usableArea}
+              sub={`건축면적 ${AREA_PER_KW.roof}㎡당 1kW`}
             />
           )}
         </dl>
@@ -235,11 +246,17 @@ function Summary({
   );
 }
 
-function Num({ label, value, sub }: { label: string; value: string; sub?: string }) {
+/** 큰 숫자 한 칸 — 이름 · 값 · (지붕형 용량이면) 그 지붕 면적 · 근거 한 줄 */
+function Num({ label, value, roofArea, sub }: { label: string; value: string; roofArea?: number; sub?: string }) {
   return (
     <div>
       <dt className={TEXT.numLabel}>{label}</dt>
       <dd className={`mt-0.5 ${TEXT.num}`}>{value}</dd>
+      {roofArea !== undefined && (
+        <dd className={`mt-0.5 tabular-nums ${TEXT.body}`}>
+          <span className={TEXT.label}>지붕 면적</span> <span className="font-semibold">{areaLabel(roofArea)}</span>
+        </dd>
+      )}
       {/* 밑 줄이 없는 칸도 자리를 지켜 두 숫자의 높이가 맞는다 */}
       <dd className={`${TEXT.meta} tabular-nums`}>{sub ?? ' '}</dd>
     </div>
