@@ -897,7 +897,10 @@ bulletpoint는 다 왼쪽정렬로」). 단가표의 조건 행(설치조건·�
   `ANTHROPIC_SOLAR_API_KEY`(Anthropic 콘솔의 키 이름 「hanbaek-solar」)를 먼저, 없으면 공용 `ANTHROPIC_API_KEY` 를 쓴다. 키 하나를
   운영·프리뷰·로컬·태양광이 같이 쓰던 때 콘솔에서 어디서 쓴 돈인지 가릴 수 없었다. 넣는 법: 키를 복사하고
   `bash scripts/set-env.sh ANTHROPIC_SOLAR_API_KEY --vercel` — 본 저장소의 `.env.local` 과 Vercel production·preview(Sensitive)에
-  넣는다(값은 화면에 안 찍힌다). 운영에는 그다음 배포부터 실린다.
+  넣는다(값은 화면에 안 찍힌다). 운영에는 그다음 배포부터 실린다. ★키를 갈 때도 같은 명령이다★(2026-11-04 두 키를 갈았다) —
+  공용 키는 `ANTHROPIC_API_KEY` 로 돌린다. Vercel 에 있던 이름은 값만 바꾸고(그 변수의 환경 전부), 그 줄이 있는 워크트리의
+  `.env.local` 도 같이 바꾸고, 새 키가 Anthropic 에 듣는지(모델 목록 — 무료) 본다. 클립보드에 다른 이름의 키가 남아 있으면 멈춘다.
+  두 키를 다 넣고 배포가 끝난 뒤에 콘솔에서 옛 키를 지운다 — 먼저 지우면 배포 전까지 운영 판독이 401 이다.
 - **정해진 시각의 일은 크론이다** (2026-11-04) — `vercel.json` 의 crons → `app/api/cron/*`(지금은 `agents` 하나 · 매일 23:00 UTC).
   ★`CRON_SECRET`(Vercel 운영 환경변수 · Sensitive)으로만 연다★ — Vercel 이 `Authorization: Bearer …` 로 실어 부른다. 값이 없으면
   `[cron]` 을 남기고 500(감시가 본다) — ★배포 전에 넣는다★(환경변수는 새 배포부터 먹는다). Hobby 는 하루 한 번 · ±59분이다.
