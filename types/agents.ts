@@ -35,6 +35,13 @@ export const AGENT_KIND_LABEL: Record<AgentKind, string> = {
 /** 상대 회사를 하나씩 맡는 갈래 — 조직도에서 한 줄로 매달리는 담당들(전기차 운영사 · 태양광 사업자) */
 export const isCounterpart = (kind: AgentKind): boolean => kind === 'operator' || kind === 'owner';
 
+/**
+ * 감사기록에서 담당을 가리키는 열쇠(audit_log.field) — 주간 기록이 이것으로 그 담당의 일(업무 정의 · 할 일 · 메일)을 찾는다.
+ * 전기차는 이름 그대로다(그전 기록이 이름으로 남아 있다). 태양광은 「태양광 · 이름」 — 태양광 AI에이전트는 전기차와 따로인 조직이라
+ * 담당 이름이 같다(전략·기획 담당 · 정산 담당, 한백 2026-11-04 「태양광전용으로 하나 · 기존 전기차 AI에이전트에 붙이지 말고」).
+ */
+export const agentAuditKey = (a: { biz: string; name: string }): string => (a.biz === 'solar' ? `태양광 · ${a.name}` : a.name);
+
 export interface Agent {
   id: string;
   kind: AgentKind;

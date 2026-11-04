@@ -18,6 +18,7 @@ import { getRepository } from '@/lib/data';
 import { getDb } from '@/lib/db/client';
 import { agentDuties, agentMessages, agentTasks, auditLog } from '@/lib/db/schema';
 import { mondayOf } from '@/lib/agents/weeks';
+import { agentAuditKey } from '@/types/agents';
 import { today } from '@/lib/date';
 import { RUN, USERS, actorOf, call, signIn } from './kit';
 
@@ -255,16 +256,16 @@ describe('사업마다의 조직도 (migrations/0118)', () => {
     const solar = await repo.listAgents(admin, 'solar');
     expect(ev.every((a) => a.biz === 'ev')).toBe(true);
     expect(ev.map((a) => a.id)).toEqual(expect.arrayContaining(['strategy', 'op-hec', 'op-nice', 'op-sk', 'op-pluglink', 'op-everon', 'settlement']));
-    expect(solar.map((a) => [a.id, a.kind, a.biz, a.company])).toEqual([
-      ['solar-strategy', 'strategy', 'solar', null],
-      ['solar-tyranteye', 'owner', 'solar', '타이런트아이'],
-      ['solar-henergy', 'owner', 'solar', '에이치에너지'],
-      ['solar-lumora', 'owner', 'solar', '루모라'],
-      ['solar-settlement', 'settlement', 'solar', null],
+    expect(solar.map((a) => [a.id, a.kind, a.biz, a.company, a.name])).toEqual([
+      ['solar-strategy', 'strategy', 'solar', null, '전략·기획 담당'],
+      ['solar-tyranteye', 'owner', 'solar', '타이런트아이', '타이런트아이 담당'],
+      ['solar-henergy', 'owner', 'solar', '에이치에너지', '에이치에너지 담당'],
+      ['solar-lumora', 'owner', 'solar', '루모라', '루모라 담당'],
+      ['solar-settlement', 'settlement', 'solar', null, '정산 담당'],
     ]);
-    /* 주간 기록이 감사기록을 담당 이름으로 찾는다 — 두 사업의 이름이 겹치면 한 담당의 기록이 다른 담당에 섞인다 */
-    const names = [...ev, ...solar].map((a) => a.name);
-    expect(new Set(names).size).toBe(names.length);
+    /* 태양광은 따로인 조직이라 이름이 같다(전략·기획 담당 · 정산 담당) — 주간 기록이 찾는 열쇠는 사업마다 다르다 */
+    const keys = [...ev, ...solar].map(agentAuditKey);
+    expect(new Set(keys).size).toBe(keys.length);
   });
 
   it('사용량도 사업마다 — 태양광 담당의 답은 전기차 표에 안 든다', async () => {
@@ -283,6 +284,18 @@ describe('사업마다의 조직도 (migrations/0118)', () => {
     expect(after.usd - before.usd).toBeCloseTo(0.5, 6);
     expect(solar1.tokens.cacheRead - solar0.tokens.cacheRead).toBe(7000);
     expect(solar1.byAgent.map((r) => r.agentId)[0]).toBe('solar-strategy'); // 조직도 순서
+  });
+
+  it('이름이 같아도 주간 기록이 섞이지 않는다 — 전기차 정산의 업무 정의는 태양광 정산의 기록에 안 선다', async () => {
+    await signIn(USERS.admin);
+    const week = mondayOf(today());
+    const eventsOf = async (id: string) => (await repo.getAgent(id, admin, { week })).week?.events.length ?? 0;
+    const [ev0, solar0] = [await eventsOf('settlement'), await eventsOf('solar-settlement')];
+    const made = await call(postDuty, { body: { title: `${mark} 전기차 정산 업무` }, params: { id: 'settlement' } });
+    expect(made.status).toBe(200);
+    expect(await eventsOf('settlement')).toBe(ev0 + 1);
+    expect(await eventsOf('solar-settlement')).toBe(solar0);
+    await call(deleteDuty, { method: 'DELETE', params: { id: 'settlement', dutyId: made.json?.id as string } });
   });
 
   it('태양광 담당의 할 일 · 대화도 같은 문을 쓴다 — 지시가 없으면 부르기 전에 거절', async () => {

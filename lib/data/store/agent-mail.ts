@@ -30,13 +30,20 @@ import { seal, unseal } from '@/lib/agents/secret-box';
 import { sizeLabel } from '@/lib/agents/files';
 import { intakeSay, missingAlarm, missingError, missingNoteOf, planSiteDraft, siteMailOfKind, taskTitleOf } from '@/lib/site-mail';
 import type { AgentFile, AgentMail, AgentMailStatus, AgentMessageMeta, MailAccountInfo } from '@/types/agents';
-import { AGENT_MAIL_STATUSES } from '@/types/agents';
+import { AGENT_MAIL_STATUSES, agentAuditKey } from '@/types/agents';
+import { asBiz, type Biz } from '@/lib/biz';
 import type { ProjectRepository, SiteMailResult } from '../repository';
 import { assertAdmin } from './shared';
 import { notifyAgentAlarm, retractAgentAlarm } from './notifications';
 
 /** 메일 계정 줄 — 콘솔에 하나 */
-const ACCOUNT_ID = 'mail';
+/*
+ * 보내는 메일 계정 — ★사업마다 한 줄★(2026-11-04): 전기차 'mail'(0111 부터) · 태양광 'mail-solar'. 태양광 AI에이전트는 전기차와
+ * 따로인 조직이라(한백 「태양광전용으로 하나 · 기존 전기차 AI에이전트에 붙이지 말고」) 한쪽에서 끊어도 다른 쪽은 그대로다.
+ */
+const ACCOUNT_ID: Record<Biz, string> = { ev: 'mail', solar: 'mail-solar' };
+/** 감사기록의 칸 이름 — 사업마다 */
+const ACCOUNT_FIELD: Record<Biz, string> = { ev: '보내는 메일', solar: '보내는 메일(태양광)' };
 /** 보내는 중에서 이만큼 멈췄으면 다시 잡을 수 있다 */
 export const STALE_SENDING_MS = 10 * 60 * 1000;
 
@@ -87,10 +94,11 @@ export async function mailsOf(rows: MailRow[]): Promise<AgentMail[]> {
   return rows.map((r) => mailOf(r, byId));
 }
 
-async function agentNameOf(id: string): Promise<string> {
-  const [row] = await getDb().select({ name: agents.name }).from(agents).where(eq(agents.id, id)).limit(1);
+/** 담당의 이름(말 · 할 일에 「적은 쪽」으로 선다)과 감사기록의 열쇠(types/agents agentAuditKey — 주간 기록이 찾는다) · 사업 */
+async function agentLabelOf(id: string): Promise<{ name: string; key: string; biz: Biz }> {
+  const [row] = await getDb().select({ name: agents.name, biz: agents.biz }).from(agents).where(eq(agents.id, id)).limit(1);
   if (!row) throw new Error('담당을 찾을 수 없습니다.');
-  return row.name;
+  return { name: row.name, key: agentAuditKey(row), biz: asBiz(row.biz) };
 }
 
 async function mailRow(agentId: string, id: string): Promise<MailRow> {
@@ -144,7 +152,7 @@ export const agentMailStore: Pick<
     assertAdmin(actor, '현장 메일');
     const spec = siteMailOfKind(input.kind);
     if (!spec) throw new Error('모르는 양식의 메일입니다.');
-    const agentName = await agentNameOf(spec.agentId);
+    const { name: agentName, key: agentKey } = await agentLabelOf(spec.agentId);
     const letterIn = input.letter;
     const docFiles = letterIn ? letterIn.docFiles.slice(0, MAIL_LIMITS.files) : [];
     if (letterIn) {
@@ -177,7 +185,7 @@ export const agentMailStore: Pick<
       if (open && discarded) {
         await tx.update(agentMails).set({ status: 'discarded', updatedAt: new Date() }).where(eq(agentMails.id, open.id));
         await writeAudit(tx, {
-          projectId: site.id, actor, action: '에이전트 메일 버림', field: agentName,
+          projectId: site.id, actor, action: '에이전트 메일 버림', field: agentKey,
           oldValue: letterLine({ subject: open.subject, to: open.to ?? [], cc: open.cc ?? [] }),
           newValue: plan === 'replace' ? '서류가 바뀌어 새로 씀' : `${spec.doc} 없음`,
         });
@@ -198,7 +206,7 @@ export const agentMailStore: Pick<
           id: mailId, agentId: spec.agentId, status: 'draft', ...letter, fileIds: [], docFiles, projectId: site.id, kind: spec.kind,
         });
         await writeAudit(tx, {
-          projectId: site.id, actor, action: '현장 메일 초안', field: agentName, oldValue: null,
+          projectId: site.id, actor, action: '현장 메일 초안', field: agentKey, oldValue: null,
           newValue: `${letterLine(letter)} · 첨부 ${docFiles.map((f) => f.name).join(', ')}`.slice(0, 2000),
         });
         // 서류가 채워져 메일을 쓰게 됐다 — 「없어서 못 보냄」 알림과 할 일의 「없음」 덧붙임은 이제 거짓말이다
@@ -223,7 +231,7 @@ export const agentMailStore: Pick<
           id: taskId, agentId: spec.agentId, title, note, projectId: site.id, kind: spec.kind, author: agentName,
         });
         await writeAudit(tx, {
-          projectId: site.id, actor, action: '에이전트 할 일 (에이전트가 적음)', field: agentName, oldValue: null,
+          projectId: site.id, actor, action: '에이전트 할 일 (에이전트가 적음)', field: agentKey, oldValue: null,
           newValue: [title, site.name, note].filter(Boolean).join(' · ').slice(0, 2000),
         });
       }
@@ -240,7 +248,7 @@ export const agentMailStore: Pick<
       };
       await tx.insert(agentMessages).values({ id: messageId, agentId: spec.agentId, role: 'auto', author: agentName, body, meta });
       await writeAudit(tx, {
-        projectId: site.id, actor, action: '에이전트 자동', field: agentName, oldValue: null, newValue: body.slice(0, 2000),
+        projectId: site.id, actor, action: '에이전트 자동', field: agentKey, oldValue: null, newValue: body.slice(0, 2000),
       });
       /* 초안은 이 말 밑에 선다 — 그대로 둔 초안은 아직 어느 말에도 안 이어졌을 때만(사람이 단추로 먼저 쓴 것) */
       if (mailId && (wrote || (open !== null && open.messageId === null))) {
@@ -265,9 +273,9 @@ export const agentMailStore: Pick<
     return mailsOf(rows);
   },
 
-  async getMailAccount(actor): Promise<MailAccountInfo | null> {
+  async getMailAccount(actor, biz: Biz = 'ev'): Promise<MailAccountInfo | null> {
     assertAdmin(actor, '메일 계정');
-    const [row] = await getDb().select().from(mailAccounts).where(eq(mailAccounts.id, ACCOUNT_ID)).limit(1);
+    const [row] = await getDb().select().from(mailAccounts).where(eq(mailAccounts.id, ACCOUNT_ID[biz])).limit(1);
     return row ? { email: row.email, connectedAt: stampOf(row.connectedAt), connectedBy: row.connectedBy } : null;
   },
 
@@ -277,38 +285,41 @@ export const agentMailStore: Pick<
     if (!email || !input.secret) throw new Error('메일 주소와 앱 비밀번호를 적어주세요.');
     const token = seal(input.secret, getSecret());
     const server = input.server;
+    const biz = input.biz ?? 'ev';
     const db = getDb();
     await db.transaction(async (tx) => {
-      const [old] = await tx.select({ email: mailAccounts.email }).from(mailAccounts).where(eq(mailAccounts.id, ACCOUNT_ID)).for('update');
+      const [old] = await tx.select({ email: mailAccounts.email }).from(mailAccounts).where(eq(mailAccounts.id, ACCOUNT_ID[biz])).for('update');
       await tx.insert(mailAccounts)
-        .values({ id: ACCOUNT_ID, email, token, server, connectedBy: actor.name })
+        .values({ id: ACCOUNT_ID[biz], email, token, server, connectedBy: actor.name })
         .onConflictDoUpdate({
           target: mailAccounts.id,
           set: { email, token, server, connectedBy: actor.name, connectedAt: new Date() },
         });
       await writeAudit(tx, {
-        projectId: null, actor, action: '메일 계정 연결', field: '보내는 메일', oldValue: old?.email ?? null, newValue: email,
+        projectId: null, actor, action: '메일 계정 연결', field: ACCOUNT_FIELD[biz], oldValue: old?.email ?? null, newValue: email,
       });
     });
-    const saved = await agentMailStore.getMailAccount(actor);
+    const saved = await agentMailStore.getMailAccount(actor, biz);
     if (!saved) throw new Error('연결을 저장하지 못했습니다.');
     return saved;
   },
 
-  async deleteMailAccount(actor): Promise<{ email: string } | null> {
+  async deleteMailAccount(actor, biz: Biz = 'ev'): Promise<{ email: string } | null> {
     assertAdmin(actor, '메일 계정');
     const db = getDb();
     return db.transaction(async (tx) => {
-      const [gone] = await tx.delete(mailAccounts).where(eq(mailAccounts.id, ACCOUNT_ID)).returning();
+      const [gone] = await tx.delete(mailAccounts).where(eq(mailAccounts.id, ACCOUNT_ID[biz])).returning();
       if (!gone) return null;
-      await writeAudit(tx, { projectId: null, actor, action: '메일 계정 끊음', field: '보내는 메일', oldValue: gone.email, newValue: null });
+      await writeAudit(tx, { projectId: null, actor, action: '메일 계정 끊음', field: ACCOUNT_FIELD[biz], oldValue: gone.email, newValue: null });
       return { email: gone.email };
     });
   },
 
-  async mailCredential(actor): Promise<{ email: string; secret: string }> {
+  /** 그 담당의 사업의 보내는 메일 — 태양광 담당의 초안은 태양광 계정으로만 나간다 */
+  async mailCredential(actor, agentId: string): Promise<{ email: string; secret: string }> {
     assertAdmin(actor, '메일 보내기');
-    const [row] = await getDb().select().from(mailAccounts).where(eq(mailAccounts.id, ACCOUNT_ID)).limit(1);
+    const { biz } = await agentLabelOf(agentId);
+    const [row] = await getDb().select().from(mailAccounts).where(eq(mailAccounts.id, ACCOUNT_ID[biz])).limit(1);
     if (!row) throw new Error(NO_ACCOUNT);
     const secret = unseal(row.token, getSecret());
     if (!secret) throw new Error('메일 연결을 풀 수 없습니다(콘솔의 열쇠가 바뀌었습니다) — 「보내는 메일」에서 다시 연결해 주세요.');
@@ -317,7 +328,7 @@ export const agentMailStore: Pick<
 
   async addAgentMail(input, actor): Promise<{ id: string; subject: string }> {
     assertAdmin(actor, '메일 초안');
-    const agentName = await agentNameOf(input.agentId);
+    const { name: agentName, key: agentKey } = await agentLabelOf(input.agentId);
     const letter = letterOf(input);
     const fileIds = [...new Set(input.fileIds ?? [])];
     if (fileIds.length > MAIL_LIMITS.files) throw new Error(`붙일 파일은 ${MAIL_LIMITS.files}개까지입니다.`);
@@ -333,7 +344,7 @@ export const agentMailStore: Pick<
     await db.transaction(async (tx) => {
       await tx.insert(agentMails).values({ id, agentId: input.agentId, status: 'draft', ...letter, fileIds });
       await writeAudit(tx, {
-        projectId: null, actor, action: '에이전트 메일 초안 (에이전트가 적음)', field: agentName, oldValue: null, newValue: letterLine(letter),
+        projectId: null, actor, action: '에이전트 메일 초안 (에이전트가 적음)', field: agentKey, oldValue: null, newValue: letterLine(letter),
       });
     });
     return { id, subject: letter.subject };
@@ -348,7 +359,7 @@ export const agentMailStore: Pick<
 
   async editAgentMail(input, actor): Promise<AgentMail> {
     assertAdmin(actor, '메일 초안');
-    const agentName = await agentNameOf(input.agentId);
+    const { name: agentName, key: agentKey } = await agentLabelOf(input.agentId);
     const letter = letterOf(input);
     const db = getDb();
     await db.transaction(async (tx) => {
@@ -360,7 +371,7 @@ export const agentMailStore: Pick<
       if (st !== 'draft' && st !== 'failed') throw new Error(st === 'sent' ? '이미 보낸 메일은 고칠 수 없습니다.' : '보내는 중인 메일은 고칠 수 없습니다.');
       await tx.update(agentMails).set({ ...letter, updatedAt: new Date() }).where(eq(agentMails.id, old.id));
       await writeAudit(tx, {
-        projectId: null, actor, action: '에이전트 메일 고침', field: agentName,
+        projectId: null, actor, action: '에이전트 메일 고침', field: agentKey,
         oldValue: letterLine({ subject: old.subject, to: old.to ?? [], cc: old.cc ?? [] }), newValue: letterLine(letter),
       });
     });
@@ -370,7 +381,7 @@ export const agentMailStore: Pick<
 
   async setAgentMailDiscarded(input, actor): Promise<AgentMail> {
     assertAdmin(actor, '메일 초안');
-    const agentName = await agentNameOf(input.agentId);
+    const { name: agentName, key: agentKey } = await agentLabelOf(input.agentId);
     const db = getDb();
     await db.transaction(async (tx) => {
       const [old] = await tx.select().from(agentMails)
@@ -383,7 +394,7 @@ export const agentMailStore: Pick<
       if (!input.discarded && st !== 'discarded') throw new Error('버린 메일만 되살릴 수 있습니다.');
       await tx.update(agentMails).set({ status: input.discarded ? 'discarded' : 'draft', updatedAt: new Date() }).where(eq(agentMails.id, old.id));
       await writeAudit(tx, {
-        projectId: null, actor, action: input.discarded ? '에이전트 메일 버림' : '에이전트 메일 되살림', field: agentName,
+        projectId: null, actor, action: input.discarded ? '에이전트 메일 버림' : '에이전트 메일 되살림', field: agentKey,
         oldValue: letterLine({ subject: old.subject, to: old.to ?? [], cc: old.cc ?? [] }), newValue: null,
       });
     });
@@ -413,7 +424,7 @@ export const agentMailStore: Pick<
 
   async finishAgentMail(input, actor): Promise<AgentMail> {
     assertAdmin(actor, '메일 보내기');
-    const agentName = await agentNameOf(input.agentId);
+    const { name: agentName, key: agentKey } = await agentLabelOf(input.agentId);
     const db = getDb();
     await db.transaction(async (tx) => {
       const [old] = await tx.select().from(agentMails)
@@ -426,7 +437,7 @@ export const agentMailStore: Pick<
           status: 'sent', error: null, from: input.result.from, sentRef: input.result.ref,
           sentAt: new Date(), sentBy: actor.name, updatedAt: new Date(),
         }).where(eq(agentMails.id, old.id));
-        await writeAudit(tx, { projectId: null, actor, action: '에이전트 메일 보냄', field: agentName, oldValue: null, newValue: line });
+        await writeAudit(tx, { projectId: null, actor, action: '에이전트 메일 보냄', field: agentKey, oldValue: null, newValue: line });
         /* 현장 양식 메일이면 그 현장 · 양식의 할 일이 끝난다 — 접수 때 담당이 적은 「… 메일 보내기」(lib/site-mail) */
         if (old.projectId && old.kind) {
           const closed = await tx.update(agentTasks).set({ doneAt: new Date() }).where(and(
@@ -436,7 +447,7 @@ export const agentMailStore: Pick<
             const [site] = await tx.select({ name: projects.name }).from(projects).where(eq(projects.id, old.projectId));
             for (const t of closed) {
               await writeAudit(tx, {
-                projectId: old.projectId, actor, action: '에이전트 할 일 끝냄', field: agentName,
+                projectId: old.projectId, actor, action: '에이전트 할 일 끝냄', field: agentKey,
                 oldValue: [t.title, site?.name].filter(Boolean).join(' · '), newValue: '끝냄 — 메일 보냄',
               });
             }
@@ -445,7 +456,7 @@ export const agentMailStore: Pick<
       } else {
         const error = input.result.error.slice(0, 500);
         await tx.update(agentMails).set({ status: 'failed', error, updatedAt: new Date() }).where(eq(agentMails.id, old.id));
-        await writeAudit(tx, { projectId: null, actor, action: '에이전트 메일 실패', field: agentName, oldValue: line, newValue: error });
+        await writeAudit(tx, { projectId: null, actor, action: '에이전트 메일 실패', field: agentKey, oldValue: line, newValue: error });
       }
     });
     const [mail] = await mailsOf([await mailRow(input.agentId, input.id)]);

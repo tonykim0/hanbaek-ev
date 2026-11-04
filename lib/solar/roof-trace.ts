@@ -4,6 +4,7 @@ import { areaOf, bboxOf, type LngLat, type PolygonCoords } from './geo';
 import type { RoofKind } from './building-register';
 import { dropNested } from './roof-merge';
 import { aerialOf, fromWorldPx, type Aerial } from './sources/aerial';
+import { solarApiKey } from './api-key';
 
 /**
  * 항공사진에서 지붕을 딴다 — 지도 모양 자료가 늦거나 틀린 곳(충주 동충주산단4길 17: 2024-11 준공 4동 자리에 임시
@@ -112,12 +113,8 @@ export function ringOf(points: { x: number; y: number }[], a: Pick<Aerial, 'orig
   return [...ring, ring[0]];
 }
 
-/**
- * 태양광의 API 키 — Anthropic 콘솔의 키 「hanbaek-solar」(2026-11-04 한백). 전기차 판독과 키를 갈라야 콘솔 사용량에서 태양광 몫이
- * 따로 보인다(키 하나를 같이 쓰던 때 어디서 쓴 돈인지 가릴 수 없었다). 아직 안 넣은 환경에서는 공용 키로 돈다.
- */
-export const solarApiKey = (): string | undefined =>
-  process.env.ANTHROPIC_SOLAR_API_KEY?.trim() || process.env.ANTHROPIC_API_KEY;
+/** 태양광의 API 키 — lib/solar/api-key(태양광 AI에이전트도 같은 키를 쓴다). 밖에서 부르던 이름 그대로 내보낸다 */
+export { solarApiKey };
 
 let client: Anthropic | null = null;
 

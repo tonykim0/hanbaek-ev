@@ -1,6 +1,8 @@
 /**
- * POST   /api/agents/mail-account { email, password } — 보내는 메일 연결 [한백 관리자]
- * DELETE /api/agents/mail-account                     — 연결 끊기 [한백 관리자]
+ * POST   /api/agents/mail-account { email, password, biz? } — 보내는 메일 연결 [한백 관리자]
+ * DELETE /api/agents/mail-account { biz? }                  — 연결 끊기 [한백 관리자]
+ *
+ * ★사업마다 한 줄이다★(biz — 빼면 전기차, 2026-11-04): 태양광 AI에이전트는 전기차와 따로라 보내는 메일도 따로 연결한다(store/agent-mail).
  *
  * 한백의 다음(카카오) 메일 주소와 카카오 앱 비밀번호로 연결한다(한백 2026-11-03 「내 다음카카오 이메일로만 보내면 되는거고」).
  * ★저장하기 전에 다음 메일 서버에 실제로 로그인해 본다★(lib/agents/smtp verifySmtp — 메일은 보내지 않는다). 안 되면 그 까닭이
@@ -11,10 +13,14 @@ import { adminWrite, BadRequest } from '@/lib/api/write-route';
 import { getRepository } from '@/lib/data';
 import { addressesOf } from '@/lib/agents/mime';
 import { DAUM_SMTP, verifySmtp } from '@/lib/agents/smtp';
+import { asBiz } from '@/lib/biz';
+
+/** 보낸 사업 — 'solar' 만 태양광, 나머지(빠짐 포함)는 전기차 */
+const bizOf = (v: unknown) => asBiz(typeof v === 'string' ? v : null);
 
 export const maxDuration = 60;
 
-export const POST = adminWrite<Record<string, never>, { email?: unknown; password?: unknown }>(
+export const POST = adminWrite<Record<string, never>, { email?: unknown; password?: unknown; biz?: unknown }>(
   '보내는 메일은 한백 관리자만 연결할 수 있습니다.',
   async ({ body, actor }) => {
     if (typeof body?.email !== 'string' || typeof body?.password !== 'string') throw new BadRequest('메일 주소 · 앱 비밀번호가 글이 아닙니다.');
@@ -23,13 +29,14 @@ export const POST = adminWrite<Record<string, never>, { email?: unknown; passwor
     const secret = body.password.replace(/\s+/g, '');
     if (!secret) throw new Error('앱 비밀번호를 적어주세요.');
     await verifySmtp({ user: email, pass: secret });
-    return { account: await getRepository().saveMailAccount({ email, secret, server: `${DAUM_SMTP.host}:${DAUM_SMTP.port}` }, actor) };
+    const server = `${DAUM_SMTP.host}:${DAUM_SMTP.port}`;
+    return { account: await getRepository().saveMailAccount({ email, secret, server, biz: bizOf(body.biz) }, actor) };
   }
 );
 
-export const DELETE = adminWrite<Record<string, never>, undefined>(
+export const DELETE = adminWrite<Record<string, never>, { biz?: unknown } | undefined>(
   '보내는 메일은 한백 관리자만 끊을 수 있습니다.',
-  async ({ actor }) => {
-    await getRepository().deleteMailAccount(actor);
+  async ({ body, actor }) => {
+    await getRepository().deleteMailAccount(actor, bizOf(body?.biz));
   }
 );

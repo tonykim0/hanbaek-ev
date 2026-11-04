@@ -22,12 +22,20 @@
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { logLlmCall, usdOf } from '@/lib/llm-usage';
+import { solarApiKey } from '@/lib/solar/api-key';
 import { agentFileRead } from './files';
 import { fileTextsOf } from './file-text';
 import { josa, siteMailOfCpo, type SiteMailSpec } from '@/lib/site-mail';
 import type { Agent, AgentDuty, AgentFile, AgentMessage, AgentMessageMeta, AgentSource, AgentTask } from '@/types/agents';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+/*
+ * 태양광 담당은 태양광 키로 부른다(lib/solar/api-key — 지붕 찾기와 같은 키). 태양광 AI에이전트는 전기차와 따로인 조직이라
+ * (한백 2026-11-04 「태양광전용으로 하나 · 기존 전기차 AI에이전트에 붙이지 말고」) 돈도 Anthropic 콘솔에서 태양광 몫으로 선다.
+ */
+let solarClient: Anthropic | null = null;
+const clientOf = (agent: Agent): Anthropic =>
+  agent.biz === 'solar' ? (solarClient ??= new Anthropic({ apiKey: solarApiKey() })) : anthropic;
 const MODEL = 'claude-opus-5-5';
 /** 생각도 max_tokens 에 든다 — 아지트 글 초안처럼 긴 답이 잘리지 않게 넉넉히 */
 const MAX_TOKENS = 16000;
@@ -456,7 +464,7 @@ export async function agentReply(input: {
     const at = Date.now();
     let res: Anthropic.Message;
     try {
-      res = await anthropic.messages.create(params as Anthropic.MessageCreateParamsNonStreaming, {
+      res = await clientOf(agent).messages.create(params as Anthropic.MessageCreateParamsNonStreaming, {
         timeout: CALL_TIMEOUT_MS, maxRetries: 1, headers: { 'anthropic-beta': FALLBACK_BETA },
       });
     } catch (err) {

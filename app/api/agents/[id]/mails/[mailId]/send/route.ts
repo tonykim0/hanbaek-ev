@@ -34,7 +34,8 @@ export const POST = adminWrite<{ id: string; mailId: string }, undefined>(
   async ({ params, actor }) => {
     const repo = getRepository();
     const ref = { agentId: params.id, id: params.mailId };
-    const account = await repo.mailCredential(actor);
+    /* 그 담당의 사업의 계정 — 태양광 담당의 초안은 태양광 계정으로만 나간다 */
+    const account = await repo.mailCredential(actor, params.id);
     const mail = await repo.claimAgentMail(ref, actor);
 
     let sent: { id: string };

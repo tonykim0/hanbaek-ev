@@ -10,9 +10,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { MailAccountInfo } from '@/types/agents';
+import type { Biz } from '@/lib/biz';
 import { Btn, Err, FIELD_BASE, Tag, TEXT } from '@/components/ui';
 
-export function MailAccount({ account }: { account: MailAccountInfo | null }) {
+/** @param biz 그 사업의 보내는 메일 — 전기차 · 태양광이 따로 연결한다(store/agent-mail, 2026-11-04) */
+export function MailAccount({ account, biz }: { account: MailAccountInfo | null; biz: Biz }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState(account?.email ?? '');
@@ -26,7 +28,8 @@ export function MailAccount({ account }: { account: MailAccountInfo | null }) {
     try {
       const res = await fetch('/api/agents/mail-account', {
         method,
-        ...(method === 'POST' ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) } : {}),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(method === 'POST' ? { email, password, biz } : { biz }),
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {

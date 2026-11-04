@@ -560,13 +560,15 @@ export interface ProjectRepository {
    * 앱 비밀번호는 잠가 두고, 보낼 때만 mailCredential 이 푼다.
    */
   /** 콘솔이 메일을 보내는 계정 — 없으면 null. 비밀번호는 싣지 않는다 */
-  getMailAccount(actor: Actor): Promise<MailAccountInfo | null>;
+  /** 그 사업의 보내는 메일 — 빼면 전기차 */
+  getMailAccount(actor: Actor, biz?: Biz): Promise<MailAccountInfo | null>;
   /** 메일 연결 — 라우트가 로그인을 해 본 뒤에 부른다. 앱 비밀번호를 잠가 둔다(한 줄이다 — 다시 연결하면 갈아 끼운다) */
-  saveMailAccount(input: { email: string; secret: string; server: string }, actor: Actor): Promise<MailAccountInfo>;
+  saveMailAccount(input: { email: string; secret: string; server: string; biz?: Biz }, actor: Actor): Promise<MailAccountInfo>;
   /** 연결 끊기 — 없었으면 null */
-  deleteMailAccount(actor: Actor): Promise<{ email: string } | null>;
+  deleteMailAccount(actor: Actor, biz?: Biz): Promise<{ email: string } | null>;
   /** 보낼 때만 — 풀어 둔 앱 비밀번호와 주소. 연결이 없거나 풀 수 없으면 사람 말로 던진다 */
-  mailCredential(actor: Actor): Promise<{ email: string; secret: string }>;
+  /** 그 담당의 사업의 보내는 메일 */
+  mailCredential(actor: Actor, agentId: string): Promise<{ email: string; secret: string }>;
   /** 메일 초안 올리기 — 에이전트가 대화 중에(lib/agents/brain draft_mail). 붙일 파일은 그 담당에게 넘긴 파일만 */
   addAgentMail(
     input: { agentId: string; to: unknown; cc?: unknown; subject: string; body: string; fileIds?: string[] },

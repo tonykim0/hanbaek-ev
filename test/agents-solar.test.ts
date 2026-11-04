@@ -12,7 +12,7 @@ import { toolsOf } from '@/lib/agents/brain';
 import { roleLineOf } from '@/components/agents/status';
 import type { SolarSite } from '@/lib/solar/sites';
 import type { Agent } from '@/types/agents';
-import { AGENT_KIND_LABEL, isCounterpart } from '@/types/agents';
+import { AGENT_KIND_LABEL, agentAuditKey, isCounterpart } from '@/types/agents';
 
 const TODAY = '2026-11-04';
 
@@ -35,8 +35,8 @@ function site(n: number, over: Partial<SolarSite> = {}): SolarSite {
 }
 
 const HENERGY: Agent = { id: 'solar-henergy', kind: 'owner', biz: 'solar', cpo: null, company: '에이치에너지', name: '에이치에너지 담당' };
-const PLAN: Agent = { id: 'solar-strategy', kind: 'strategy', biz: 'solar', cpo: null, company: null, name: '태양광 전략·기획 담당' };
-const SETTLE: Agent = { id: 'solar-settlement', kind: 'settlement', biz: 'solar', cpo: null, company: null, name: '태양광 정산 담당' };
+const PLAN: Agent = { id: 'solar-strategy', kind: 'strategy', biz: 'solar', cpo: null, company: null, name: '전략·기획 담당' };
+const SETTLE: Agent = { id: 'solar-settlement', kind: 'settlement', biz: 'solar', cpo: null, company: null, name: '정산 담당' };
 
 describe('태양광 담당이 읽는 자료', () => {
   const data: SolarScopeData = {
@@ -123,5 +123,10 @@ describe('사업자 담당의 이름', () => {
     expect(isCounterpart('operator')).toBe(true);
     expect(isCounterpart('settlement')).toBe(false);
     expect(roleLineOf(HENERGY)).toBe('현장 진행 · 사업자 소통');
+  });
+
+  it('감사기록의 열쇠는 사업마다 — 같은 이름(정산 담당)이어도 주간 기록이 섞이지 않는다', () => {
+    expect(agentAuditKey(SETTLE)).toBe('태양광 · 정산 담당');
+    expect(agentAuditKey({ biz: 'ev', name: '정산 담당' })).toBe('정산 담당'); // 전기차는 그전 기록 그대로 이름
   });
 });

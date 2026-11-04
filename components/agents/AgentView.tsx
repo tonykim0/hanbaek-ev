@@ -42,7 +42,7 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
   /* redirect 는 던져서 멈춘다 — 위 try 밖에서 */
   if (agent.biz !== biz) redirect(`${BIZ_AGENTS[agent.biz]}/${agent.id}${week ? `?week=${encodeURIComponent(week)}` : ''}`);
   const home = `${BIZ_AGENTS[agent.biz]}/${agent.id}`;
-  const [side, account] = await Promise.all([loadAgentSide(biz, actor), getRepository().getMailAccount(actor)]);
+  const [side, account] = await Promise.all([loadAgentSide(biz, actor), getRepository().getMailAccount(actor, biz)]);
   const headline = side.headline(agent);
   const lateTasks = detail.tasks.filter((t) => !t.doneAt && t.due !== null && t.due < side.today).length;
   const led = ledOf({ lateTasks, duties: detail.duties.length, headline });
@@ -69,7 +69,7 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
         </div>
       </header>
       <div className="-mt-3 mb-5">
-        <MailAccount account={account} />
+        <MailAccount account={account} biz={biz} />
       </div>
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">

@@ -20,7 +20,7 @@ import type {
   Agent, AgentDetail, AgentDuty, AgentEvent, AgentFile, AgentKind, AgentMessage, AgentMessageMeta, AgentMessageRole,
   AgentSummary, AgentTask, AgentUsage, AgentWeek,
 } from '@/types/agents';
-import { AGENT_KINDS, AGENT_MESSAGE_ROLES } from '@/types/agents';
+import { AGENT_KINDS, AGENT_MESSAGE_ROLES, agentAuditKey } from '@/types/agents';
 import { AGENT_FILES_PER_MESSAGE, agentFileName, agentFilePrefix } from '@/lib/agents/files';
 import { mondayOf, shiftDay } from '@/lib/agents/weeks';
 import { asBiz, type Biz } from '@/lib/biz';
@@ -291,7 +291,7 @@ export const agentStore: Pick<
         usd: sql<number>`coalesce(sum((${agentMessages.meta}->>'usd')::float8), 0)::float8`,
       }).from(agentMessages).where(eq(agentMessages.agentId, id)).groupBy(msgWeek, agentMessages.role),
       () => db.select({ week: logWeek, action: auditLog.action, n: sql<number>`count(*)::int` })
-        .from(auditLog).where(and(eq(auditLog.field, agent.name), inArray(auditLog.action, EVENT_ACTIONS)))
+        .from(auditLog).where(and(eq(auditLog.field, agentAuditKey(agent)), inArray(auditLog.action, EVENT_ACTIONS)))
         .groupBy(logWeek, auditLog.action),
       () => db.select({ week: fileWeek, n: sql<number>`count(*)::int` })
         .from(agentFiles).where(eq(agentFiles.agentId, id)).groupBy(fileWeek),
@@ -309,7 +309,7 @@ export const agentStore: Pick<
       () => (range
         ? db.select().from(auditLog)
           .where(and(
-            eq(auditLog.field, agent.name), inArray(auditLog.action, EVENT_ACTIONS),
+            eq(auditLog.field, agentAuditKey(agent)), inArray(auditLog.action, EVENT_ACTIONS),
             gte(auditLog.at, range.from), lt(auditLog.at, range.to),
           ))
           .orderBy(asc(auditLog.at))
@@ -393,7 +393,7 @@ export const agentStore: Pick<
       await db.transaction(async (tx) => {
         await tx.update(agentDuties).set({ title, body, updatedAt: new Date() }).where(eq(agentDuties.id, old.id));
         await writeAudit(tx, {
-          projectId: null, actor, action: '에이전트 업무 정의 수정', field: agent.name,
+          projectId: null, actor, action: '에이전트 업무 정의 수정', field: agentAuditKey(agent),
           oldValue: `${old.title} — ${old.body}`.slice(0, 2000), newValue: `${title} — ${body}`.slice(0, 2000),
         });
       });
@@ -406,7 +406,7 @@ export const agentStore: Pick<
         .from(agentDuties).where(eq(agentDuties.agentId, agent.id));
       await tx.insert(agentDuties).values({ id, agentId: agent.id, title, body, sort: top + 10 });
       await writeAudit(tx, {
-        projectId: null, actor, action: '에이전트 업무 정의', field: agent.name,
+        projectId: null, actor, action: '에이전트 업무 정의', field: agentAuditKey(agent),
         oldValue: null, newValue: `${title} — ${body}`.slice(0, 2000),
       });
     });
@@ -423,7 +423,7 @@ export const agentStore: Pick<
     await db.transaction(async (tx) => {
       await tx.delete(agentDuties).where(eq(agentDuties.id, old.id));
       await writeAudit(tx, {
-        projectId: null, actor, action: '에이전트 업무 정의 삭제', field: agent.name,
+        projectId: null, actor, action: '에이전트 업무 정의 삭제', field: agentAuditKey(agent),
         oldValue: `${old.title} — ${old.body}`.slice(0, 2000), newValue: null,
       });
     });
@@ -449,7 +449,7 @@ export const agentStore: Pick<
     await db.transaction(async (tx) => {
       await tx.insert(agentTasks).values({ id, agentId: agent.id, title, note, projectId, due, author });
       await writeAudit(tx, {
-        projectId, actor, action: input.byAgent ? '에이전트 할 일 (에이전트가 적음)' : '에이전트 할 일', field: agent.name,
+        projectId, actor, action: input.byAgent ? '에이전트 할 일 (에이전트가 적음)' : '에이전트 할 일', field: agentAuditKey(agent),
         oldValue: null, newValue: [title, due && `기한 ${due}`, note].filter(Boolean).join(' · ').slice(0, 2000),
       });
     });
@@ -472,7 +472,7 @@ export const agentStore: Pick<
         action: input.done
           ? (input.byAgent ? '에이전트 할 일 끝냄 (에이전트가 적음)' : '에이전트 할 일 끝냄')
           : '에이전트 할 일 되살림',
-        field: agent.name, oldValue: old.title, newValue: input.done ? '끝냄' : '열림',
+        field: agentAuditKey(agent), oldValue: old.title, newValue: input.done ? '끝냄' : '열림',
       });
     });
     return { title: old.title };
@@ -488,7 +488,7 @@ export const agentStore: Pick<
     await db.transaction(async (tx) => {
       await tx.delete(agentTasks).where(eq(agentTasks.id, old.id));
       await writeAudit(tx, {
-        projectId: old.projectId, actor, action: '에이전트 할 일 삭제', field: agent.name,
+        projectId: old.projectId, actor, action: '에이전트 할 일 삭제', field: agentAuditKey(agent),
         oldValue: [old.title, old.note].filter(Boolean).join(' · ').slice(0, 2000), newValue: null,
       });
     });
@@ -507,7 +507,7 @@ export const agentStore: Pick<
     if (due && !DAY_RE.test(due)) throw new Error('기한은 YYYY-MM-DD 로 적어주세요.');
     const body = clip(input.say, MAX.agentSaid, '글');
     return getDb().transaction(async (tx) => {
-      const [agent] = await tx.select({ id: agents.id, name: agents.name }).from(agents)
+      const [agent] = await tx.select({ id: agents.id, name: agents.name, biz: agents.biz }).from(agents)
         .where(eq(agents.id, input.agentId)).for('update');
       if (!agent) throw new Error('담당을 찾을 수 없습니다.');
       const [had] = await tx.select({ id: agentMessages.id }).from(agentMessages)
@@ -517,14 +517,14 @@ export const agentStore: Pick<
       const taskId = crypto.randomUUID();
       await tx.insert(agentTasks).values({ id: taskId, agentId: agent.id, title, note, due, kind: input.key, author: agent.name });
       await writeAudit(tx, {
-        projectId: null, actor, action: '에이전트 할 일 (에이전트가 적음)', field: agent.name, oldValue: null,
+        projectId: null, actor, action: '에이전트 할 일 (에이전트가 적음)', field: agentAuditKey(agent), oldValue: null,
         newValue: [title, due && `기한 ${due}`, note].filter(Boolean).join(' · ').slice(0, 2000),
       });
       const messageId = crypto.randomUUID();
       const meta: AgentMessageMeta = { remind: input.key, added: [title], ...(input.link ? { link: input.link } : {}) };
       await tx.insert(agentMessages).values({ id: messageId, agentId: agent.id, role: 'auto', author: agent.name, body, meta });
       await writeAudit(tx, {
-        projectId: null, actor, action: '에이전트 자동', field: agent.name, oldValue: null, newValue: body.slice(0, 2000),
+        projectId: null, actor, action: '에이전트 자동', field: agentAuditKey(agent), oldValue: null, newValue: body.slice(0, 2000),
       });
       const alarmed = await notifyAgentRemind(tx, { agentId: agent.id, ...input.alarm });
       return { created: true, taskId, messageId, alarmed };
@@ -568,7 +568,7 @@ export const agentStore: Pick<
       await writeAudit(tx, {
         projectId: null, actor,
         action: input.role === 'user' ? '에이전트 지시' : input.role === 'note' ? '에이전트 기록' : '에이전트 답',
-        field: agent.name, oldValue: null,
+        field: agentAuditKey(agent), oldValue: null,
         newValue: [body.slice(0, 200), filed.length ? `파일 ${filed.map((f) => f.name).join(', ')}` : '']
           .filter(Boolean).join(' · ').slice(0, 2000),
       });

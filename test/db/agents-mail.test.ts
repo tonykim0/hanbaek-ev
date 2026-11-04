@@ -40,9 +40,12 @@ const mark = `[시험 ${RUN}]`;
 const SENDER = `sender-${RUN}@example.com`;
 
 let saved: typeof mailAccounts.$inferSelect | undefined;
+/* 태양광의 연결 한 줄(mail_accounts 'mail-solar') — 같은 까닭으로 떠 두고 되돌린다 */
+let savedSolar: typeof mailAccounts.$inferSelect | undefined;
 
 beforeAll(async () => {
   [saved] = await getDb().select().from(mailAccounts).where(eq(mailAccounts.id, 'mail'));
+  [savedSolar] = await getDb().select().from(mailAccounts).where(eq(mailAccounts.id, 'mail-solar'));
 });
 
 afterAll(async () => {
@@ -50,6 +53,8 @@ afterAll(async () => {
   await db.delete(agentMails).where(like(agentMails.subject, `%${RUN}%`));
   await db.delete(mailAccounts).where(eq(mailAccounts.id, 'mail'));
   if (saved) await db.insert(mailAccounts).values(saved);
+  await db.delete(mailAccounts).where(eq(mailAccounts.id, 'mail-solar'));
+  if (savedSolar) await db.insert(mailAccounts).values(savedSolar);
   await db.delete(auditLog).where(and(
     or(like(auditLog.action, '에이전트 메일%'), like(auditLog.action, '메일 계정%')),
     or(like(auditLog.newValue, `%${RUN}%`), like(auditLog.oldValue, `%${RUN}%`)),
@@ -90,7 +95,7 @@ describe('초안 — 누가 · 무엇을', () => {
     }
     expect(smtp.verify).not.toHaveBeenCalled();
     await expect(repo.addAgentMail({ agentId: AGENT, to: 'a@b.co', subject: 'x', body: 'y' }, actorOf(USERS.viewer))).rejects.toThrow('한백 관리자만');
-    await expect(repo.mailCredential(actorOf(USERS.ecoelec))).rejects.toThrow('한백 관리자만');
+    await expect(repo.mailCredential(actorOf(USERS.ecoelec), AGENT)).rejects.toThrow('한백 관리자만');
   });
 
   it('틀린 주소 · 빈 제목 · 남의 파일은 받지 않는다', async () => {
@@ -238,3 +243,37 @@ describe('승인하고 보내기', () => {
     expect(row.status).toBe('draft');
   });
 });
+
+describe('보내는 메일은 사업마다 — 태양광 AI에이전트는 전기차와 따로 연결한다', () => {
+  const SOLAR_AGENT = 'solar-settlement';
+  const SOLAR_SENDER = `solar-${RUN}@example.com`;
+
+  it('태양광을 연결 · 끊어도 전기차 연결은 그대로 — 태양광 담당의 초안은 태양광 계정으로 나간다', async () => {
+    await connectFake();
+    await signIn(USERS.admin);
+    const on = await call(connect, { body: { email: SOLAR_SENDER, password: `solar-app-${RUN}`, biz: 'solar' } });
+    expect(on.status).toBe(200);
+    expect((await repo.getMailAccount(admin, 'solar'))?.email).toBe(SOLAR_SENDER);
+    expect((await repo.getMailAccount(admin))?.email).toBe(SENDER);
+
+    const made = await repo.addAgentMail({
+      agentId: SOLAR_AGENT, to: 'ops@example.com', subject: `${mark} 태양광 지급 안내`, body: '안녕하세요, 한백입니다.',
+    }, admin);
+    const sent = await call(sendMail, { params: { id: SOLAR_AGENT, mailId: made.id } });
+    expect(sent.status).toBe(200);
+    expect(smtp.send).toHaveBeenCalledTimes(1);
+    expect(smtp.send.mock.calls[0][0].user).toBe(SOLAR_SENDER);
+    expect(smtp.send.mock.calls[0][0].pass).toBe(`solar-app-${RUN}`);
+
+    /* 전기차 담당의 초안은 전기차 계정으로 */
+    const ev = await draft();
+    expect((await call(sendMail, { params: ref(ev) })).status).toBe(200);
+    expect(smtp.send.mock.calls[1][0].user).toBe(SENDER);
+
+    const off = await call(disconnect, { method: 'DELETE', body: { biz: 'solar' } });
+    expect(off.status).toBe(200);
+    expect(await repo.getMailAccount(admin, 'solar')).toBeNull();
+    expect((await repo.getMailAccount(admin))?.email).toBe(SENDER);
+  });
+});
+

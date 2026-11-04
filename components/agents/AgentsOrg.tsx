@@ -43,7 +43,7 @@ export async function AgentsOrg({ biz }: { biz: Biz }) {
   const actor = actorOf(session);
   const repo = getRepository();
   const [agents, side, account, usage] = await Promise.all([
-    repo.listAgents(actor, biz), loadAgentSide(biz, actor), repo.getMailAccount(actor), repo.agentUsage(actor, biz),
+    repo.listAgents(actor, biz), loadAgentSide(biz, actor), repo.getMailAccount(actor, biz), repo.agentUsage(actor, biz),
   ]);
   const rows = agents.map((a) => ({ a, h: side.headline(a) }));
   const counterparts = rows.filter((r) => isCounterpart(r.a.kind));
@@ -89,7 +89,7 @@ export async function AgentsOrg({ biz }: { biz: Biz }) {
         </dl>
       </header>
       <div className="-mt-3 mb-5">
-        <MailAccount account={account} />
+        <MailAccount account={account} biz={biz} />
       </div>
 
       {/*
