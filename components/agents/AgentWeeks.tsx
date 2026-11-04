@@ -20,6 +20,7 @@ function countsOf(w: AgentWeek): string {
     w.tasksAdded && `할 일 적음 ${w.tasksAdded}`,
     w.tasksDone && `끝냄 ${w.tasksDone}`,
     w.dutyChanges && `업무 정의 ${w.dutyChanges}`,
+    w.directionChanges && `목표 · 방향 ${w.directionChanges}`,
     w.files && `파일 ${w.files}`,
     w.mails && `메일 보냄 ${w.mails}`,
   ].filter(Boolean).join(' · ');

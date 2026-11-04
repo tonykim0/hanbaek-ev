@@ -5,11 +5,12 @@ import { getRepository } from '@/lib/data';
 import { loadAgentSide } from '@/lib/agents/scope';
 import { BIZ_AGENTS, type Biz } from '@/lib/biz';
 import type { AgentDetail } from '@/types/agents';
-import { AGENT_KIND_LABEL, isCounterpart } from '@/types/agents';
+import { AGENT_KIND_LABEL, isCounterpart, isLead } from '@/types/agents';
 import { Tag, TEXT } from '@/components/ui';
 import { HeadlineCounts } from '@/components/agents/HeadlineCounts';
 import { AgentRoom } from '@/components/agents/AgentRoom';
 import { AgentDuties } from '@/components/agents/AgentDuties';
+import { AgentDirections } from '@/components/agents/AgentDirections';
 import { AgentTasks } from '@/components/agents/AgentTasks';
 import { AgentWeeks } from '@/components/agents/AgentWeeks';
 import { AgentMark } from '@/components/agents/kit';
@@ -24,8 +25,11 @@ import { isLive, ledOf, roleLineOf } from '@/components/agents/status';
  * 내가 담당자별로 지정할거야」 · 「주단위로 뭐했는지도 과거 이력 조회」 · 「파일업로드 기능도」 — 모양은 components/agents/kit)
  * 담당이 올린 메일 초안은 대화의 그 답 밑에 서고 한백이 승인해야 나간다 — 보내는 메일(한백의 다음 메일)은 머리말 밑 한 줄이다(MailAccount).
  *
- * 사업마다의 조직도 밑에 선다(/admin/agents/[id] 전기차 · /solar/agents/[id] 태양광 — 2026-11-04). 다른 사업의 주소로 열면 제
- * 사업의 주소로 보낸다(알림 줄 · 옛 링크가 사업을 모르고 열어도 제 틀 · 제 조직도로 간다).
+ * 사업마다의 팀 화면 밑에 선다(/admin/agents/[id] 전기차 · /solar/agents/[id] 태양광 — 2026-11-04). 다른 사업의 주소로 열면 제
+ * 사업의 주소로 보낸다(알림 줄 · 옛 링크가 사업을 모르고 열어도 제 틀 · 제 팀으로 간다).
+ *
+ * ★팀에서의 자리★(한백 2026-11-04 「전략 및 기획담당이 팀장이고 그 운영사/사업자 담당자는 실무자들이야」) — 머리말에 팀장 · 실무자,
+ * 오른쪽에 팀 목표 · 방향: 팀장은 고치고, 실무자는 읽기만 한다(그 실무자가 부를 때마다 읽는 것 — 팀장 화면으로 가는 고리).
  */
 export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week: string | null }) {
   const page = `${BIZ_AGENTS[biz]}/${id}`;
@@ -42,7 +46,10 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
   /* redirect 는 던져서 멈춘다 — 위 try 밖에서 */
   if (agent.biz !== biz) redirect(`${BIZ_AGENTS[agent.biz]}/${agent.id}${week ? `?week=${encodeURIComponent(week)}` : ''}`);
   const home = `${BIZ_AGENTS[agent.biz]}/${agent.id}`;
-  const [side, account] = await Promise.all([loadAgentSide(biz, actor), getRepository().getMailAccount(actor, biz)]);
+  const [side, account, team] = await Promise.all([
+    loadAgentSide(biz, actor), getRepository().getMailAccount(actor, biz), getRepository().agentTeam(actor, biz),
+  ]);
+  const lead = isLead(agent.kind);
   const headline = side.headline(agent);
   const lateTasks = detail.tasks.filter((t) => !t.doneAt && t.due !== null && t.due < side.today).length;
   const led = ledOf({ lateTasks, duties: detail.duties.length, headline });
@@ -53,7 +60,7 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
       {/* 이 담당의 정기 알림(열린구매 상신)은 여기를 열면 읽힌다 — 알림 줄을 누르면 여기로 온다 */}
       <ReadAgentAlarms agentId={agent.id} />
       <nav className="mb-4">
-        <Link href={BIZ_AGENTS[biz]} className="text-small font-bold text-slate-500 transition hover:text-brand-800">← AI에이전트 조직도</Link>
+        <Link href={BIZ_AGENTS[biz]} className="text-small font-bold text-slate-500 transition hover:text-brand-800">← AI에이전트</Link>
       </nav>
       <header className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-3">
         <AgentMark size="lg" tone={led.tone} live={live} label={`${led.label}${live ? ' · 최근 24시간 대화' : ''}`} />
@@ -62,6 +69,8 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
           <h1 className="text-h1 font-black text-slate-900">{agent.name}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          {/* 팀에서의 자리 — 팀장 · 실무자 */}
+          <Tag>{lead ? '팀장' : '실무자'}</Tag>
           {/* 갈래 이름은 운영사 · 사업자 담당에만 — 정산 · 전략·기획은 이름이 곧 갈래라 「정산 담당」 옆의 「정산」이 같은 말을 두 번 한다(규칙 5) */}
           {isCounterpart(agent.kind) && <Tag>{AGENT_KIND_LABEL[agent.kind]}</Tag>}
           <span className={TEXT.meta}>{roleLineOf(agent)}</span>
@@ -87,6 +96,14 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
         />
         <div className="flex flex-col gap-4">
           <AgentWeeks home={home} weeks={detail.weeks} selected={detail.week?.start ?? null} today={side.today} />
+          {/* 팀 목표 · 방향 — 팀장은 고치고, 실무자는 읽기만(팀장 화면으로 가는 고리) */}
+          {team.lead && (
+            <AgentDirections
+              leadId={team.lead.id}
+              directions={team.directions}
+              leadLink={lead ? undefined : { href: `${BIZ_AGENTS[biz]}/${team.lead.id}`, name: team.lead.name }}
+            />
+          )}
           <AgentDuties agentId={agent.id} duties={detail.duties} />
           {/* 할 일에 고를 현장 — 전기차 운영사 담당은 그 운영사의 진행 중인 현장만. 태양광은 아직 없다(loadAgentSide) */}
           <AgentTasks agentId={agent.id} agentName={agent.name} tasks={detail.tasks} sites={side.taskSites(agent)} today={side.today} />

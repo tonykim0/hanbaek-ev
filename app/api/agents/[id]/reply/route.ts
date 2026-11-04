@@ -11,6 +11,8 @@
  * 현장의 서류를 붙인 양식 초안을 쓴다(lib/site-mail-run requestSiteMail — 단추와 같은 길). 그 초안도 이 답 밑에 선다.
  * 운영사 담당은 pricing_table 로 그 운영사의 지금 단가표를 읽는다(lib/agents/pricing-table — 읽기만, 한백 2026-11-04).
  * 태양광 담당(migrations/0118)은 태양광 자료를 읽는다(상담 접수한 현장 — lib/agents/solar-brief). 양식 메일 · 단가표는 없다.
+ * ★담당들은 팀이다★(migrations/0120 · lib/agents/team) — 모두가 그 사업의 팀 목표 · 방향을 읽고, 팀장(전략·기획)은 실무자들의
+ * 최근 기록([팀 소식])을 같이 받으며 목표 · 방향을 올리고(save_direction) 실무자 하나를 깊이 읽는다(team_history).
  */
 import { getRepository } from '@/lib/data';
 import { adminWrite } from '@/lib/api/write-route';
@@ -19,6 +21,13 @@ import { pricingTableText } from '@/lib/agents/pricing-table';
 import { loadAgentBrief } from '@/lib/agents/scope';
 import { siteMailOfCpo } from '@/lib/site-mail';
 import { requestSiteMail } from '@/lib/site-mail-run';
+import {
+  HISTORY_PER_MEMBER, memberOf, TEAM_DAYS, TEAM_PER_MEMBER, teamDigestOf, teamHistoryOf,
+} from '@/lib/agents/team';
+import { isLead } from '@/types/agents';
+
+/** team_history 가 읽는 날수의 상한 — 저장소(store/agent-team)와 같다 */
+const MAX_HISTORY_DAYS = 90;
 
 export const maxDuration = 300;
 
@@ -30,8 +39,17 @@ export const POST = adminWrite<{ id: string }, undefined>(
     const last = detail.messages[detail.messages.length - 1];
     if (!last || last.role !== 'user') throw new Error('답할 지시가 없습니다 — 먼저 말을 남겨 주세요.');
 
-    /* 사업마다의 자료 — 전기차 정산 담당은 열린구매 글에 쓸 지급처 사업자·계좌까지 읽는다 */
-    const { today, brief, siteOf } = await loadAgentBrief(detail.agent, actor);
+    /*
+     * 사업마다의 자료 — 전기차 정산 담당은 열린구매 글에 쓸 지급처 사업자·계좌까지 읽는다. 팀(목표 · 방향)은 모두가, 실무자들의
+     * 최근 기록은 팀장만 읽는다
+     */
+    const { biz } = detail.agent;
+    const lead = isLead(detail.agent.kind);
+    const [{ today, brief, siteOf }, team, logs] = await Promise.all([
+      loadAgentBrief(detail.agent, actor),
+      repo.agentTeam(actor, biz),
+      lead ? repo.agentTeamLog(actor, biz, { days: TEAM_DAYS, perMember: TEAM_PER_MEMBER }) : Promise.resolve(null),
+    ]);
     const agentId = detail.agent.id;
     const drafted: string[] = [];
     const siteSpec = detail.agent.kind === 'operator' ? siteMailOfCpo(detail.agent.cpo) : null;
@@ -44,6 +62,8 @@ export const POST = adminWrite<{ id: string }, undefined>(
       history: detail.messages.slice(-HISTORY_TURNS),
       brief,
       today,
+      team,
+      teamDigest: logs ? teamDigestOf(logs) : null,
       hands: {
         addTask: async (t) => (await repo.addAgentTask({ agentId, ...t, byAgent: true }, actor)).id,
         completeTask: async (id) => (await repo.setAgentTaskDone({ agentId, id, done: true, byAgent: true }, actor)).title,
@@ -63,6 +83,21 @@ export const POST = adminWrite<{ id: string }, undefined>(
         } : {}),
         ...(operatorCpo ? {
           pricingTable: async () => pricingTableText(await repo.listPricingRules(actor), operatorCpo),
+        } : {}),
+        /* 팀장의 손 — 목표 · 방향은 적은 쪽에 팀장 이름이 남는다 */
+        ...(lead ? {
+          saveDirection: (d: { id: string | null; title: string; body: string }) =>
+            repo.saveAgentDirection({ leadId: agentId, ...d, byAgent: true }, actor),
+          deleteDirection: async (id: string) =>
+            (await repo.deleteAgentDirection({ leadId: agentId, id, byAgent: true }, actor)).title,
+          teamHistory: async (ref: string, days: number) => {
+            const member = memberOf(team.members, ref);
+            if (!member) throw new Error(`실무자 「${ref}」를 찾지 못했다 — [팀 소식]의 id 를 쓴다.`);
+            const span = Math.min(MAX_HISTORY_DAYS, Math.max(1, Math.round(days)));
+            const [log] = await repo.agentTeamLog(actor, biz, { days: span, perMember: HISTORY_PER_MEMBER, memberId: member.id });
+            if (!log) throw new Error(`실무자 「${ref}」의 기록을 읽지 못했다.`);
+            return teamHistoryOf(log, span);
+          },
         } : {}),
       },
     });

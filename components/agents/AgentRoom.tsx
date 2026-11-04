@@ -381,6 +381,7 @@ function Said({ message: m }: { message: AgentMessage }) {
         {m.meta?.added?.length ? <Tag tone="ok">할 일 {m.meta.added.length}건 적음</Tag> : null}
         {m.meta?.done?.length ? <Tag tone="ok">할 일 {m.meta.done.length}건 끝냄</Tag> : null}
         {m.meta?.mails?.length ? <Tag tone="ok">메일 초안 {m.meta.mails.length}통</Tag> : null}
+        {m.meta?.directions?.length ? <Tag tone="ok">목표 · 방향 {m.meta.directions.length}건 고침</Tag> : null}
         {m.role === 'agent' && <span className="ml-auto"><CopyBtn text={m.body} /></span>}
         {m.role === 'auto' && m.meta?.site && (
           <Link href={`/projects/${encodeURIComponent(m.meta.site.id)}?tab=intake`} className={`ml-auto text-small font-bold ${LINK}`}>
@@ -437,9 +438,13 @@ const EVENT_LOOK: Record<AgentEvent['kind'], { label: string; tone: 'ok' | 'mute
   'duty-edited': { label: '업무 정의 고침', tone: 'mute' },
   'duty-deleted': { label: '업무 정의 지움', tone: 'mute' },
   'mail-sent': { label: '메일 보냄', tone: 'ok' },
+  // 팀 목표 · 방향 — 팀장(전략·기획)의 주간 기록에만 선다(migrations/0120)
+  'direction-added': { label: '목표 · 방향 추가', tone: 'mute' },
+  'direction-edited': { label: '목표 · 방향 고침', tone: 'mute' },
+  'direction-deleted': { label: '목표 · 방향 지움', tone: 'mute' },
 };
 
-/** 주간 기록에서 말 사이에 끼는 일 한 줄 — 업무 정의가 바뀌었으면 앞뒤를 펼쳐 본다 */
+/** 주간 기록에서 말 사이에 끼는 일 한 줄 — 업무 정의 · 목표 · 방향이 바뀌었으면 앞뒤를 펼쳐 본다 */
 function Happened({ event: e }: { event: AgentEvent }) {
   const look = EVENT_LOOK[e.kind];
   return (
@@ -452,7 +457,7 @@ function Happened({ event: e }: { event: AgentEvent }) {
           {e.byAgent && <Spark className="h-2.5 w-2.5 text-brand-500" />}{e.by}
         </span>
       </div>
-      {(e.before || e.after) && e.kind !== 'duty-added' && (
+      {(e.before || e.after) && e.kind !== 'duty-added' && e.kind !== 'direction-added' && (
         <details className="mt-1 pl-1">
           <summary className="inline-block cursor-pointer list-none rounded-ctl border border-slate-200 bg-white px-1.5 py-0.5 text-tiny font-bold text-slate-500 transition hover:border-brand-300 hover:text-brand-800 [&::-webkit-details-marker]:hidden">
             앞뒤 보기

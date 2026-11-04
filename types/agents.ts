@@ -12,7 +12,7 @@ import type { Biz } from '@/lib/biz';
 
 /**
  * 담당의 갈래 — 갈래마다 보는 자료와 손에 쥔 도구가 다르다(lib/agents/scope · lib/agents/brain).
- *   strategy    전략·기획 — 시장 정보(웹 검색)와 수주 흐름. 조직도의 맨 위(한백 바로 밑)다
+ *   strategy    전략·기획 — 시장 정보(웹 검색)와 수주 흐름. ★팀장이다★ — 실무자의 기록을 읽고 팀의 목표 · 방향을 세운다(isLead)
  *   operator    운영사 하나의 현장 — 칸 · 차례 · 정체 · 반려
  *   settlement  정산 — 기성관리(운영사에게서 수금) · 지급관리(협력사에게 영업비·시공비) · 열린구매(지급을 위한 아지트 지출
  *               글과 자료). 열린구매는 따로 있던 담당을 2026-11-02 여기 합쳤다(한백 「정산담당이 열린구매까지 같이하는거야」)
@@ -32,8 +32,16 @@ export const AGENT_KIND_LABEL: Record<AgentKind, string> = {
   settlement: '정산',
 };
 
-/** 상대 회사를 하나씩 맡는 갈래 — 조직도에서 한 줄로 매달리는 담당들(전기차 운영사 · 태양광 사업자) */
+/** 상대 회사를 하나씩 맡는 갈래 — 팀 화면에서 한 줄로 서는 실무자들(전기차 운영사 · 태양광 사업자) */
 export const isCounterpart = (kind: AgentKind): boolean => kind === 'operator' || kind === 'owner';
+
+/**
+ * ★AI에이전트는 팀이다★ (한백 2026-11-04 「결국엔 전략 및 기획담당이 팀장이고 그 운영사/사업자 담당자는 실무자들이야」).
+ * 팀장 = 전략·기획, 실무자 = 나머지(운영사 · 사업자 담당과 정산 — 팀장 밑의 모두). 사업마다 한 팀이다(전기차 · 태양광 둘 다 같다).
+ * 서로 채운다: 팀장은 실무자가 한백과 나눈 것을 읽고(store/agent-team agentTeamLog), 실무자는 팀장이 세운 목표 · 방향을 읽는다
+ * (agent_directions · lib/agents/team).
+ */
+export const isLead = (kind: AgentKind): boolean => kind === 'strategy';
 
 /**
  * 감사기록에서 담당을 가리키는 열쇠(audit_log.field) — 주간 기록이 이것으로 그 담당의 일(업무 정의 · 할 일 · 메일)을 찾는다.
@@ -60,6 +68,43 @@ export interface AgentDuty {
   body: string;
   /** 마지막으로 고친 때(YYYY-MM-DD HH:mm) — 처음 적은 그대로면 null */
   updatedAt: string | null;
+}
+
+/**
+ * 팀 목표 · 방향 한 줄 — 팀장(전략·기획 담당)이 세운 목표 · OKR · 방향 · 사업 구조(migrations/0120). 그 사업의 실무자 모두가
+ * 부를 때마다 읽는다. 한백이 화면에서 적거나 팀장이 대화 중에 올린다.
+ */
+export interface AgentDirection {
+  id: string;
+  title: string;
+  body: string;
+  /** 적은 쪽 — 사람 이름 또는 팀장의 이름 */
+  author: string;
+  byAgent: boolean;
+  /** 마지막으로 고친 때(YYYY-MM-DD HH:mm) — 처음 적은 그대로면 null */
+  updatedAt: string | null;
+  createdAt: string;
+}
+
+/** 사업 하나의 팀 — 팀장 · 실무자(조직 순서) · 팀장이 세운 목표 · 방향 */
+export interface AgentTeam {
+  lead: Agent | null;
+  members: Agent[];
+  directions: AgentDirection[];
+}
+
+/**
+ * 실무자 한 사람이 한백과 나눈 것 — 팀장이 읽는다(store/agent-team agentTeamLog · lib/agents/team). 날수 안의 것만이다.
+ */
+export interface TeamMemberLog {
+  agent: Agent;
+  duties: AgentDuty[];
+  /** 열린 것 전부와, 날수 안에 끝낸 것 */
+  tasks: AgentTask[];
+  /** 날수 안의 말 — 오래된 것이 앞, 최근 것부터 상한만큼 */
+  messages: AgentMessage[];
+  /** 날수 안의 말 전체 수(실린 것보다 많을 수 있다) */
+  total: number;
 }
 
 export interface AgentTask {
@@ -109,6 +154,8 @@ export interface AgentMessageMeta {
   done?: string[];
   /** 이 답에서 올린 메일 초안의 제목 */
   mails?: string[];
+  /** 이 답에서 팀장이 올리거나 고치거나 지운 목표 · 방향의 이름 */
+  directions?: string[];
   /**
    * 이 답에 든 토큰 — 도구를 쓰고 다시 부른 바퀴까지 합친 것(2026-11-03 부터 적는다 · 그 전 답에는 없다).
    * 캐시 읽기가 많을수록 싸다(입력 값의 5%) — 사용량 표가 그 몫을 보여 준다.
@@ -227,6 +274,8 @@ export interface AgentWeek {
   tasksDone: number;
   /** 업무 정의를 넣고 · 고치고 · 지운 수 */
   dutyChanges: number;
+  /** 팀 목표 · 방향을 넣고 · 고치고 · 지운 수 — 팀장(전략·기획)에게만 선다 */
+  directionChanges: number;
   files: number;
   /** 그 주에 나간 메일 */
   mails: number;
@@ -238,12 +287,14 @@ export interface AgentWeek {
 export interface AgentEvent {
   /** YYYY-MM-DD HH:mm (한국 시각) */
   at: string;
-  kind: 'task-added' | 'task-done' | 'duty-added' | 'duty-edited' | 'duty-deleted' | 'mail-sent';
+  kind:
+    | 'task-added' | 'task-done' | 'duty-added' | 'duty-edited' | 'duty-deleted' | 'mail-sent'
+    | 'direction-added' | 'direction-edited' | 'direction-deleted';
   title: string;
   /** 적은 쪽 — 사람 이름 또는 에이전트 이름 */
   by: string;
   byAgent: boolean;
-  /** 업무 정의가 바뀌었을 때 — 앞의 내용과 바뀐 내용(감사기록 그대로, 길면 잘려 있다) */
+  /** 업무 정의 · 목표 · 방향이 바뀌었을 때 — 앞의 내용과 바뀐 내용(감사기록 그대로, 길면 잘려 있다) */
   before?: string | null;
   after?: string | null;
 }

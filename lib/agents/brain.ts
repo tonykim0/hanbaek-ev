@@ -6,6 +6,10 @@
  * 사람이 콘솔에서 누른다 — 판독이 반려하지 않는 것과 같은 원칙). 전략·기획만 웹 검색을 더 쥔다. 운영사 담당은 그 운영사의
  * 단가표를 읽는 pricing_table 을 쥔다 — 읽기만이다(lib/agents/pricing-table · 한백 2026-11-04 「영업정책 업데이트 되면 키단가표 업데이트」).
  * 계약서가 접수되면 콘솔이 그 담당의 이름으로 할 일 · 양식 메일 초안을 저절로 남긴다(말의 종류 auto) — 대화에서는 「[자동 …]」으로 읽는다.
+ *
+ * ★담당들은 팀이다★ (한백 2026-11-04 「전략 및 기획담당이 팀장이고 그 운영사/사업자 담당자는 실무자들이야 … 상호보완구조」 —
+ * lib/agents/team). 모두가 시스템에서 팀의 목표 · 방향을 읽고, 팀장(전략·기획)은 마지막 지시 곁에 실무자들의 최근 기록([팀 소식])을
+ * 받으며 목표 · 방향을 올리는 save_direction · delete_direction 과 실무자 하나를 깊이 읽는 team_history 를 더 쥔다.
  * ★메일은 초안까지다★ — 나가는 것은 한백이 그 초안의 「승인하고 보내기」를 눌렀을 때뿐이다(한백 2026-11-03 「난 그거에 대해
  * 승인을 하고 너가 메일을 보내는건데」 · app/api/agents/[id]/mails/[mailId]/send).
  *
@@ -26,7 +30,11 @@ import { solarApiKey } from '@/lib/solar/api-key';
 import { agentFileRead } from './files';
 import { fileTextsOf } from './file-text';
 import { josa, siteMailOfCpo, type SiteMailSpec } from '@/lib/site-mail';
-import type { Agent, AgentDuty, AgentFile, AgentMessage, AgentMessageMeta, AgentSource, AgentTask } from '@/types/agents';
+import type {
+  Agent, AgentDuty, AgentFile, AgentMessage, AgentMessageMeta, AgentSource, AgentTask, AgentTeam,
+} from '@/types/agents';
+import { isLead } from '@/types/agents';
+import { directionsBlock, HISTORY_DAYS, teamLineOf } from './team';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 /*
@@ -233,6 +241,12 @@ export interface AgentHands {
   siteMail?(projectId: string): Promise<{ id: string; subject: string; plan: string; to: string[] }>;
   /** 그 운영사의 지금 단가표 글 — 운영사 담당만(lib/agents/pricing-table). 읽기만이다 */
   pricingTable?(): Promise<string>;
+  /** 팀장만 — 팀 목표 · 방향 올리기(id 없이) · 고치기(id). 저장소가 틀리면 사람 말로 던진다 */
+  saveDirection?(input: { id: string | null; title: string; body: string }): Promise<{ id: string; title: string }>;
+  /** 팀장만 — 팀 목표 · 방향 지우기. 지운 줄의 이름을 돌려준다 */
+  deleteDirection?(id: string): Promise<string>;
+  /** 팀장만 — 실무자 하나가 한백과 나눈 것(lib/agents/team teamHistoryOf). 모르는 실무자면 사람 말로 던진다 */
+  teamHistory?(member: string, days: number): Promise<string>;
 }
 
 /** 한 답에 올리는 메일 초안 상한 — 잘못 돈 답이 초안을 쏟아 내지 않게 */
@@ -315,14 +329,61 @@ const PRICING_TOOL = {
   input_schema: { type: 'object', properties: {} },
 };
 
-/** 이 담당이 쥐는 도구 — 할 일 · 메일은 모두, 양식 메일 · 단가표는 운영사 담당(라우트가 손을 이어 줄 때), 웹 검색은 전략·기획 */
-export function toolsOf(agent: Agent, hands: Pick<AgentHands, 'siteMail' | 'pricingTable'>): unknown[] {
+/**
+ * 팀장의 도구 — 팀 목표 · 방향을 올리고 고치고 지운다(실무자 모두가 읽는다), 실무자 하나의 기록을 깊이 읽는다.
+ * 올리는 것은 한백이 정하라고 했거나 합의한 것만 — 실무자 모두의 지시가 되는 글이라서다.
+ */
+const LEAD_TOOLS = [
+  {
+    name: 'save_direction',
+    description: '팀 목표 · 방향(목표 · OKR · 방향 · 사업 구조)에 한 줄을 올리거나(id 없이) 고친다(id). 그 사업의 실무자 모두가 '
+      + '부를 때마다 이것을 읽고 거기에 맞춰 일한다. 한백이 정하라고 했거나 한백과 합의한 것만 올린다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '고칠 줄의 id — [팀 목표 · 방향]의 id. 새로 올리면 비운다' },
+        title: { type: 'string', description: '한 줄 이름 (60자 이내) — 예: 4분기 목표 · 4분기 OKR · 사업 구조' },
+        body: { type: 'string', description: '내용 — 목표 · 핵심 결과 · 기한 · 잴 방법 등 (4000자 이내, 마크다운 없이)' },
+      },
+      required: ['title'],
+    },
+  },
+  {
+    name: 'delete_direction',
+    description: '팀 목표 · 방향에서 한 줄을 지운다. 한백이 지우라고 했거나 다른 줄로 대신한 것만 지운다.',
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: '[팀 목표 · 방향]의 id' } },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'team_history',
+    description: '실무자 한 사람이 한백과 나눈 것(지시 · 기록 · 답 · 자동의 말 전문, 열린 할 일 · 끝낸 할 일, 업무 정의 전문)을 깊이 '
+      + '읽는다. [팀 소식]의 몇 줄로 모자랄 때 쓴다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        member: { type: 'string', description: '실무자의 id — [팀 소식]의 「id=…」' },
+        days: { type: 'integer', description: `최근 며칠 (선택 — 기본 ${HISTORY_DAYS}, 최대 90)` },
+      },
+      required: ['member'],
+    },
+  },
+];
+
+/**
+ * 이 담당이 쥐는 도구 — 할 일 · 메일은 모두, 양식 메일 · 단가표는 운영사 담당(라우트가 손을 이어 줄 때), 팀장의 도구와 웹 검색은
+ * 전략·기획(팀장의 도구도 라우트가 손을 이어 줄 때)
+ */
+export function toolsOf(agent: Agent, hands: Pick<AgentHands, 'siteMail' | 'pricingTable' | 'saveDirection'>): unknown[] {
   const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
   return [
     addTaskTool(agent.biz === 'ev'),
     ...TASK_TOOLS,
     ...(siteSpec ? [siteMailTool(siteSpec)] : []),
     ...(agent.kind === 'operator' && hands.pricingTable ? [PRICING_TOOL] : []),
+    ...(isLead(agent.kind) && hands.saveDirection ? LEAD_TOOLS : []),
     ...(agent.kind === 'strategy' ? [WEB_SEARCH] : []),
   ];
 }
@@ -357,15 +418,20 @@ export async function agentReply(input: {
   history: AgentMessage[];
   brief: string;
   today: string;
+  /** 그 사업의 팀 — 팀장 · 실무자 · 팀 목표 · 방향(store/agent-team agentTeam) */
+  team: AgentTeam;
+  /** 팀장만 — 실무자들의 최근 기록(lib/agents/team teamDigestOf). 마지막 지시 곁에 붙는다 */
+  teamDigest?: string | null;
   hands: AgentHands;
 }): Promise<AgentTurn> {
   const { agent, hands } = input;
-  /* 바뀌지 않는 것만 — 역할 · 일하는 법 · 업무 정의(한백이 고칠 때만 바뀐다) */
+  /* 바뀌지 않는 것만 — 역할 · 팀 · 일하는 법 · 팀 목표 · 방향 · 업무 정의(한백 · 팀장이 고칠 때만 바뀐다) */
   const system = [
     {
       type: 'text' as const,
       text: `너는 한백의 「${agent.name}」이다. ${companyLineOf(agent)} 너는 이 대화창에서 한백 관리자와 일한다.\n\n`
-        + `${roleOf(agent)}\n\n${RULES}\n\n${dutiesBlock(input.duties)}`,
+        + `${roleOf(agent)}\n\n${teamLineOf(agent, input.team)}\n\n${RULES}\n\n`
+        + `${directionsBlock(input.team.directions, isLead(agent.kind))}\n\n${dutiesBlock(input.duties)}`,
     },
   ];
   const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
@@ -376,7 +442,8 @@ export async function agentReply(input: {
   }
   const messages = withContext(
     said,
-    `[지금 — 이 지시를 받은 때의 콘솔 자료]\n오늘: ${input.today} (한국)\n\n${tasksBlock(input.tasks)}\n\n${input.brief}`,
+    `[지금 — 이 지시를 받은 때의 콘솔 자료]\n오늘: ${input.today} (한국)\n\n${tasksBlock(input.tasks)}\n\n${input.brief}`
+      + (input.teamDigest ? `\n\n${input.teamDigest}` : ''),
   );
 
   const started = Date.now();
@@ -385,6 +452,7 @@ export async function agentReply(input: {
   const added: string[] = [];
   const done: string[] = [];
   const mails: string[] = [];
+  const directions: string[] = [];
   let usd = 0;
   /* 바퀴마다의 토큰을 모은다 — 사용량 표가 캐시가 얼마나 먹었는지 보여 준다(store/agents agentUsage) */
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -442,6 +510,29 @@ export async function agentReply(input: {
       }
       if (block.name === 'pricing_table' && agent.kind === 'operator' && hands.pricingTable) {
         return { type: 'tool_result', tool_use_id: block.id, content: await hands.pricingTable() };
+      }
+      if (block.name === 'save_direction' && isLead(agent.kind) && hands.saveDirection) {
+        const title = str(args.title);
+        if (!title) return fail('title 이 비었다.');
+        const id = str(args.id) || null;
+        const saved = await hands.saveDirection({ id, title, body: str(args.body) });
+        directions.push(saved.title);
+        return {
+          type: 'tool_result', tool_use_id: block.id,
+          content: `${id ? '고쳤다' : '올렸다'} (id=${saved.id}) — 실무자 모두가 다음에 부를 때부터 읽는다.`,
+        };
+      }
+      if (block.name === 'delete_direction' && isLead(agent.kind) && hands.deleteDirection) {
+        const id = str(args.id);
+        if (!id) return fail('id 가 비었다.');
+        directions.push(await hands.deleteDirection(id));
+        return { type: 'tool_result', tool_use_id: block.id, content: '지웠다 — 실무자들은 다음에 부를 때부터 읽지 않는다.' };
+      }
+      if (block.name === 'team_history' && isLead(agent.kind) && hands.teamHistory) {
+        const member = str(args.member);
+        if (!member) return fail('member 가 비었다.');
+        const days = typeof args.days === 'number' && Number.isFinite(args.days) ? args.days : HISTORY_DAYS;
+        return { type: 'tool_result', tool_use_id: block.id, content: await hands.teamHistory(member, days) };
       }
       return fail(`모르는 도구: ${block.name}`);
     } catch (err) {
@@ -525,17 +616,19 @@ export async function agentReply(input: {
     ...(added.length ? { added } : {}),
     ...(done.length ? { done } : {}),
     ...(mails.length ? { mails } : {}),
+    ...(directions.length ? { directions } : {}),
     tokens,
     ...(searchCount ? { searches: searchCount } : {}),
   };
   if (!text) {
     // 할 일 · 메일 초안은 이미 남았을 수 있다 — 그 사실은 남긴다
-    if (added.length || done.length || mails.length) {
+    if (added.length || done.length || mails.length || directions.length) {
       return {
         text: [
           added.length ? `할 일을 적었습니다: ${added.join(' · ')}` : '',
           done.length ? `끝냈습니다: ${done.join(' · ')}` : '',
           mails.length ? `메일 초안을 올렸습니다: ${mails.join(' · ')}` : '',
+          directions.length ? `목표 · 방향을 고쳤습니다: ${directions.join(' · ')}` : '',
         ].filter(Boolean).join('\n'),
         meta: { model: MODEL, ms: Date.now() - started, usd, ...acted },
       };

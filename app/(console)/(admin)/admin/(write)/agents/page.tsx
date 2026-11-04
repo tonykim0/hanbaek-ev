@@ -1,12 +1,12 @@
-import { AgentsOrg } from '@/components/agents/AgentsOrg';
+import { AgentsTeam } from '@/components/agents/AgentsTeam';
 
 export const metadata = { title: 'AI에이전트' };
 export const dynamic = 'force-dynamic';
 
 /**
- * AI에이전트 조직도 — 전기차 [한백 관리자]. 한백 → 전략·기획 → 운영사 담당 다섯 · 정산. 태양광은 /solar/agents 로 따로 선다
- * (2026-11-04 — 모양은 같아 한 부품이다, components/agents/AgentsOrg).
+ * AI에이전트 — 전기차 [한백 관리자]. 팀이다(위에서 아래로): 팀장 전략·기획 → 실무자 운영사 담당 다섯 · 정산. 태양광은
+ * /solar/agents 로 따로 선다(2026-11-04 — 모양은 같아 한 부품이다, components/agents/AgentsTeam).
  */
 export default function AgentsPage() {
-  return <AgentsOrg biz="ev" />;
+  return <AgentsTeam biz="ev" />;
 }

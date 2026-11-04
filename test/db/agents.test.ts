@@ -14,9 +14,11 @@ import { DELETE as deleteTask, PATCH as patchTask } from '@/app/api/agents/[id]/
 import { POST as postMessage } from '@/app/api/agents/[id]/messages/route';
 import { POST as postReply } from '@/app/api/agents/[id]/reply/route';
 import { POST as postFileToken } from '@/app/api/agents/[id]/files/route';
+import { POST as postDirection } from '@/app/api/agents/[id]/directions/route';
+import { DELETE as deleteDirection } from '@/app/api/agents/[id]/directions/[directionId]/route';
 import { getRepository } from '@/lib/data';
 import { getDb } from '@/lib/db/client';
-import { agentDuties, agentMessages, agentTasks, auditLog } from '@/lib/db/schema';
+import { agentDirections, agentDuties, agentMessages, agentTasks, auditLog } from '@/lib/db/schema';
 import { mondayOf } from '@/lib/agents/weeks';
 import { agentAuditKey } from '@/types/agents';
 import { today } from '@/lib/date';
@@ -33,6 +35,7 @@ afterAll(async () => {
   await db.delete(agentMessages).where(like(agentMessages.body, `%${RUN}%`)); // 붙은 파일 줄도 같이 지워진다(cascade)
   await db.delete(agentTasks).where(like(agentTasks.title, `%${RUN}%`));
   await db.delete(agentDuties).where(like(agentDuties.title, `%${RUN}%`));
+  await db.delete(agentDirections).where(like(agentDirections.title, `%${RUN}%`));
   /* 주간 기록이 감사기록을 읽는다 — 시험이 남긴 줄이 개발 DB 의 주간 기록에 섞이지 않게 걷는다 */
   await db.delete(auditLog).where(and(
     like(auditLog.action, '에이전트%'),
@@ -308,5 +311,93 @@ describe('사업마다의 조직도 (migrations/0118)', () => {
     expect(detail.tasks.some((t) => t.title === `${mark} 루모라 회신 확인`)).toBe(true);
     const r = await call(postReply, { body: undefined, params: p });
     expect(r.status).toBe(422);
+  });
+});
+
+describe('팀 — 팀장 · 실무자 (migrations/0120)', () => {
+  it('사업마다 한 팀이다 — 팀장은 전략·기획, 실무자는 나머지(조직 순서). 전기차 · 태양광 둘 다', async () => {
+    const ev = await repo.agentTeam(admin, 'ev');
+    const solar = await repo.agentTeam(admin, 'solar');
+    expect(ev.lead?.id).toBe('strategy');
+    expect(ev.members.map((a) => a.id)).toEqual(['op-hec', 'op-nice', 'op-sk', 'op-pluglink', 'op-everon', 'settlement']);
+    expect(solar.lead?.id).toBe('solar-strategy');
+    expect(solar.members.map((a) => a.id)).toEqual(['solar-tyranteye', 'solar-henergy', 'solar-lumora', 'solar-settlement']);
+  });
+
+  it('팀장의 일이 업무 정의에 한 줄씩 선다 — 두 전략·기획 담당 모두(0120)', async () => {
+    for (const id of ['strategy', 'solar-strategy']) {
+      const { duties } = await repo.getAgent(id, admin);
+      expect(duties.map((d) => d.title), id).toContain('팀장 — 실무자 기록 읽고 목표 · 방향 세우기');
+    }
+  });
+
+  it('목표 · 방향은 관리자만 · 팀장의 것만 — 실무자에게 적으면 422, 협력사 · 열람 전용은 403', async () => {
+    for (const u of [USERS.ecoelec, USERS.viewer]) {
+      await signIn(u);
+      expect((await call(postDirection, { body: { title: `${mark} 목표` }, params: { id: 'strategy' } })).status, u.id).toBe(403);
+    }
+    await signIn(USERS.admin);
+    const r = await call(postDirection, { body: { title: `${mark} 목표` }, params: { id: 'op-nice' } });
+    expect(r.status).toBe(422);
+    expect(String(r.json?.error)).toContain('팀장');
+    expect((await call(postDirection, { body: { body: 'x' }, params: { id: 'strategy' } })).status).toBe(400);
+  });
+
+  it('팀장이 세운 것은 그 사업의 팀만 읽는다 — 고치고 지운 일은 팀장의 주간 기록에 앞뒤와 함께 선다', async () => {
+    await signIn(USERS.admin);
+    const week = mondayOf(today());
+    const eventsOf = async () => (await repo.getAgent('strategy', admin, { week })).week?.events ?? [];
+    const before = (await eventsOf()).length;
+
+    const made = await call(postDirection, { body: { title: `${mark} 4분기 목표`, body: '계약 300기' }, params: { id: 'strategy' } });
+    expect(made.status).toBe(200);
+    const id = made.json?.id as string;
+    expect((await repo.agentTeam(admin, 'ev')).directions.find((d) => d.id === id)).toMatchObject({
+      title: `${mark} 4분기 목표`, body: '계약 300기', author: USERS.admin.name, byAgent: false, updatedAt: null,
+    });
+    expect((await repo.agentTeam(admin, 'solar')).directions.some((d) => d.id === id)).toBe(false);
+
+    /* 팀장이 대화 중에 고치면 적은 쪽이 팀장이다 — 같은 글을 또 올리면 아무것도 안 남는다 */
+    await repo.saveAgentDirection({ leadId: 'strategy', id, title: `${mark} 4분기 목표`, body: '계약 320기', byAgent: true }, admin);
+    await repo.saveAgentDirection({ leadId: 'strategy', id, title: `${mark} 4분기 목표`, body: '계약 320기', byAgent: true }, admin);
+    const edited = (await repo.agentTeam(admin, 'ev')).directions.find((d) => d.id === id)!;
+    expect(edited).toMatchObject({ body: '계약 320기', author: '전략·기획 담당', byAgent: true });
+    expect(edited.updatedAt).not.toBeNull();
+
+    const gone = await call(deleteDirection, { method: 'DELETE', params: { id: 'strategy', directionId: id } });
+    expect(gone.status).toBe(200);
+    expect((await repo.agentTeam(admin, 'ev')).directions.some((d) => d.id === id)).toBe(false);
+
+    const events = (await eventsOf()).filter((e) => e.title === `${mark} 4분기 목표`);
+    expect(events.map((e) => [e.kind, e.byAgent])).toEqual([
+      ['direction-added', false], ['direction-edited', true], ['direction-deleted', false],
+    ]);
+    expect(events[1]).toMatchObject({ by: '전략·기획 담당', before: `${mark} 4분기 목표 — 계약 300기`, after: `${mark} 4분기 목표 — 계약 320기` });
+    expect((await eventsOf()).length).toBe(before + 3);
+    const weekRow = (await repo.getAgent('strategy', admin)).weeks.find((w) => w.start === week);
+    expect(weekRow?.directionChanges).toBeGreaterThanOrEqual(3);
+  });
+
+  it('팀장은 실무자의 기록을 읽는다 — 팀장 자신과 다른 사업은 빠지고, 한 사람만 깊이도 읽는다', async () => {
+    await repo.addAgentMessage({ agentId: 'op-nice', role: 'note', body: `${mark} 나이스 김대리 통화 — 단가 인하 예고` }, admin);
+    await repo.addAgentMessage({ agentId: 'strategy', role: 'note', body: `${mark} 팀장에게 남긴 기록` }, admin);
+    await repo.addAgentMessage({ agentId: 'solar-lumora', role: 'note', body: `${mark} 루모라 미팅` }, admin);
+    await repo.addAgentTask({ agentId: 'op-nice', title: `${mark} 단가 회신 받기` }, admin);
+
+    const logs = await repo.agentTeamLog(admin, 'ev', { days: 14, perMember: 6 });
+    expect(logs.map((l) => l.agent.id)).toEqual(['op-hec', 'op-nice', 'op-sk', 'op-pluglink', 'op-everon', 'settlement']);
+    const nice = logs.find((l) => l.agent.id === 'op-nice')!;
+    expect(nice.messages.at(-1)?.body).toBe(`${mark} 나이스 김대리 통화 — 단가 인하 예고`);
+    expect(nice.tasks.some((t) => t.title === `${mark} 단가 회신 받기` && !t.doneAt)).toBe(true);
+    expect(nice.total).toBeGreaterThanOrEqual(nice.messages.length);
+    const all = logs.flatMap((l) => l.messages.map((m) => m.body));
+    expect(all).not.toContain(`${mark} 팀장에게 남긴 기록`);
+    expect(all).not.toContain(`${mark} 루모라 미팅`);
+
+    const [one] = await repo.agentTeamLog(admin, 'solar', { days: 30, perMember: 1, memberId: 'solar-lumora' });
+    expect(one.agent.id).toBe('solar-lumora');
+    expect(one.messages.map((m) => m.body)).toEqual([`${mark} 루모라 미팅`]);
+    expect(await repo.agentTeamLog(admin, 'ev', { days: 30, perMember: 5, memberId: 'solar-lumora' })).toEqual([]);
+    await expect(repo.agentTeamLog(actorOf(USERS.viewer), 'ev', { days: 14, perMember: 6 })).rejects.toThrow('한백 관리자만');
   });
 });

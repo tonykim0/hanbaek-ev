@@ -698,6 +698,24 @@ export const agentDuties = pgTable('agent_duties', {
   byAgent: index('agent_duties_agent_idx').on(t.agentId, t.sort),
 }));
 
+/**
+ * 팀 목표 · 방향 — 팀장(전략·기획 담당)이 세우고 그 사업의 실무자 모두가 부를 때마다 읽는다(migrations/0120, 한백 2026-11-04
+ * 「전략및기획에서 세우는 목표나 OKR 방향성 또는 다른 사업구조에 대해서도 밑에 실무자들이 알아야하는」). agent_id 는 팀장이다.
+ * 한백이 화면에서 적거나 팀장이 대화 중에 올린다 — author 는 사람 이름 또는 담당 이름(store/agent-team)
+ */
+export const agentDirections = pgTable('agent_directions', {
+  id: text('id').primaryKey(),
+  agentId: text('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  body: text('body').notNull().default(''),
+  sort: integer('sort').notNull().default(0),
+  author: text('author').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }),
+}, (t) => ({
+  byAgent: index('agent_directions_agent_idx').on(t.agentId, t.sort),
+}));
+
 /** 할 일 — 한백이 적거나 대화 중에 에이전트가 적는다(author). 기한은 'YYYY-MM-DD' 글자 */
 export const agentTasks = pgTable('agent_tasks', {
   id: text('id').primaryKey(),

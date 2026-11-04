@@ -50,12 +50,19 @@ const TASK_ADDED = ['에이전트 할 일', '에이전트 할 일 (에이전트�
 const TASK_DONE = ['에이전트 할 일 끝냄', '에이전트 할 일 끝냄 (에이전트가 적음)'];
 /** 메일이 나간 때 — store/agent-mail finishAgentMail 이 남긴다 */
 const MAIL_SENT = '에이전트 메일 보냄';
-const EVENT_ACTIONS = [...DUTY_ACTIONS, ...TASK_ADDED, ...TASK_DONE, MAIL_SENT];
+/** 에이전트가 한 쓰기의 감사기록 꼬리 — 사람이 한 것과 가른다 */
+export const BY_AGENT = ' (에이전트가 적음)';
+/**
+ * 팀 목표 · 방향이 바뀐 때 — store/agent-team 이 팀장의 열쇠로 남긴다(migrations/0120). 팀장이 대화 중에 했으면 꼬리가 붙는다
+ */
+export const DIRECTION_ACTION = { add: '에이전트 목표 · 방향', edit: '에이전트 목표 · 방향 수정', del: '에이전트 목표 · 방향 삭제' } as const;
+const DIRECTION_ACTIONS = Object.values(DIRECTION_ACTION).flatMap((a) => [a, `${a}${BY_AGENT}`]);
+const EVENT_ACTIONS = [...DUTY_ACTIONS, ...TASK_ADDED, ...TASK_DONE, MAIL_SENT, ...DIRECTION_ACTIONS];
 /** 승인을 기다리는 메일 */
 const PENDING_MAIL = ['draft', 'failed'];
 
 /** 한국 시각으로 그 날 0시 */
-const kstStart = (day: string) => new Date(`${day}T00:00:00+09:00`);
+export const kstStart = (day: string) => new Date(`${day}T00:00:00+09:00`);
 
 /** 시각 열 → 그 시각이 든 주의 월요일(한국 달력) 글자. 고른 칸과 묶는 칸에 같은 것을 쓴다 */
 const weekOf = (col: PgColumn): SQL<string> =>
@@ -69,6 +76,18 @@ const dutyTitleOf = (v: string | null) => (v ?? '').split(' — ')[0];
 function eventOf(row: typeof auditLog.$inferSelect, agentName: string): AgentEvent | null {
   const at = stampOf(row.at);
   const by = actorName(row.actor);
+  /* 목표 · 방향 — 팀장이 대화 중에 했으면 적은 쪽이 팀장이다 */
+  const byAgent = row.action.endsWith(BY_AGENT);
+  const direction = byAgent ? row.action.slice(0, -BY_AGENT.length) : row.action;
+  const who = byAgent ? { by: agentName, byAgent: true } : { by, byAgent: false };
+  switch (direction) {
+    case DIRECTION_ACTION.add:
+      return { at, kind: 'direction-added', title: dutyTitleOf(row.newValue), ...who, after: row.newValue };
+    case DIRECTION_ACTION.edit:
+      return { at, kind: 'direction-edited', title: dutyTitleOf(row.newValue), ...who, before: row.oldValue, after: row.newValue };
+    case DIRECTION_ACTION.del:
+      return { at, kind: 'direction-deleted', title: dutyTitleOf(row.oldValue), ...who, before: row.oldValue };
+  }
   switch (row.action) {
     case '에이전트 업무 정의':
       return { at, kind: 'duty-added', title: dutyTitleOf(row.newValue), by, byAgent: false, after: row.newValue };
@@ -91,27 +110,27 @@ function eventOf(row: typeof auditLog.$inferSelect, agentName: string): AgentEve
   }
 }
 
-function fileOf(r: typeof agentFiles.$inferSelect): AgentFile {
+export function fileOf(r: typeof agentFiles.$inferSelect): AgentFile {
   return { id: r.id, name: r.name, url: r.url, size: r.size, contentType: r.contentType };
 }
 
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
-function clip(v: string | null | undefined, max: number, what: string): string {
+export function clip(v: string | null | undefined, max: number, what: string): string {
   const s = (v ?? '').trim();
   if (s.length > max) throw new Error(`${what}은(는) ${max}자까지입니다.`);
   return s;
 }
 
-function agentOf(r: typeof agents.$inferSelect): Agent {
+export function agentOf(r: typeof agents.$inferSelect): Agent {
   const kind = (AGENT_KINDS as readonly string[]).includes(r.kind) ? (r.kind as AgentKind) : 'operator';
   return {
     id: r.id, kind, biz: asBiz(r.biz), cpo: (r.cpo as CpoName | null) ?? null, company: r.company ?? null, name: r.name,
   };
 }
 
-async function agentRow(id: string): Promise<Agent> {
+export async function agentRow(id: string): Promise<Agent> {
   const [row] = await getDb().select().from(agents).where(eq(agents.id, id)).limit(1);
   if (!row) throw new Error('담당을 찾을 수 없습니다.');
   return agentOf(row);
@@ -121,7 +140,7 @@ async function agentRow(id: string): Promise<Agent> {
 const roleOf = (v: string): AgentMessageRole =>
   ((AGENT_MESSAGE_ROLES as readonly string[]).includes(v) ? v : 'note') as AgentMessageRole;
 
-function messageOf(r: typeof agentMessages.$inferSelect, files: AgentFile[] = []): AgentMessage {
+export function messageOf(r: typeof agentMessages.$inferSelect, files: AgentFile[] = []): AgentMessage {
   return {
     id: r.id,
     role: roleOf(r.role),
@@ -133,8 +152,24 @@ function messageOf(r: typeof agentMessages.$inferSelect, files: AgentFile[] = []
   };
 }
 
+/** 할 일 한 줄 — 적은 쪽이 그 담당의 이름이면 에이전트가 적은 것이다 */
+export function taskOf(t: typeof agentTasks.$inferSelect, projectName: string | null, agentName: string): AgentTask {
+  return {
+    id: t.id,
+    title: t.title,
+    note: t.note,
+    projectId: t.projectId,
+    projectName,
+    due: t.due,
+    doneAt: t.doneAt ? stampOf(t.doneAt) : null,
+    author: t.author,
+    byAgent: t.author === agentName,
+    createdAt: stampOf(t.createdAt),
+  };
+}
+
 /** 열린 것이 위 — 기한 이른 순(기한 없는 것은 그 뒤), 끝낸 것은 아래 — 최근 끝낸 순 */
-function taskOrder(a: AgentTask, b: AgentTask): number {
+export function taskOrder(a: AgentTask, b: AgentTask): number {
   if (!a.doneAt !== !b.doneAt) return a.doneAt ? 1 : -1;
   if (a.doneAt && b.doneAt) return b.doneAt.localeCompare(a.doneAt);
   if (a.due !== b.due) return (a.due ?? '9999').localeCompare(b.due ?? '9999');
@@ -324,7 +359,8 @@ export const agentStore: Pick<
       let x = weeks.get(w);
       if (!x) {
         x = {
-          start: w, end: shiftDay(w, 6), user: 0, note: 0, agent: 0, auto: 0, tasksAdded: 0, tasksDone: 0, dutyChanges: 0, files: 0, mails: 0, usd: 0,
+          start: w, end: shiftDay(w, 6), user: 0, note: 0, agent: 0, auto: 0, tasksAdded: 0, tasksDone: 0, dutyChanges: 0,
+          directionChanges: 0, files: 0, mails: 0, usd: 0,
         };
         weeks.set(w, x);
       }
@@ -341,6 +377,7 @@ export const agentStore: Pick<
     for (const r of logWeeks) {
       const x = weekRow(r.week);
       if (DUTY_ACTIONS.includes(r.action)) x.dutyChanges += r.n;
+      else if (DIRECTION_ACTIONS.includes(r.action)) x.directionChanges += r.n;
       else if (TASK_ADDED.includes(r.action)) x.tasksAdded += r.n;
       else if (TASK_DONE.includes(r.action)) x.tasksDone += r.n;
       else if (r.action === MAIL_SENT) x.mails += r.n;
@@ -352,18 +389,7 @@ export const agentStore: Pick<
       duties: duties.map((d): AgentDuty => ({
         id: d.id, title: d.title, body: d.body, updatedAt: d.updatedAt ? stampOf(d.updatedAt) : null,
       })),
-      tasks: tasks.map(({ t, projectName }): AgentTask => ({
-        id: t.id,
-        title: t.title,
-        note: t.note,
-        projectId: t.projectId,
-        projectName: projectName ?? null,
-        due: t.due,
-        doneAt: t.doneAt ? stampOf(t.doneAt) : null,
-        author: t.author,
-        byAgent: t.author === agent.name,
-        createdAt: stampOf(t.createdAt),
-      })).sort(taskOrder),
+      tasks: tasks.map(({ t, projectName }) => taskOf(t, projectName ?? null, agent.name)).sort(taskOrder),
       messages: rows.map((m) => messageOf(m, filesOf.get(m.id) ?? [])),
       mails,
       pendingMails: pending[0]?.n ?? 0,

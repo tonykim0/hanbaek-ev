@@ -8,9 +8,9 @@
  *   Spark      반짝이 하나 — 대화의 에이전트 줄 · 에이전트가 적은 할 일의 꼬리표
  *   AgentHead  구역 머리 — 구역 제목(TEXT.section) 앞에 「//」
  *   Activity   최근 이레의 활동 칸
- *   ORG_LINE · OrgNode · Twig · DotGrid  조직도의 선 · 마디 · 매달린 칸 · 점 격자 바탕
+ *   TEAM_LINE · DotGrid  팀 화면의 줄기 선 · 점 격자 바탕
  *   FileChip   넘긴 파일 한 장 — 누르면 연다
- * 에이전트 화면(조직도 · 담당 — 전기차 /admin/agents · 태양광 /solar/agents) 밖으로 가져가지 않는다 — 시공 줄의 자리 정본(construction/shell.tsx)과
+ * 에이전트 화면(팀 · 담당 — 전기차 /admin/agents · 태양광 /solar/agents) 밖으로 가져가지 않는다 — 시공 줄의 자리 정본(construction/shell.tsx)과
  * 같은 자리다. ★콘솔 화면을 어둡게 만들지 않는다★.
  *
  * ★글꼴은 콘솔 것 하나다★(한백 2026-11-02 「폰트는 기존 디자인 시스템 폰트 맞춰줘」) — 고정폭 글꼴로 시각 · 숫자를 그리던
@@ -127,33 +127,14 @@ export function Activity({ cells }: { cells: Array<{ day: string; n: number }> }
   );
 }
 
-/** 조직도의 선 색 — 가로선 · 세로선이 같은 것을 쓴다 */
-export const ORG_LINE = 'bg-brand-300';
-
-/** 조직도의 마디 — 선이 칸에 닿는 자리 */
-export function OrgNode({ className = '' }: { className?: string }) {
-  return <span aria-hidden className={`block h-2.5 w-2.5 rounded-full border-2 border-brand-400 bg-white ${className}`} />;
-}
-
 /*
- * ── 매달린 칸 ── 좁은 화면에서 조직을 세로로 펼칠 때 — 세로선(레일)에서 칸마다 가로선이 뻗고 마디에 점이 선다.
- * 마지막 칸(last)에서 레일이 끝난다. 마디의 높이(31px)는 담당 칸 첫 줄의 가운데다 — 칸 위 여백 12px + 첫 줄 38px 의 반.
+ * 팀 화면의 줄기 선 색 — 층(팀장 → 실무자)을 위에서 아래로 잇는다(components/agents/AgentsTeam). 2026-11-04 까지의 조직도
+ * (가로 갈래 · 매달린 칸)는 「조직도말고 … 위에서 아래로」로 걷었다.
  */
-export function Twig({ last, children, node }: { last: boolean; children: ReactNode; node?: ReactNode }) {
-  return (
-    <li className="relative pl-9">
-      <span aria-hidden className={`absolute left-[11.5px] top-0 w-px ${ORG_LINE} ${last ? 'h-[31px]' : 'h-full'}`} />
-      <span aria-hidden className={`absolute left-[12px] top-[31px] h-px w-[22px] ${ORG_LINE}`} />
-      <span className="absolute left-[12px] top-[31px] flex -translate-x-1/2 -translate-y-1/2 items-center justify-center">
-        {node ?? <OrgNode />}
-      </span>
-      {children}
-    </li>
-  );
-}
+export const TEAM_LINE = 'bg-brand-300';
 
 /*
- * ── 점 격자 ── 조직도가 서는 바탕. 테두리 없이 가장자리로 갈수록 옅어진다 — 테두리를 두르면 그 안의 칸과 상자가 두 겹이
+ * ── 점 격자 ── 팀 화면이 서는 바탕. 테두리 없이 가장자리로 갈수록 옅어진다 — 테두리를 두르면 그 안의 칸과 상자가 두 겹이
  * 된다(화면 규칙 1). 바탕만 흐리게 하려고 격자를 따로 깐다(mask 는 안의 칸까지 흐린다).
  */
 const GRID: CSSProperties = {

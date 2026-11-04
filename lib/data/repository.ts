@@ -16,7 +16,8 @@ import type { DraftPlan } from '@/lib/site-mail';
 import type { RetouchLog } from '@/lib/retouch/types';
 import type { ConsultDup } from '@/lib/consult-dup';
 import type {
-  AgentDetail, AgentMail, AgentMessage, AgentMessageMeta, AgentMessageRole, AgentSummary, AgentUsage, MailAccountInfo,
+  AgentDetail, AgentMail, AgentMessage, AgentMessageMeta, AgentMessageRole, AgentSummary, AgentTeam, AgentUsage, MailAccountInfo,
+  TeamMemberLog,
 } from '@/types/agents';
 import type {
   NoteScope,
@@ -519,6 +520,20 @@ export interface ProjectRepository {
   /** 업무 정의 넣기 · 고치기(id 가 있으면) — id 를 돌려준다 */
   saveAgentDuty(input: { agentId: string; id?: string; title: string; body: string }, actor: Actor): Promise<string>;
   deleteAgentDuty(input: { agentId: string; id: string }, actor: Actor): Promise<void>;
+  /*
+   * 팀 (store/agent-team · migrations/0120) — 팀장(전략·기획)이 세운 목표 · 방향을 실무자 모두가 읽고, 팀장은 실무자가 한백과
+   * 나눈 것을 읽는다(한백 2026-11-04 「상호보완구조」).
+   */
+  /** 사업 하나의 팀 — 팀장 · 실무자 · 목표 · 방향 */
+  agentTeam(actor: Actor, biz: Biz): Promise<AgentTeam>;
+  /** 목표 · 방향 넣기 · 고치기(id 가 있으면) — 팀장의 것만. byAgent 면 적은 쪽에 팀장 이름(대화 중 팀장의 도구) */
+  saveAgentDirection(
+    input: { leadId: string; id?: string | null; title: string; body: string; byAgent?: boolean },
+    actor: Actor
+  ): Promise<{ id: string; title: string }>;
+  deleteAgentDirection(input: { leadId: string; id: string; byAgent?: boolean }, actor: Actor): Promise<{ title: string }>;
+  /** 실무자가 한백과 나눈 것 — 최근 days 일, 실무자마다 말 perMember 개까지. memberId 면 그 실무자 하나만 */
+  agentTeamLog(actor: Actor, biz: Biz, opts: { days: number; perMember: number; memberId?: string }): Promise<TeamMemberLog[]>;
   /** 할 일 적기 — byAgent 면 적은 쪽에 에이전트 이름이 남는다(대화 중 에이전트의 도구) */
   addAgentTask(
     input: { agentId: string; title: string; note?: string | null; due?: string | null; projectId?: string | null; byAgent?: boolean },
