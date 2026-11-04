@@ -17,3 +17,7 @@ export const THUMBNAIL = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
 
 export const isImageFile = (file: { name?: string | null; url?: string | null }): boolean => THUMBNAIL.includes(extOf(file));
 export const canPreviewFile = (file: { name?: string | null; url?: string | null }): boolean => PREVIEWABLE.includes(extOf(file));
+
+/** 크기 — 1MB 부터 소수 한 자리 MB, 그 밑은 KB(0 이어도 1KB) */
+export const sizeLabel = (bytes: number): string =>
+  bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(bytes / 1024))}KB`;

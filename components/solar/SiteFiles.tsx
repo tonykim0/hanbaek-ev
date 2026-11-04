@@ -1,14 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
-import { Btn, BtnLink, Confirm, Err, GroupHead, Note, TEXT } from '@/components/ui';
+import { useRef, useState } from 'react';
+import FileViewer, { downloadHref } from '@/components/FileViewer';
+import { Btn, Confirm, Err, GroupHead, Note, TEXT } from '@/components/ui';
 import { dayOf } from '@/lib/date';
-import { canPreviewFile, extOf, isImageFile } from '@/lib/file-kind';
+import { canPreviewFile, extOf, isImageFile, sizeLabel } from '@/lib/file-kind';
 import { uploadSiteFile } from '@/lib/solar/site-upload';
 import type { SiteFile } from '@/lib/solar/sites';
-
-const sizeOf = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 
 /**
  * 현장의 첨부파일 (한백 지시 2026-11-03 「파일 > 첨부파일 · 파일 미리보기 가능하게」).
@@ -123,12 +122,12 @@ export default function SiteFiles({ siteId, files, canEdit, unsent = 0 }: { site
                   </button>
                 ) : (
                   // 그릴 수 없는 형식 — 이름이 곧 받기다
-                  <a href={f.url} download={f.name} className="min-w-0 truncate text-base font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900">
+                  <a href={downloadHref(f)} download={f.name} className="min-w-0 truncate text-base font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900">
                     {f.name}
                   </a>
                 )}
                 <span className={`shrink-0 tabular-nums ${TEXT.meta}`}>
-                  {sizeOf(f.size)} · {dayOf(new Date(f.at))}
+                  {sizeLabel(f.size)} · {dayOf(new Date(f.at))}
                 </span>
                 {canEdit && (
                   <span className="ml-auto shrink-0">
@@ -162,44 +161,3 @@ export default function SiteFiles({ siteId, files, canEdit, unsent = 0 }: { site
   );
 }
 
-/**
- * 미리보기 창 — 이 화면 위에 뜬다(새 탭으로 나가지 않고 보고 닫는다). 사진은 창에 맞춰, PDF · txt 는 브라우저가 그린다.
- * Esc · 바깥 누르기 · 「닫기」로 닫는다. 창은 상자 한 겹이다(화면 규칙 1).
- */
-function FileViewer({ file, onClose }: { file: SiteFile; onClose: () => void }) {
-  useEffect(() => {
-    const key = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', key);
-    return () => window.removeEventListener('keydown', key);
-  }, [onClose]);
-
-  return (
-    <div role="dialog" aria-modal="true" aria-label={`${file.name} 미리보기`} className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4" onClick={onClose}>
-      <div className="flex h-[85vh] w-full max-w-5xl flex-col overflow-hidden rounded-panel border border-slate-200 bg-white" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2 border-b border-slate-100 px-4 py-2.5">
-          <p className="min-w-0 truncate text-lead font-black text-slate-900">{file.name}</p>
-          <span className={`shrink-0 tabular-nums ${TEXT.meta}`}>{sizeOf(file.size)}</span>
-          <span className="ml-auto flex shrink-0 items-center gap-1.5">
-            <BtnLink kind="quiet" href={file.url} target="_blank" rel="noopener noreferrer">
-              새 탭
-            </BtnLink>
-            <BtnLink kind="quiet" href={file.url} download={file.name}>
-              받기
-            </BtnLink>
-            <Btn kind="quiet" size="sm" onClick={onClose}>
-              닫기
-            </Btn>
-          </span>
-        </div>
-        <div className="min-h-0 flex-1 bg-slate-100">
-          {isImageFile(file) ? (
-            /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={file.url} alt={file.name} className="h-full w-full object-contain" />
-          ) : (
-            <iframe src={extOf(file) === 'pdf' ? `${file.url}#view=FitH` : file.url} title={file.name} className="h-full w-full border-0 bg-white" />
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
