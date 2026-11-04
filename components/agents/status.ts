@@ -10,11 +10,12 @@ import { stampOf } from '@/lib/date';
 import type { Agent, AgentHeadline } from '@/types/agents';
 import type { LedTone } from './kit';
 
-/** 조직도 칸의 직함 줄 — 그 담당이 맡은 일. 운영사 담당은 이름이 곧 맡은 곳이라 일만 적는다 */
+/** 조직도 칸의 직함 줄 — 그 담당이 맡은 일. 운영사 · 사업자 담당은 이름이 곧 맡은 곳이라 일만 적는다 */
 export function roleLineOf(agent: Agent): string {
   switch (agent.kind) {
     case 'strategy': return '시장 정보 · 전략 · 기획';
     case 'operator': return '현장 진행 · 운영사 소통';
+    case 'owner': return '현장 진행 · 사업자 소통';
     case 'settlement': return '기성 수금 · 협력사 지급 · 열린구매';
   }
 }

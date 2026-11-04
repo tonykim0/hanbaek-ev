@@ -43,7 +43,7 @@ export const CONSOLE_PATHS = [
 export const OPEN_IN_CONSOLE = ['/login'] as const;
 
 /** 관리자만 — (admin)/admin 라우트 그룹의 (write) 안쪽 문과 같다 */
-export const ADMIN_ONLY = ['/admin'] as const;
+export const ADMIN_ONLY = ['/admin', '/solar/agents'] as const; // 태양광 AI에이전트(2026-11-04) — 문은 (console)/solar/agents/layout
 /** /admin 아래인데 한백의 눈(열람 전용)에게도 여는 것 — 재무가 지급 전에 보는 협력사 정보 */
 export const ADMIN_READABLE = ['/admin/partners'] as const;
 /** 한백의 눈만(관리자·열람 전용) — (admin) 라우트 그룹의 바깥 문과 같다 */

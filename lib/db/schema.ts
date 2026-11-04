@@ -679,6 +679,10 @@ export const agents = pgTable('agents', {
   name: text('name').notNull(),
   sort: integer('sort').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  /** 사업 — 'ev' 전기차 · 'solar' 태양광(migrations/0118). 조직도가 사업마다다(/admin/agents · /solar/agents) */
+  biz: text('biz').notNull().default('ev'),
+  /** 사업자 담당(kind 'owner', 태양광)이 맡은 사업자 이름 — 운영사 담당의 cpo 와 같은 몫. 나머지는 null */
+  company: text('company'),
 });
 
 /** 업무 정의 — 한백이 담당마다 적는다. 에이전트는 이것을 지시로 읽는다 */

@@ -10,7 +10,7 @@
  *   Activity   최근 이레의 활동 칸
  *   ORG_LINE · OrgNode · Twig · DotGrid  조직도의 선 · 마디 · 매달린 칸 · 점 격자 바탕
  *   FileChip   넘긴 파일 한 장 — 누르면 연다
- * 이 두 화면(/admin/agents · /admin/agents/[id]) 밖으로 가져가지 않는다 — 시공 줄의 자리 정본(construction/shell.tsx)과
+ * 에이전트 화면(조직도 · 담당 — 전기차 /admin/agents · 태양광 /solar/agents) 밖으로 가져가지 않는다 — 시공 줄의 자리 정본(construction/shell.tsx)과
  * 같은 자리다. ★콘솔 화면을 어둡게 만들지 않는다★.
  *
  * ★글꼴은 콘솔 것 하나다★(한백 2026-11-02 「폰트는 기존 디자인 시스템 폰트 맞춰줘」) — 고정폭 글꼴로 시각 · 숫자를 그리던
@@ -39,7 +39,7 @@ export function Spark({ className = '' }: { className?: string }) {
  */
 export type LedTone = 'ok' | 'warn' | 'stop' | 'idle';
 const LED: Record<LedTone, string> = {
-  ok: 'bg-brand-500',
+  ok: 'bg-ok-500', // 상태 초록 — 사업 색(brand)이 아니다: 태양광에서 귤색이면 「봐야 함」(노랑)과 섞인다
   warn: 'bg-amber-400',
   stop: 'bg-red-500',
   idle: 'bg-slate-300',
@@ -58,7 +58,7 @@ export function AgentMark({ tone, live = false, label, size = 'md' }: {
     <span role="img" aria-label={label} title={label} className={`relative inline-flex shrink-0 ${lg ? 'h-11 w-11' : 'h-8 w-8'}`}>
       <span
         aria-hidden
-        className="flex h-full w-full items-center justify-center rounded-ctl bg-gradient-to-br from-brand-300 via-brand-500 to-brand-700 text-white shadow-[0_8px_18px_-10px_rgba(49,106,64,0.9)]"
+        className="flex h-full w-full items-center justify-center rounded-ctl bg-gradient-to-br from-brand-300 via-brand-500 to-brand-700 text-brand-on-fill shadow-[0_8px_18px_-10px_rgb(var(--brand-700)/0.9)]"
       >
         <Spark className={lg ? 'h-5 w-5' : 'h-4 w-4'} />
       </span>

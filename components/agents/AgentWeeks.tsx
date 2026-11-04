@@ -25,8 +25,9 @@ function countsOf(w: AgentWeek): string {
   ].filter(Boolean).join(' · ');
 }
 
-export function AgentWeeks({ agentId, weeks, selected, today }: {
-  agentId: string;
+export function AgentWeeks({ home, weeks, selected, today }: {
+  /** 이 담당의 화면 주소 — 사업마다의 조직도 밑(lib/biz BIZ_AGENTS) */
+  home: string;
   weeks: AgentWeek[];
   /** 지금 펼친 주의 월요일 — 없으면 null */
   selected: string | null;
@@ -45,7 +46,7 @@ export function AgentWeeks({ agentId, weeks, selected, today }: {
             return (
               <li key={w.start}>
                 <Link
-                  href={on ? `/admin/agents/${agentId}` : `/admin/agents/${agentId}?week=${w.start}`}
+                  href={on ? home : `${home}?week=${w.start}`}
                   aria-current={on ? 'true' : undefined}
                   className={`flex items-baseline gap-2 rounded-ctl px-2 py-1.5 transition ${on ? 'bg-brand-50' : 'hover:bg-slate-50'}`}
                 >

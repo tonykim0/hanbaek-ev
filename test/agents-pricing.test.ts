@@ -67,9 +67,9 @@ describe('운영사 담당이 읽는 단가표', () => {
 });
 
 describe('담당마다 쥐는 도구', () => {
-  const NICE: Agent = { id: 'op-nice', kind: 'operator', cpo: '나이스인프라', name: '나이스인프라 담당' };
-  const SETTLE: Agent = { id: 'settlement', kind: 'settlement', cpo: null, name: '정산 담당' };
-  const PLAN: Agent = { id: 'strategy', kind: 'strategy', cpo: null, name: '전략·기획 담당' };
+  const NICE: Agent = { id: 'op-nice', kind: 'operator', biz: 'ev', company: null, cpo: '나이스인프라', name: '나이스인프라 담당' };
+  const SETTLE: Agent = { id: 'settlement', kind: 'settlement', biz: 'ev', company: null, cpo: null, name: '정산 담당' };
+  const PLAN: Agent = { id: 'strategy', kind: 'strategy', biz: 'ev', company: null, cpo: null, name: '전략·기획 담당' };
   const names = (tools: unknown[]) => tools.map((t) => (t as { name: string }).name);
   const read = async () => '';
   const mail = async () => ({ id: 'm', subject: 's', plan: 'create', to: [] });

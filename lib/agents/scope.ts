@@ -5,14 +5,87 @@
  * (dual-write 금지). 현황 화면은 일곱 카드의 한 줄을 이 한 번의 읽기로 같이 만든다.
  */
 import { getRepository } from '@/lib/data';
+import { solarSiteStore } from '@/lib/data/solar-sites';
 import { listPartnerDetails } from '@/lib/auth/partner-details';
 import { userStore } from '@/lib/auth/users';
 import { batchesOf, batchKey } from '@/lib/payout-board';
 import { receivableTodos } from '@/lib/todo-receivables';
 import { normalizeOrg } from '@/lib/roles';
 import { today } from '@/lib/date';
+import { OVERDUE_DAYS } from '@/lib/todo-types';
+import type { Biz } from '@/lib/biz';
 import type { Actor } from '@/lib/auth/types';
-import type { BatchLine, PartnerLine, ScopeData } from './brief';
+import type { Agent, AgentHeadline } from '@/types/agents';
+import { briefOf, headlineOf, siteLinesOf, type BatchLine, type PartnerLine, type ScopeData } from './brief';
+import { solarBriefOf, solarHeadlineOf, type SolarScopeData } from './solar-brief';
+
+/** 조직도 · 담당 화면이 읽는 셈 — 사업마다 재료가 달라(전기차 현장 · 지급 · 기성 / 태양광 상담 현장) 한 모양으로 감싼다 */
+export interface AgentSide {
+  today: string;
+  /** 카드 · 머리말의 한 줄 */
+  headline(agent: Agent): AgentHeadline;
+  /** 조직도의 부서 칸(운영사 담당 · 사업자 담당)의 한 줄 */
+  dept(counterparts: Agent[]): AgentHeadline;
+  /** 할 일에 고를 현장 — 전기차 운영사 담당만(그 운영사의 진행 중 현장). 태양광 현장은 할 일에 붙일 자리가 아직 없다 */
+  taskSites(agent: Agent): Array<{ id: string; label: string }>;
+}
+
+export async function loadAgentSide(biz: Biz, actor: Actor): Promise<AgentSide> {
+  if (biz === 'solar') {
+    const data = await loadSolarScope(actor);
+    /* 사업자 담당 부서는 셀 것이 없다 — 현장이 어느 사업자의 것인지 콘솔이 모른다(lib/agents/solar-brief) */
+    return { today: data.today, headline: (a) => solarHeadlineOf(a, data), dept: () => ({ counts: [] }), taskSites: () => [] };
+  }
+  const data = await loadScope(actor);
+  return {
+    today: data.today,
+    headline: (a) => headlineOf(a, data),
+    /* 운영사 담당 부서의 셈 — 다섯 운영사의 진행 중 현장을 합친다(칸과 같은 판정, lib/agents/brief siteLinesOf) */
+    dept: (counterparts) => {
+      const sites = counterparts.flatMap((a) => (a.kind === 'operator' && a.cpo ? siteLinesOf(data.projects, a.cpo).live : []));
+      const mine = sites.filter((s) => s.turn === '한백').length;
+      const stuck = sites.filter((s) => s.stalledDays >= OVERDUE_DAYS).length;
+      return {
+        counts: [
+          { label: '진행 중', value: `${sites.length}곳` },
+          { label: '한백 차례', value: `${mine}`, ...(mine ? { tone: 'warn' as const } : {}) },
+          { label: `${OVERDUE_DAYS}일+ 정체`, value: `${stuck}`, ...(stuck ? { tone: 'warn' as const } : {}) },
+        ],
+      };
+    },
+    taskSites: (a) => (a.kind === 'operator' && a.cpo
+      ? siteLinesOf(data.projects, a.cpo).live
+        .map((s) => ({ id: s.id, label: `${s.no} ${s.name}` }))
+        .sort((x, y) => x.label.localeCompare(y.label, 'ko'))
+      : []),
+  };
+}
+
+/**
+ * 담당 하나가 답할 때 읽는 것 — 오늘 · 자료 한 덩이 · 에이전트가 짚은 관리번호 → 현장 id(전기차만 — 할 일의 현장 칸은 전기차
+ * 현장이다). 정산 담당(전기차)은 열린구매 글에 쓸 지급처 사업자 · 계좌까지 읽는다.
+ */
+export async function loadAgentBrief(agent: Agent, actor: Actor): Promise<{ today: string; brief: string; siteOf(ref: string): string | null }> {
+  if (agent.biz === 'solar') {
+    const data = await loadSolarScope(actor);
+    return { today: data.today, brief: solarBriefOf(agent, data), siteOf: () => null };
+  }
+  const data = await loadScope(actor, agent.kind === 'settlement');
+  const sites = new Map<string, string>();
+  for (const p of data.projects) {
+    sites.set(p.id.toUpperCase(), p.id);
+    if (p.mgmtNo) sites.set(p.mgmtNo.toUpperCase(), p.id);
+  }
+  return { today: data.today, brief: briefOf(agent, data), siteOf: (ref) => sites.get(ref.trim().toUpperCase()) ?? null };
+}
+
+/**
+ * 태양광 담당이 읽을 재료 — 상담 접수한 현장(현장관리와 같은 정본, 한백 관리자는 전부). 태양광에는 아직 운영사 · 단가 · 기성 ·
+ * 지급이 없어 이것뿐이다(lib/agents/solar-brief).
+ */
+export async function loadSolarScope(actor: Actor): Promise<SolarScopeData> {
+  return { today: today(), sites: await solarSiteStore.list(actor) };
+}
 
 /**
  * @param withPayees 정산 담당이 열린구매 글에 쓸 지급처 사업자·계좌 · 붙일 자료가 있는지 · 배치의 현장 몫까지 — 그 담당을

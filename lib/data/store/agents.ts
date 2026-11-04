@@ -23,6 +23,7 @@ import type {
 import { AGENT_KINDS, AGENT_MESSAGE_ROLES } from '@/types/agents';
 import { AGENT_FILES_PER_MESSAGE, agentFileName, agentFilePrefix } from '@/lib/agents/files';
 import { mondayOf, shiftDay } from '@/lib/agents/weeks';
+import { asBiz, type Biz } from '@/lib/biz';
 import type { CpoName } from '@/types/project';
 import type { Actor, ProjectRepository } from '../repository';
 import { assertAdmin } from './shared';
@@ -105,7 +106,9 @@ function clip(v: string | null | undefined, max: number, what: string): string {
 
 function agentOf(r: typeof agents.$inferSelect): Agent {
   const kind = (AGENT_KINDS as readonly string[]).includes(r.kind) ? (r.kind as AgentKind) : 'operator';
-  return { id: r.id, kind, cpo: (r.cpo as CpoName | null) ?? null, name: r.name };
+  return {
+    id: r.id, kind, biz: asBiz(r.biz), cpo: (r.cpo as CpoName | null) ?? null, company: r.company ?? null, name: r.name,
+  };
 }
 
 async function agentRow(id: string): Promise<Agent> {
@@ -146,16 +149,21 @@ export const agentStore: Pick<
   /*
    * 사용량 — 이번 달 · 지난달(한국 달력)의 답 수와 비용 어림, 이번 달 토큰 (한백 2026-11-03 「사용량 추적도 해야할듯」).
    * 따로 표를 두지 않는다 — 답마다 남긴 meta(usd · tokens · searches)를 달로 묶는다. 토큰은 적기 시작한(2026-11-03) 뒤의 답만 있다.
+   * 사업마다 센다(biz — 조직도가 사업마다다, migrations/0118).
    */
-  async agentUsage(actor): Promise<AgentUsage> {
+  async agentUsage(actor, biz: Biz = 'ev'): Promise<AgentUsage> {
     assertAdmin(actor, '에이전트');
     const db = getDb();
     const month = today().slice(0, 7);
     const prevMonth = shiftMonths(`${month}-01`, -1).slice(0, 7);
     const monthOf = sql<string>`to_char(${agentMessages.at} at time zone 'Asia/Seoul', 'YYYY-MM')`;
-    const said = eq(agentMessages.role, 'agent');
+    /* 그 사업의 담당이 한 답만 */
+    const said = and(
+      eq(agentMessages.role, 'agent'),
+      inArray(agentMessages.agentId, db.select({ id: agents.id }).from(agents).where(eq(agents.biz, biz))),
+    );
     const [rows, sums, [t]] = await allSlots([
-      () => db.select({ id: agents.id, name: agents.name }).from(agents).orderBy(asc(agents.sort)),
+      () => db.select({ id: agents.id, name: agents.name }).from(agents).where(eq(agents.biz, biz)).orderBy(asc(agents.sort)),
       () => db.select({
         agentId: agentMessages.agentId,
         month: monthOf,
@@ -196,7 +204,8 @@ export const agentStore: Pick<
     };
   },
 
-  async listAgents(actor): Promise<AgentSummary[]> {
+  /** 그 사업의 담당만 — 조직도가 사업마다다(migrations/0118) */
+  async listAgents(actor, biz: Biz = 'ev'): Promise<AgentSummary[]> {
     assertAdmin(actor, '에이전트');
     const db = getDb();
     const now = today();
@@ -204,7 +213,7 @@ export const agentStore: Pick<
     const days = Array.from({ length: ACTIVITY_DAYS }, (_, i) => shiftDay(now, i - (ACTIVITY_DAYS - 1)));
     const dayOfAt = sql<string>`to_char(${agentMessages.at} at time zone 'Asia/Seoul', 'YYYY-MM-DD')`;
     const [rows, duties, tasks, lasts, recent, mails] = await allSlots([
-      () => db.select().from(agents).orderBy(asc(agents.sort)),
+      () => db.select().from(agents).where(eq(agents.biz, biz)).orderBy(asc(agents.sort)),
       () => db.select({ agentId: agentDuties.agentId, n: sql<number>`count(*)::int` })
         .from(agentDuties).groupBy(agentDuties.agentId),
       () => db.select({

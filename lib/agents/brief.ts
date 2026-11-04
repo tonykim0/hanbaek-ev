@@ -253,6 +253,8 @@ export function briefOf(agent: Agent, data: ScopeData): string {
     case 'operator': return agent.cpo ? operatorBrief(data, agent.cpo) : '[운영사가 지정되지 않은 담당]';
     case 'settlement': return settlementBrief(data);
     case 'strategy': return strategyBrief(data);
+    /* 태양광의 갈래 — 전기차 자료를 읽지 않는다(lib/agents/solar-brief 가 그 자리다) */
+    case 'owner': return '[태양광 사업자 담당 — 전기차 자료 없음]';
   }
 }
 

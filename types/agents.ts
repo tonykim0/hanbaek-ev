@@ -8,6 +8,7 @@
  * 에이전트가 보는 현장·지급·기성은 저장하지 않는다 — 부를 때마다 콘솔이 셈한 것을 읽는다(lib/agents/scope).
  */
 import type { CpoName } from './project';
+import type { Biz } from '@/lib/biz';
 
 /**
  * 담당의 갈래 — 갈래마다 보는 자료와 손에 쥔 도구가 다르다(lib/agents/scope · lib/agents/brain).
@@ -15,22 +16,34 @@ import type { CpoName } from './project';
  *   operator    운영사 하나의 현장 — 칸 · 차례 · 정체 · 반려
  *   settlement  정산 — 기성관리(운영사에게서 수금) · 지급관리(협력사에게 영업비·시공비) · 열린구매(지급을 위한 아지트 지출
  *               글과 자료). 열린구매는 따로 있던 담당을 2026-11-02 여기 합쳤다(한백 「정산담당이 열린구매까지 같이하는거야」)
+ *   owner       태양광 사업자 하나 — 전기차 운영사 담당의 자리(한백 지시 2026-11-04 「운영사 담당자가 아니라 사업자 담당자」)
+ *
+ * 담당은 사업마다 따로다(biz — migrations/0118): 전기차는 전략·기획 · 운영사 담당 다섯 · 정산, 태양광은 전략·기획 · 사업자
+ * 담당 셋(타이런트아이 · 에이치에너지 · 루모라) · 정산. 전략·기획과 정산은 갈래가 같고 읽는 자료가 사업마다 다르다.
  */
-export type AgentKind = 'strategy' | 'operator' | 'settlement';
-export const AGENT_KINDS = ['strategy', 'operator', 'settlement'] as const satisfies readonly AgentKind[];
+export type AgentKind = 'strategy' | 'operator' | 'owner' | 'settlement';
+export const AGENT_KINDS = ['strategy', 'operator', 'owner', 'settlement'] as const satisfies readonly AgentKind[];
 
 /** 화면의 묶음 이름 */
 export const AGENT_KIND_LABEL: Record<AgentKind, string> = {
   strategy: '전략·기획',
   operator: '운영사 담당',
+  owner: '사업자 담당',
   settlement: '정산',
 };
+
+/** 상대 회사를 하나씩 맡는 갈래 — 조직도에서 한 줄로 매달리는 담당들(전기차 운영사 · 태양광 사업자) */
+export const isCounterpart = (kind: AgentKind): boolean => kind === 'operator' || kind === 'owner';
 
 export interface Agent {
   id: string;
   kind: AgentKind;
+  /** 사업 — 전기차 · 태양광. 조직도 · 읽는 자료 · 도구가 사업마다다 */
+  biz: Biz;
   /** 운영사 담당만 — 나머지는 null */
   cpo: CpoName | null;
+  /** 사업자 담당만 — 맡은 태양광 사업자 이름. 나머지는 null */
+  company: string | null;
   name: string;
 }
 

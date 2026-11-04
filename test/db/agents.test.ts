@@ -248,3 +248,52 @@ describe('사용량', () => {
     await expect(repo.agentUsage(actorOf(USERS.viewer))).rejects.toThrow('한백 관리자만');
   });
 });
+
+describe('사업마다의 조직도 (migrations/0118)', () => {
+  it('전기차와 태양광의 담당이 섞이지 않는다 — 태양광은 전략·기획 · 사업자 담당 셋 · 정산', async () => {
+    const ev = await repo.listAgents(admin);
+    const solar = await repo.listAgents(admin, 'solar');
+    expect(ev.every((a) => a.biz === 'ev')).toBe(true);
+    expect(ev.map((a) => a.id)).toEqual(expect.arrayContaining(['strategy', 'op-hec', 'op-nice', 'op-sk', 'op-pluglink', 'op-everon', 'settlement']));
+    expect(solar.map((a) => [a.id, a.kind, a.biz, a.company])).toEqual([
+      ['solar-strategy', 'strategy', 'solar', null],
+      ['solar-tyranteye', 'owner', 'solar', '타이런트아이'],
+      ['solar-henergy', 'owner', 'solar', '에이치에너지'],
+      ['solar-lumora', 'owner', 'solar', '루모라'],
+      ['solar-settlement', 'settlement', 'solar', null],
+    ]);
+    /* 주간 기록이 감사기록을 담당 이름으로 찾는다 — 두 사업의 이름이 겹치면 한 담당의 기록이 다른 담당에 섞인다 */
+    const names = [...ev, ...solar].map((a) => a.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('사용량도 사업마다 — 태양광 담당의 답은 전기차 표에 안 든다', async () => {
+    const SOLAR = 'solar-henergy';
+    const [ev0, solar0] = [await repo.agentUsage(admin), await repo.agentUsage(admin, 'solar')];
+    await repo.addAgentMessage({
+      agentId: SOLAR, role: 'agent', body: `${mark} 태양광 답`,
+      meta: { model: 'claude-opus-5-5', usd: 0.5, tokens: { input: 700, output: 70, cacheRead: 7000, cacheWrite: 0 }, searches: 0 },
+    }, admin);
+    const [ev1, solar1] = [await repo.agentUsage(admin), await repo.agentUsage(admin, 'solar')];
+    expect(ev1.byAgent.some((r) => r.agentId === SOLAR)).toBe(false);
+    expect(ev1.tokens.cacheRead).toBe(ev0.tokens.cacheRead);
+    const before = solar0.byAgent.find((r) => r.agentId === SOLAR)!;
+    const after = solar1.byAgent.find((r) => r.agentId === SOLAR)!;
+    expect(after.replies - before.replies).toBe(1);
+    expect(after.usd - before.usd).toBeCloseTo(0.5, 6);
+    expect(solar1.tokens.cacheRead - solar0.tokens.cacheRead).toBe(7000);
+    expect(solar1.byAgent.map((r) => r.agentId)[0]).toBe('solar-strategy'); // 조직도 순서
+  });
+
+  it('태양광 담당의 할 일 · 대화도 같은 문을 쓴다 — 지시가 없으면 부르기 전에 거절', async () => {
+    await signIn(USERS.admin);
+    const p = { id: 'solar-lumora' };
+    const made = await call(postTask, { body: { title: `${mark} 루모라 회신 확인` }, params: p });
+    expect(made.status).toBe(200);
+    const detail = await repo.getAgent('solar-lumora', admin);
+    expect(detail.agent.company).toBe('루모라');
+    expect(detail.tasks.some((t) => t.title === `${mark} 루모라 회신 확인`)).toBe(true);
+    const r = await call(postReply, { body: undefined, params: p });
+    expect(r.status).toBe(422);
+  });
+});

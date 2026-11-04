@@ -10,13 +10,13 @@
  * 양식 메일이 있는 운영사 담당(나이스 · 현대엔지니어링 — lib/site-mail)은 site_mail 도 쥔다: 서류가 채워져 한백이 다시 요청하면 그
  * 현장의 서류를 붙인 양식 초안을 쓴다(lib/site-mail-run requestSiteMail — 단추와 같은 길). 그 초안도 이 답 밑에 선다.
  * 운영사 담당은 pricing_table 로 그 운영사의 지금 단가표를 읽는다(lib/agents/pricing-table — 읽기만, 한백 2026-11-04).
+ * 태양광 담당(migrations/0118)은 태양광 자료를 읽는다(상담 접수한 현장 — lib/agents/solar-brief). 양식 메일 · 단가표는 없다.
  */
 import { getRepository } from '@/lib/data';
 import { adminWrite } from '@/lib/api/write-route';
 import { agentReply, HISTORY_TURNS } from '@/lib/agents/brain';
-import { briefOf } from '@/lib/agents/brief';
 import { pricingTableText } from '@/lib/agents/pricing-table';
-import { loadScope } from '@/lib/agents/scope';
+import { loadAgentBrief } from '@/lib/agents/scope';
 import { siteMailOfCpo } from '@/lib/site-mail';
 import { requestSiteMail } from '@/lib/site-mail-run';
 
@@ -30,13 +30,8 @@ export const POST = adminWrite<{ id: string }, undefined>(
     const last = detail.messages[detail.messages.length - 1];
     if (!last || last.role !== 'user') throw new Error('답할 지시가 없습니다 — 먼저 말을 남겨 주세요.');
 
-    /* 정산 담당은 열린구매 글에 쓸 지급처 사업자·계좌까지 읽는다 */
-    const data = await loadScope(actor, detail.agent.kind === 'settlement');
-    const sites = new Map<string, string>();
-    for (const p of data.projects) {
-      sites.set(p.id.toUpperCase(), p.id);
-      if (p.mgmtNo) sites.set(p.mgmtNo.toUpperCase(), p.id);
-    }
+    /* 사업마다의 자료 — 전기차 정산 담당은 열린구매 글에 쓸 지급처 사업자·계좌까지 읽는다 */
+    const { today, brief, siteOf } = await loadAgentBrief(detail.agent, actor);
     const agentId = detail.agent.id;
     const drafted: string[] = [];
     const siteSpec = detail.agent.kind === 'operator' ? siteMailOfCpo(detail.agent.cpo) : null;
@@ -47,8 +42,8 @@ export const POST = adminWrite<{ id: string }, undefined>(
       duties: detail.duties,
       tasks: detail.tasks,
       history: detail.messages.slice(-HISTORY_TURNS),
-      brief: briefOf(detail.agent, data),
-      today: data.today,
+      brief,
+      today,
       hands: {
         addTask: async (t) => (await repo.addAgentTask({ agentId, ...t, byAgent: true }, actor)).id,
         completeTask: async (id) => (await repo.setAgentTaskDone({ agentId, id, done: true, byAgent: true }, actor)).title,
@@ -57,7 +52,7 @@ export const POST = adminWrite<{ id: string }, undefined>(
           drafted.push(made.id);
           return made.id;
         },
-        siteOf: (ref) => sites.get(ref.trim().toUpperCase()) ?? null,
+        siteOf,
         ...(siteSpec ? {
           siteMail: async (projectId: string) => {
             const { plan, mail } = await requestSiteMail(projectId, actor, siteSpec);

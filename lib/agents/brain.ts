@@ -52,6 +52,7 @@ type CreateParams = Omit<Anthropic.MessageCreateParamsNonStreaming, 'tools'> & {
 
 /** 갈래마다의 일 — 업무 정의가 그 위에 얹힌다 */
 function roleOf(agent: Agent): string {
+  if (agent.biz === 'solar') return solarRoleOf(agent);
   switch (agent.kind) {
     case 'operator': {
       const spec = siteMailOfCpo(agent.cpo);
@@ -77,7 +78,45 @@ function roleOf(agent: Agent): string {
       return '시장 정보를 모으고 전략·기획을 맡는다. 전기차 충전 인프라 시장(환경부 보조금 정책 · 운영사 동향 · 공동주택 충전기 '
         + '설치 의무 · 경쟁 시공사)을 웹 검색으로 찾아보고, [수주 흐름]과 견주어 한백에 필요한 것을 정리한다. '
         + '찾아본 사실에는 출처를 밝히고, 추측과 사실을 가른다.';
+    case 'owner':
+      return solarRoleOf(agent);
   }
+}
+
+/**
+ * 태양광 담당의 일 (한백 지시 2026-11-04 「태양광도 AI 에이전트 붙여줘. 운영사 담당자가 아니라 사업자 담당자 … 나머지는 동일하게」).
+ * 전기차와 같은 조직이고 운영사 자리가 사업자다. 태양광 콘솔에는 아직 상담 접수한 현장뿐이라(lib/agents/solar-brief) 나머지는
+ * 한백이 대화 · 업무 정의 · 넘긴 파일로 준다 — 모르는 것은 지어내지 말고 묻는다(일하는 법).
+ */
+function solarRoleOf(agent: Agent): string {
+  switch (agent.kind) {
+    case 'owner':
+    case 'operator': {
+      const who = agent.company ?? '맡은 사업자';
+      return `${who} 사업자와 관련된 일을 맡는다. ${who} 쪽과 오간 일(통화 · 메일 · 받은 자료)을 기록하고, ${josa(who, '과', '와')} 함께 하는 `
+        + '현장 · 서류 · 일정이 막히지 않게 챙긴다. [태양광 현장] 자료는 상담 접수한 전체 현장이다 — 현장에 사업자가 아직 적히지 '
+        + `않아, 그중 ${who}의 현장은 대화 · 업무 정의 · 넘긴 파일로 안다.`;
+    }
+    case 'settlement':
+      return '태양광 정산을 맡는다 — 받을 돈(기성) · 협력사에게 줄 돈(지급) · 지급을 위한 열린구매(한백 사내 아지트에 올릴 지출 글과 '
+        + '붙일 자료). 콘솔에는 아직 태양광의 기성 · 지급 기록이 없다 — 한백이 대화로 주는 내용과 넘긴 파일(계약서 · 세금계산서 · '
+        + '거래명세서 같은 것)로 일한다. 글의 양식과 꼭 들어갈 항목은 업무 정의를 따른다. 아지트에 올리는 것은 아직 네가 하지 못한다 — '
+        + '글을 다 쓰면 한백이 올린다.';
+    case 'strategy':
+      return '태양광 시장 정보를 모으고 전략·기획을 맡는다. 태양광 시장(정부 재생에너지 정책 · RPS · REC · SMP 가격 · 계통 접속 여유 · '
+        + '지붕형 · 지상형 수익 구조 · 사업자 · 경쟁 시공사 동향)을 웹 검색으로 찾아보고, [태양광 수주 흐름]과 견주어 한백에 필요한 '
+        + '것을 정리한다. 찾아본 사실에는 출처를 밝히고, 추측과 사실을 가른다.';
+  }
+}
+
+/** 시스템의 첫 줄 — 한백이 하는 사업. 담당의 사업 쪽을 말한다 */
+function companyLineOf(agent: Agent): string {
+  if (agent.biz === 'solar') {
+    return '한백은 신재생 에너지 사업을 한다 — 전기차 충전기 설치와 태양광이다. 태양광에서 한백은 건물 지붕 · 땅에 태양광을 놓을 '
+      + '부지를 검토하고, 협력사가 상담을 접수하면 현장으로 관리하며, 사업자와 함께 일한다. 너는 그 태양광 쪽의 담당이다.';
+  }
+  return '한백은 전기차 충전기 설치 사업을 한다 — 운영사(충전사업자)와 계약해 아파트 등에 충전기를 놓고, 영업사 · 시공사 '
+    + '협력사에게 하도급을 준다.';
 }
 
 /** 양식 메일이 있는 운영사 담당의 몫 — 접수 때 저절로 쓰는 것과, 서류가 채워져 한백이 다시 요청할 때 쓰는 도구 */
@@ -95,7 +134,7 @@ const RULES = `일하는 법:
 - 너는 콘솔의 값을 바꾸지 못한다. 반려 · 확정 · 단계 이동 · 지급은 사람이 콘솔에서 한다. 필요하면 무엇을 누가 해야 하는지 말한다.
 - 한백이 맡긴 일 · 다시 확인할 일 · 기한이 있는 일은 add_task 로 할 일에 적는다. 같은 할 일이 이미 열려 있으면 또 적지 않는다.
   한백이 끝났다고 알려 준 할 일은 complete_task 로 끝낸다. 적거나 끝냈으면 답에 한 줄로 말한다.
-- 「[기록 …]」으로 시작하는 말은 한백이 남긴 기록이다(운영사 담당자와 통화한 내용 같은 것). 답을 바라는 말이 아니지만 근거로 쓴다.
+- 「[기록 …]」으로 시작하는 말은 한백이 남긴 기록이다(운영사 · 사업자 담당자와 통화한 내용 같은 것). 답을 바라는 말이 아니지만 근거로 쓴다.
 - 「[넘긴 파일 …]」은 한백이 너에게 준 파일이다. 읽을 수 있으면 읽고 근거로 쓴다. 이름만 알고 열지 못한 파일은 그렇다고 말한다.
 - 「[지금 …]」으로 시작하는 덩이는 마지막 지시를 받은 때의 콘솔 자료다 — 한백이 쓴 말이 아니다.
 - 「[자동 …]」으로 시작하는 말은 콘솔이 규칙대로 네 이름으로 한 일이다(계약서가 접수되면 할 일 · 양식 메일 초안). 네가 한 일로 알고 이어서 챙긴다.
@@ -191,8 +230,12 @@ export interface AgentHands {
 /** 한 답에 올리는 메일 초안 상한 — 잘못 돈 답이 초안을 쏟아 내지 않게 */
 const MAILS_PER_TURN = 3;
 
-const TASK_TOOLS = [
-  {
+/**
+ * 할 일 적기 — 전기차 담당은 관련 현장(관리번호)을 붙인다. 태양광 담당은 붙이지 않는다: 할 일의 현장 칸은 전기차 현장이고
+ * (agent_tasks.project_id), 태양광 현장(SL-…)을 가리킬 자리는 아직 없다 — 현장 번호는 할 일 글에 적는다.
+ */
+function addTaskTool(withSite: boolean) {
+  return {
     name: 'add_task',
     description: '이 담당의 할 일 목록에 한 줄을 적는다. 한백이 맡긴 일 · 다음에 다시 확인할 일 · 기한이 있는 일을 남길 때 쓴다. '
       + '이미 열린 같은 할 일이 있으면 쓰지 않는다.',
@@ -202,11 +245,14 @@ const TASK_TOOLS = [
         title: { type: 'string', description: '할 일 한 줄 — 무엇을 할지 (120자 이내)' },
         note: { type: 'string', description: '덧붙일 말 — 근거 · 연락처 등 (선택)' },
         due: { type: 'string', description: '기한 YYYY-MM-DD (선택)' },
-        site: { type: 'string', description: '관련 현장의 관리번호, 예: HB-2026-123 (선택)' },
+        ...(withSite ? { site: { type: 'string', description: '관련 현장의 관리번호, 예: HB-2026-123 (선택)' } } : {}),
       },
       required: ['title'],
     },
-  },
+  };
+}
+
+const TASK_TOOLS = [
   {
     name: 'complete_task',
     description: '열린 할 일을 끝냈다고 표시한다. 한백이 끝났다고 알려 준 할 일만 끝낸다.',
@@ -265,6 +311,7 @@ const PRICING_TOOL = {
 export function toolsOf(agent: Agent, hands: Pick<AgentHands, 'siteMail' | 'pricingTable'>): unknown[] {
   const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
   return [
+    addTaskTool(agent.biz === 'ev'),
     ...TASK_TOOLS,
     ...(siteSpec ? [siteMailTool(siteSpec)] : []),
     ...(agent.kind === 'operator' && hands.pricingTable ? [PRICING_TOOL] : []),
@@ -309,8 +356,7 @@ export async function agentReply(input: {
   const system = [
     {
       type: 'text' as const,
-      text: `너는 한백의 「${agent.name}」이다. 한백은 전기차 충전기 설치 사업을 한다 — 운영사(충전사업자)와 계약해 아파트 등에 `
-        + '충전기를 놓고, 영업사 · 시공사 협력사에게 하도급을 준다. 너는 이 대화창에서 한백 관리자와 일한다.\n\n'
+      text: `너는 한백의 「${agent.name}」이다. ${companyLineOf(agent)} 너는 이 대화창에서 한백 관리자와 일한다.\n\n`
         + `${roleOf(agent)}\n\n${RULES}\n\n${dutiesBlock(input.duties)}`,
     },
   ];

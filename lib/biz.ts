@@ -63,6 +63,9 @@ export const BIZ_ALERTS: Record<Biz, string> = { ev: '/notifications', solar: `$
 /** 상단 바 「공지」가 가는 곳 — 그 사업의 공지(2026-11-04, migrations/0116). 공지 메모 알림도 그 공지의 사업 쪽으로 연다 */
 export const BIZ_NOTICES: Record<Biz, string> = { ev: '/notices', solar: `${SOLAR_ROOT}/notices` };
 
+/** AI에이전트 조직도 — 사업마다 따로다(2026-11-04, migrations/0118). 담당 화면은 그 밑 /[담당 id] */
+export const BIZ_AGENTS: Record<Biz, string> = { ev: '/admin/agents', solar: `${SOLAR_ROOT}/agents` };
+
 /** 전환 단추를 누르면 가는 곳 — 그 사업의 첫 화면. 태양광은 부지 검토다(지금 실제로 쓰는 화면 — 현장관리는 아직 틀뿐) */
 export const BIZ_HOME: Record<Biz, string> = { ev: '/projects', solar: `${SOLAR_ROOT}/check` };
 

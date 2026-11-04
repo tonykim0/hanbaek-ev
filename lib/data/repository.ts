@@ -509,9 +509,11 @@ export interface ProjectRepository {
    * 업무 정의 · 할 일 · 오간 말만 남긴다. 에이전트가 보는 현장·지급·기성은 lib/agents/scope 가 그때그때 읽는다.
    */
   /** 담당 일곱 — 업무 정의 수 · 열린 할 일 · 마지막 말 */
-  listAgents(actor: Actor): Promise<AgentSummary[]>;
+  /** 그 사업의 담당만 — 빼면 전기차 */
+  listAgents(actor: Actor, biz?: Biz): Promise<AgentSummary[]>;
   /** 사용량 — 이번 달 · 지난달 담당별 답 수 · 비용 어림, 이번 달 토큰(답마다 남긴 meta 를 달로 묶는다) */
-  agentUsage(actor: Actor): Promise<AgentUsage>;
+  /** 그 사업의 담당이 한 답만 — 빼면 전기차 */
+  agentUsage(actor: Actor, biz?: Biz): Promise<AgentUsage>;
   /** 담당 하나 — 업무 정의 · 할 일 · 최근 대화(넘긴 파일 포함) · 주간 기록. week(그 주 월요일)를 주면 그 주의 말과 일 */
   getAgent(id: string, actor: Actor, opts?: { week?: string | null }): Promise<AgentDetail>;
   /** 업무 정의 넣기 · 고치기(id 가 있으면) — id 를 돌려준다 */

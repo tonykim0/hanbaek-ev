@@ -50,9 +50,11 @@ async function post(url: string, body?: unknown): Promise<{ ok: true; message: A
   }
 }
 
-export function AgentRoom({ agentId, agentName, messages, mails, connected, week, today }: {
+export function AgentRoom({ agentId, agentName, home, messages, mails, connected, week, today }: {
   agentId: string;
   agentName: string;
+  /** 이 담당의 화면 주소 — 사업마다의 조직도 밑(lib/biz BIZ_AGENTS). 주간 기록에서 「지금 대화로」가 간다 */
+  home: string;
   messages: AgentMessage[];
   /** 실린 말에 딸린 메일 초안 */
   mails: AgentMail[];
@@ -210,7 +212,7 @@ export function AgentRoom({ agentId, agentName, messages, mails, connected, week
           {week ? '주간 기록' : '대화'}
         </AgentHead>
         {week && (
-          <Link href={`/admin/agents/${agentId}`} className="text-small font-bold text-slate-500 transition hover:text-brand-800">
+          <Link href={home} className="text-small font-bold text-slate-500 transition hover:text-brand-800">
             지금 대화로 →
           </Link>
         )}

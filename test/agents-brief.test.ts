@@ -36,9 +36,9 @@ function site(id: string, over: Partial<ProjectSummary> = {}): ProjectSummary {
   } as ProjectSummary;
 }
 
-const SK: Agent = { id: 'op-sk', kind: 'operator', cpo: 'SK일렉링크', name: 'SK일렉링크 담당' };
-const SETTLE: Agent = { id: 'settlement', kind: 'settlement', cpo: null, name: '정산 담당' };
-const PLAN: Agent = { id: 'strategy', kind: 'strategy', cpo: null, name: '전략·기획 담당' };
+const SK: Agent = { id: 'op-sk', kind: 'operator', biz: 'ev', company: null, cpo: 'SK일렉링크', name: 'SK일렉링크 담당' };
+const SETTLE: Agent = { id: 'settlement', kind: 'settlement', biz: 'ev', company: null, cpo: null, name: '정산 담당' };
+const PLAN: Agent = { id: 'strategy', kind: 'strategy', biz: 'ev', company: null, cpo: null, name: '전략·기획 담당' };
 
 const data = (over: Partial<ScopeData> = {}): ScopeData => ({ today: TODAY, projects: [], batches: [], receivables: [], ...over });
 
