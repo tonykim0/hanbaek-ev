@@ -637,11 +637,12 @@ export interface ProjectRepository {
 
   /**
    * 공지의 메모 — 모두가 보는 한 줄기(migrations/0095). 로그인한 전부가 받는다. mine 은 me.id 로 가린다.
+   * 그 사업의 공지에 붙은 메모만(migrations/0116 — 안 주면 전기차).
    */
-  listNoticeMessages(me: Recipient): Promise<NoticeMessage[]>;
+  listNoticeMessages(me: Recipient, biz?: Biz): Promise<NoticeMessage[]>;
   /**
-   * 공지에 메모를 남긴다 [협력사 · 한백 관리자] — 한백 관리자와 협력사 모두에게 알림이 간다(쓴 사람 빼고, 같은
-   * 트랜잭션). 새 메모 id 를 돌려준다.
+   * 공지에 메모를 남긴다 [협력사 · 한백 관리자] — 그 공지의 사업을 보는 한백 관리자와 협력사 모두에게 그 사업의 알림이
+   * 간다(쓴 사람 빼고, 같은 트랜잭션). 태양광 공지에는 태양광을 보는 계정만 남긴다. 새 메모 id 를 돌려준다.
    */
   addNoticeMessage(input: { noticeId: string; body: string }, actor: Actor): Promise<string>;
   /** 내가 남긴 메모를 지운다 — 남의 것은 못 지운다. 그 메모의 알림도 같이 지워진다 */
@@ -649,20 +650,20 @@ export interface ProjectRepository {
   /** 이 현장에서 내가 안 읽은 것 — 글 id(현장 상세의 「새 글」)와 알림이 남은 갈래(그 탭을 열면 읽음) */
   unreadOnProject(userId: string, projectId: string): Promise<{ noteIds: string[]; scopes: NoteScope[] }>;
 
-  /** 공지 목록 — 최신이 위. 로그인한 누구나 본다(열람 전용 포함) */
-  listNotices(): Promise<Notice[]>;
+  /** 그 사업의 공지 목록 — 최신이 위. 로그인한 누구나 본다(열람 전용 포함). 안 주면 전기차(migrations/0116) */
+  listNotices(biz?: Biz): Promise<Notice[]>;
 
-  /** 내가 아직 안 읽은 공지 수 — 공지 화면을 연 시각(notices_read_at)보다 뒤의 것 */
-  countUnreadNotices(userId: string): Promise<number>;
+  /** 내가 아직 안 읽은 그 사업의 공지 수 — 그 사업의 공지 화면을 연 시각보다 뒤의 것. 안 주면 전기차 */
+  countUnreadNotices(userId: string, biz?: Biz): Promise<number>;
 
   /**
-   * 공지를 읽었다고 표시한다 — 공지 화면을 열 때 부른다.
+   * 그 사업의 공지를 읽었다고 표시한다 — 그 사업의 공지 화면을 열 때 부른다. 안 주면 전기차.
    * ★열람 전용도 부른다★ — 사업 데이터가 아니라 제 읽음 시각 한 칸이다.
    */
-  markNoticesRead(userId: string): Promise<void>;
+  markNoticesRead(userId: string, biz?: Biz): Promise<void>;
 
-  /** 공지 작성·수정 [한백 전용] — id 가 있으면 수정(작성 시각은 그대로) */
-  saveNotice(input: { id?: string; title: string; body: string }, actor: Actor): Promise<string>;
+  /** 공지 작성·수정 [한백 전용] — id 가 있으면 수정(작성 시각 · 사업은 그대로). 새 공지의 사업은 biz(안 주면 전기차) */
+  saveNotice(input: { id?: string; title: string; body: string; biz?: Biz }, actor: Actor): Promise<string>;
 
   /** 공지 삭제 [한백 전용] — 붙은 파일 주소를 돌려준다(부르는 쪽이 Blob 을 지운다) */
   deleteNotice(id: string, actor: Actor): Promise<string[]>;

@@ -10,7 +10,7 @@
  * 현장이 없다 — 머리에 그 담당, 노란 꼬리표(사람이 할 일이다), 누르면 그 담당과의 대화고 거기를 열면 읽힌다(ReadAgentAlarms).
  * 안 읽은 줄은 굵고 왼쪽에 점이 선다. 줄을 누르면 그 현장의 그 탭으로 간다 — 그 탭을 열면 그 갈래의 알림이 읽힌다(ProgressLog).
  */
-import type { Biz } from '@/lib/biz';
+import { BIZ_NOTICES, type Biz } from '@/lib/biz';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { NoteNotification } from '@/types/project';
@@ -21,9 +21,10 @@ import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
 /**
  * 줄을 누르면 가는 곳 — 현장 알림은 그 현장의 그 탭, 공지 메모는 그 공지
  * (/notices?open=… — 공지 화면이 그 공지를 펼치고 그리로 내려간다, 거기서 읽힌다).
+ * 공지 메모 알림은 그 공지의 사업에 선다(migrations/0116) — 이 목록의 사업이 곧 그 공지의 사업이라 그 사업의 공지 화면으로 간다.
  */
-function hrefOf(n: NoteNotification): string {
-  if (n.kind === 'notice' && n.noticeId) return `/notices?open=${encodeURIComponent(n.noticeId)}`;
+function hrefOf(n: NoteNotification, biz: Biz): string {
+  if (n.kind === 'notice' && n.noticeId) return `${BIZ_NOTICES[biz]}?open=${encodeURIComponent(n.noticeId)}`;
   if (n.kind === 'remind' && n.agentId) return `/admin/agents/${encodeURIComponent(n.agentId)}`;
   return `/projects/${encodeURIComponent(n.projectId ?? '')}?tab=${TAB_OF_SCOPE[n.scope ?? '시공']}`;
 }
@@ -90,7 +91,7 @@ export default function NotificationList({ items, viewingAs, biz = 'ev' }: {
           {list.map((n) => (
             <li key={n.id}>
               <Link
-                href={hrefOf(n)}
+                href={hrefOf(n, biz)}
                 className="flex gap-3 px-4 py-3 transition hover:bg-slate-50"
               >
                 <span

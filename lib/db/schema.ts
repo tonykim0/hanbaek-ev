@@ -26,8 +26,10 @@ export const users = pgTable('users', {
   passwordHash: text('password_hash').notNull(),
   active: boolean('active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  /** 공지 화면을 마지막으로 연 시각 — 그보다 뒤의 공지가 「안 읽은 것」(상단바 배지) */
+  /** 전기차 공지 화면(/notices)을 마지막으로 연 시각 — 그보다 뒤의 전기차 공지가 「안 읽은 것」(상단바 배지) */
   noticesReadAt: timestamp('notices_read_at', { withTimezone: true }),
+  /** 태양광 공지 화면(/solar/notices)을 마지막으로 연 시각 — 읽음도 사업마다 따로다(migrations/0116) */
+  solarNoticesReadAt: timestamp('solar_notices_read_at', { withTimezone: true }),
   /** 태양광 사업 참여 — 켜면 사업 전환이 보이고 제 소속의 태양광 현장을 본다(migrations/0105). 한백은 안 봐도 늘 본다 */
   solar: boolean('solar').notNull().default(false),
 });
@@ -70,6 +72,8 @@ export const notices = pgTable('notices', {
   updatedAt: timestamp('updated_at', { withTimezone: true }),
   /** 붙은 파일 — NoticeFile[] (양식·서식처럼 협력사가 받아 가는 것) */
   files: jsonb('files').$type<NoticeFile[]>().notNull().default([]),
+  /** 사업 — 'ev' 전기차 · 'solar' 태양광(migrations/0116). 그전 공지는 전부 전기차다. 쓴 뒤에는 안 바뀐다 */
+  biz: text('biz').notNull().default('ev'),
 });
 
 /**

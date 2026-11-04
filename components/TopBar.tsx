@@ -19,7 +19,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BIZ_ALERTS, BIZ_FRAME, type Biz } from '@/lib/biz';
+import { BIZ_ALERTS, BIZ_FRAME, BIZ_NOTICES, type Biz } from '@/lib/biz';
 import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
 import { isHanbaek, type Role } from '@/lib/roles';
 
@@ -89,15 +89,16 @@ export default function TopBar({ role, biz, onMenu }: {
    * 안 읽은 공지 수 (한백 지시 2026-09-04 「안 읽었으면 1 표시」).
    * 공지 화면에 서 있으면 그 화면이 읽음을 찍는 중이므로 0 으로 접는다 — 읽고 있는데
    * 배지가 남아 있으면 거짓말이다(찍기와 세기의 경주를 화면 판정으로 끊는다).
+   * ★지금 사업의 공지만 센다★ (migrations/0116 — 공지도 사업마다 따로다, 알림과 같다).
    */
   const [unread, setUnread] = useState(0);
   useEffect(() => {
-    if (pathname.startsWith('/notices')) {
+    if (pathname.startsWith(BIZ_NOTICES[biz])) {
       setUnread(0);
       return;
     }
     let alive = true;
-    void fetch('/api/notices/unread')
+    void fetch(`/api/notices/unread?biz=${biz}`)
       .then((r) => (r.ok ? (r.json() as Promise<{ count: number }>) : null))
       .then((d) => {
         if (alive && d) setUnread(d.count);
@@ -108,7 +109,7 @@ export default function TopBar({ role, biz, onMenu }: {
     return () => {
       alive = false;
     };
-  }, [pathname]);
+  }, [pathname, biz]);
 
   /*
    * 안 읽은 알림 수 — 진행현황에 상대방이 남긴 글(lib/notify.ts · 한백 지시 2026-10-05).
@@ -164,8 +165,8 @@ export default function TopBar({ role, biz, onMenu }: {
         * (shrink-0) — 좁은 화면에서도 안 읽은 수가 늘 보인다.
         */}
       <nav aria-label="공지 · 알림" className="flex shrink-0 items-center gap-1">
-        <BarLink href="/notices" label="공지" biz={biz} count={unread} active={pathname.startsWith('/notices')} />
-        {/* 알림은 사업마다 따로다 — 지금 사업의 알림으로 간다(lib/biz BIZ_ALERTS) */}
+        {/* 공지 · 알림은 사업마다 따로다 — 지금 사업의 것으로 간다(lib/biz BIZ_NOTICES · BIZ_ALERTS) */}
+        <BarLink href={BIZ_NOTICES[biz]} label="공지" biz={biz} count={unread} active={pathname.startsWith(BIZ_NOTICES[biz])} />
         <BarLink href={BIZ_ALERTS[biz]} label="알림" biz={biz} count={alerts} active={pathname.startsWith(BIZ_ALERTS[biz])} />
       </nav>
       {/* 가르는 선 — 먼저 읽을 것(공지 · 알림)과 도구는 다른 갈래다. 도구가 서는 사업(전기차)에만 */}

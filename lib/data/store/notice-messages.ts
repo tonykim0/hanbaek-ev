@@ -10,12 +10,17 @@
  * 한백 관리자와 협력사 계정 모두, 쓴 사람만 빼고. 진행현황 글과 같은 길이다(그 현장 → 이 공지).
  *
  * 지우기는 쓴 사람만(진행현황과 같다) — 지운 글은 감사기록에 통째로 남는다. 그 글의 알림은 같이 지워진다(cascade).
+ *
+ * ★메모는 그 공지의 사업을 따른다★ (migrations/0116) — 목록은 그 사업의 공지에 붙은 것만, 알림은 그 사업으로(태양광 공지의
+ * 메모는 태양광을 보는 계정에게만 · 태양광 알림), 태양광 공지에는 태양광을 보는 계정만 남긴다(seesSolar 와 같은 판정).
  */
 import { asc, eq } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
-import { noticeMessages, notices } from '@/lib/db/schema';
+import { noticeMessages, notices, users } from '@/lib/db/schema';
 import { stampOf } from '@/lib/date';
+import { asBiz, type Biz } from '@/lib/biz';
+import { isHanbaek } from '@/lib/roles';
 import type { NoticeMessage } from '@/types/project';
 import type { ProjectRepository } from '../repository';
 import { fanOutNoticeMessage } from './notifications';
@@ -27,8 +32,16 @@ export const noticeMessageStore: Pick<
   ProjectRepository,
   'listNoticeMessages' | 'addNoticeMessage' | 'deleteNoticeMessage'
 > = {
-  async listNoticeMessages(me): Promise<NoticeMessage[]> {
-    const rows = await getDb().select().from(noticeMessages).orderBy(asc(noticeMessages.at));
+  async listNoticeMessages(me, biz: Biz = 'ev'): Promise<NoticeMessage[]> {
+    const rows = await getDb()
+      .select({
+        id: noticeMessages.id, noticeId: noticeMessages.noticeId, author: noticeMessages.author,
+        body: noticeMessages.body, at: noticeMessages.at, authorId: noticeMessages.authorId,
+      })
+      .from(noticeMessages)
+      .innerJoin(notices, eq(notices.id, noticeMessages.noticeId))
+      .where(eq(notices.biz, biz))
+      .orderBy(asc(noticeMessages.at));
     return rows.map((r) => ({
       id: r.id, noticeId: r.noticeId, author: r.author, body: r.body,
       at: stampOf(r.at), mine: r.authorId === me.id,
@@ -43,8 +56,21 @@ export const noticeMessageStore: Pick<
     if (actor.role === 'viewer') throw new Error('공지 메모를 남길 수 없는 계정입니다.');
 
     const db = getDb();
-    const [notice] = await db.select({ title: notices.title }).from(notices).where(eq(notices.id, input.noticeId)).limit(1);
+    const [notice] = await db
+      .select({ title: notices.title, biz: notices.biz })
+      .from(notices)
+      .where(eq(notices.id, input.noticeId))
+      .limit(1);
     if (!notice) throw new Error('공지를 찾을 수 없습니다.');
+    const biz = asBiz(notice.biz);
+    /*
+     * 태양광 공지에는 태양광을 보는 계정만 — 한백의 눈이거나 태양광 참여를 켠 협력사(lib/biz seesSolar 와 같은 판정).
+     * Actor 에는 태양광 참여가 실려 있지 않아 계정 줄을 읽는다(라우트를 거치지 않는 길 — 시험 · 스크립트 — 에도 같은 문).
+     */
+    if (biz === 'solar' && !isHanbaek(actor.role)) {
+      const [me] = await db.select({ solar: users.solar }).from(users).where(eq(users.id, actor.id)).limit(1);
+      if (!me?.solar) throw new Error('태양광 공지에는 태양광 참여 계정만 메모를 남길 수 있습니다.');
+    }
 
     // 누가 썼나 — 진행현황과 같다: 한백 또는 협력사 이름(계정이 회사당 하나라 사람 이름은 안 적는다)
     const fromHanbaek = actor.role === 'admin';
@@ -54,7 +80,7 @@ export const noticeMessageStore: Pick<
       await tx.insert(noticeMessages).values({
         id, noticeId: input.noticeId, org: fromHanbaek ? null : actor.org, author, authorId: actor.id, body,
       });
-      await fanOutNoticeMessage(tx, { msgId: id, noticeId: input.noticeId, actorId: actor.id });
+      await fanOutNoticeMessage(tx, { msgId: id, noticeId: input.noticeId, actorId: actor.id, biz });
       await writeAudit(tx, {
         projectId: null, actor, action: '공지 메모',
         field: 'noticeMessages', oldValue: notice.title, newValue: body.slice(0, 200),

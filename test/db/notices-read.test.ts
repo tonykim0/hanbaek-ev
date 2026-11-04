@@ -3,8 +3,11 @@
  * 관리자가 협력사 계정으로 대행 중일 때 세션의 id 는 협력사다. 읽음은 관리자 본인(via)에게 찍혀야 한다.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { eq, sql } from 'drizzle-orm';
 import { POST } from '@/app/api/notices/read/route';
 import { getRepository } from '@/lib/data';
+import { getDb } from '@/lib/db/client';
+import { users } from '@/lib/db/schema';
 import { RUN, USERS, actorOf, call, signInAs } from './kit';
 
 const repo = getRepository();
@@ -13,6 +16,12 @@ let noticeId: string;
 
 beforeAll(async () => {
   noticeId = await repo.saveNotice({ title: `[시험 ${RUN}] 공지`, body: '읽음 표시 시험' }, admin);
+  /*
+   * 쓴 사람에게 제 공지는 새것이 아니다 — 쓰는 순간 그 사람의 읽음 칸이 찍힌다(store/notices saveNotice). 이 시험은
+   * 그것이 깨져 있던 동안(읽음 시각을 JS 로 견줘 마이크로초가 잘렸다 — 2026-11-04 고침) 「관리자가 쓰면 관리자에게 새 공지가
+   * 있다」에 기대고 있었다. 이제는 관리자의 읽음 시각을 1분 앞으로 돌려 「관리자가 아직 안 읽은 공지가 있다」를 만든다.
+   */
+  await getDb().update(users).set({ noticesReadAt: sql`now() - interval '1 minute'` }).where(eq(users.id, USERS.admin.id));
 });
 afterAll(async () => {
   await repo.deleteNotice(noticeId, admin).catch(() => undefined);

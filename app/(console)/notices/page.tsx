@@ -14,6 +14,9 @@ export const dynamic = 'force-dynamic';
  * 정적 HTML(public/notices/)로 한 장씩 만들던 것을 화면으로 받는다. 읽기는 로그인한
  * 전부(열람 전용 포함), 쓰기는 관리자만이다. 이 화면을 여는 것이 곧 「읽었다」이고
  * (NoticeBoard 가 표시를 찍는다) 상단바 배지가 그때 꺼진다.
+ *
+ * ★전기차 공지다★ (2026-11-04, migrations/0116 — 한백 「모든 공지와 알림은 분리해(전기차/태양광)」). 태양광 공지는
+ * /solar/notices 다 — 같은 부품이고 사업만 다르다. 그전 공지는 전부 전기차라 여기 그대로 선다.
  */
 export default async function NoticesPage({ searchParams }: {
   /** 알림에서 오면 ?open=공지 — 그 공지를 펼치고 그리로 내려간다 */
@@ -25,8 +28,8 @@ export default async function NoticesPage({ searchParams }: {
   const repo = getRepository();
   const me = { id: session.id, role: session.role, org: session.org };
   const [items, messages, freshIds] = await Promise.all([
-    repo.listNotices(),
-    repo.listNoticeMessages(me),
+    repo.listNotices('ev'),
+    repo.listNoticeMessages(me, 'ev'),
     repo.unreadNoticeMessages(session.id),
   ]);
 
@@ -36,6 +39,7 @@ export default async function NoticesPage({ searchParams }: {
         <h1 className="text-h1 font-black text-slate-900">공지</h1>
       </div>
       <NoticeBoard
+        biz="ev"
         items={items}
         canWrite={session.role === 'admin'}
         messages={messages}

@@ -1,5 +1,6 @@
 /**
  * POST /api/notices/read — 공지를 읽었다고 표시 (로그인한 누구나, ★열람 전용 포함★)
+ * 본문 { biz } — 그 사업의 공지 화면을 연 것이다(migrations/0116 — 안 주면 전기차). 태양광을 안 보는 계정은 찍을 것이 없다.
  *
  * sessionWrite 를 쓰지 않는다 — 그 껍데기는 열람 전용을 전부 막는데(사업 데이터의
  * 쓰기 규칙), 이것은 사업 데이터가 아니라 제 읽음 시각 한 칸이다. 열람 전용도 공지를
@@ -8,13 +9,18 @@
 import { NextResponse } from 'next/server';
 import { getRepository } from '@/lib/data';
 import { getSessionUser } from '@/lib/auth/session';
+import { asBiz, seesSolar } from '@/lib/biz';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST() {
+export async function POST(request: Request) {
   const session = await getSessionUser();
   if (!session) return NextResponse.json({ error: '로그인이 필요합니다.' }, { status: 401 });
+  // 본문이 없으면 전기차 — 옛 화면이 본문 없이 불렀다
+  const body = (await request.json().catch(() => null)) as { biz?: unknown } | null;
+  const biz = asBiz(typeof body?.biz === 'string' ? body.biz : null);
+  if (biz === 'solar' && !seesSolar(session)) return NextResponse.json({ ok: true });
   // 대행(asId) 중이면 화면을 연 것은 관리자 본인이다 — 대행 대상 협력사에 읽음을 찍지 않는다 (감사 L20)
-  await getRepository().markNoticesRead(session.via?.id ?? session.id);
+  await getRepository().markNoticesRead(session.via?.id ?? session.id, biz);
   return NextResponse.json({ ok: true });
 }

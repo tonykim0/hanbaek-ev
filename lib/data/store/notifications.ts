@@ -15,8 +15,8 @@
  * 읽음 찍기는 사업 데이터의 쓰기가 아니다 — 열람 전용도 제 것을 찍는다(공지 읽음과 같다). 대행 중에는 찍지
  * 않는다(라우트가 거른다 — 관리자가 들여다본 것은 협력사가 읽은 것이 아니다).
  *
- * ★사업으로 가른다★ (2026-11-03, migrations/0107) — 여기서 남기는 알림은 전부 전기차다(현장 · 공지 메모). 목록 · 배지는
- * 사업 하나씩 본다(전기차 /notifications · 태양광 /solar/notifications). 태양광 알림은 태양광의 일이 생기면 biz 'solar' 로 남긴다.
+ * ★사업으로 가른다★ (2026-11-03, migrations/0107) — 현장의 알림은 전기차다. 공지 메모 알림은 그 공지의 사업이다(2026-11-04,
+ * migrations/0116 — 공지도 사업마다 따로다). 목록 · 배지는 사업 하나씩 본다(전기차 /notifications · 태양광 /solar/notifications).
  */
 import { and, desc, eq, inArray, isNotNull, isNull, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
@@ -117,16 +117,21 @@ export async function notifyMilestone(tx: TxLike, input: {
  * 공지 메모 하나를 펼친다 — addNoticeMessage 의 트랜잭션 안에서 (migrations/0094 · 0095).
  * 한백 관리자와 협력사 계정 모두 — 쓴 사람·멈춘 계정은 빼고. 공지 메모는 모두가 보는 한 줄기라 받는 사람도 모두다.
  * 열람 전용은 받지 않는다(진행현황과 같다 — 글을 남기는 자리에 서지 않는다).
+ *
+ * ★그 공지의 사업으로 간다★ (migrations/0116 — 공지가 사업마다 따로가 됐다). 태양광 공지의 메모는 태양광을 보는 계정 —
+ * 한백 관리자와 태양광 참여를 켠 협력사(lib/biz seesSolar) — 에게만, 태양광 알림(/solar/notifications)으로 선다.
  */
 export async function fanOutNoticeMessage(tx: TxLike, input: {
-  msgId: string; noticeId: string; actorId: string;
+  msgId: string; noticeId: string; actorId: string; biz: Biz;
 }): Promise<number> {
   const rows = await tx.select({ id: users.id }).from(users)
-    .where(and(ne(users.role, 'viewer'), eq(users.active, true), ne(users.id, input.actorId)));
+    .where(and(
+      ne(users.role, 'viewer'), eq(users.active, true), ne(users.id, input.actorId),
+      input.biz === 'solar' ? or(eq(users.role, 'admin'), eq(users.solar, true)) : undefined,
+    ));
   if (rows.length === 0) return 0;
   await tx.insert(notifications).values(rows.map((r) => ({
-    // 공지는 두 사업이 같이 쓰지만 공지 메모 알림은 지금까지처럼 전기차에 선다(한백 「지금까지 모든 알림은 전기차 알림」)
-    id: crypto.randomUUID(), userId: r.id, kind: 'notice', noticeId: input.noticeId, noticeMsgId: input.msgId, biz: 'ev',
+    id: crypto.randomUUID(), userId: r.id, kind: 'notice', noticeId: input.noticeId, noticeMsgId: input.msgId, biz: input.biz,
   })));
   return rows.length;
 }

@@ -18,6 +18,7 @@
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { Notice, NoticeFile, NoticeMessage } from '@/types/project';
+import type { Biz } from '@/lib/biz';
 import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
 import { NoticeTalk } from '@/components/NoticeTalk';
 import { useAction } from '@/lib/use-action';
@@ -43,7 +44,12 @@ function byDay(items: Notice[]): Array<[string, Notice[]]> {
   return [...out];
 }
 
-export default function NoticeBoard({ items, canWrite, messages, freshIds, canPost, openId }: {
+export default function NoticeBoard({ biz, items, canWrite, messages, freshIds, canPost, openId }: {
+  /**
+   * 어느 사업의 공지인가 — 전기차 /notices · 태양광 /solar/notices (migrations/0116). 읽음을 그 사업에 찍고, 새 공지를 그
+   * 사업으로 쓴다. 목록(items)은 화면이 이미 그 사업의 것만 준다.
+   */
+  biz: Biz;
   items: Notice[];
   /** 공지 쓰기 — 한백 관리자만. 서버(adminWrite)가 같은 판정을 한 번 더 한다 */
   canWrite: boolean;
@@ -63,8 +69,10 @@ export default function NoticeBoard({ items, canWrite, messages, freshIds, canPo
    * 다음에 열면 다시 찍는다.
    */
   useEffect(() => {
-    void fetch('/api/notices/read', { method: 'POST' }).catch(() => {});
-  }, []);
+    void fetch('/api/notices/read', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ biz }),
+    }).catch(() => {});
+  }, [biz]);
 
   const [writing, setWriting] = useState(false);
 
@@ -72,7 +80,7 @@ export default function NoticeBoard({ items, canWrite, messages, freshIds, canPo
     <div className="flex flex-col gap-4">
       {canWrite && (
         writing ? (
-          <NoticeForm onDone={() => setWriting(false)} />
+          <NoticeForm biz={biz} onDone={() => setWriting(false)} />
         ) : (
           <div>
             <Btn size="sm" onClick={() => setWriting(true)}>새 공지 쓰기</Btn>
@@ -448,7 +456,12 @@ function NoticeUpload({ noticeId }: { noticeId: string }) {
 }
 
 /** 작성(notice 없음)과 수정(있음)이 같은 칸을 쓴다 — 두 벌이면 모양이 갈린다 */
-function NoticeForm({ notice, onDone }: { notice?: Notice; onDone: () => void }) {
+function NoticeForm({ notice, biz, onDone }: {
+  notice?: Notice;
+  /** 새 공지의 사업 — 쓰는 화면의 것. 수정에는 없다(공지의 사업은 안 바뀐다) */
+  biz?: Biz;
+  onDone: () => void;
+}) {
   const { busy, error, setError, run } = useAction();
   const [title, setTitle] = useState(notice?.title ?? '');
   const [body, setBody] = useState(notice?.body ?? '');
@@ -457,7 +470,7 @@ function NoticeForm({ notice, onDone }: { notice?: Notice; onDone: () => void })
     const ok = await run({
       url: notice ? `/api/notices/${notice.id}` : '/api/notices',
       method: notice ? 'PATCH' : 'POST',
-      body: { title, body },
+      body: notice ? { title, body } : { title, body, biz },
       fail: '공지를 저장하지 못했습니다.',
     });
     if (ok) onDone();
