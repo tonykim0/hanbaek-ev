@@ -15,7 +15,7 @@ import { MailAccount } from '@/components/agents/MailAccount';
 import { AgentUsage } from '@/components/agents/AgentUsage';
 import { isLive, ledOf, roleLineOf } from '@/components/agents/status';
 
-export const metadata = { title: '에이전트' };
+export const metadata = { title: 'AI에이전트' };
 export const dynamic = 'force-dynamic';
 
 /**
@@ -72,7 +72,7 @@ export default async function AgentsPage() {
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="mb-1 text-small font-bold text-brand-700">AI 담당 조직도</p>
-          <h1 className="text-h1 font-black text-slate-900">에이전트</h1>
+          <h1 className="text-h1 font-black text-slate-900">AI에이전트</h1>
         </div>
         <dl className="grid grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">
           <Stat label="담당" value={`${agents.length}`} />

@@ -16,7 +16,7 @@ import { AgentMark } from '@/components/agents/kit';
 import { MailAccount } from '@/components/agents/MailAccount';
 import { isLive, ledOf, roleLineOf } from '@/components/agents/status';
 
-export const metadata = { title: '에이전트' };
+export const metadata = { title: 'AI에이전트' };
 export const dynamic = 'force-dynamic';
 
 /**
@@ -55,7 +55,7 @@ export default async function AgentPage({ params, searchParams }: {
   return (
     <>
       <nav className="mb-4">
-        <Link href="/admin/agents" className="text-small font-bold text-slate-500 transition hover:text-brand-800">← 에이전트 조직도</Link>
+        <Link href="/admin/agents" className="text-small font-bold text-slate-500 transition hover:text-brand-800">← AI에이전트 조직도</Link>
       </nav>
       <header className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-3">
         <AgentMark size="lg" tone={led.tone} live={live} label={`${led.label}${live ? ' · 최근 24시간 대화' : ''}`} />
