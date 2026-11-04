@@ -112,15 +112,22 @@ export function ringOf(points: { x: number; y: number }[], a: Pick<Aerial, 'orig
   return [...ring, ring[0]];
 }
 
+/**
+ * 태양광의 API 키 — Anthropic 콘솔의 키 「hanbaek-solar」(2026-11-04 한백). 전기차 판독과 키를 갈라야 콘솔 사용량에서 태양광 몫이
+ * 따로 보인다(키 하나를 같이 쓰던 때 어디서 쓴 돈인지 가릴 수 없었다). 아직 안 넣은 환경에서는 공용 키로 돈다.
+ */
+export const solarApiKey = (): string | undefined =>
+  process.env.ANTHROPIC_SOLAR_API_KEY?.trim() || process.env.ANTHROPIC_API_KEY;
+
 let client: Anthropic | null = null;
 
 export async function traceRoofs(parcel: PolygonCoords[]): Promise<Trace> {
-  if (!process.env.ANTHROPIC_API_KEY) throw new Error('[AI] ANTHROPIC_API_KEY 없음');
+  if (!solarApiKey()) throw new Error('[AI] ANTHROPIC_SOLAR_API_KEY · ANTHROPIC_API_KEY 없음');
   const box = bboxOf(parcel);
   if (!box) throw new Error('[AI] 필지 모양 없음');
   const t0 = Date.now();
   const aerial = await aerialOf(box, parcel);
-  client ??= new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  client ??= new Anthropic({ apiKey: solarApiKey() });
   const params: TraceParams = {
     model: MODEL,
     max_tokens: 16000,

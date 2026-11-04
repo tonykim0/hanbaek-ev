@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { fromWorldPx, metersPerPx, toWorldPx } from '@/lib/solar/sources/aerial';
-import { ringOf } from '@/lib/solar/roof-trace';
+import { ringOf, solarApiKey } from '@/lib/solar/roof-trace';
 
 describe('항공영상 픽셀 ↔ 경위도', () => {
   it('되돌리면 같은 자리 (충주, 19단계)', () => {
@@ -34,5 +34,21 @@ describe('ringOf — AI 가 준 픽셀 꼭짓점을 닫힌 경위도 고리로',
   it('점이 셋보다 적거나 사진 밖이면 버린다', () => {
     expect(ringOf([{ x: 1, y: 1 }, { x: 2, y: 2 }], at)).toBeNull();
     expect(ringOf([{ x: 5000, y: 1 }, { x: 6000, y: 2 }, { x: 7000, y: 3 }], at)).toBeNull();
+  });
+});
+
+/* 태양광은 따로 키를 쓴다 — 콘솔 사용량에서 태양광 몫이 갈려 보이게(키 「hanbaek-solar」, 2026-11-04) */
+describe('태양광 API 키 — ANTHROPIC_SOLAR_API_KEY 먼저, 없으면 공용 키', () => {
+  const keep = { solar: process.env.ANTHROPIC_SOLAR_API_KEY, main: process.env.ANTHROPIC_API_KEY };
+  afterEach(() => {
+    process.env.ANTHROPIC_SOLAR_API_KEY = keep.solar ?? '';
+    process.env.ANTHROPIC_API_KEY = keep.main ?? '';
+  });
+  it('따로 넣은 키가 있으면 그것 · 비었거나 공백뿐이면 공용 키', () => {
+    process.env.ANTHROPIC_API_KEY = 'main';
+    process.env.ANTHROPIC_SOLAR_API_KEY = 'solar';
+    expect(solarApiKey()).toBe('solar');
+    process.env.ANTHROPIC_SOLAR_API_KEY = '  ';
+    expect(solarApiKey()).toBe('main');
   });
 });

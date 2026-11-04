@@ -875,6 +875,11 @@ bulletpoint는 다 왼쪽정렬로」). 단가표의 조건 행(설치조건·�
   단추라서. 견주는 도구: `scripts/eval-vision-models.ts`(판독 갈래·재발행·협력사 서류) · `scripts/eval-classify-models.ts`(접수 분류)
   — 같은 서류를 모델마다 읽혀 기준과 다른 칸을 찍는다, 누가 맞는지는 사람이 서류를 열어 가린다. ★돈이 든다★(이번 넷이 약 $10) —
   한백 승인 먼저. 판정 근거(몇 건 중 몇 건)는 각 PICK 의 주석에 있다.
+- **태양광은 API 키를 따로 쓴다** (2026-11-04 한백) — AI 지붕 찾기(`lib/solar/roof-trace` solarApiKey)는
+  `ANTHROPIC_SOLAR_API_KEY`(Anthropic 콘솔의 키 이름 「hanbaek-solar」)를 먼저, 없으면 공용 `ANTHROPIC_API_KEY` 를 쓴다. 키 하나를
+  운영·프리뷰·로컬·태양광이 같이 쓰던 때 콘솔에서 어디서 쓴 돈인지 가릴 수 없었다. 넣는 법: 키를 복사하고
+  `bash scripts/set-env.sh ANTHROPIC_SOLAR_API_KEY --vercel` — 본 저장소의 `.env.local` 과 Vercel production·preview(Sensitive)에
+  넣는다(값은 화면에 안 찍힌다). 운영에는 그다음 배포부터 실린다.
 - `next build` 를 `next dev` 가 돌고 있는 중에 실행하지 않는다. `.next` 가 깨진다.
 - 비밀번호·접속 문자열을 대화에 남기지 않는다. `.env.local` 에 직접 넣는다.
 - **함수 지역은 `icn1`(서울) 이다** — `vercel.json` 의 `regions`. DB(Supabase `ap-northeast-2`)와

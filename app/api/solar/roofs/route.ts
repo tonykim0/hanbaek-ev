@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { solarGate } from '@/lib/solar/api-gate';
-import { traceRoofs, type Trace } from '@/lib/solar/roof-trace';
+import { solarApiKey, traceRoofs, type Trace } from '@/lib/solar/roof-trace';
 import { parcelByPnu } from '@/lib/solar/sources/vworld';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
   if (!/^\d{19}$/.test(pnu)) return NextResponse.json({ error: '필지번호가 이상합니다.' }, { status: 400 });
 
   // 키가 없으면 세지 않고 돌려보낸다 — 부르지도 않은 것을 하루 한도에서 깎지 않게
-  if (!process.env.ANTHROPIC_API_KEY) return NextResponse.json({ error: 'AI 키(ANTHROPIC_API_KEY)가 아직 없습니다.' }, { status: 503 });
+  if (!solarApiKey()) return NextResponse.json({ error: 'AI 키(ANTHROPIC_SOLAR_API_KEY)가 아직 없습니다.' }, { status: 503 });
   if (!process.env.VWORLD_KEY) return NextResponse.json({ error: '항공사진 키(VWORLD_KEY)가 아직 없습니다.' }, { status: 503 });
 
   const hit = cache.get(pnu);
