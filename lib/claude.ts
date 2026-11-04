@@ -1,12 +1,13 @@
 /**
  * Anthropic API 클라이언트.
- * Claude Sonnet 4.6 PDF vision으로 계약서 분류 + 메타데이터 추출.
+ * Claude PDF vision으로 계약서 분류 + 메타데이터 추출 (모델은 아래 MODEL).
  *
  * 서버 사이드 전용.
  */
 import Anthropic from '@anthropic-ai/sdk';
 import { buildExtractionPrompt } from './prompts';
 import { logLlmCall } from './llm-usage';
+import { pinAnsweredNames } from './check-kit';
 import type { ExtractedMetadata } from '@/types/intake';
 import type { NormalizedFile } from './files';
 
@@ -14,7 +15,14 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const MODEL = 'claude-sonnet-4-6';
+/**
+ * Haiku 5.5 · 강도 low (2026-11-04, Sonnet 4.6 에서) — 실제 접수 묶음 8개(72파일)를 Sonnet 4.6 · Sonnet 5.5 · Haiku 5.5 로 견줬다
+ * (scripts/eval-classify-models.ts): 파일 칸 Haiku 71/72 · 채우는 값 107/112(Sonnet 5.5 는 71/72 · 105/112). 다른 칸 하나는
+ * 판독이 파일 이름을 제목으로 바꿔 적은 것이었다(pinAnsweredNames 가 잇는다). 값은 묶음당 ~$0.13 → ~$0.005, 시간은 15~30초 → 8~26초.
+ * 생각을 끌 수 없는 세대라 강도로 줄인다(PICK.effort).
+ */
+const MODEL = 'claude-haiku-5-5';
+const PICK: ClassifyModel = { model: MODEL, effort: 'low' };
 /**
  * ★거절(stop_reason: refusal)이면 이 모델로 다시 읽는다★ (2026-10-06, 일곡금호.zip).
  *
@@ -40,6 +48,10 @@ const RETRY_ELAPSED_BUDGET_MS = 120_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** 분류에 쓸 모델과 강도 — 설치된 SDK(0.52)가 output_config 의 타입을 모르므로 요청 타입을 넓혀 보낸다(lib/claude-import 와 같은 방식) */
+export interface ClassifyModel { model: string; effort?: 'low' | 'medium' | 'high' }
+type CreateWithEffort = Anthropic.MessageCreateParamsNonStreaming & { output_config?: { effort: string } };
+
 /** 재시도에 덧붙이는 말 — 앞선 시도가 JSON 아닌 것(또는 아무것도)을 돌려줬을 때다 */
 const RETRY_NUDGE =
   '앞선 답에서 JSON 을 찾지 못했습니다. 설명·사과·머리말 없이 ★JSON 객체 하나만★ 출력하세요. '
@@ -56,7 +68,9 @@ const RETRY_NUDGE =
  */
 export async function classifyAndExtract(
   pdfs: NormalizedFile[],
-  tag: string
+  tag: string,
+  /** 견주는 시험(scripts/eval-classify-models.ts)만 넘긴다 — 운영은 MODEL */
+  pick: ClassifyModel = PICK
 ): Promise<ExtractedMetadata> {
   // 방어적으로 PDF만 전송 (Claude vision은 xlsx/pptx 등을 처리하지 못함)
   const pdfOnly = pdfs.filter((p) => p.mimeType === 'application/pdf');
@@ -78,7 +92,7 @@ export async function classifyAndExtract(
   const startedAt = Date.now();
   let lastError: unknown;
   /** 거절을 받으면 바뀐다 — 그 뒤 시도는 REFUSAL_FALLBACK_MODEL 로 간다 */
-  let model: string = MODEL;
+  let model: string = pick.model;
   const sent = () =>
     `PDF ${pdfOnly.length}개 ${mb(pdfOnly.reduce((n, p) => n + p.buffer.length, 0))}MB `
     + `[${pdfOnly.map((p) => `${p.name} ${mb(p.buffer.length)}MB`).join(' · ')}]`;
@@ -92,15 +106,15 @@ export async function classifyAndExtract(
        */
       const ask = attempt === 1 ? content : [...content, { type: 'text' as const, text: RETRY_NUDGE }];
       const at = Date.now();
-      const message = await anthropic.messages.create(
-        {
-          model,
-          // 파일이 많은 통합 PDF는 files 배열이 커서 4096으로는 JSON이 잘릴 수 있음
-          max_tokens: 8192,
-          messages: [{ role: 'user', content: ask }],
-        },
-        { timeout: CALL_TIMEOUT_MS }
-      );
+      const params: CreateWithEffort = {
+        model,
+        // 파일이 많은 통합 PDF는 files 배열이 커서 4096으로는 JSON이 잘릴 수 있음
+        max_tokens: 8192,
+        messages: [{ role: 'user', content: ask }],
+        // 생각이 꺼지지 않는 모델(5.5 세대)은 강도로 줄인다 — 거절 대체 모델에는 싣지 않는다
+        ...(pick.effort && model === pick.model ? { output_config: { effort: pick.effort } } : {}),
+      };
+      const message = await anthropic.messages.create(params, { timeout: CALL_TIMEOUT_MS });
       // 거절·빈 답도 입력 토큰은 냈다 — 답을 보기 전에 남긴다
       logLlmCall({ route: `classify:${tag}`, model, ms: Date.now() - at, usage: message.usage });
       if (message.stop_reason === 'refusal') {
@@ -114,7 +128,10 @@ export async function classifyAndExtract(
         console.warn(`[claude] ${model} 도 거절 · 보낸 것: ${sent()}`);
         break;
       }
-      return parseMetadata(message);
+      const meta = parseMetadata(message);
+      return Array.isArray(meta.files)
+        ? { ...meta, files: pinAnsweredNames(meta.files, pdfOnly.map((p) => p.name)) }
+        : meta;
     } catch (err) {
       lastError = err;
       /*

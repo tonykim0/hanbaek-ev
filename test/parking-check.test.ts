@@ -10,7 +10,7 @@ import {
   VIEW_ONLY_REASON, type ParkingCheck, type ParkingRead,
 } from '@/lib/parking-check';
 import { parkingReadsOf } from '@/lib/parking-read';
-import { nameOfAnswer, shownName } from '@/lib/check-kit';
+import { nameOfAnswer, pinAnsweredNames, shownName } from '@/lib/check-kit';
 
 /*
  * 주소는 기본으로 같은 도로명을, 발급일은 계약접수일 안쪽 날을 단다 — 주차면 시험이 주소·발급일 판정에 걸리지 않게
@@ -351,6 +351,30 @@ describe('판독이 답한 이름 되짚기', () => {
   });
   it('판독에게는 붙은 꼴로 보인다', () => {
     expect(shownName(names[0])).toBe('서울가든아파트 건축물대장.pdf'.normalize('NFC'));
+  });
+});
+
+/* 접수 분류(lib/claude) — 판독이 파일 이름 대신 문서 제목을 적어 와도 그 파일의 판정을 잃지 않는다 (2026-11-04 분류 모델 견주기) */
+describe('분류의 답 이름 되짚기 — pinAnsweredNames', () => {
+  const sent = ['글로스터_개인정보 수집·이용 동의서.pdf'.normalize('NFD'), '글로스터_계약서.pdf', '글로스터_건축물대장.pdf'];
+  it('짝 없는 답 하나 · 답 못 받은 파일 하나면 잇는다 — 나머지는 이름대로', () => {
+    const got = pinAnsweredNames([
+      { originalName: '글로스터_개인정보 수집·이용 및 제3자 위탁·제공 동의서.pdf', category: '개인정보 동의서' },
+      { originalName: '글로스터_계약서.pdf', category: '계약서' },
+      { originalName: '글로스터_건축물대장', category: '건축물대장' },
+    ], sent);
+    expect(got.map((f) => f.originalName)).toEqual(sent);
+    expect(got[0].category).toBe('개인정보 동의서');
+  });
+  it('통합 PDF 조각처럼 같은 이름이 여럿이어도 한 이름으로 센다', () => {
+    const got = pinAnsweredNames([
+      { originalName: '스캔 묶음(1).pdf' }, { originalName: '스캔 묶음(1).pdf' }, { originalName: '글로스터_계약서.pdf' },
+    ], ['스캔.pdf', '글로스터_계약서.pdf']);
+    expect(got.map((f) => f.originalName)).toEqual(['스캔.pdf', '스캔.pdf', '글로스터_계약서.pdf']);
+  });
+  it('짝 없는 답이 둘 이상이면 추측하지 않는다 — 그대로 둔다(이름 규칙·기타가 받는다)', () => {
+    const got = pinAnsweredNames([{ originalName: '가.pdf' }, { originalName: '나.pdf' }], ['다.pdf', '라.pdf']);
+    expect(got.map((f) => f.originalName)).toEqual(['가.pdf', '나.pdf']);
   });
 });
 

@@ -21,7 +21,7 @@ import type { EvidenceAct, EvidenceDoc, SheetScan } from './preinstall-check';
 const DOCS: EvidenceDoc[] = ['행위신고', '필증', '계약서', '회의록', '공문', '도면', '사진', '기타'];
 const KINDS = ['신규 설치', '교체 설치', '철거'] as const;
 
-function prompt(names: string[]): string {
+export function evidencePrompt(names: string[]): string {
   return `한백 EV 충전기 사업의 「기설치 충전기 증빙」 문서들입니다. 각 문서에 ★인쇄된 것만★ 읽어 JSON 으로 답하세요.
 판단·추측·계산 결과를 지어내지 마세요. 안 보이면 null 입니다. JSON 외의 글은 쓰지 마세요.
 
@@ -98,7 +98,7 @@ export async function readEvidence(
   const acts: EvidenceAct[] = [];
   for (const batch of batches) {
     const names = batch.map((f) => f.name);
-    const got = actsOf(await ask(batch, prompt(names)), names);
+    const got = actsOf(await ask(batch, evidencePrompt(names)), names);
     acts.push(...got);
     // 답에 아예 없는 파일은 읽지 못한 것이다
     for (const n of names) if (!got.some((a) => a.file === n)) unread.push(n);
@@ -113,7 +113,7 @@ export async function readEvidence(
  * 스캔본은 그림이라 판독이 본다. 도장이 찍혔는지만 묻는다 — 누구 도장인지는 이름 칸이 말한다.
  */
 
-function scanPrompt(names: string[]): string {
+export function scanPrompt(names: string[]): string {
   return `「신청지점(대기번호)별 충전기 설치 및 철거·교체 현황」(기설치 충전기 설치이력) 양식을 출력해 날인하고 스캔한 문서입니다.
 인쇄된 것과 찍힌 것만 읽어 JSON 으로 답하세요. 추측하지 마세요. JSON 외의 글은 쓰지 마세요.
 

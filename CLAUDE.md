@@ -297,11 +297,14 @@
   예외 하나: `login_attempts` 는 `lib/auth/throttle.ts` 가 처음 쓸 때 스스로 만든다.
   로그인을 막지 않는 부속물이라서 둔 예외고, 다른 표에 이 방식을 늘리지 않는다.
 - **프로덕션이 왜 그러는지는 런타임 로그로 본다** — `npx vercel logs --environment production
-  -x --since 30m`. 화면에 안 나오는 조용한 실패(위 표 없음이 그랬다)는 여기 `[auth]`·`[db]`
+  --since 30m`(CLI 65 부터 `-x` 는 없다 · 한 줄이 `{"type":"log","data":{…}}` 로 싸여 온다). 한 번에 32일·한 번 묻기가 길면
+  시한 초과라 하루씩 나눠 묻는다. 화면에 안 나오는 조용한 실패(위 표 없음이 그랬다)는 여기 `[auth]`·`[db]`
   줄이 유일한 신호다. `npx vercel ls` 로 배포가 실제로 Ready 인지도 먼저 확인한다.
   ★2026-09-09 부터 사람이 열지 않아도 감시가 본다★ — `~/hanbaek-backups/watch-prod.sh`(launchd
   `com.hanbaek.prod-watch`, 10분마다)가 최근 production 배포 상태 · CI 마지막 실행 · 백업 덤프 나이 · 최근 15분
-  런타임 로그(error·5xx·대괄호 태그)를 보고, 상태가 바뀔 때 macOS 알림 한 줄을 띄운다(계속 나쁘면 하루 한 번).
+  런타임 로그(error·5xx·대괄호 태그) · ★최근 24시간 판독비★(`[llm]` 줄의 ~$ 합 — $8 주의 · $20 실패, 한 시간에 한 번 센다,
+  2026-11-04 — 10월 하순 판독비가 몇 배로 뛴 것을 청구서를 보고서야 알았다)를 보고, 상태가 바뀔 때 macOS 알림 한 줄을
+  띄운다(계속 나쁘면 하루 한 번).
   지금 상태는 `zsh ~/hanbaek-backups/watch-prod.sh --print` — 세션을 시작할 때 한 번 보면 프로덕션이 깨진 채
   일하는 것을 막는다. 알림 판단은 `watch-notify.py`, 상태·로그는 `~/hanbaek-backups/auto/watch-*`.
   저장소 밖에 두는 이유: launchd 는 `~/Documents` 를 못 읽는다(주간 백업 `backup-prod.sh` 가 그래서 2주 실패했다).
@@ -865,6 +868,13 @@ bulletpoint는 다 왼쪽정렬로」). 단가표의 조건 행(설치조건·�
   판독비의 절반쯤으로 추정됐는데도 로그로는 0원이었다. 단가표에 없는 모델은 opus 값으로 센다 — 모델을 바꾸면 단가도
   넣는다. ★시험이 잡는다★(`test/conventions/llm-usage.test.ts` — API 를 부르는 파일의 logLlmCall · 코드에 적힌
   모델의 단가). 경로별로 모아 보는 법: `npx vercel logs --environment production --since 7d --query llm --json`.
+- **판독 모델은 자리마다 고르고, 바꾸기 전에 실제 서류로 견준다** (2026-11-04 비용 검토) — 서류 판독은 `lib/vision-ask`
+  PICK_BY_TAG(갈래 tag → 모델·강도), 접수 분류는 `lib/claude` PICK. 지금: 건축물대장 대조·운영사 직인·중복설치·설치신청서·계약서
+  판독과 접수 분류는 Haiku 5.5(Opus 5.5 의 약 1/35 값), 기설치 증빙·대표자는 Opus 5.5, 재발행·협력사 서류는 Opus 5.5.
+  ★한백이 손으로 다시 돌리는 판독(「다시 대조」·「직인 다시 읽기」)은 Opus 다★(CAREFUL_PICK) — 자동이 잘못 읽었다고 볼 때 누르는
+  단추라서. 견주는 도구: `scripts/eval-vision-models.ts`(판독 갈래·재발행·협력사 서류) · `scripts/eval-classify-models.ts`(접수 분류)
+  — 같은 서류를 모델마다 읽혀 기준과 다른 칸을 찍는다, 누가 맞는지는 사람이 서류를 열어 가린다. ★돈이 든다★(이번 넷이 약 $10) —
+  한백 승인 먼저. 판정 근거(몇 건 중 몇 건)는 각 PICK 의 주석에 있다.
 - `next build` 를 `next dev` 가 돌고 있는 중에 실행하지 않는다. `.next` 가 깨진다.
 - 비밀번호·접속 문자열을 대화에 남기지 않는다. `.env.local` 에 직접 넣는다.
 - **함수 지역은 `icn1`(서울) 이다** — `vercel.json` 의 `regions`. DB(Supabase `ap-northeast-2`)와

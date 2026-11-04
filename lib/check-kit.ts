@@ -38,6 +38,22 @@ export function nameOfAnswer(names: string[], answer: string | null): string | n
     ?? null;
 }
 
+/**
+ * 답의 파일 이름들을 보낸 이름으로 되짚는다 — nameOfAnswer 로 짝을 찾고, 그래도 ★짝 없는 답 이름이 하나 · 답을 못 받은 파일이
+ * 하나★ 남으면 둘을 잇는다. 못 이은 것은 그대로 둔다(부르는 쪽이 이름 규칙·기타로 받는다).
+ *
+ * ★왜★ 판독이 파일 이름 대신 문서 제목을 적어 오는 일이 있다 — 「…_개인정보 수집·이용 동의서.pdf」를 「…_개인정보 수집·이용
+ * 및 제3자 위탁·제공 동의서.pdf」로(2026-11-04 분류 모델 견주기, Haiku 5.5). 분류는 맞았는데 이름이 달라 접수(lib/notion
+ * buildUploadItems)가 그 파일의 판정을 못 찾고 기타로 떨어질 뻔했다. 한쪽이 다른 쪽을 품지 않아 nameOfAnswer 로는 안 잡힌다.
+ */
+export function pinAnsweredNames<T extends { originalName: string }>(files: T[], names: string[]): T[] {
+  const pinned = files.map((f) => ({ f, to: nameOfAnswer(names, f.originalName) }));
+  const loose = [...new Set(pinned.filter((p) => !p.to).map((p) => p.f.originalName))];
+  const unclaimed = names.filter((n) => !pinned.some((p) => p.to === n));
+  const lone = loose.length === 1 && unclaimed.length === 1 ? unclaimed[0] : null;
+  return pinned.map(({ f, to }) => ({ ...f, originalName: to ?? lone ?? f.originalName }));
+}
+
 export async function fetchFile(url: string): Promise<Buffer> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`파일을 읽지 못했습니다 (${res.status})`);

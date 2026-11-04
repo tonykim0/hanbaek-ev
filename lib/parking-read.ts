@@ -25,7 +25,7 @@
  *
  * 서버 전용.
  */
-import { askPdfJson, preparePdfs } from './vision-ask';
+import { askPdfJson, preparePdfs, visionPickOf, type VisionPick } from './vision-ask';
 import { nameOfAnswer, shownName } from './check-kit';
 import { dayOf } from './fact-read';
 import { PARKING_DOCS, type ParkingDoc, type ParkingRead, type ParkingSlot } from './parking-check';
@@ -36,7 +36,7 @@ const SLOT_NAME: Record<ParkingSlot, string> = {
   apply: '설치신청서 칸',
 };
 
-function prompt(files: { name: string; slot: ParkingSlot }[]): string {
+export function parkingPrompt(files: { name: string; slot: ParkingSlot }[]): string {
   return `한백 EV 충전기 사업의 계약 서류입니다. 각 파일 안의 ★문서마다★ 인쇄된 것만 읽어 JSON 으로 답하세요.
 판단·추측을 지어내지 마세요. 안 보이면 null 입니다. JSON 외의 글은 쓰지 마세요.
 
@@ -119,9 +119,10 @@ export function parkingReadsOf(raw: unknown, files: { name: string; slot: Parkin
   });
 }
 
-/** 세 칸의 파일을 읽는다 — 못 읽은 파일은 unread 로(조용히 빠지지 않게) */
+/** 세 칸의 파일을 읽는다 — 못 읽은 파일은 unread 로(조용히 빠지지 않게). pick 은 한백의 「다시 대조」만 넘긴다(vision-ask CAREFUL_PICK) */
 export async function readParking(
-  files: { name: string; slot: ParkingSlot; url: string; buffer: Buffer }[]
+  files: { name: string; slot: ParkingSlot; url: string; buffer: Buffer }[],
+  pick: VisionPick = visionPickOf('parking-check')
 ): Promise<{ reads: ParkingRead[]; unread: string[] }> {
   const byName = new Map(files.map((f) => [f.name, f]));
   const { batches, unread } = await preparePdfs(files, 'parking-check');
@@ -130,7 +131,7 @@ export async function readParking(
     const named = batch.map((f) => ({
       name: f.name, slot: byName.get(f.name)?.slot ?? 'bldgreg' as ParkingSlot, url: byName.get(f.name)?.url,
     }));
-    const raw = await askPdfJson(batch, prompt(named), 'parking-check');
+    const raw = await askPdfJson(batch, parkingPrompt(named), 'parking-check', pick);
     const got = parkingReadsOf(raw, named);
     reads.push(...got);
     // 보냈는데 답에 한 번도 안 나온 파일 — 못 읽은 것이다

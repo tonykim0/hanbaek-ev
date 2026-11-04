@@ -8,6 +8,7 @@
 import { getRepository } from '@/lib/data';
 import { adminWrite } from '@/lib/api/write-route';
 import { runParkingCheck } from '@/lib/parking-run';
+import { CAREFUL_PICK } from '@/lib/vision-ask';
 
 /** 판독까지 도는 경로라 길다 — 기설치 대조와 같은 예산 */
 export const maxDuration = 300;
@@ -18,7 +19,8 @@ export const POST = adminWrite<{ id: string }, undefined>(
     const repo = getRepository();
     const detail = await repo.getProject(params.id, actor);
     if (!detail) throw new Error('현장을 찾을 수 없습니다.');
-    const check = await runParkingCheck(detail);
+    // 손으로 다시 돌리는 길 — 자동 대조가 잘못 읽었다고 볼 때라 가장 정확한 모델로 전부 새로 읽는다
+    const check = await runParkingCheck(detail, null, CAREFUL_PICK);
     await repo.saveParkingCheck(params.id, check, actor);
     return { check };
   }

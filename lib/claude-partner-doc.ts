@@ -34,8 +34,11 @@ type CreateWithOutputConfig = Anthropic.MessageCreateParamsNonStreaming & {
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-/** 숫자 한 자리가 곧 돈이라 판독은 가장 좋은 모델로 한다 — 부르는 횟수는 서류당 한 번이다 */
-const MODEL = 'claude-opus-5';
+/**
+ * 숫자 한 자리가 곧 돈이라 판독은 가장 좋은 모델로 한다 — 부르는 횟수는 서류당 한 번이다. Opus 5.5 는 Opus 5 보다 값이 낮고
+ * 사업자등록증·통장사본 8장 견주기에서 같거나 나았다(2026-11-04 — 예금주 「케이이에스」를 Opus 5 는 「케이에스」로 읽었다).
+ */
+const MODEL = 'claude-opus-5-5';
 const CALL_TIMEOUT_MS = 120_000;
 const MAX_ATTEMPTS = 2;
 
@@ -124,11 +127,13 @@ const PROMPT_BY_KIND: Record<PartnerFileKind, string> = {
 const IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 export async function readPartnerDoc({
-  file, mediaType, kind,
+  file, mediaType, kind, model = MODEL,
 }: {
   file: Buffer;
   mediaType: string;
   kind: PartnerFileKind;
+  /** 견주는 시험(scripts/eval-vision-models.ts)만 넘긴다 */
+  model?: string;
 }): Promise<PartnerDocReadResult> {
   if (file.length > MAX_BYTES) {
     throw new PartnerDocReadError(
@@ -158,7 +163,7 @@ export async function readPartnerDoc({
   let lastError: unknown;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const raw = await callClaude(content, kind);
+      const raw = await callClaude(content, kind, model);
       return normalize(raw, kind);
     } catch (err) {
       lastError = err;
@@ -180,9 +185,9 @@ export async function readPartnerDoc({
  */
 type Block = Anthropic.ContentBlockParam;
 
-async function callClaude(content: Block[], kind: PartnerFileKind): Promise<unknown> {
+async function callClaude(content: Block[], kind: PartnerFileKind, model: string): Promise<unknown> {
   const base = {
-    model: MODEL,
+    model,
     max_tokens: 16000,
     messages: [{ role: 'user' as const, content }],
   };
@@ -196,7 +201,7 @@ async function callClaude(content: Block[], kind: PartnerFileKind): Promise<unkn
       output_config: { effort: 'high', format: { type: 'json_schema', schema: schemaFor(kind) } },
     };
     const message = await anthropic.messages.create(params, { timeout: CALL_TIMEOUT_MS });
-    logLlmCall({ route: `partner-doc:${kind}`, model: MODEL, ms: Date.now() - at, usage: message.usage });
+    logLlmCall({ route: `partner-doc:${kind}`, model, ms: Date.now() - at, usage: message.usage });
     return parseJson(message);
   } catch (err) {
     if (!isUnsupportedParamError(err)) throw err;
@@ -210,7 +215,7 @@ async function callClaude(content: Block[], kind: PartnerFileKind): Promise<unkn
       { ...base, messages: [{ role: 'user', content: fallback }] },
       { timeout: CALL_TIMEOUT_MS }
     );
-    logLlmCall({ route: `partner-doc:${kind}(폴백)`, model: MODEL, ms: Date.now() - at, usage: message.usage });
+    logLlmCall({ route: `partner-doc:${kind}(폴백)`, model, ms: Date.now() - at, usage: message.usage });
     return parseJson(message);
   }
 }

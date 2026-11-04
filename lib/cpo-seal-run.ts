@@ -15,7 +15,7 @@ import { getRepository } from '@/lib/data';
 import type { Actor } from '@/lib/data/repository';
 import { background } from '@/lib/background';
 import { needsCpoSeal, sealPrompt, sealReadOf, type CpoSealRead, type SealCpo } from '@/lib/cpo-seal';
-import { askPdfJson, preparePdfs } from '@/lib/vision-ask';
+import { askPdfJson, CAREFUL_PICK, preparePdfs, visionPickOf, type VisionPick } from '@/lib/vision-ask';
 import { splitPdf } from '@/lib/pdf-split';
 import type { DocFile } from '@/types/project';
 
@@ -31,13 +31,15 @@ const AUTO: Actor = { id: 'system', name: '자동 판독', role: 'admin', org: n
 const HEAD_PAGES = 6;
 
 /** 계약서 파일 한 장을 읽는다 — 못 읽는 형식이면 seal null */
-export async function readCpoSeal(file: { name: string; buffer: Buffer }, cpo: SealCpo): Promise<CpoSealRead> {
+export async function readCpoSeal(
+  file: { name: string; buffer: Buffer }, cpo: SealCpo, pick: VisionPick = visionPickOf('cpo-seal')
+): Promise<CpoSealRead> {
   const head = /\.pdf$/i.test(file.name)
     ? { ...file, buffer: await splitPdf(file.buffer, Array.from({ length: HEAD_PAGES }, (_, i) => i + 1)) }
     : file;
   const { batches } = await preparePdfs([head], 'cpo-seal');
   if (batches.length === 0) return { seal: null, page: null };
-  return sealReadOf(await askPdfJson(batches[0], sealPrompt(cpo), 'cpo-seal'));
+  return sealReadOf(await askPdfJson(batches[0], sealPrompt(cpo), 'cpo-seal', pick));
 }
 
 export interface SealResult { name: string; url: string; cpoSeal: boolean | null }
@@ -64,7 +66,8 @@ export async function readCpoSealsNow(projectId: string, actor: Actor, all: bool
     try {
       const res = await fetch(f.url);
       if (!res.ok) throw new Error(`파일을 읽지 못했습니다 (${res.status})`);
-      const read = await readCpoSeal({ name: f.name, buffer: Buffer.from(await res.arrayBuffer()) }, cpo);
+      // all = 한백의 「직인 (다시) 읽기」 — 손으로 다시 볼 때는 가장 정확한 모델로(vision-ask CAREFUL_PICK)
+      const read = await readCpoSeal({ name: f.name, buffer: Buffer.from(await res.arrayBuffer()) }, cpo, all ? CAREFUL_PICK : undefined);
       await repo.setDocFileFacts({ projectId, kind: KIND, url: f.url, facts: { cpoSeal: read.seal } }, actor);
       out.push({ name: f.name, url: f.url, cpoSeal: read.seal });
     } catch (err) {

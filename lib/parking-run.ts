@@ -16,6 +16,7 @@ import { getRepository } from '@/lib/data';
 import { loadParkingCheck } from '@/lib/data/store/parking-check';
 import { evaluateDocs, buildDocContext, submittedOnOf } from '@/lib/doc-rules';
 import { readParking } from '@/lib/parking-read';
+import type { VisionPick } from '@/lib/vision-ask';
 import {
   judgeParking, outdatedCheck, PARKING_CHECK_VERSION, PARKING_SLOTS, parkingFilesOf, redatedCheck, reusableReads,
   sameParkingFiles, type ParkingCheck, type ParkingSlot,
@@ -27,8 +28,11 @@ import type { DocFile, ProjectDetail } from '@/types/project';
 /**
  * @param reuse 지난 결과 — 주면 같은 파일의 판독을 그대로 쓰고 바뀐 파일만 읽는다(자동 대조 · parking-check reusableReads).
  *   한백의 「다시 대조」는 주지 않는다 — 전부 새로 읽는다.
+ * @param pick 판독 모델 — 한백의 「다시 대조」만 넘긴다(가장 정확한 모델 · vision-ask CAREFUL_PICK). 없으면 자동 대조의 모델.
  */
-export async function runParkingCheck(detail: ProjectDetail, reuse?: ParkingCheck | null): Promise<ParkingCheck> {
+export async function runParkingCheck(
+  detail: ProjectDetail, reuse?: ParkingCheck | null, pick?: VisionPick
+): Promise<ParkingCheck> {
   const p = detail.project;
   const filesOf = (slot: ParkingSlot) => detail.documents.find((d) => d.kind === slot)?.files ?? [];
   const bySlot = PARKING_SLOTS.map((slot) => ({ slot, files: filesOf(slot) }));
@@ -45,7 +49,7 @@ export async function runParkingCheck(detail: ProjectDetail, reuse?: ParkingChec
 
   const { kept, toRead } = reusableReads(reuse, all);
   const { got, failed } = await fetchAll(toRead);
-  const { reads: fresh, unread } = got.length > 0 ? await readParking(got) : { reads: [], unread: [] };
+  const { reads: fresh, unread } = got.length > 0 ? await readParking(got, pick) : { reads: [], unread: [] };
   // 칸·파일 차례로 — 다시 쓴 판독과 새로 읽은 판독이 섞여도 늘 같은 순서로 보인다
   const order = new Map(all.map((f, i) => [f.name, i]));
   const reads = [...kept, ...fresh].sort((a, b) => (order.get(a.file) ?? 0) - (order.get(b.file) ?? 0));

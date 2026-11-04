@@ -35,7 +35,12 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const MODEL = 'claude-opus-5';
+/**
+ * Opus 5.5 — Opus 5 보다 값이 낮고(입력 $4 대 $5) 실제 서류 13건 견주기에서 같거나 나았다(2026-11-04,
+ * scripts/eval-vision-models.ts — 통장 예금주 「케이이에스」를 Opus 5 는 「케이에스」로 읽었다). 생각을 끌 수 없는 모델이라
+ * 위의 effort 가 강도를 정한다.
+ */
+const MODEL = 'claude-opus-5-5';
 /** Claude PDF 입력 한도(요청 32MB·600페이지)와 판독 시간을 함께 고려한 상한 */
 const MAX_PAGES = 60;
 /**
@@ -210,6 +215,8 @@ export interface ExtractOptions {
   fileName: string;
   /** 사용자가 올린 화면의 CPO — 판독 힌트로만 넘깁니다 */
   cpoHint?: string;
+  /** 견주는 시험(scripts/eval-vision-models.ts)만 넘긴다 — 운영은 MODEL */
+  model?: string;
 }
 
 export async function extractFormFromPdf(
@@ -253,7 +260,7 @@ export async function extractFormFromPdf(
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      const raw = await callClaude(content, analyzedPages);
+      const raw = await callClaude(content, analyzedPages, options.model ?? MODEL);
       return {
         ...toResult(raw),
         analyzedPages,
@@ -287,10 +294,11 @@ export async function extractFormFromPdf(
  */
 async function callClaude(
   content: Anthropic.MessageParam['content'],
-  pages: number
+  pages: number,
+  model: string
 ): Promise<unknown> {
   const base = {
-    model: MODEL,
+    model,
     max_tokens: 16000,
     messages: [{ role: 'user' as const, content }],
   };
@@ -304,7 +312,7 @@ async function callClaude(
       output_config: { effort: 'high', format: { type: 'json_schema', schema: OUTPUT_SCHEMA } },
     };
     const message = await anthropic.messages.create(params, { timeout: CALL_TIMEOUT_MS });
-    logLlmCall({ route: 'claude-import', model: MODEL, ms: Date.now() - at, pages, usage: message.usage });
+    logLlmCall({ route: 'claude-import', model, ms: Date.now() - at, pages, usage: message.usage });
     return parseJson(message);
   } catch (err) {
     if (!isUnsupportedParamError(err)) throw err;
@@ -312,7 +320,7 @@ async function callClaude(
     const message = await anthropic.messages.create(base, {
       timeout: CALL_TIMEOUT_MS,
     });
-    logLlmCall({ route: 'claude-import(폴백)', model: MODEL, ms: Date.now() - at, pages, usage: message.usage });
+    logLlmCall({ route: 'claude-import(폴백)', model, ms: Date.now() - at, pages, usage: message.usage });
     return parseJson(message);
   }
 }
