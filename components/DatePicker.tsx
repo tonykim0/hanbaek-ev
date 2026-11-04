@@ -126,9 +126,9 @@ export function DatePicker({
             style={{
               top: pos.top,
               left: pos.left,
-              // react-day-picker 의 색·크기 변수 — 브랜드 그린에 맞춘다
-              ['--rdp-accent-color' as string]: '#479659',
-              ['--rdp-accent-background-color' as string]: '#d6ecdd',
+              // react-day-picker 의 색·크기 변수 — 사업 색(globals.css 의 변수 · <html data-biz> 가 고른다 — 이 창은 body 로 나간다)
+              ['--rdp-accent-color' as string]: 'rgb(var(--brand-500))',
+              ['--rdp-accent-background-color' as string]: 'rgb(var(--brand-100))',
               ['--rdp-day-height' as string]: '2.1rem',
               ['--rdp-day-width' as string]: '2.1rem',
             }}

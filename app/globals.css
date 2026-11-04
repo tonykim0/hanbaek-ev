@@ -14,6 +14,53 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * 사업 색 — tailwind 의 brand · canvas 가 이 변수를 읽는다(tailwind.config.js). 값은 「R G B」(tailwind 가 투명도를 붙인다).
+ *
+ * 껍데기(ConsoleShell)가 사업을 data-biz 로 단다 — 사이드바 · 상단 바 · 본문이 다 그 아래다. <html> 에도 같이 단다:
+ * DatePicker 처럼 body 로 나가 그리는 창이 있어서다. 로그인처럼 껍데기 밖은 :root 의 전기차다.
+ * /design 은 한 화면에 두 사업을 나란히 그리려고 이 속성을 안쪽에 다시 단다 — 그래서 [data-biz='ev'] 도 따로 적는다.
+ *
+ * 대비(흰 바탕 · WCAG) — 전기차 600 4.9 · 700 6.4 · 800 8.7 · 900 10.7, 태양광 600 5.0 · 700 6.7 · 800 8.2 · 900 10.2.
+ * 채운 자리(fill)의 글자 — 전기차 흰색 4.9, 태양광 진한 글자 7.8(눌릴 때 6.1). test/conventions/biz-colors 가 잰다.
+ */
+:root,
+[data-biz='ev'] {
+  /* 한백 로고 그린 — 로고(CI) 파일에서 추출한 #56A76C(400) 기준 */
+  --brand-50: 239 247 241; /* #eff7f1 */
+  --brand-100: 214 236 221; /* #d6ecdd */
+  --brand-200: 178 220 190; /* #b2dcbe */
+  --brand-300: 131 197 151; /* #83c597 */
+  --brand-400: 86 167 108; /* #56a76c 로고 그린 */
+  --brand-500: 71 150 89; /* #479659 */
+  --brand-600: 58 127 77; /* #3a7f4d */
+  --brand-700: 49 106 64; /* #316a40 */
+  --brand-800: 41 84 54; /* #295436 */
+  --brand-900: 34 69 45; /* #22452d */
+  --brand-fill: 58 127 77; /* = 600 */
+  --brand-fill-hover: 49 106 64; /* = 700 */
+  --brand-on-fill: 255 255 255;
+  --canvas: 247 248 244; /* #f7f8f4 */
+}
+
+[data-biz='solar'] {
+  /* 귤색(tailwind sun) — 50~500 은 sun 그대로, 600~900 은 같은 색상(32°)에서 흰 바탕 글자로 읽히게 어둡게 */
+  --brand-50: 254 245 235; /* #fef5eb */
+  --brand-100: 253 231 206; /* #fde7ce */
+  --brand-200: 251 207 157; /* #fbcf9d */
+  --brand-300: 250 183 107; /* #fab76b */
+  --brand-400: 248 164 68; /* #f8a444 */
+  --brand-500: 247 147 30; /* #f7931e 상단 바의 귤색 */
+  --brand-600: 167 93 6; /* #a75d06 */
+  --brand-700: 138 77 5; /* #8a4d05 */
+  --brand-800: 118 66 4; /* #764204 */
+  --brand-900: 98 55 4; /* #623704 */
+  --brand-fill: 247 147 30; /* 귤색 — 상단 바와 같은 색 */
+  --brand-fill-hover: 226 125 8; /* #e27d08 */
+  --brand-on-fill: 15 23 42; /* slate-900 — 귤색 위 흰 글자는 2.3 이라 안 읽힌다 */
+  --canvas: 249 247 243; /* #f9f7f3 */
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -21,7 +68,7 @@ html {
 body {
   margin: 0;
   color: #0f172a;
-  background: #f7f8f4;
+  background: rgb(var(--canvas));
   font-family: 'Pretendard Variable', Pretendard, -apple-system, 'Apple SD Gothic Neo',
     'Malgun Gothic', sans-serif;
   /* 숫자 폭을 고정한다 — 표에서 자릿수가 흔들리면 줄이 안 맞는다 */
@@ -32,7 +79,7 @@ body {
 
 ::selection {
   color: #ffffff;
-  background: #316a40;
+  background: rgb(var(--brand-700));
 }
 
 @keyframes progress-indeterminate {

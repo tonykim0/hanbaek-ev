@@ -306,6 +306,13 @@ export default function ConsoleShell({
     setLast(now);
     document.cookie = `${BIZ_COOKIE}=${now}; path=/; max-age=${60 * 60 * 24 * 365}; samesite=lax`;
   }, [pathname]);
+  /*
+   * 사업 색은 아래 뿌리 상자의 data-biz 가 고른다(globals.css 의 변수 — 첫 그림부터 맞다). <html> 에도 같이 단다:
+   * body 로 나가 그리는 창(DatePicker)과 화면 끝을 넘겨 당길 때 보이는 바탕이 그 밖에 있다.
+   */
+  useEffect(() => {
+    document.documentElement.dataset.biz = biz;
+  }, [biz]);
   const [open, setOpen] = useState(true);
   const [ready, setReady] = useState(false);
   /**
@@ -433,7 +440,7 @@ export default function ConsoleShell({
     .filter((g) => g.items.length > 0);
 
   return (
-    <div className="min-h-screen bg-[#f7f8f4] text-slate-900">
+    <div data-biz={biz} className="min-h-screen bg-canvas text-slate-900">
       {/* 서랍을 덮은 바탕 — 밖을 누르면 닫힌다. 넓은 화면에는 서랍이 없으니 이것도 없다 */}
       {drawer && (
         <div

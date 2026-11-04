@@ -299,7 +299,7 @@ export default function ProjectDetailView({
         <div
           /* 자리는 클래스가 아니라 여기서 준다 — 껍데기가 물려주는 변수라 Tailwind 가 값을 모른다 */
           style={{ top: 'var(--console-top, 3rem)', left: 'var(--console-left, 0px)' }}
-          className="fixed right-0 z-10 border-b border-slate-200/80 bg-[#f7f8f4]/95 backdrop-blur transition-[left] duration-150 print:hidden"
+          className="fixed right-0 z-10 border-b border-slate-200/80 bg-canvas/95 backdrop-blur transition-[left] duration-150 print:hidden"
         >
           <div className="flex min-w-0 items-center gap-2.5 px-5 pt-2 sm:px-7">
             <Badge tone={BAND_TONE[band]}>{column}</Badge>

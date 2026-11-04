@@ -12,7 +12,7 @@ export default async function LoginPage() {
   if (await getSessionUser()) redirect('/projects');
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#f7f8f4] px-5 py-12">
+    <div className="flex min-h-screen items-center justify-center bg-canvas px-5 py-12">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
           <Image

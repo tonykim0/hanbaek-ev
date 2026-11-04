@@ -20,13 +20,17 @@ import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from 'reac
  * 색은 뜻이다. 빨강은 막는 것·틀린 것, 노랑은 사람이 봐야 하는 것, 초록은 진행·확인,
  * 하늘은 계약 단계, 진한 회색은 멈춤, 그냥 회색은 그 밖의 전부.
  * /design 의 색 규칙과 같다 — 일곱 번째 뜻을 만들지 않는다.
+ *
+ * ★상태 색은 사업과 무관하다★ (2026-11-04) — 초록(ok)은 tailwind 의 ok 로 칠한다. 사업 색(brand — 전기차 그린 ·
+ * 태양광 귤색)은 단추 · 고른 칩 · 초점 · 링크처럼 「조작」에만 쓴다. 전기차에서는 둘이 같은 초록이라 구별이 안 보였는데,
+ * 태양광에서 brand 로 칠한 「통과」는 귤색이 되어 「봐야 함」(노랑)과 섞인다.
  */
 export type Tone = 'stop' | 'warn' | 'ok' | 'mute' | 'stage' | 'hold';
 
 const BADGE: Record<Tone, string> = {
   stop: 'bg-red-100 text-red-800',
   warn: 'bg-amber-100 text-amber-900',
-  ok: 'bg-brand-100 text-brand-900',
+  ok: 'bg-ok-100 text-ok-900',
   mute: 'bg-slate-100 text-slate-500',
   stage: 'bg-sky-100 text-sky-900',
   /* 멈춤은 진한 회색이다 — 색이 아니라 무게로 말한다. 멈춤은 어느 단계도 아니기 때문이다 */
@@ -36,7 +40,7 @@ const BADGE: Record<Tone, string> = {
 const NOTE: Record<Tone, string> = {
   stop: 'border-red-500 bg-red-50 text-red-800 font-semibold',
   warn: 'border-amber-500 bg-amber-50/70 text-amber-900',
-  ok: 'border-brand-500 bg-brand-50/60 text-brand-900',
+  ok: 'border-ok-500 bg-ok-50/60 text-ok-900',
   mute: 'border-slate-300 bg-slate-50 text-slate-600',
   stage: 'border-sky-500 bg-sky-50 text-sky-900',
   hold: 'border-slate-800 bg-slate-100 text-slate-800',
@@ -110,11 +114,14 @@ export function GroupHead({ step, title, action, meta, children }: {
  *   do    그 화면에서 하는 일. 한 상자에 하나만 둔다.
  *   side  같이 있는 다른 길 (취소·닫기)
  *   stop  되돌리기 어려운 일을 확정한다 (반려 확정). ★빨강 배경은 여기에만.★
- *   quiet 그 자리를 열고 닫는다 (고치기·취소). 글자만 — hover 는 초록.
+ *   quiet 그 자리를 열고 닫는다 (고치기·취소). 글자만 — hover 는 사업 색.
  *   undo  되돌리거나 되돌릴 것을 연다 (확인 취소·반려·삭제). 글자만 — hover 는 빨강.
  *
  * 글자만인 단추가 둘인 이유는 hover 색이 뜻이기 때문이다. 「고치기」에 손을 얹었을 때
  * 빨개지면 지우는 것처럼 읽힌다.
+ *
+ * ★do 는 사업 색으로 채운다★ (2026-11-04, 한백 「태양광 페이지에서 버튼이 초록색」) — 전기차는 그린에 흰 글자,
+ * 태양광은 귤색에 진한 글자(귤색 위 흰 글자는 대비 2.3). 짝을 tailwind 의 fill · on-fill 이 사업마다 준다.
  *
  * 예전에는 반려 하나에 빨강이 세 모양이었다 — 여는 단추도 빨강 테두리, 확정도 빨강 배경,
  * 사유 수정도 빨강 테두리. 다 빨가면 어느 것이 되돌릴 수 없는 것인지 알 수 없다.
@@ -128,7 +135,7 @@ export function GroupHead({ step, title, action, meta, children }: {
 type BtnKind = 'do' | 'side' | 'stop' | 'quiet' | 'undo' | 'warn';
 
 const BTN: Record<BtnKind, string> = {
-  do: 'rounded-ctl bg-brand-600 font-bold text-white transition hover:bg-brand-700 disabled:bg-slate-200 disabled:text-slate-400',
+  do: 'rounded-ctl bg-brand-fill font-bold text-brand-on-fill transition hover:bg-brand-fill-hover disabled:bg-slate-200 disabled:text-slate-400',
   side: 'rounded-ctl border border-slate-300 bg-white font-bold text-slate-700 transition hover:bg-slate-50 disabled:border-slate-200 disabled:text-slate-300',
   stop: 'rounded-ctl bg-red-600 font-bold text-white transition hover:bg-red-700 disabled:bg-slate-200 disabled:text-slate-400',
   /*
@@ -266,7 +273,7 @@ export function Note({
 }
 
 /* ── 고르는 칩 ─────────────────────────────────────────────────────────────
- * 여럿 중에 켜고 끄는 것 (필터 · 다중 선택). 고른 상태는 채운 초록 한 모양이다 —
+ * 여럿 중에 켜고 끄는 것 (필터 · 다중 선택). 고른 상태는 사업 색으로 채운 한 모양이다(전기차 그린 · 태양광 귤색) —
  * 연한 초록·테두리만 등 「골랐다」의 모양이 화면마다 갈리기 시작해서 여기로 모았다.
  * 각지다: 누르는 것이다(규칙 11).
  */
@@ -280,7 +287,7 @@ export function Choice({
       aria-pressed={on}
       className={`rounded-ctl border px-2.5 py-1.5 text-small font-bold transition ${
         on
-          ? 'border-brand-500 bg-brand-600 text-white'
+          ? 'border-brand-500 bg-brand-fill text-brand-on-fill'
           : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700'
       }`}
     >
@@ -482,7 +489,7 @@ export function Alerts({
 
 /** 저장됨 — 실패 문구와 같은 자리에 뜬다. 잠깐 뜨고 사라지게 만들지 않는다(못 보고 지나친다). */
 export function Saved({ children = '저장됨' }: { children?: ReactNode }) {
-  return <span className="text-tiny font-bold text-brand-700">{children}</span>;
+  return <span className="text-tiny font-bold text-ok-700">{children}</span>;
 }
 
 /* ── 빈 값 ─────────────────────────────────────────────────────────────────
@@ -690,7 +697,7 @@ export function Segments({
         <Choice key={o.key} on={o.key === value} onClick={onPick && (() => onPick(o.key))}>
           {o.key}
           {o.count !== undefined && (
-            <span className={`ml-1.5 tabular-nums ${o.key === value ? 'text-white/70' : 'text-slate-400'}`}>
+            <span className={`ml-1.5 tabular-nums ${o.key === value ? 'text-brand-on-fill/70' : 'text-slate-400'}`}>
               {o.count}
             </span>
           )}

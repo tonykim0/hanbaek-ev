@@ -5,8 +5,10 @@ import type { CheckStatus, Level } from '@/lib/solar/types';
  * 부지 검토 화면의 모양 — 콘솔 부품(components/ui)을 그대로 쓰고, 콘솔에 없는 역할 몇 개만 콘솔의 글자 단계로 더한다.
  *
  * 검토 사이트(solar-site)에서 들였다(2026-11-03). 거기서는 판 · 글자 · 상태 알약 · 판정 색을 따로 골랐는데(호박색 단추 ·
- * 둥근 링 판 · 14/16px 글자), 콘솔 안에 들어오면 한 화면만 다른 옷을 입는다 — 단추는 초록 Btn, 판은 PANEL, 상태는 Badge,
+ * 둥근 링 판 · 14/16px 글자), 콘솔 안에 들어오면 한 화면만 다른 옷을 입는다 — 단추는 Btn, 판은 PANEL, 상태는 Badge,
  * 글자는 콘솔 단계(small 12 · base 13 · lead 14 · h3 16 · h2 18 · h1 24)로 바꿨다. 가장 옅은 글자는 콘솔처럼 slate-500.
+ * 단추 · 고른 갈래는 사업 색이라 여기서는 귤색이다(2026-11-04 — /solar 아래는 껍데기가 data-biz=solar 를 단다).
+ * 판정의 초록(적합 · 통과)은 사업 색이 아니라 상태 색(ok)이라 두 사업이 같다.
  */
 export { PANEL } from '@/components/ui';
 
@@ -35,7 +37,7 @@ const LEVEL_TONE_OF: Record<Level, Tone> = { ok: 'ok', conditional: 'warn', hard
 
 /** 판정 줄의 점 · 글자색 */
 export const LEVEL_TONE: Record<Level, { text: string; dot: string }> = {
-  ok: { text: 'text-brand-800', dot: 'bg-brand-500' },
+  ok: { text: 'text-ok-800', dot: 'bg-ok-500' },
   conditional: { text: 'text-amber-800', dot: 'bg-amber-500' },
   hard: { text: 'text-red-700', dot: 'bg-red-600' },
   banned: { text: 'text-red-700', dot: 'bg-red-600' },

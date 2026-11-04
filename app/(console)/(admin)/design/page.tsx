@@ -15,7 +15,9 @@
  */
 import {
   Alerts, Badge, Blank, Btn, Choice, Clear, Empty, Err, FIELD, FIELD_CELL, GroupHead, HR, Note, Saved, Segments, Tag, TEXT, Td, Th, Val,
+  type Tone,
 } from '@/components/ui';
+import { BIZES, BIZ_LABEL } from '@/lib/biz';
 
 export const metadata = { title: '디자인 기준' };
 
@@ -29,6 +31,15 @@ const BRAND: Array<[string, string]> = [
   ['300', 'bg-brand-300'], ['400', 'bg-brand-400'], ['500', 'bg-brand-500'],
   ['600', 'bg-brand-600'], ['700', 'bg-brand-700'], ['800', 'bg-brand-800'],
   ['900', 'bg-brand-900'],
+];
+/* 상태 색 — 사업과 무관하다(두 사업이 같은 뜻 · 같은 색) */
+const TONES: Array<[Tone, string, string]> = [
+  ['ok', '통과', '진행 · 확인'],
+  ['warn', '확인 필요', '사람이 봐야 하는 것'],
+  ['stop', '반려', '막는 것 · 틀린 것'],
+  ['stage', '계약', '계약 단계'],
+  ['hold', '계약중단', '멈춤 — 색이 아니라 무게'],
+  ['mute', '대기', '그 밖의 전부'],
 ];
 const SLATE_USE: Array<[string, string, string]> = [
   ['slate-900', 'bg-slate-900', '제목·값 (가장 진한 글자)'],
@@ -71,24 +82,54 @@ export default function DesignPage() {
         </p>
       </header>
 
-      <Section title="색" note="브랜드 초록은 「진행·확인」에만, 나머지는 회색으로 말한다">
-        <div className="flex flex-wrap gap-1.5">
-          {BRAND.map(([n, cls]) => (
-            <div key={n} className="w-[68px]">
-              <div className={`h-12 rounded-ctl ${cls}`} />
-              <p className="mt-1 text-micro font-bold text-slate-500">{n}</p>
+      {/*
+        사업 색 — 2026-11-04 한백 「태양광 페이지에서 버튼이 초록색」. 두 사업을 나란히 그린다: 상자마다 data-biz 를 달면
+        globals.css 의 변수가 그 사업 값으로 바뀐다(화면에서 껍데기가 하는 일과 같다). 부품은 같은 것이고 색만 갈린다.
+      */}
+      <Section title="색" note="사업 색은 조작(단추 · 고른 것 · 초점 · 링크)에, 상태 색은 뜻에 — 상태 색은 두 사업이 같다">
+        <div className="grid gap-3 lg:grid-cols-2">
+          {BIZES.map((b) => (
+            <div key={b} data-biz={b} className="rounded-box bg-canvas p-4">
+              <GroupHead title={`${BIZ_LABEL[b]} · 사업 색`} meta={b === 'ev' ? '한백 로고 그린' : '귤색 — 상단 바와 같은 색'} />
+              <div className="mt-2.5 grid grid-cols-10 gap-1">
+                {BRAND.map(([n, cls]) => (
+                  <div key={n}>
+                    <div className={`h-9 rounded-tag ${cls}`} />
+                    <p className="mt-0.5 text-micro font-bold tabular-nums text-slate-500">{n}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                <span className="rounded-ctl bg-brand-fill px-2.5 py-1 text-small font-bold text-brand-on-fill">fill · on-fill</span>
+                <span className="rounded-ctl bg-brand-fill-hover px-2.5 py-1 text-small font-bold text-brand-on-fill">fill-hover</span>
+                <span className="text-small font-bold text-brand-700 underline decoration-brand-200 underline-offset-2">글자 · 700</span>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-200/70 pt-3">
+                <Btn>하는 일</Btn>
+                <Btn kind="side">다른 길</Btn>
+                <Btn kind="quiet">고치기</Btn>
+                <Choice on>고른 칩</Choice>
+                <Choice on={false}>안 고른 칩</Choice>
+                <input placeholder="입력칸 — 초점이 사업 색" className={`${FIELD} max-w-[200px]`} />
+              </div>
             </div>
           ))}
         </div>
         <ul className="mt-3 flex flex-col gap-1 text-tiny text-slate-500">
-          <li>· <b className="text-slate-700">brand-600</b> 기본 단추·켜진 필터 · <b className="text-slate-700">brand-700</b> hover</li>
-          <li>· <b className="text-slate-700">brand-100/50</b> 배지·연한 강조 배경</li>
-          <li>· 빨강은 <b className="text-slate-700">반려·오류</b>만, 노랑은 <b className="text-slate-700">확인 필요</b>만. 그 밖에 쓰지 않는다</li>
-          <li>· 색은 다섯 개다 — <b className="text-slate-700">회색</b>(그 밖의 전부) ·{' '}
-            <b className="text-slate-700">초록</b>(진행·확인) · <b className="text-slate-700">빨강</b>(막는 것) ·{' '}
-            <b className="text-slate-700">노랑</b>(봐야 하는 것) · <b className="text-slate-700">하늘</b>(계약 단계).
-            여섯 번째 색을 쓰고 싶으면 뜻이 겹치는 것이다</li>
+          <li>· <b className="text-slate-700">사업 색(brand)</b> — 전기차 한백 그린 · 태양광 귤색. 껍데기가 단 data-biz 로 고른다(globals.css 의 변수). 상단 바 · 사이드바의 고른 메뉴도 같은 계열이다</li>
+          <li>· 채운 자리는 <b className="text-slate-700">fill · on-fill</b> 짝 — 귤색은 밝아 흰 글자가 안 읽힌다(대비 2.3). 태양광의 채운 단추는 진한 글자(7.8)다. <b className="text-slate-700">bg-brand-600 text-white</b> 를 적지 않는다</li>
+          <li>· <b className="text-slate-700">brand-600~900</b> 은 흰 바탕의 글자 — 두 사업 다 4.5 이상 · <b className="text-slate-700">brand-50~200</b> 은 고른 카드 · hover 의 연한 바탕</li>
+          <li>· <b className="text-slate-700">상태 색은 사업과 무관하다</b> — 초록(ok, 진행·확인) · 빨강(막는 것) · 노랑(봐야 하는 것) · 하늘(계약 단계) · 회색(그 밖의 전부).
+            「통과」가 사업마다 다른 색이면 뜻이 갈린다. 여섯 번째 색을 쓰고 싶으면 뜻이 겹치는 것이다</li>
         </ul>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+          {TONES.map(([tone, label, use]) => (
+            <span key={tone} className="inline-flex items-center gap-1.5">
+              <Badge tone={tone}>{label}</Badge>
+              <span className={TEXT.meta}>{use}</span>
+            </span>
+          ))}
+        </div>
 
         <div className="mt-4 grid gap-x-6 gap-y-1 sm:grid-cols-2">
           {SLATE_USE.map(([name, cls, use]) => (
@@ -216,7 +257,7 @@ export default function DesignPage() {
             <Choice on>플러그링크</Choice>
             <Choice on={false}>SK일렉링크</Choice>
             <span className="text-tiny text-slate-400">
-              여럿 중에 켜고 끄는 것(필터 · 다중 선택) — 고른 것은 채운 초록 한 모양이다
+              여럿 중에 켜고 끄는 것(필터 · 다중 선택) — 고른 것은 사업 색으로 채운 한 모양이다
             </span>
           </Part>
 

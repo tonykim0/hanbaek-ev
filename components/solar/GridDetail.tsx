@@ -15,7 +15,7 @@ function unitOf(row: GridRow, k: GridLayerKey): string {
 
 /**
  * 계통 칸의 본문 — 판정 한 줄(위의 summary) 밑에 「어느 기록으로 봤나」와 세 단계 막대.
- * 한도 = 접수 + 여유. 막대의 회색은 이미 붙었거나 접수된 것, 주황은 이 땅의 예상 용량, 남은 초록이 여유다.
+ * 한도 = 접수 + 여유. 막대의 회색은 이미 붙었거나 접수된 것, 귤색(사업 색)은 이 땅의 예상 용량, 남은 초록(상태 색 ok — 「여유 있음」)이 여유다.
  */
 export default function GridDetail({ grid, summary }: { grid: GridView; summary: string }) {
   const row = grid.best === null ? null : grid.rows[grid.best];
@@ -102,12 +102,12 @@ function LayerBar({
       </div>
       <div className="min-w-0">
         <div
-          className={`flex h-2.5 overflow-hidden rounded-full ${spareKw === null ? 'bg-slate-100' : 'bg-brand-200'}`}
+          className={`flex h-2.5 overflow-hidden rounded-full ${spareKw === null ? 'bg-slate-100' : 'bg-ok-200'}`}
           role="img"
           aria-label={`${name} — 접수 ${kw(acceptedKw)}, 여유 ${kw(spareKw)}, 한도 ${kw(limitKw)}`}
         >
           <div className={full ? 'bg-red-500' : 'bg-slate-400'} style={{ width: `${used}%` }} />
-          {mine > 0 && <div className="bg-amber-500" style={{ width: `${mine}%` }} />}
+          {mine > 0 && <div className="bg-brand-500" style={{ width: `${mine}%` }} />}
         </div>
         <div className={`mt-1 flex flex-wrap items-center justify-between gap-x-3 tabular-nums ${TEXT.meta}`}>
           <span>
@@ -137,8 +137,8 @@ function Legend({ mine }: { mine: boolean }) {
   return (
     <p className={`mt-2 flex flex-wrap gap-x-3 gap-y-1 ${TEXT.meta}`}>
       <span className="inline-flex items-center gap-1">{dot('bg-slate-400')} 이미 접수</span>
-      {mine && <span className="inline-flex items-center gap-1">{dot('bg-amber-500')} 이 땅 예상 용량</span>}
-      <span className="inline-flex items-center gap-1">{dot('bg-brand-200')} 남은 여유</span>
+      {mine && <span className="inline-flex items-center gap-1">{dot('bg-brand-500')} 이 땅 예상 용량</span>}
+      <span className="inline-flex items-center gap-1">{dot('bg-ok-200')} 남은 여유</span>
     </p>
   );
 }
