@@ -215,7 +215,7 @@ function BarLink({ href, label, biz, active, count, blank = false }: {
   active: boolean;
   /**
    * 안 읽은 수(공지 · 알림) — 있을 때만 단다. 0 을 적으면 사이드바의 할 일 배지(늘 서 있다)와 헷갈린다.
-   * 흰 바탕에 사업 색 글자라 그린 바에서도 귤색 바에서도 읽힌다.
+   * 흰 바탕에 사업 색 글자라 그린 바에서도 귤색 바에서도 읽힌다. 글자 오른쪽 위에 얹는다 — 아래 body 주석.
    */
   count?: number;
   /**
@@ -227,18 +227,31 @@ function BarLink({ href, label, biz, active, count, blank = false }: {
   blank?: boolean;
 }) {
   const frame = BIZ_FRAME[biz];
-  const cls = `flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-ctl px-2.5 py-1.5 text-small font-bold transition ${
-    active ? frame.inkOn : frame.ink
-  }`;
+  /*
+   * 수를 다는 링크(공지 · 알림)는 오른쪽에 그 자리를 늘 비워 둔다(pr-8 — 「99+」까지 든다). 수가 0 이어도 같은 폭이라
+   * 수가 생기고 사라져도 아무것도 움직이지 않고, 얹은 수가 옆 글자를 덮지도 않는다(링크 사이 여백으로 어림했더니 굵은
+   * 「99+」가 「알림」의 첫 글자를 덮었다). 수를 눌러도 그 링크다.
+   */
+  const cls = `flex shrink-0 items-center whitespace-nowrap rounded-ctl py-1.5 text-small font-bold transition ${
+    count !== undefined ? 'pl-2.5 pr-8' : 'px-2.5'
+  } ${active ? frame.inkOn : frame.ink}`;
+  /*
+   * ★안 읽은 수는 글자 오른쪽 위에 얹는다 — 자리를 밀지 않는다★ (한백 2026-11-04 「숫자 붙는 걸 고려 안 한 상태로 UI 가
+   * 들어갔다 · 기존 구조를 유지해줘」). 처음엔 글자 뒤에 끼워 넣었더니, 수가 생기고 사라질 때마다(화면을 연 뒤 세어 오는
+   * 순간 · 새 알림 · 공지를 읽음) 뒤의 도구들이 옆으로 밀리고 당겨졌다. 사이드바에 있을 때 수는 줄 오른쪽의 빈자리에 서서
+   * 아무것도 밀지 않았다 — 바에서 그 구조는 「얹기」다(absolute). 세 자리부터는 99+ — 얹은 표시가 옆 글자까지 덮지 않게.
+   */
   const body = (
-    <>
+    <span className="relative">
       {label}
-      {(count ?? 0) > 0 && (
-        <span className={`rounded-tag bg-white px-1.5 py-0.5 text-tiny font-black leading-none tabular-nums ${frame.pick}`}>
-          {count}
+      {count !== undefined && count > 0 && (
+        <span
+          className={`absolute -top-2 left-full ml-0.5 min-w-[16px] rounded-tag bg-white px-1 text-center text-micro font-black leading-4 tabular-nums ${frame.pick}`}
+        >
+          {count > 99 ? '99+' : count}
         </span>
       )}
-    </>
+    </span>
   );
   if (blank) {
     return (
