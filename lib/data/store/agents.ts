@@ -27,6 +27,7 @@ import type { CpoName } from '@/types/project';
 import type { Actor, ProjectRepository } from '../repository';
 import { assertAdmin } from './shared';
 import { mailsForMessages } from './agent-mail';
+import { notifyAgentRemind } from './notifications';
 
 /** 글 상한 — 지시·기록은 메모 결이고, 에이전트의 말은 아지트 글 초안처럼 길 수 있다 */
 const MAX = { dutyTitle: 60, dutyBody: 4000, taskTitle: 120, taskNote: 1000, said: 6000, agentSaid: 20000 } as const;
@@ -140,7 +141,7 @@ function taskOrder(a: AgentTask, b: AgentTask): number {
 export const agentStore: Pick<
   ProjectRepository,
   | 'listAgents' | 'getAgent' | 'saveAgentDuty' | 'deleteAgentDuty'
-  | 'addAgentTask' | 'setAgentTaskDone' | 'deleteAgentTask' | 'addAgentMessage' | 'agentUsage'
+  | 'addAgentTask' | 'setAgentTaskDone' | 'deleteAgentTask' | 'addAgentMessage' | 'agentUsage' | 'agentRemind'
 > = {
   /*
    * 사용량 — 이번 달 · 지난달(한국 달력)의 답 수와 비용 어림, 이번 달 토큰 (한백 2026-11-03 「사용량 추적도 해야할듯」).
@@ -481,6 +482,43 @@ export const agentStore: Pick<
         projectId: old.projectId, actor, action: '에이전트 할 일 삭제', field: agent.name,
         oldValue: [old.title, old.note].filter(Boolean).join(' · ').slice(0, 2000), newValue: null,
       });
+    });
+  },
+
+  /**
+   * 담당의 정기 알림 — 할 일 · 대화 한 줄(자동) · 한백 관리자 알림(lib/agents/remind-run · 정산 담당의 열린구매 상신, 한백 지시 2026-11-04).
+   * ★열쇠마다 한 번★ — 대화의 그 줄(meta.remind)로 가른다. 할 일은 한백이 지울 수 있지만 대화는 지워지지 않아서다(할 일로 가르면 지운
+   * 다음 날 아침 크론이 또 적는다). 담당 줄을 잠가 크론이 겹쳐 돌아도 하나만 선다. 셋이 같이 남거나 같이 안 남는다.
+   */
+  async agentRemind(input, actor) {
+    assertAdmin(actor, '에이전트 알림');
+    const title = clip(input.task.title, MAX.taskTitle, '할 일');
+    const note = clip(input.task.note, MAX.taskNote, '덧붙일 말') || null;
+    const due = input.task.due?.trim() || null;
+    if (due && !DAY_RE.test(due)) throw new Error('기한은 YYYY-MM-DD 로 적어주세요.');
+    const body = clip(input.say, MAX.agentSaid, '글');
+    return getDb().transaction(async (tx) => {
+      const [agent] = await tx.select({ id: agents.id, name: agents.name }).from(agents)
+        .where(eq(agents.id, input.agentId)).for('update');
+      if (!agent) throw new Error('담당을 찾을 수 없습니다.');
+      const [had] = await tx.select({ id: agentMessages.id }).from(agentMessages)
+        .where(and(eq(agentMessages.agentId, agent.id), sql`${agentMessages.meta}->>'remind' = ${input.key}`)).limit(1);
+      if (had) return { created: false, taskId: null, messageId: null, alarmed: 0 };
+
+      const taskId = crypto.randomUUID();
+      await tx.insert(agentTasks).values({ id: taskId, agentId: agent.id, title, note, due, kind: input.key, author: agent.name });
+      await writeAudit(tx, {
+        projectId: null, actor, action: '에이전트 할 일 (에이전트가 적음)', field: agent.name, oldValue: null,
+        newValue: [title, due && `기한 ${due}`, note].filter(Boolean).join(' · ').slice(0, 2000),
+      });
+      const messageId = crypto.randomUUID();
+      const meta: AgentMessageMeta = { remind: input.key, added: [title], ...(input.link ? { link: input.link } : {}) };
+      await tx.insert(agentMessages).values({ id: messageId, agentId: agent.id, role: 'auto', author: agent.name, body, meta });
+      await writeAudit(tx, {
+        projectId: null, actor, action: '에이전트 자동', field: agent.name, oldValue: null, newValue: body.slice(0, 2000),
+      });
+      const alarmed = await notifyAgentRemind(tx, { agentId: agent.id, ...input.alarm });
+      return { created: true, taskId, messageId, alarmed };
     });
   },
 

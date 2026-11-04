@@ -98,6 +98,10 @@ export interface AgentMessageMeta {
   searches?: number;
   /** 자동의 말이 짚는 현장 — 대화에서 현장 상세로 가는 고리 */
   site?: { id: string; name: string };
+  /** 정기 알림의 열쇠(open-purchase:2026-11-10) — 같은 알림을 두 번 남기지 않게 이 줄로 가른다(store/agents agentRemind) */
+  remind?: string;
+  /** 자동의 말이 짚는 화면 — 「거래명세서 보기 →」 */
+  link?: { href: string; label: string };
 }
 
 /**

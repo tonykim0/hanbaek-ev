@@ -536,6 +536,21 @@ export interface ProjectRepository {
     },
     actor: Actor
   ): Promise<AgentMessage>;
+  /**
+   * 담당의 정기 알림 — 할 일 · 대화 한 줄(자동) · 한백 관리자 알림을 한 트랜잭션으로(lib/agents/remind-run · 정산 담당의 열린구매 상신).
+   * ★열쇠마다 한 번★ — 같은 열쇠로 다시 불리면 아무것도 안 하고 created false(크론이 하루에 두 번 돌아도 · 할 일을 지웠어도).
+   */
+  agentRemind(
+    input: {
+      agentId: string; key: string;
+      task: { title: string; note: string | null; due: string | null };
+      say: string;
+      alarm: { title: string; body: string };
+      /** 대화의 그 줄에 다는 고리 — 「거래명세서 보기 →」 */
+      link?: { href: string; label: string };
+    },
+    actor: Actor
+  ): Promise<{ created: boolean; taskId: string | null; messageId: string | null; alarmed: number }>;
 
   /*
    * 에이전트 메일 (store/agent-mail · migrations/0111) [한백 관리자] — 담당이 초안을 올리고 ★한백이 승인해야 나간다★.
@@ -610,11 +625,12 @@ export interface ProjectRepository {
   /** 내가 안 읽은 알림 수 — 사이드바 배지. 사업마다 센다(없으면 전기차) */
   countUnreadNotifications(me: Recipient, biz?: Biz): Promise<number>;
   /**
-   * 알림을 읽었다고 찍는다 — 범위: 알림 하나 · 현장 하나(갈래까지) · 없으면 전부. 찍은 수를 돌려준다.
-   * ★열람 전용도 부른다★ — 제 읽음 표시다(공지와 같다). 대행 중에는 라우트가 부르지 않는다.
+   * 알림을 읽었다고 찍는다 — 범위: 알림 하나 · 현장 하나(갈래까지) · 공지 하나 · 담당 하나(그 담당의 정기 알림) · 없으면 전부.
+   * 찍은 수를 돌려준다. ★열람 전용도 부른다★ — 제 읽음 표시다(공지와 같다). 대행 중에는 라우트가 부르지 않는다.
    */
   markNotificationsRead(
-    userId: string, where?: { id?: string; projectId?: string; noticeId?: string; scope?: NoteScope; biz?: Biz }
+    userId: string,
+    where?: { id?: string; projectId?: string; noticeId?: string; agentId?: string; scope?: NoteScope; biz?: Biz }
   ): Promise<number>;
   /** 내가 안 읽은 공지 메시지 id — 공지 화면의 「새 글」·「새 메시지 N」 */
   unreadNoticeMessages(userId: string): Promise<string[]>;

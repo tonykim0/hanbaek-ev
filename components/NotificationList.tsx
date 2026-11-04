@@ -6,8 +6,9 @@
  * 한 줄 = 알림 하나: 현장 · 탭(계약·시공) · 누가 · 언제, 그 밑에 본문 두 줄. 반려·보완요청은 본문 앞에 붉은
  * 꼬리표(「반려 — 계약서」)가 서고 본문이 한백의 메시지(반려 사유)다. 환경부 대기번호·승인은 초록 꼬리표 — 막힌 일이
  * 아니라 열린 일이다. 에이전트 담당이 못 한 일(「설치승인서 없음 — 메일 못 보냄」, lib/site-mail)은 붉은 꼬리표에 「AI 담당」이
- * 쓴 쪽으로 선다 — 누르면 서류 칸이 있는 계약 탭이다. 안 읽은 줄은 굵고 왼쪽에 점이 선다.
- * 줄을 누르면 그 현장의 그 탭으로 간다 — 그 탭을 열면 그 갈래의 알림이 읽힌다(ProgressLog).
+ * 쓴 쪽으로 선다 — 누르면 서류 칸이 있는 계약 탭이다. 담당의 정기 알림(「열린구매 상신 — 11월 10일 정기결제」, lib/agents/open-purchase)은
+ * 현장이 없다 — 머리에 그 담당, 노란 꼬리표(사람이 할 일이다), 누르면 그 담당과의 대화고 거기를 열면 읽힌다(ReadAgentAlarms).
+ * 안 읽은 줄은 굵고 왼쪽에 점이 선다. 줄을 누르면 그 현장의 그 탭으로 간다 — 그 탭을 열면 그 갈래의 알림이 읽힌다(ProgressLog).
  */
 import type { Biz } from '@/lib/biz';
 import Link from 'next/link';
@@ -23,11 +24,22 @@ import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
  */
 function hrefOf(n: NoteNotification): string {
   if (n.kind === 'notice' && n.noticeId) return `/notices?open=${encodeURIComponent(n.noticeId)}`;
+  if (n.kind === 'remind' && n.agentId) return `/admin/agents/${encodeURIComponent(n.agentId)}`;
   return `/projects/${encodeURIComponent(n.projectId ?? '')}?tab=${TAB_OF_SCOPE[n.scope ?? '시공']}`;
 }
 
-/** 열린 일을 알리는 줄인가 — 환경부 대기번호·승인(초록 꼬리표) */
-const opened = (n: NoteNotification) => n.kind === 'approval' || n.kind === 'queue';
+/**
+ * 꼬리표의 색 — 열린 일(환경부 대기번호·승인)은 초록, 정해진 날에 사람이 할 일(담당의 정기 알림)은 노랑, 막힌 것(반려·보완요청·
+ * 담당이 못 한 일)은 빨강(ui.tsx 말투)
+ */
+const toneOf = (n: NoteNotification) =>
+  n.kind === 'approval' || n.kind === 'queue' ? 'ok' : n.kind === 'remind' ? 'warn' : 'stop';
+
+/** 줄의 머리와 갈래 — 공지 메모는 그 공지 · 「공지」, 담당의 정기 알림은 그 담당 · 「AI에이전트」, 나머지는 현장 · 탭 */
+const headOf = (n: NoteNotification) =>
+  n.kind === 'notice' ? n.noticeTitle : n.kind === 'remind' ? n.agentName : n.projectName;
+const laneOf = (n: NoteNotification) =>
+  n.kind === 'notice' ? '공지' : n.kind === 'remind' ? 'AI에이전트' : n.scope;
 
 export default function NotificationList({ items, viewingAs, biz = 'ev' }: {
   items: NoteNotification[];
@@ -88,11 +100,11 @@ export default function NotificationList({ items, viewingAs, biz = 'ev' }: {
                 <span className="min-w-0 flex-1">
                   <span className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                     <span className={`truncate ${n.read ? 'font-semibold text-slate-600' : 'font-black text-slate-900'}`}>
-                      {n.kind === 'notice' ? n.noticeTitle : n.projectName}
+                      {headOf(n)}
                     </span>
-                    {/* 갈래 꼬리표 — 현장 알림은 탭(계약·시공·기성), 공지 메모는 「공지」 */}
+                    {/* 갈래 꼬리표 — 현장 알림은 탭(계약·시공·기성), 공지 메모는 「공지」, 담당의 정기 알림은 「AI에이전트」 */}
                     <span className="rounded-tag bg-slate-100 px-1.5 py-0.5 text-micro font-bold text-slate-500">
-                      {n.kind === 'notice' ? '공지' : n.scope}
+                      {laneOf(n)}
                     </span>
                     <span className={`rounded-tag px-1.5 py-0.5 text-micro font-black ${
                       n.author === '한백' ? 'bg-slate-900 text-white' : 'bg-brand-100 text-brand-900'
@@ -102,7 +114,7 @@ export default function NotificationList({ items, viewingAs, biz = 'ev' }: {
                     <span className="ml-auto shrink-0 text-tiny tabular-nums text-slate-400">{n.at}</span>
                   </span>
                   <span className={`mt-1 line-clamp-2 whitespace-pre-wrap break-keep text-base leading-relaxed ${n.read ? 'text-slate-500' : 'text-slate-800'}`}>
-                    {n.title && <span className="mr-1.5"><Tag tone={opened(n) ? 'ok' : 'stop'}>{n.title}</Tag></span>}
+                    {n.title && <span className="mr-1.5"><Tag tone={toneOf(n)}>{n.title}</Tag></span>}
                     {n.body}
                   </span>
                 </span>

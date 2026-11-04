@@ -16,6 +16,13 @@ const CONSOLE_ORIGIN = 'https://hanbaek-re.vercel.app';
 const OLD_HOSTS = ['hanbaek-ev.vercel.app', 'hanbaek-form.vercel.app'];
 
 /**
+ * ★크론이 부르는 경로는 옛 주소에서도 넘기지 않는다★ (2026-11-04, app/api/cron/*). Vercel 크론은 운영 배포의 주소로 부르는데 여럿 중
+ * 어느 것인지 문서가 정하지 않고(프로젝트 이름의 hanbaek-form.vercel.app 일 수 있다), ★넘기기(3xx)를 따라가지 않는다★ — 넘기면 그 실행은
+ * 아무 일 없이 끝난다(조용한 실패). 같은 배포라 그 자리에서 돌면 된다. 그 경로는 CRON_SECRET 이 지킨다.
+ */
+const NOT_CRON = '(?!api/cron/)';
+
+/**
  * 포털 화면의 옛 주소 → 콘솔의 같은 화면. 콘솔 주소로 들어온 옛 링크도 여기서 갈린다.
  * 실사보고서(/survey/*)는 주소가 같아 적지 않는다.
  */
@@ -47,9 +54,9 @@ const nextConfig = {
   async redirects() {
     return [
       ...OLD_HOSTS.map((host) => ({
-        source: '/:path*',
+        source: `/:path(${NOT_CRON}.*)`,
         has: [{ type: 'host', value: host }],
-        destination: `${CONSOLE_ORIGIN}/:path*`,
+        destination: `${CONSOLE_ORIGIN}/:path`,
         permanent: false,
       })),
       ...MOVED.map(([source, destination]) => ({ source, destination, permanent: false })),

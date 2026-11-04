@@ -20,7 +20,7 @@
  */
 import { and, desc, eq, inArray, isNotNull, isNull, ne, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
-import { noticeMessages, notices, notifications, projectNotes, projects, users } from '@/lib/db/schema';
+import { agents, noticeMessages, notices, notifications, projectNotes, projects, users } from '@/lib/db/schema';
 import { stampOf } from '@/lib/date';
 import { isHanbaek } from '@/lib/roles';
 import { noteAudience } from '@/lib/notify';
@@ -154,6 +154,20 @@ export async function retractAgentAlarm(tx: TxLike, input: { projectId: string; 
   ));
 }
 
+/**
+ * 담당의 정기 알림을 한백 관리자에게 — 정산 담당의 열린구매 상신(store/agents agentRemind · lib/agents/open-purchase, 한백 지시 2026-11-04
+ * 「나한테 알림 줘야함」). 그 일을 남기는 트랜잭션 안에서 부른다. 받는 사람은 담당이 못 한 일(notifyAgentAlarm)과 같다 — 한백 관리자만.
+ * 현장이 없다 — 누르면 그 담당과의 대화고(agent_id), 그 대화를 열면 읽힌다. 전기차의 일이다(정산 담당은 전기차 사이드바에 선다).
+ */
+export async function notifyAgentRemind(tx: TxLike, input: { agentId: string; title: string; body: string }): Promise<number> {
+  const rows = await tx.select({ id: users.id }).from(users).where(and(eq(users.role, 'admin'), eq(users.active, true)));
+  if (rows.length === 0) return 0;
+  await tx.insert(notifications).values(rows.map((r) => ({
+    id: crypto.randomUUID(), userId: r.id, kind: 'remind', agentId: input.agentId, title: input.title, body: input.body, biz: 'ev',
+  })));
+  return rows.length;
+}
+
 /** 풀린 반려·취소된 보완요청의 안 읽은 알림을 거둔다 — docKind 를 주면 그 서류 것만 */
 export async function retractReview(tx: TxLike, input: {
   projectId: string; kind: 'reject' | 'ask'; docKind?: string | null;
@@ -165,7 +179,7 @@ export async function retractReview(tx: TxLike, input: {
   await tx.delete(notifications).where(and(...conds));
 }
 
-const KINDS: NotificationKind[] = ['note', 'reject', 'ask', 'notice', 'approval', 'queue', 'agent'];
+const KINDS: NotificationKind[] = ['note', 'reject', 'ask', 'notice', 'approval', 'queue', 'agent', 'remind'];
 
 export const notificationStore: Pick<
   ProjectRepository,
@@ -181,12 +195,14 @@ export const notificationStore: Pick<
         noteAuthor: projectNotes.author, noteBody: projectNotes.body, noteScope: projectNotes.scope,
         noticeId: notifications.noticeId, noticeTitle: notices.title,
         msgAuthor: noticeMessages.author, msgBody: noticeMessages.body,
+        agentId: notifications.agentId, agentName: agents.name,
       })
       .from(notifications)
       .leftJoin(projects, eq(projects.id, notifications.projectId))
       .leftJoin(projectNotes, eq(projectNotes.id, notifications.noteId))
       .leftJoin(notices, eq(notices.id, notifications.noticeId))
       .leftJoin(noticeMessages, eq(noticeMessages.id, notifications.noticeMsgId))
+      .leftJoin(agents, eq(agents.id, notifications.agentId))
       .where(and(eq(notifications.userId, me.id), eq(notifications.biz, biz), accessible(me)))
       .orderBy(desc(notifications.createdAt))
       .limit(limit);
@@ -200,11 +216,15 @@ export const notificationStore: Pick<
         projectName: r.projectName,
         noticeId: r.noticeId,
         noticeTitle: r.noticeTitle,
+        agentId: r.agentId,
+        agentName: r.agentName,
         noteId: r.noteId,
         title: r.title,
-        scope: kind === 'notice' ? null : isNoteScope(scope) ? scope : '시공',
-        // 반려·보완요청·환경부 대기번호·승인은 한백만 한다 · 공지 메시지는 그 글을 쓴 쪽 · 담당이 못 한 일은 AI 담당
-        author: kind === 'note' ? r.noteAuthor ?? '' : kind === 'notice' ? r.msgAuthor ?? '' : kind === 'agent' ? 'AI 담당' : '한백',
+        // 공지 메모 · 담당의 정기 알림은 서는 탭이 없다
+        scope: kind === 'notice' || kind === 'remind' ? null : isNoteScope(scope) ? scope : '시공',
+        // 반려·보완요청·환경부 대기번호·승인은 한백만 한다 · 공지 메시지는 그 글을 쓴 쪽 · 담당이 못 한 일 · 정기 알림은 AI 담당
+        author: kind === 'note' ? r.noteAuthor ?? '' : kind === 'notice' ? r.msgAuthor ?? ''
+          : kind === 'agent' || kind === 'remind' ? 'AI 담당' : '한백',
         body: (kind === 'note' ? r.noteBody : kind === 'notice' ? r.msgBody : r.ownBody) ?? '',
         at: stampOf(r.createdAt),
         read: r.readAt !== null,
@@ -240,6 +260,8 @@ export const notificationStore: Pick<
     if (where.id) conds.push(eq(notifications.id, where.id));
     if (where.projectId) conds.push(eq(notifications.projectId, where.projectId));
     if (where.noticeId) conds.push(eq(notifications.noticeId, where.noticeId));
+    // 담당 하나 — 그 담당과의 대화를 열면 그 담당의 정기 알림이 읽힌다
+    if (where.agentId) conds.push(eq(notifications.agentId, where.agentId));
     if (where.scope) conds.push(eq(notifications.scope, where.scope));
     // 「모두 읽음」은 그 사업의 것만 — 전기차 알림 화면에서 누른 것이 태양광 알림을 읽은 것은 아니다
     if (where.biz) conds.push(eq(notifications.biz, where.biz));

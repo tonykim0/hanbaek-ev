@@ -239,6 +239,12 @@ export function workOf(p: PayoutRowInput): PayoutWork {
   };
 }
 
+/**
+ * 정기결제일 — 매월 10일 · 25일 (지급 규칙, 한백 확인). 배치의 지급일은 이 날짜 그대로다(주말 · 공휴일이어도 옮겨 적지 않는다).
+ * 열린구매 상신 알림(lib/agents/open-purchase)도 이 날짜에서 센다.
+ */
+export const REGULAR_PAY_DAYS = ['10', '25'] as const;
+
 /** 지급일 후보 — 트리거 충족일의 익월 10일·25일 (지급 규칙, 한백 확인) */
 export function payDateChoices(metAt: string, now: string = today()): [string, string] {
   /*
@@ -252,7 +258,7 @@ export function payDateChoices(metAt: string, now: string = today()): [string, s
   for (let guard = 0; out.length < 2 && guard < 36; guard += 1) {
     if (m === 12) { y += 1; m = 1; } else { m += 1; }
     const mm = String(m).padStart(2, '0');
-    for (const dd of ['10', '25']) {
+    for (const dd of REGULAR_PAY_DAYS) {
       const d = `${y}-${mm}-${dd}`;
       if (d >= now && out.length < 2) out.push(d);
     }

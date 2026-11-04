@@ -18,6 +18,7 @@
  * 나간다. 답에 이어지지 못한 초안(답을 남기다 끊긴 것)은 올린 시각의 자리에 따로 선다.
  * ★자동의 말★(2026-11-04 · lib/site-mail) — 계약서가 접수되면 콘솔이 그 담당의 이름으로 할 일 · 양식 메일 초안을 남긴다(말의 종류
  * auto). 에이전트의 말과 같은 띠에 「자동」 꼬리표와 그 현장으로 가는 고리를 단다. 초안 카드는 그 말 밑에 선다.
+ * 정산 담당의 열린구매 상신 알림(같은 날 · lib/agents/open-purchase)도 자동의 말이다 — 현장 대신 「거래명세서 보기 →」(meta.link).
  * 말은 띠 모양이다(ui.tsx Note 처럼 왼쪽 선 — 판 안이라 사방 테두리를 두르지 않는다). 에이전트의 말만 초록 바탕에 반짝이를 단다.
  */
 import Link from 'next/link';
@@ -383,6 +384,10 @@ function Said({ message: m }: { message: AgentMessage }) {
           <Link href={`/projects/${encodeURIComponent(m.meta.site.id)}?tab=intake`} className={`ml-auto text-small font-bold ${LINK}`}>
             현장 보기 →
           </Link>
+        )}
+        {/* 정기 알림(열린구매 상신)이 짚는 화면 — 「거래명세서 보기 →」 */}
+        {m.role === 'auto' && m.meta?.link && (
+          <Link href={m.meta.link.href} className={`ml-auto text-small font-bold ${LINK}`}>{m.meta.link.label}</Link>
         )}
       </div>
       {m.body && <p className={`mt-1 whitespace-pre-wrap break-keep text-base leading-relaxed ${look.text}`}><Linked text={m.body} /></p>}

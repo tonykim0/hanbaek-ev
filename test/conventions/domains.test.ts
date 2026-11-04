@@ -5,6 +5,7 @@
  */
 import { readdirSync, readFileSync } from 'fs';
 import { describe, expect, it } from 'vitest';
+import { getPathMatch } from 'next/dist/shared/lib/router/utils/path-match';
 import nextConfig from '@/next.config.mjs';
 import { findSources } from './fs';
 
@@ -16,9 +17,21 @@ const rules = async () => ((await nextConfig.redirects?.()) ?? []) as Rule[];
 const hostOf = (r: Rule) => r.has?.find((h) => h.type === 'host')?.value;
 
 describe('운영 주소 — hanbaek-re', () => {
-  it.each(OLD_HOSTS)('%s 로 오는 요청은 경로를 그대로 붙여 새 주소로 넘긴다', async (host) => {
+  it.each(OLD_HOSTS)('%s 로 오는 요청은 경로를 그대로 붙여 새 주소로 넘긴다 — 크론 경로만 빼고', async (host) => {
     const rule = (await rules()).find((r) => hostOf(r) === host);
-    expect(rule, `${host} 를 넘기는 규칙이 없다`).toMatchObject({ source: '/:path*', destination: `${NEW_ORIGIN}/:path*` });
+    expect(rule, `${host} 를 넘기는 규칙이 없다`).toBeDefined();
+    // Next 가 넘기기에 쓰는 바로 그 맞춤(getPathMatch)으로 본다 — 경로 전체가 :path 하나에 잡혀 새 주소 뒤에 붙는다
+    const match = getPathMatch(rule!.source, { strict: true, removeUnnamedParams: true });
+    const to = (path: string) => {
+      const m = match(path);
+      return m ? rule!.destination.replace(':path', String(m.path ?? '')) : null;
+    };
+    expect(to('/')).toBe(`${NEW_ORIGIN}/`);
+    expect(to('/projects/HB-2026-1')).toBe(`${NEW_ORIGIN}/projects/HB-2026-1`);
+    expect(to('/api/projects/HB-2026-1/notes')).toBe(`${NEW_ORIGIN}/api/projects/HB-2026-1/notes`);
+    expect(to('/notices/files/legacy-charger-history-template.xlsx')).toBe(`${NEW_ORIGIN}/notices/files/legacy-charger-history-template.xlsx`);
+    // 크론은 넘기기(3xx)를 따라가지 않는다 — 옛 주소로 불려도 그 자리에서 돈다(next.config.mjs NOT_CRON)
+    expect(to('/api/cron/agents')).toBeNull();
   });
 
   it('영구 이동(308)이 아니다 — 브라우저가 오래 기억해 되돌릴 수 없게 된다', async () => {

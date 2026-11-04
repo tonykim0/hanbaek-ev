@@ -8,5 +8,11 @@
     "app/api/intake/route.ts": {
       "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/agents",
+      "schedule": "0 23 * * *"
+    }
+  ]
 }

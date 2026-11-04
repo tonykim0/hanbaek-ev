@@ -505,7 +505,10 @@ export const notifications = pgTable('notifications', {
   noticeMsgId: text('notice_msg_id').references(() => noticeMessages.id, { onDelete: 'cascade' }),
   /** 진행현황 글 알림이면 그 글 — 반려·보완요청 알림은 비어 있다(migrations/0092) */
   noteId: text('note_id').references(() => projectNotes.id, { onDelete: 'cascade' }),
-  /** note(진행현황 글) · reject(서류 반려) · ask(누락 서류 보완요청) */
+  /**
+   * note(진행현황 글) · reject(서류 반려) · ask(누락 서류 보완요청) · notice(공지 메모) · approval · queue(환경부 승인 · 대기번호) ·
+   * agent(담당이 못 한 일 — 현장) · remind(담당의 정기 알림 — agent_id) — types/project NotificationKind
+   */
   kind: text('kind').notNull().default('note'),
   /** 그 알림이 서는 탭의 갈래 — 계약·시공·기성. 그 탭을 열면 읽힌다 */
   scope: text('scope'),
@@ -521,6 +524,11 @@ export const notifications = pgTable('notifications', {
    * 서고 배지도 사업마다 센다. 그전에 쌓인 것은 전부 전기차다(기본값).
    */
   biz: text('biz').notNull().default('ev'),
+  /**
+   * 담당의 정기 알림(kind 'remind')이면 그 담당 — 현장도 공지도 아니다. 누르면 그 담당과의 대화고, 거기를 열면 읽힌다
+   * (migrations/0115 · 정산 담당의 열린구매 상신 알림, lib/agents/open-purchase)
+   */
+  agentId: text('agent_id').references(() => agents.id, { onDelete: 'cascade' }),
 }, (t) => ({
   byUser: index('notifications_user_idx').on(t.userId, t.createdAt),
 }));
@@ -689,7 +697,10 @@ export const agentTasks = pgTable('agent_tasks', {
   title: text('title').notNull(),
   note: text('note'),
   projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
-  /** 양식 메일의 할 일이면 그 양식 이름(agent_mails.kind 와 같은 말 · lib/site-mail) — 그 메일이 나가면 저절로 끝난다. 사람이 적은 것은 null */
+  /**
+   * 콘솔이 저절로 적은 할 일의 종류 — 양식 메일이면 그 양식 이름(agent_mails.kind 와 같은 말 · lib/site-mail, 그 메일이 나가면 저절로
+   * 끝난다), 정기 알림이면 그 알림의 열쇠(open-purchase:2026-11-10 · lib/agents/open-purchase). 사람이 적은 것은 null
+   */
   kind: text('kind'),
   due: text('due'),
   doneAt: timestamp('done_at', { withTimezone: true }),

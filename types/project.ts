@@ -1508,7 +1508,11 @@ export function isNoteScope(v: unknown): v is NoteScope {
  * 알림의 갈래 — note 진행현황 글 · reject 반려 · ask 누락 서류 보완요청 · notice 공지 메모 · approval 환경부 승인 · queue 대기번호 ·
  * agent 에이전트 담당이 못 한 일(접수된 현장의 양식 메일에 붙일 서류가 없음 — 한백 관리자에게, lib/site-mail · migrations/0113)
  */
-export type NotificationKind = 'note' | 'reject' | 'ask' | 'notice' | 'approval' | 'queue' | 'agent';
+/**
+ * agent — 담당이 못 한 일(현장의 양식 메일에 붙일 서류 없음, lib/site-mail) · remind — 담당의 정기 알림(정산 담당의 열린구매 상신,
+ * lib/agents/open-purchase — 현장 없이 그 담당을 가리킨다)
+ */
+export type NotificationKind = 'note' | 'reject' | 'ask' | 'notice' | 'approval' | 'queue' | 'agent' | 'remind';
 
 export interface NoteNotification {
   id: string;
@@ -1519,6 +1523,9 @@ export interface NoteNotification {
   /** 공지 메모 알림이면 그 공지 — 줄을 누르면 그 공지를 펼친다 */
   noticeId: string | null;
   noticeTitle: string | null;
+  /** 담당의 정기 알림이면 그 담당 — 줄을 누르면 그 담당과의 대화(/admin/agents/[id]) */
+  agentId: string | null;
+  agentName: string | null;
   /** 진행현황 글 알림일 때만 */
   noteId: string | null;
   /** 반려·보완요청의 머리 — 「반려 — 계약서」 · 「누락 서류 보완요청 3건」 */
