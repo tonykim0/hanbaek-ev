@@ -81,7 +81,7 @@ export const BIZ_FRAME: Record<Biz, { bar: string; ink: string; inkOn: string; p
     on: 'bg-brand-50 text-brand-800',
   },
   solar: {
-    bar: 'bg-sun-500',
+    bar: 'bg-sun-300', // 파스텔(2026-11-04 한백 「조금 더 파스텔톤으로」) — 채움(brand-fill)과 같은 단계
     ink: 'text-slate-900/75 hover:bg-black/5 hover:text-slate-900',
     inkOn: 'bg-black/10 text-slate-900',
     pick: 'text-sun-800',
