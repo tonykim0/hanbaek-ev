@@ -3,15 +3,16 @@
 import { useRouter } from 'next/navigation';
 import { useCallback, useRef, useState } from 'react';
 import { useAddressSearch, type PostcodeData } from '@/components/contracts/AddressSearchButton';
-import { Btn, Choice, Err, FIELD, FIELD_BASE, TEXT } from '@/components/ui';
+import { Btn, Choice, Empty, Err, FIELD, FIELD_BASE, TEXT } from '@/components/ui';
 import { uploadSiteFile } from '@/lib/solar/site-upload';
 import { SITE_KIND_LABEL, SITE_KINDS, SITE_LIMITS, type SiteDraft } from '@/lib/solar/sites';
 
 /**
  * 상담 접수 · 고치기 폼 — 같은 칸, 같은 규칙(lib/solar/sites cleanSiteInput — 서버가 한 번 더 본다).
  *
- * ★담당 협력사를 고르는 칸이 없다★ (한백 지시 2026-11-03 「담당협력사는 해당 계정으로 로그인한 협력사만 · 한백 직접은 없어」) —
- * 접수는 태양광 참여 협력사가 제 계정으로 하고, 그 소속이 담당이다(저장소가 정한다). 한백은 접수하지 않는다.
+ * ★담당 협력사★ — 협력사의 폼에는 칸이 없다: 제 계정의 소속이 담당이다(저장소가 정한다 · 한백 지시 2026-11-03 「담당협력사는
+ * 해당 계정으로 로그인한 협력사만 · 한백 직접은 없어」). 한백 관리자의 폼에만 칩으로 선다(`orgs` — 태양광 참여 협력사의 소속,
+ * 11-04 「한백도 접수하게해줘」). 반드시 하나를 고른다 — 「한백 직접」은 없다. 고치기에서도 한백만 바꾼다.
  *
  * ★주소는 검색해서 고른다★ (같은 날 「계약서 작성할 때처럼 주소 검색하게」) — 계약서 양식과 같은 카카오(다음) 우편번호 검색
  * (components/contracts/AddressSearchButton 의 useAddressSearch)이 도로명주소를 넣는다. 칸은 열어 둔다(동 · 호 같은 꼬리를 붙이게).
@@ -24,11 +25,14 @@ import { SITE_KIND_LABEL, SITE_KINDS, SITE_LIMITS, type SiteDraft } from '@/lib/
 export default function SiteForm({
   siteId,
   initial,
+  orgs,
   onDone,
 }: {
   /** 있으면 고치기, 없으면 새 접수 */
   siteId?: string;
   initial: SiteDraft;
+  /** 한백 관리자에게만 — 담당으로 고를 태양광 참여 협력사의 소속. 없으면(협력사) 담당 칸을 그리지 않는다 */
+  orgs?: readonly string[];
   /** 고치기를 마치면(또는 취소) — 글자로 돌아간다 */
   onDone?: () => void;
 }) {
@@ -46,14 +50,24 @@ export default function SiteForm({
   }, []);
   const search = useAddressSearch(onPicked);
 
-  const missing = !d.name.trim() ? '현장명' : !d.address.trim() ? '주소' : !d.kind ? '설치 형태' : null;
+  const picksOrg = orgs !== undefined;
+  const missing = picksOrg && !d.org ? '담당 협력사' : !d.name.trim() ? '현장명' : !d.address.trim() ? '주소' : !d.kind ? '설치 형태' : null;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     if (missing || busy) return;
     setBusy(true);
     setError(null);
-    const body = { name: d.name, address: d.address, kind: d.kind, customer: d.customer, phone: d.phone, memo: d.memo };
+    const body = {
+      name: d.name,
+      address: d.address,
+      kind: d.kind,
+      customer: d.customer,
+      phone: d.phone,
+      memo: d.memo,
+      // 담당은 한백만 보낸다 — 협력사가 보내면 저장소가 막는다(제 소속이 담당이다)
+      ...(picksOrg ? { org: d.org } : {}),
+    };
     try {
       const res = await fetch(siteId ? `/api/solar/sites/${siteId}` : '/api/solar/sites', {
         method: siteId ? 'PATCH' : 'POST',
@@ -91,6 +105,23 @@ export default function SiteForm({
 
   return (
     <form onSubmit={submit} aria-label={siteId ? '현장 고치기' : '상담 접수'} className="grid gap-4">
+      {picksOrg && (
+        <div role="group" aria-label="담당 협력사" className="grid gap-1.5">
+          <FieldName label="담당 협력사" need />
+          {orgs.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {orgs.map((o) => (
+                <Choice key={o} on={d.org === o} onClick={() => set('org', o)}>
+                  {o}
+                </Choice>
+              ))}
+            </div>
+          ) : (
+            // 고를 것이 없다 — 계정설정에서 협력사의 「태양광」을 켜야 담당이 된다
+            <Empty kind="miss" label="태양광 참여 협력사 0곳" />
+          )}
+        </div>
+      )}
       <Field label="현장명" need>
         <input className={FIELD} value={d.name} maxLength={SITE_LIMITS.name} placeholder="상호 · 건물명" onChange={(e) => set('name', e.target.value)} />
       </Field>

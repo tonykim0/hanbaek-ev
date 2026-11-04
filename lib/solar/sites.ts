@@ -5,6 +5,7 @@
  * 전기차 현장(projects)과 섞지 않는다 — 운영사 · 단가 케이스 · 기성이 없다(CLAUDE.md 「사업이 둘이다」).
  * 단계는 지금 상담 하나다 — 다음 단계(현장 확인 · 견적·계약 …)는 무엇으로 넘어가는지 정해지면 붙인다(lib/solar/stages 초안).
  */
+import { canWrite, type Role } from '@/lib/roles';
 
 export type SiteKind = 'roof' | 'ground';
 export const SITE_KINDS: readonly SiteKind[] = ['roof', 'ground'];
@@ -52,8 +53,8 @@ export type SolarSite = {
   phone: string | null;
   memo: string | null;
   /**
-   * 담당 협력사 — 접수한 협력사 계정의 소속(한백 지시 2026-11-03 「해당 계정으로 로그인한 협력사만 · 한백 직접은 없어」).
-   * null 은 그 지시 전에 한백이 「한백 직접」으로 받은 것뿐이다.
+   * 담당 협력사 — 협력사가 접수하면 그 계정의 소속, 한백이 접수하면 고른 태양광 참여 협력사(한백 지시 2026-11-03 「한백 직접은
+   * 없어」 · 11-04 「한백도 접수하게해줘」). null 은 그 지시 전에 한백이 「한백 직접」으로 받은 것뿐이다 — 한백이 고쳐 채운다.
    */
   org: string | null;
   /** 접수한 계정(로그인 ID) */
@@ -108,7 +109,7 @@ export function cleanSiteInput(raw: unknown): SiteInput {
   };
 }
 
-/** 접수 · 고치기 폼이 쥐는 값 — 칸은 빈 글자로, 설치 형태는 안 골랐으면 null */
+/** 접수 · 고치기 폼이 쥐는 값 — 칸은 빈 글자로, 설치 형태 · 담당 협력사는 안 골랐으면 null */
 export type SiteDraft = {
   name: string;
   address: string;
@@ -116,7 +117,16 @@ export type SiteDraft = {
   customer: string;
   phone: string;
   memo: string;
+  /** 담당 협력사 — 한백의 폼에서만 고른다(협력사는 제 소속으로 굳는다) */
+  org: string | null;
 };
+
+/**
+ * 상담 접수를 하는가 — 한백 관리자와 태양광 참여를 켠 협력사(2026-11-04 한백 「한백도 접수하게해줘」). 열람 전용은 아니다.
+ * 현장관리의 단추 · 접수 화면의 문 · 부지 검토의 「이 부지로 상담 접수」가 이것 하나를 본다(저장소가 한 번 더 본다).
+ */
+export const canRegisterSite = (s: { role: Role; solar?: boolean }): boolean =>
+  canWrite(s.role) && (s.role === 'admin' || s.solar === true);
 
 /**
  * 현장(또는 들고 온 값) → 폼의 값. 접수 페이지(서버)와 상세(화면)가 같이 부른다 — 그래서 'use client' 파일이 아니라
@@ -129,6 +139,7 @@ export const draftOf = (s: Partial<SolarSite> = {}): SiteDraft => ({
   customer: s.customer ?? '',
   phone: s.phone ?? '',
   memo: s.memo ?? '',
+  org: s.org ?? null,
 });
 
 /** SL-연도-순번(세 자리 — 넘으면 그대로 늘어난다) */

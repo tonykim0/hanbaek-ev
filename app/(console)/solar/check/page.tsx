@@ -9,7 +9,7 @@
  */
 import Checker from '@/components/solar/Checker';
 import { getSessionUser } from '@/lib/auth/session';
-import { canWrite, isHanbaek } from '@/lib/roles';
+import { canRegisterSite } from '@/lib/solar/sites';
 import type { Mode } from '@/lib/solar/types';
 
 export const metadata = { title: '태양광 부지 검토' };
@@ -28,8 +28,8 @@ export default async function SolarCheckPage({ searchParams }: { searchParams: R
       <Checker
         mapKey={process.env.KAKAO_JS_KEY || null}
         initial={q.length >= 2 ? { q, mode } : null}
-        // 상담 접수는 태양광 참여 협력사만 — 한백 · 열람 전용에게는 결과의 접수 단추가 없다
-        canRegister={!!session && !isHanbaek(session.role) && canWrite(session.role) && session.solar === true}
+        // 상담 접수는 한백 관리자와 태양광 참여 협력사 — 열람 전용에게는 결과의 접수 단추가 없다
+        canRegister={!!session && canRegisterSite(session)}
       />
     </div>
   );

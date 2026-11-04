@@ -2,7 +2,8 @@
  * 태양광 상담 접수의 문 (2026-11-03 — 「에코일렉은 태양광도 같이할거야 · 현장관리에서 상담 개소 접수」).
  *
  * 누가 접수하나(태양광 참여 협력사 · 한백 관리자) · 누가 보나(협력사는 제 소속만) · 누가 고치고 지우나(담당 협력사 · 한백) ·
- * 담당은 누가 정하나(협력사는 제 소속으로 굳고, 한백만 고른다) · 번호는 다시 쓰지 않는다.
+ * 담당은 누가 정하나(협력사는 제 소속으로 굳고, 한백은 태양광 참여 협력사 중에서 고른다 — 「한백 직접」은 없다) ·
+ * 번호는 다시 쓰지 않는다.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -66,10 +67,21 @@ describe('상담 접수 — 누가', () => {
     expect(String(r.json?.error)).toContain('현장명');
   });
 
-  it('한백은 접수하지 않는다(422) — 담당은 늘 접수한 협력사의 소속이다(「한백 직접」은 없다)', async () => {
+  it('한백이 접수하면 담당 협력사를 고른다 — 태양광 참여 협력사만, 비우면 422(「한백 직접」은 없다)', async () => {
+    // 2026-11-04 「한백도 접수하게해줘」 — 그 전 하루는 한백의 접수를 아예 막았다
     const r = await create(USERS.admin, { org: '에코일렉' });
-    expect(r.status).toBe(422);
-    expect(String(r.json?.error)).toContain('한백은 접수하지 않습니다');
+    expect(r.status).toBe(200);
+    // 고른 협력사가 담당이라 그 협력사도 이 현장을 본다
+    const site = await solarSiteStore.get(String(r.json?.id), viewerOf(USERS.ecoelec));
+    expect([site?.org, site?.createdBy]).toEqual(['에코일렉', 'admin']);
+
+    const none = await create(USERS.admin);
+    expect(none.status).toBe(422);
+    expect(String(none.json?.error)).toContain('담당 협력사를 골라');
+    // 참여하지 않는 협력사(대상전력)는 담당이 못 된다
+    const off = await create(USERS.admin, { org: '대상전력' });
+    expect(off.status).toBe(422);
+    expect(String(off.json?.error)).toContain('태양광 참여 협력사가 아닙니다');
   });
 });
 
@@ -102,11 +114,25 @@ describe('고치기 · 지우기 — 담당 협력사와 한백', () => {
     expect([site?.phone, site?.name]).toEqual(['010-1111-2222', `시험 태양광 ${RUN}`]);
     const logs = await getDb().select().from(auditLog).where(and(eq(auditLog.action, `태양광 ${id}`), eq(auditLog.field, '연락처')));
     expect(logs.map((l) => [l.oldValue, l.newValue])).toEqual([['010-0000-0000', '010-1111-2222']]);
+    // 협력사는 담당을 못 바꾼다 — 비우거나 남에게 넘기는 길이 된다
     expect((await call(PATCH, { method: 'PATCH', body: { org: null }, params: { id } })).status).toBe(422);
-    // 한백 관리자도 담당은 못 바꾼다 — 접수한 협력사가 담당이다
     await signIn(USERS.admin);
+    // 한백도 참여하지 않는 협력사로는 못 바꾸고, 비우지도 못한다(「한백 직접」은 없다)
     expect((await call(PATCH, { method: 'PATCH', body: { org: '대상전력' }, params: { id } })).status).toBe(422);
+    expect((await call(PATCH, { method: 'PATCH', body: { org: null }, params: { id } })).status).toBe(422);
     expect((await call(PATCH, { method: 'PATCH', body: { memo: '한백이 고침' }, params: { id } })).status).toBe(200);
+    // 참여 협력사로는 바꾼다(한백이 고른 담당을 되돌릴 길) — 기록이 남고, 현장은 새 담당의 것이 된다.
+    // 상대는 navy(네이비인프라) — daesang 은 배포 설정 계정이라 users 에 줄이 없어 참여를 켤 수 없다
+    await setSolar('navy', true);
+    try {
+      expect((await call(PATCH, { method: 'PATCH', body: { org: '네이비인프라' }, params: { id } })).status).toBe(200);
+      const moved = await getDb().select().from(auditLog).where(and(eq(auditLog.action, `태양광 ${id}`), eq(auditLog.field, '담당 협력사')));
+      expect(moved.map((l) => [l.oldValue, l.newValue])).toEqual([['에코일렉', '네이비인프라']]);
+      expect(await solarSiteStore.get(id, viewerOf(USERS.ecoelec))).toBeNull();
+      expect((await solarSiteStore.get(id, viewerOf(USERS.navy)))?.org).toBe('네이비인프라');
+    } finally {
+      await setSolar('navy', false);
+    }
   });
 
   it('참여를 끄면 그 계정은 제 현장도 못 고친다 — 지금 값을 DB 에서 읽는다', async () => {

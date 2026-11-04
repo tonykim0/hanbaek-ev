@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cleanSiteInput, siteIdOf, SITE_LIMITS } from '@/lib/solar/sites';
+import { canRegisterSite, cleanSiteInput, draftOf, siteIdOf, SITE_LIMITS } from '@/lib/solar/sites';
 
 const ok = { name: '  에코텍이엔지 동충주공장 ', address: '충북 충주시 산척면 동충주산단4길 17', kind: 'roof' };
 
@@ -40,5 +40,22 @@ describe('현장 번호', () => {
   it('SL-연도-세 자리 순번 · 넘치면 그대로 늘어난다', () => {
     expect(siteIdOf(2026, 7)).toBe('SL-2026-007');
     expect(siteIdOf(2026, 1234)).toBe('SL-2026-1234');
+  });
+});
+
+describe('누가 상담 접수를 하나 (2026-11-04 「한백도 접수하게해줘」)', () => {
+  it('한백 관리자와 태양광 참여 협력사 — 열람 전용 · 참여하지 않는 협력사는 아니다', () => {
+    expect(canRegisterSite({ role: 'admin' })).toBe(true);
+    expect(canRegisterSite({ role: 'salesCons', solar: true })).toBe(true);
+    expect(canRegisterSite({ role: 'sales', solar: true })).toBe(true);
+    expect(canRegisterSite({ role: 'cons', solar: false })).toBe(false);
+    expect(canRegisterSite({ role: 'cons' })).toBe(false);
+    // 열람 전용은 태양광을 늘 보지만 쓰기가 없다
+    expect(canRegisterSite({ role: 'viewer', solar: true })).toBe(false);
+  });
+
+  it('폼의 담당 협력사 — 고르기 전에는 null, 현장에서 오면 그 소속', () => {
+    expect(draftOf().org).toBeNull();
+    expect(draftOf({ org: '에코일렉' }).org).toBe('에코일렉');
   });
 });

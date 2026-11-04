@@ -4,8 +4,8 @@
  *
  * ★상담 접수★ (한백 지시 2026-11-03 「현장관리에서 상담 개소 접수 할 수 있도록」) — 현장은 상담 접수로 들어와 상담 칸에 선다.
  * 다음 칸(현장 확인 · 견적·계약 …)으로 넘어가는 일은 아직 없다 — 무엇이 끝나면 넘어가는지 정해지면 붙인다(lib/solar/stages 초안).
- * 한백은 전부, 태양광 참여 협력사는 제 소속의 현장만 본다(lib/data/solar-sites). 접수 단추는 태양광 참여 협력사에게만 —
- * 담당은 접수한 계정의 소속이고 한백은 접수하지 않는다(한백 지시 「한백 직접은 없어」).
+ * 한백은 전부, 태양광 참여 협력사는 제 소속의 현장만 본다(lib/data/solar-sites). 접수 단추는 한백 관리자와 태양광 참여 협력사 —
+ * 협력사가 접수하면 제 소속이, 한백이 접수하면 고른 참여 협력사가 담당이다(「한백 직접은 없어」 · 11-04 「한백도 접수하게해줘」).
  */
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
@@ -13,8 +13,8 @@ import { BtnLink, Tag } from '@/components/ui';
 import { getSessionUser, viewerOf } from '@/lib/auth/session';
 import { solarSiteStore } from '@/lib/data/solar-sites';
 import { dayOf, elapsedLabel } from '@/lib/date';
-import { canWrite, isHanbaek } from '@/lib/roles';
-import { SITE_KIND_LABEL } from '@/lib/solar/sites';
+import { isHanbaek } from '@/lib/roles';
+import { canRegisterSite, SITE_KIND_LABEL } from '@/lib/solar/sites';
 import { SOLAR_STAGES } from '@/lib/solar/stages';
 
 export const metadata = { title: '태양광 현장관리' };
@@ -30,7 +30,7 @@ export default async function SolarSitesPage() {
     <div>
       <div className="mb-5 flex flex-wrap items-center gap-3">
         <h1 className="text-h1 font-black text-slate-900">현장관리</h1>
-        {!hanbaek && canWrite(session.role) && session.solar && (
+        {canRegisterSite(session) && (
           <BtnLink kind="do" size="md" href="/solar/sites/new">
             상담 접수
           </BtnLink>
@@ -68,8 +68,11 @@ export default async function SolarSitesPage() {
                           <p className="mt-1.5 flex flex-wrap items-center gap-1">
                             <Tag>{SITE_KIND_LABEL[site.kind]}</Tag>
                             {site.files.length > 0 && <Tag>첨부파일 {site.files.length}</Tag>}
-                            {/* 한백은 전 현장을 본다 — 누구 현장인지 카드에 적는다. 협력사에게는 늘 자기라 안 적는다 */}
-                            {hanbaek && site.org && <Tag>{site.org}</Tag>}
+                            {/*
+                              한백은 전 현장을 본다 — 누구 현장인지 카드에 적는다. 협력사에게는 늘 자기라 안 적는다.
+                              담당이 빈 것은 「한백 직접」 시절의 현장뿐이다 — 한백이 상세의 「수정」에서 채운다
+                            */}
+                            {hanbaek && (site.org ? <Tag>{site.org}</Tag> : <Tag tone="warn">담당 미지정</Tag>)}
                             <span className="ml-auto text-micro font-semibold tabular-nums text-slate-500">
                               {elapsedLabel(dayOf(new Date(site.createdAt))) ?? ''}
                             </span>
