@@ -86,7 +86,7 @@ export const BIZ_FRAME: Record<Biz, { bar: string; ink: string; inkOn: string; p
     on: 'bg-brand-50 text-brand-800',
   },
   solar: {
-    bar: 'bg-brand-fill', // 채움과 같은 값을 읽는다 — 밝고 맑은 귤색 #FAB76B(globals.css 의 태양광 brand-fill, 2026-11-04)
+    bar: 'bg-brand-fill', // 채움과 같은 값을 읽는다 — 밝고 맑은 귤색 #FFB35C(globals.css 의 태양광 brand-fill, 2026-11-04)
     ink: 'text-slate-900/75 hover:bg-black/5 hover:text-slate-900',
     inkOn: 'bg-black/10 text-slate-900',
     pick: 'text-sun-800',
