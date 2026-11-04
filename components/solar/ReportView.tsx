@@ -80,7 +80,7 @@ export default function ReportView({ report, mapKey, canRegister = false }: { re
     [byLayout, byBoxes, capacityKw, boxesArea, boxCount, report],
   );
   const basis = byLayout
-    ? `패널 ${plan.count.toLocaleString()}장`
+    ? `AI 지붕 배치 · 패널 ${plan.count.toLocaleString()}장`
     : byBoxes
       ? carport
         ? `주차장 캐노피 · 설치면적 ${boxCount}곳 · 패널 ${boxPanels.toLocaleString()}장`
@@ -88,10 +88,23 @@ export default function ReportView({ report, mapKey, canRegister = false }: { re
       : report.mode === 'roof'
         ? '건축물대장 면적 기준'
         : '땅 면적 기준';
+  /*
+   * 건축물대장 면적으로 센 용량 — AI 지붕 배치가 용량을 정한 뒤에도 따로 세운다(한백 2026-11-04 「건축물대장 면적상
+   * 가능용량도 따로 적어줘」). 배치 전에는 그 값이 곧 설치 가능 용량이라 두 번 적지 않는다(화면 규칙 5).
+   */
+  const register = byLayout && report.estimate ? report.estimate : null;
 
   return (
     <section className="mt-6 space-y-4">
-      <Summary report={report} verdict={verdict} checks={checks} estimate={estimate} basis={basis} canRegister={canRegister} />
+      <Summary
+        report={report}
+        verdict={verdict}
+        checks={checks}
+        estimate={estimate}
+        basis={basis}
+        register={register}
+        canRegister={canRegister}
+      />
 
       {/* 검토마다 새로 그린다 — 앞 결과의 도형이 남지 않게 */}
       {report.map && (
@@ -124,6 +137,7 @@ function Summary({
   checks,
   estimate,
   basis,
+  register,
   canRegister,
 }: {
   report: Report;
@@ -131,6 +145,8 @@ function Summary({
   checks: Check[];
   estimate: Estimate | null;
   basis: string;
+  /** AI 지붕 배치로 용량을 정했을 때만 — 건축물대장 면적으로 센 용량(견줘 보는 값) */
+  register: Estimate | null;
   canRegister: boolean;
 }) {
   const { place } = report;
@@ -188,9 +204,17 @@ function Summary({
             )}
           </p>
         </div>
-        <dl className="flex gap-8">
+        <dl className="flex flex-wrap gap-x-8 gap-y-3">
           <Num label="설치 가능 용량" value={estimate ? `${estimate.capacityKw.toLocaleString()} kW` : '—'} sub={estimate ? basis : undefined} />
           <Num label="연 발전량" value={estimate ? `${Math.round(estimate.yearlyKwh / 1000).toLocaleString()} MWh` : '—'} />
+          {/* 연 발전량은 설치 가능 용량의 것이라 그 곁에 두고, 견줘 보는 값은 끝에 둔다(좁으면 다음 줄로 접힌다) */}
+          {register && (
+            <Num
+              label="건축물대장 면적 기준"
+              value={`${register.capacityKw.toLocaleString()} kW`}
+              sub={`건축면적 ${register.usableArea.toLocaleString()}㎡ · ${AREA_PER_KW.roof}㎡당 1kW`}
+            />
+          )}
         </dl>
       </div>
 
