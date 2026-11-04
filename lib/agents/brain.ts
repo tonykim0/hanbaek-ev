@@ -3,7 +3,8 @@
  *
  * ★손에 쥔 것은 할 일 목록과 메일 초안뿐이다★ — add_task · complete_task · draft_mail, 양식 메일이 있는 운영사 담당은 site_mail
  * (나이스 계약서 초안 · 현대엔지니어링 설치승인서 — lib/site-mail). 반려 · 확정 · 단계 이동 · 지급 같은 콘솔의 값은 못 바꾼다(그건
- * 사람이 콘솔에서 누른다 — 판독이 반려하지 않는 것과 같은 원칙). 전략·기획만 웹 검색을 더 쥔다.
+ * 사람이 콘솔에서 누른다 — 판독이 반려하지 않는 것과 같은 원칙). 전략·기획만 웹 검색을 더 쥔다. 운영사 담당은 그 운영사의
+ * 단가표를 읽는 pricing_table 을 쥔다 — 읽기만이다(lib/agents/pricing-table · 한백 2026-11-04 「영업정책 업데이트 되면 키단가표 업데이트」).
  * 계약서가 접수되면 콘솔이 그 담당의 이름으로 할 일 · 양식 메일 초안을 저절로 남긴다(말의 종류 auto) — 대화에서는 「[자동 …]」으로 읽는다.
  * ★메일은 초안까지다★ — 나가는 것은 한백이 그 초안의 「승인하고 보내기」를 눌렀을 때뿐이다(한백 2026-11-03 「난 그거에 대해
  * 승인을 하고 너가 메일을 보내는건데」 · app/api/agents/[id]/mails/[mailId]/send).
@@ -56,7 +57,10 @@ function roleOf(agent: Agent): string {
       const spec = siteMailOfCpo(agent.cpo);
       return `${agent.cpo} 운영사와 관련된 일을 맡는다. ${agent.cpo} 현장들이 접수부터 준공까지 막히지 않고 흘러가게 챙기고, `
         + `${agent.cpo} 쪽과 오간 일을 기록한다. [현장] 자료의 「칸」은 그 현장이 선 단계, 「차례」는 지금 움직여야 할 쪽 `
-        + '(한백 · 영업사 · 시공사), 「정체」는 마지막 진척 뒤 지난 날수다.'
+        + '(한백 · 영업사 · 시공사), 「정체」는 마지막 진척 뒤 지난 날수다.\n'
+        + `단가표: 콘솔의 ${agent.cpo} 단가표(단가 케이스)는 pricing_table 로 읽는다 — 읽기만 한다. 한백이 새 영업정책 원자료를 주면 `
+        + '지금 단가표와 견주어 바뀌는 케이스(적용 시작 · 건물 · 연수 · 수전 · 턴키 · 프로모션 · 충전요금 · 조건)와 새로 생기거나 '
+        + '없어지는 케이스를 정리한다. 단가표에 넣는 것은 한백이 한다.'
         + (spec ? `\n${siteMailRole(spec)}` : '');
     }
     case 'settlement':
@@ -180,6 +184,8 @@ export interface AgentHands {
    * plan: create 새로 · replace 앞의 보내지 않은 초안을 버리고 새로 · keep 같은 초안이 이미 있다
    */
   siteMail?(projectId: string): Promise<{ id: string; subject: string; plan: string; to: string[] }>;
+  /** 그 운영사의 지금 단가표 글 — 운영사 담당만(lib/agents/pricing-table). 읽기만이다 */
+  pricingTable?(): Promise<string>;
 }
 
 /** 한 답에 올리는 메일 초안 상한 — 잘못 돈 답이 초안을 쏟아 내지 않게 */
@@ -246,6 +252,26 @@ function siteMailTool(spec: SiteMailSpec) {
   };
 }
 
+/** 운영사 단가표 읽기 — 받는 값이 없다(담당의 운영사 하나뿐이다) */
+const PRICING_TOOL = {
+  name: 'pricing_table',
+  description: '이 운영사의 지금 단가표(콘솔 단가 케이스 — 적용 시작 · 건물 · 연수 · 신설/교체 · 수전 · 턴키 = 영업비 + 시공비 + 마진 · '
+    + '프로모션 · 충전요금 · 조건)를 읽는다. 새 영업정책 원자료와 견주거나 단가를 물을 때 쓴다. 읽기만 한다 — 단가표를 고치는 것은 한백이다. '
+    + '영업비 · 시공비 · 마진은 한백 안의 값이라 운영사에 보내는 메일에 쓰지 않는다.',
+  input_schema: { type: 'object', properties: {} },
+};
+
+/** 이 담당이 쥐는 도구 — 할 일 · 메일은 모두, 양식 메일 · 단가표는 운영사 담당(라우트가 손을 이어 줄 때), 웹 검색은 전략·기획 */
+export function toolsOf(agent: Agent, hands: Pick<AgentHands, 'siteMail' | 'pricingTable'>): unknown[] {
+  const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
+  return [
+    ...TASK_TOOLS,
+    ...(siteSpec ? [siteMailTool(siteSpec)] : []),
+    ...(agent.kind === 'operator' && hands.pricingTable ? [PRICING_TOOL] : []),
+    ...(agent.kind === 'strategy' ? [WEB_SEARCH] : []),
+  ];
+}
+
 /*
  * 한 답에 검색 여덟 번까지 — 다섯 번이었을 때 첫 시험(2026-11-02 보조금 정책)에서 「검색이 횟수 제한으로 중간에
  * 끊겼다」고 스스로 적었다. 한 번에 1센트, 그 답은 46초 · $0.20 이었다.
@@ -289,11 +315,7 @@ export async function agentReply(input: {
     },
   ];
   const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
-  const tools: unknown[] = [
-    ...TASK_TOOLS,
-    ...(siteSpec ? [siteMailTool(siteSpec)] : []),
-    ...(agent.kind === 'strategy' ? [WEB_SEARCH] : []),
-  ];
+  const tools = toolsOf(agent, hands);
   const said = toMessages(input.history, await fileTextsOf(input.history));
   if (said.length === 0 || said[said.length - 1].role !== 'user') {
     throw new Error('답할 지시가 없습니다.');
@@ -363,6 +385,9 @@ export async function agentReply(input: {
             : `초안을 올렸다 (id=${made.id}, ${who})${made.plan === 'replace' ? ' — 앞의 보내지 않은 초안은 서류가 달라 버렸다' : ''}. `
               + '아직 보내지 않았다 — 한백이 승인하면 나간다.',
         };
+      }
+      if (block.name === 'pricing_table' && agent.kind === 'operator' && hands.pricingTable) {
+        return { type: 'tool_result', tool_use_id: block.id, content: await hands.pricingTable() };
       }
       return fail(`모르는 도구: ${block.name}`);
     } catch (err) {

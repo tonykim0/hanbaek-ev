@@ -9,11 +9,13 @@
  * (store/agent-mail). 응답에 같이 실어 화면이 바로 그린다.
  * 양식 메일이 있는 운영사 담당(나이스 · 현대엔지니어링 — lib/site-mail)은 site_mail 도 쥔다: 서류가 채워져 한백이 다시 요청하면 그
  * 현장의 서류를 붙인 양식 초안을 쓴다(lib/site-mail-run requestSiteMail — 단추와 같은 길). 그 초안도 이 답 밑에 선다.
+ * 운영사 담당은 pricing_table 로 그 운영사의 지금 단가표를 읽는다(lib/agents/pricing-table — 읽기만, 한백 2026-11-04).
  */
 import { getRepository } from '@/lib/data';
 import { adminWrite } from '@/lib/api/write-route';
 import { agentReply, HISTORY_TURNS } from '@/lib/agents/brain';
 import { briefOf } from '@/lib/agents/brief';
+import { pricingTableText } from '@/lib/agents/pricing-table';
 import { loadScope } from '@/lib/agents/scope';
 import { siteMailOfCpo } from '@/lib/site-mail';
 import { requestSiteMail } from '@/lib/site-mail-run';
@@ -38,6 +40,8 @@ export const POST = adminWrite<{ id: string }, undefined>(
     const agentId = detail.agent.id;
     const drafted: string[] = [];
     const siteSpec = detail.agent.kind === 'operator' ? siteMailOfCpo(detail.agent.cpo) : null;
+    /* 운영사 담당은 그 운영사의 단가표를 읽는다(읽기만 — 부를 때만 저장소에서) */
+    const operatorCpo = detail.agent.kind === 'operator' ? detail.agent.cpo : null;
     const turn = await agentReply({
       agent: detail.agent,
       duties: detail.duties,
@@ -61,6 +65,9 @@ export const POST = adminWrite<{ id: string }, undefined>(
             drafted.push(mail.id);
             return { id: mail.id, subject: mail.subject, plan, to: mail.to };
           },
+        } : {}),
+        ...(operatorCpo ? {
+          pricingTable: async () => pricingTableText(await repo.listPricingRules(actor), operatorCpo),
         } : {}),
       },
     });

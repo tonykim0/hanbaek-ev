@@ -23,8 +23,9 @@ export const dynamic = 'force-dynamic';
  * 「워크트리보다 조직도 같은 개념」 · 「검정 배경은 지워줘. 기존 디자인컴포넌트의 틀은 맞추되, AI에이전트의 느낌은 지우지마」 ·
  * 「정산담당이 열린구매까지 같이하는거야. 그리고 전략이 최우선이고 그 이후에 운영사 담당자들이야」).
  *
- * 맨 위가 한백, 그 바로 밑에 전략·기획(최우선), 그 밑에 운영사 담당(다섯이 한 줄로 매달린다)과 정산(기성 · 지급 · 열린구매)이
- * 나란히 선다 — 한백이 그림 셋 중에 고른 모양이다. 칸마다 담당 표지의 등이 상태다(components/agents/status) — 맡은 범위의
+ * 맨 위가 한백, 그 바로 밑에 전략·기획(최우선), 그 밑에서 갈래가 운영사 담당(다섯이 한 줄로 매달린다)과 정산(기성 · 지급 ·
+ * 열린구매)으로 나뉜다 — 한백이 그림 셋 중에 고른 모양이다(2026-11-02). 정산은 운영사 다섯 줄의 오른쪽 끝에 선다(2026-11-04
+ * 「선 겹침 바로잡기」 — 가운데 줄에 떠 있으면 다섯을 잇는 선이 그 밑을 지났다). 칸마다 담당 표지의 등이 상태다(components/agents/status) — 맡은 범위의
  * 셈(콘솔이 지금 셈한 것, lib/agents/brief headlineOf) · 최근 이레의 활동 칸 · 업무 정의 · 열린 할 일. 누르면 그 담당과의
  * 대화(/admin/agents/[id]). 가로로 서려면 넓어야 해서 xl 아래에서는 같은 조직을 세로로 펼친다. 모양은 components/agents/kit.
  */
@@ -86,9 +87,13 @@ export default async function AgentsPage() {
       </div>
 
       {/*
-        넓은 화면 — 한백 → 전략·기획 → (운영사 담당 · 정산), 운영사 다섯은 한 줄 아래.
-        운영사 다섯을 부서 칸 밑에 세로로 매달면 칸이 좁아 이름이 잘렸다(1280px 에서 「현대엔지니어링 …」) — 그래서 다섯 칸으로
-        한 줄을 다 쓴다. 운영사 담당 칸의 가운데(두 칸 중 첫 칸 = 25%)에서 선이 내려와 그 줄의 가로선에 닿는다.
+        넓은 화면 — 한백 → 전략·기획 → 갈래 둘: 운영사 담당(밑에 다섯이 한 줄) · 정산. 맨 아래 줄은 여섯 칸이다 — 운영사 다섯과
+        그 오른쪽 끝의 정산(칸 폭이 같다).
+        ★정산은 운영사 줄의 오른쪽 끝이다★ (한백 2026-11-04 「선 겹침 바로잡기」) — 전에는 정산이 운영사 담당 옆 가운데 줄에
+        서 있어, 다섯을 잇는 가로선이 정산 밑을 지나 플러그링크 · 에버온이 정산 밑에 달린 것처럼 보였다. 이제 정산은 갈래선에서
+        곧장 제 칸으로 내려가고, 다섯을 잇는 선은 에버온에서 끝난다 — 두 선이 겹치지 않는다.
+        자리: 여섯 칸 중 앞 다섯의 가운데(5/12 = 셋째 칸 SK 위)에 운영사 담당, 여섯째 칸의 가운데(11/12)에 정산.
+        운영사 다섯을 부서 칸 밑에 세로로 매달면 칸이 좁아 이름이 잘렸다(1280px 에서 「현대엔지니어링 …」) — 그래서 한 줄이다.
       */}
       <DotGrid className="hidden py-2 xl:block">
         <div className="flex flex-col items-center">
@@ -100,23 +105,33 @@ export default async function AgentsPage() {
               <AgentCard agent={strategy.a} headline={strategy.h} />
             </div>
           )}
+          <span aria-hidden className={`h-6 w-px ${ORG_LINE}`} />
         </div>
-        <OrgRow>
-          {[
-            <div key="operators" className="mx-auto flex h-full w-full max-w-[340px] flex-col">
-              <Dept title="운영사 담당" count={operators.length} headline={dept} />
-              <span aria-hidden className={`mx-auto min-h-0 w-px flex-1 ${ORG_LINE}`} />
-            </div>,
-            ...(settlement
-              ? [<div key="settlement" className="mx-auto w-full max-w-[340px]"><AgentCard agent={settlement.a} headline={settlement.h} /></div>]
-              : []),
-          ]}
-        </OrgRow>
-        <div className="relative">
-          <span aria-hidden className={`absolute left-1/4 top-0 h-8 w-px ${ORG_LINE}`} />
-          <div className="pt-8">
+        <div className="relative grid grid-cols-6">
+          {/* 갈래선 — 운영사 담당의 가운데(5/12)부터 정산의 가운데(11/12)까지. 전략·기획의 세로선(1/2)이 그 사이에 닿는다 */}
+          <span aria-hidden className={`absolute left-[41.6667%] right-[8.3333%] top-0 h-px ${ORG_LINE}`} />
+          <div className="relative col-span-5 flex flex-col items-center px-2 pt-8">
+            <span aria-hidden className={`absolute left-1/2 top-0 h-8 w-px ${ORG_LINE}`} />
+            <OrgNode className="absolute left-1/2 top-8 z-10 -translate-x-1/2 -translate-y-1/2" />
+            <div className="w-full max-w-[340px]"><Dept title="운영사 담당" count={operators.length} headline={dept} /></div>
+            {/* 다섯을 잇는 가로선(아래 OrgRow 의 윗변)까지 */}
+            <span aria-hidden className={`h-8 w-px ${ORG_LINE}`} />
+          </div>
+          {/* 여섯째 칸 — 정산으로 내려가는 선이 운영사 담당 칸 옆을 지난다 */}
+          <div className="relative">
+            {settlement && <span aria-hidden className={`absolute bottom-0 left-1/2 top-0 w-px ${ORG_LINE}`} />}
+          </div>
+          {/* flex — 한 줄에 선 정산 칸과 높이를 맞춘다(칸이 줄 높이까지 늘어난다) */}
+          <div className="col-span-5 flex">
             <OrgRow>{operators.map((r) => <AgentCard key={r.a.id} agent={r.a} headline={r.h} />)}</OrgRow>
           </div>
+          {settlement && (
+            <div className="relative flex min-w-0 flex-col px-2 pt-8">
+              <span aria-hidden className={`absolute left-1/2 top-0 h-8 w-px ${ORG_LINE}`} />
+              <OrgNode className="absolute left-1/2 top-8 z-10 -translate-x-1/2 -translate-y-1/2" />
+              <AgentCard agent={settlement.a} headline={settlement.h} />
+            </div>
+          )}
         </div>
       </DotGrid>
 
@@ -187,7 +202,7 @@ function Hub({ agents, compact = false }: { agents: number; compact?: boolean })
  */
 function OrgRow({ children }: { children: ReactNode[] }) {
   return (
-    <div className="flex">
+    <div className="flex w-full">
       {children.map((child, i) => (
         <div key={i} className="relative flex min-w-0 flex-1 flex-col px-2 pt-8">
           {i > 0 && <span aria-hidden className={`absolute left-0 right-1/2 top-0 h-px ${ORG_LINE}`} />}
