@@ -930,6 +930,9 @@ bulletpoint는 다 왼쪽정렬로」). 단가표의 조건 행(설치조건·�
     커밋·브랜치 푸시는 세션이 알아서 한다.
   - **프리뷰**: `git push -u origin <브랜치>` → 약 1분 뒤
     `https://hanbaek-form-git-<브랜치>-kjw5757-1767s-projects.vercel.app` (브랜치 이름의 `/` 는 `-`).
+    ★앞부분(`hanbaek-form-git-…-projects`)이 63자를 넘으면 Vercel 이 브랜치 이름을 잘라 해시를 붙인다★ — 짜 맞춘 주소는
+    없는 주소다(2026-11-04 `worktree-biz-switch-color` → `…-git-worktree-biz-swi-f714e8-…`, 사용자가 「열 수 없대」).
+    브랜치 이름이 23자를 넘으면(앞뒤 고정 40자) `npx vercel ls` 의 그 배포를 `npx vercel inspect <배포 주소>` 로 열어 Aliases 의 주소를 준다.
     ★사용자는 프리뷰를 보고 판단한다★ — 프로덕션이 아니라. Vercel 로그인이 필요하다(curl 은 401, 상태는
     `npx vercel ls` 로). DB 는 개발 DB(시드 5건 · `admin`/`dev1234!`). ★Blob 은 프로덕션 스토어를 같이
     쓴다★ — 파일 올리기 시험은 프로덕션 자료실에 남는다. 실데이터가 걸린 확인만 머지 뒤 프로덕션에서.
