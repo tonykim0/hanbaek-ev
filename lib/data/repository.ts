@@ -622,7 +622,7 @@ export interface ProjectRepository {
 
   /** 내 알림 — 진행현황 글·서류 반려·보완요청이 나에게 온 것, 최신이 위. 협력사는 지금 볼 수 있는 현장의 것만 */
   listNotifications(me: Recipient, limit?: number, biz?: Biz): Promise<NoteNotification[]>;
-  /** 내가 안 읽은 알림 수 — 사이드바 배지. 사업마다 센다(없으면 전기차) */
+  /** 내가 안 읽은 알림 수 — 상단 바 배지. 사업마다 센다(없으면 전기차) */
   countUnreadNotifications(me: Recipient, biz?: Biz): Promise<number>;
   /**
    * 알림을 읽었다고 찍는다 — 범위: 알림 하나 · 현장 하나(갈래까지) · 공지 하나 · 담당 하나(그 담당의 정기 알림) · 없으면 전부.

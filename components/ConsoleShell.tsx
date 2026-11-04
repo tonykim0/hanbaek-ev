@@ -24,8 +24,7 @@ import { usePathname } from 'next/navigation';
 import type { Role } from '@/lib/roles';
 import { canWrite, isHanbaek, ROLE_LABEL } from '@/lib/roles';
 import { TODO_GROUPS, type TodoGroup } from '@/lib/todo-types';
-import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
-import { BIZ_ALERTS, BIZ_COOKIE, BIZ_FRAME, BIZ_HOME, BIZ_TITLE, bizOf, isShared, type Biz } from '@/lib/biz';
+import { BIZ_COOKIE, BIZ_FRAME, BIZ_HOME, BIZ_LABEL, BIZ_TITLE, BIZES, bizOf, isShared, type Biz } from '@/lib/biz';
 import TopBar from '@/components/TopBar';
 
 const COLLAPSE_KEY = 'hb-console-sidebar-collapsed';
@@ -166,7 +165,7 @@ const GROUPS: Group[] = [
     ],
   },
   /*
-   * 조회·자료(자료실·이력 조회·아파트 정보)는 상단 바(TopBar)에 있다 —
+   * 조회·자료(자료실·이력 조회)는 상단 바(TopBar)에 있다 —
    * 흐름(진행·접수·정산)과 참고 도구를 한 기둥에 섞으면 매일 누르는 것이 묻힌다.
    */
   {
@@ -260,7 +259,7 @@ const GROUPS: Group[] = [
  * 태양광 사업의 사이드바(2026-11-03 시작) — 부지 검토(첫 화면) · 현장관리, 사업과 상관없는 기준 · 계정(협력사 정보 · 계정설정).
  * 사이드바는 앞머리가 맞으면 고른 것으로 칠하므로(pathname.startsWith) 태양광 메뉴는 서로의 앞머리가 되지 않게 둔다 —
  * 그래서 /solar 자체는 메뉴가 아니고 첫 화면으로 보낸다.
- * 공지 · 알림은 묶음 밖 맨 위라 두 사업이 같이 쓴다. 전기차의 접수 · 정산 · 단가표는 전기차의 일이라 여기 없다.
+ * 공지 · 알림은 상단 바(TopBar)라 두 사업이 같이 쓴다. 전기차의 접수 · 정산 · 단가표는 전기차의 일이라 여기 없다.
  * 태양광은 한백과 태양광 참여를 켠 협력사가 본다(2026-11-03 에코일렉 — 문은 (console)/solar/layout). 협력사에게는 진행 묶음만 선다.
  */
 const SOLAR_GROUPS: Group[] = [
@@ -366,63 +365,8 @@ export default function ConsoleShell({
     };
   }, [pathname]);
   /*
-   * 안 읽은 공지 수 — ★사이드바 맨 위★ (한백 지시 2026-09-04 「공지를 왼쪽 사이드바 맨
-   * 위로 빼줘. 안 읽었으면 1 표시」). 상단바에 있었는데 조회 도구들 사이에 섞여 있어
-   * 「먼저 읽을 것」으로 안 읽혔다 — 사이드바 맨 위가 화면을 열 때 눈이 처음 닿는 자리다.
-   *
-   * 공지 화면에 서 있으면 그 화면이 읽음을 찍는 중이므로 0 으로 접는다 — 읽고 있는데
-   * 배지가 남아 있으면 거짓말이다(찍기와 세기의 경주를 화면 판정으로 끊는다).
+   * 공지 · 알림의 안 읽은 수는 상단 바가 센다 — 2026-11-04 그리로 올라갔다(TopBar 머리말).
    */
-  const [unread, setUnread] = useState(0);
-  useEffect(() => {
-    if (pathname.startsWith('/notices')) {
-      setUnread(0);
-      return;
-    }
-    let alive = true;
-    void fetch('/api/notices/unread')
-      .then((r) => (r.ok ? (r.json() as Promise<{ count: number }>) : null))
-      .then((d) => {
-        if (alive && d) setUnread(d.count);
-      })
-      .catch(() => {
-        /* 배지가 안 뜰 뿐 — 사이드바가 화면을 막으면 안 된다 */
-      });
-    return () => {
-      alive = false;
-    };
-  }, [pathname]);
-
-  /*
-   * 안 읽은 알림 수 — 진행현황에 상대방이 남긴 글(lib/notify.ts · 한백 지시 2026-10-05). 공지 바로 밑에 선다.
-   * 화면을 옮길 때 · 1분마다(한 화면에 오래 머무는 사이에 온 글) · 읽음을 찍었다는 신호가 올 때 다시 센다.
-   */
-  const [alerts, setAlerts] = useState(0);
-  useEffect(() => {
-    let alive = true;
-    const load = () => {
-      if (document.visibilityState === 'hidden') return;
-      // 지금 사업의 알림만 센다 — 전기차 화면의 배지에 태양광 알림이 섞이지 않게(migrations/0107)
-      void fetch(`/api/notifications/unread?biz=${biz}`)
-        .then((r) => (r.ok ? (r.json() as Promise<{ count: number }>) : null))
-        .then((d) => {
-          if (alive && d) setAlerts(d.count);
-        })
-        .catch(() => {
-          /* 배지가 안 뜰 뿐 — 사이드바가 화면을 막으면 안 된다 */
-        });
-    };
-    load();
-    const timer = window.setInterval(load, 60_000);
-    window.addEventListener(NOTIFICATIONS_CHANGED, load);
-    document.addEventListener('visibilitychange', load);
-    return () => {
-      alive = false;
-      window.clearInterval(timer);
-      window.removeEventListener(NOTIFICATIONS_CHANGED, load);
-      document.removeEventListener('visibilitychange', load);
-    };
-  }, [pathname, biz]);
 
   useEffect(() => {
     if (ready) localStorage.setItem(COLLAPSE_KEY, open ? '0' : '1');
@@ -470,19 +414,13 @@ export default function ConsoleShell({
             )}
           </Link>
         </div>
+        {solar && <BizSwitch biz={biz} expanded={expanded} />}
 
+        {/*
+          공지 · 알림은 여기 없다 — ★상단 바 오른쪽 끝으로 올렸다★ (한백 지시 2026-11-04). 2026-09-04 부터 이 자리(묶음 밖
+          맨 위)에 있었고, 지금 그 자리는 바로 위의 사업 전환이다.
+        */}
         <nav aria-label="콘솔 메뉴" className="flex-1 overflow-y-auto px-2 py-2">
-          {/*
-            ★공지는 묶음 밖, 맨 위다★ (한백 지시 2026-09-04). 업무 묶음(현황·진행·정산…)
-            중 어디에도 안 속한다 — 일이 아니라 먼저 읽을 것이다. 묶음 제목 없이 한 줄로
-            세우고 아래 묶음들과 얇은 선으로 가른다(상자를 겹치지 않는다 — 화면 규칙 1).
-          */}
-          <div className="mb-3 border-b border-slate-100 pb-3">
-            <TopItem href="/notices" label="공지" count={unread} expanded={expanded} active={pathname.startsWith('/notices')} on={frame.on} />
-            {/* 알림 — 진행현황에 상대방이 남긴 글(lib/notify.ts). 공지와 같은 꼴, 공지 바로 밑 */}
-            <TopItem href={BIZ_ALERTS[biz]} label="알림" count={alerts} expanded={expanded} active={pathname.startsWith(BIZ_ALERTS[biz])} on={frame.on} />
-          </div>
-
           {groups.map((g) => (
             <div key={g.label} className="mb-3">
               {expanded ? (
@@ -610,7 +548,7 @@ export default function ConsoleShell({
           '--console-top': actAs ? '79px' : '48px',
         } as CSSProperties}
       >
-        <TopBar role={role} biz={biz} solar={solar} onMenu={() => setDrawer(true)} />
+        <TopBar role={role} biz={biz} onMenu={() => setDrawer(true)} />
         {/*
           * 대행 띠 — 지금 눈이 내 것이 아님을 어느 화면에서든 보인다. 사이드바에 관리
           * 묶음이 사라지므로(눈이 협력사다) 돌아오는 길은 이 띠 하나뿐이다.
@@ -651,39 +589,32 @@ function ActAsExit() {
 }
 
 /**
- * 사이드바 맨 위 한 줄(공지·알림) — 업무 묶음 밖에서 먼저 읽을 것. 안 읽은 것이 있을 때만 배지를 단다 —
- * 0 을 적으면 할 일 배지(늘 서 있다)와 헷갈린다. 접힌 사이드바에서는 점 하나.
+ * 사업 전환(전기차 · 태양광) — ★로고와 사업 이름(「전기차사업관리」) 바로 밑★ (한백 지시 2026-11-04 「로고와 전기차사업관리
+ * 라고 적혀져 있는 곳 바로 아래로」). 상단 바 맨 왼쪽에 있었다. 이름이 지금 사업을 말하고 바로 밑에서 바꾼다.
+ *
+ * 두 사업을 다 보는 계정에게만 선다 — 한백(관리자 · 열람 전용)과 태양광 참여를 켠 협력사(lib/biz seesSolar).
+ * 나머지 협력사는 자기 사업 하나라 바꿀 것이 없다. 주소로 바꾼다(링크) — 사업은 주소가 정한다(lib/biz).
+ * 색만으로 가르지 않는다: 고른 쪽은 흰 바탕에 사업 색 글자이고, aria-current 로도 말한다.
+ * 접힌 사이드바(56px)에서는 두 칸을 위아래로 쌓는다 — 세 글자 둘이 나란히는 안 들어간다.
  */
-function TopItem({ href, label, count, expanded, active, on }: {
-  href: string; label: string; count: number; expanded: boolean; active: boolean;
-  /** 고른 메뉴의 색 — 사업의 틀 색(lib/biz BIZ_FRAME) */
-  on: string;
-}) {
+function BizSwitch({ biz, expanded }: { biz: Biz; expanded: boolean }) {
   return (
-    <Link
-      href={href}
-      title={expanded ? undefined : `${label}${count > 0 ? ` — 안 읽음 ${count}` : ''}`}
-      className={`flex items-center rounded-ctl font-semibold transition ${
-        expanded ? 'gap-2 px-2 py-1.5' : 'justify-center py-2'
-      } ${
-        active ? on : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-      }`}
+    <nav
+      aria-label="사업"
+      className={`mx-2 mb-1 flex shrink-0 gap-0.5 rounded-ctl bg-slate-100 p-0.5 ${expanded ? '' : 'flex-col'}`}
     >
-      {expanded ? (
-        <>
-          <span className="truncate">{label}</span>
-          {count > 0 && (
-            <span className="ml-auto rounded-tag bg-amber-500 px-1.5 py-0.5 text-tiny font-bold tabular-nums text-white">
-              {count}
-            </span>
-          )}
-        </>
-      ) : (
-        <span className="relative text-tiny font-bold">
-          {label}
-          {count > 0 && <span aria-hidden className="absolute -right-2 -top-1 h-1.5 w-1.5 rounded-full bg-amber-500" />}
-        </span>
-      )}
-    </Link>
+      {BIZES.map((b) => (
+        <Link
+          key={b}
+          href={BIZ_HOME[b]}
+          aria-current={b === biz ? 'page' : undefined}
+          className={`flex-1 whitespace-nowrap rounded-[6px] py-1 text-center font-black transition ${
+            expanded ? 'text-small' : 'text-micro'
+          } ${b === biz ? `bg-white shadow-sm ${BIZ_FRAME[b].pick}` : 'text-slate-500 hover:text-slate-800'}`}
+        >
+          {BIZ_LABEL[b]}
+        </Link>
+      ))}
+    </nav>
   );
 }

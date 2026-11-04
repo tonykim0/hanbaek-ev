@@ -55,10 +55,10 @@ export const isShared = (pathname: string) => SHARED_PATHS.some((p) => under(pat
 
 export const asBiz = (v: string | undefined | null): Biz => (v === 'solar' ? 'solar' : 'ev');
 
-/** 전환 단추를 누르면 가는 곳 — 그 사업의 첫 화면. 태양광은 부지 검토다(지금 실제로 쓰는 화면 — 현장관리는 아직 틀뿐) */
-/** 사이드바 「알림」이 가는 곳 — 그 사업의 알림(2026-11-03) */
+/** 상단 바 「알림」이 가는 곳 — 그 사업의 알림(2026-11-03) */
 export const BIZ_ALERTS: Record<Biz, string> = { ev: '/notifications', solar: `${SOLAR_ROOT}/notifications` };
 
+/** 전환 단추를 누르면 가는 곳 — 그 사업의 첫 화면. 태양광은 부지 검토다(지금 실제로 쓰는 화면 — 현장관리는 아직 틀뿐) */
 export const BIZ_HOME: Record<Biz, string> = { ev: '/projects', solar: `${SOLAR_ROOT}/check` };
 
 export const BIZ_LABEL: Record<Biz, string> = { ev: '전기차', solar: '태양광' };
@@ -67,21 +67,23 @@ export const BIZ_LABEL: Record<Biz, string> = { ev: '전기차', solar: '태양�
 export const BIZ_TITLE: Record<Biz, string> = { ev: '전기차사업관리', solar: '태양광사업관리' };
 
 /**
- * 틀의 색 — bar 상단 바 · ink 바 위 글자(메뉴 단추 · 전환의 안 고른 쪽) · track 전환 단추의 홈 · pick 전환에서 고른 쪽의 글자 ·
- * on 사이드바의 고른 메뉴. 전기차는 진한 그린 바에 흰 글자, 태양광은 귤색 바에 진한 글자 — 귤색은 밝아서 흰 글자가 안 읽힌다.
+ * 틀의 색 — bar 상단 바 · ink 바 위 글자(메뉴 단추 · 바로가기 · 공지 · 알림) · inkOn 그중 지금 연 화면 ·
+ * pick 흰 바탕 위 사업 글자(사이드바 사업 전환의 고른 쪽 · 바 위 안 읽은 수) · on 사이드바의 고른 메뉴.
+ * 전기차는 진한 그린 바에 흰 글자, 태양광은 귤색 바에 진한 글자 — 귤색은 밝아서 흰 글자가 안 읽힌다.
+ * 바에는 2026-11-04 부터 공지 · 알림이 두 사업 모두 서므로 바 위 글자는 늘 이 값을 쓴다(흰 글자를 박아 두면 귤색에서 안 읽힌다).
  */
-export const BIZ_FRAME: Record<Biz, { bar: string; ink: string; track: string; pick: string; on: string }> = {
+export const BIZ_FRAME: Record<Biz, { bar: string; ink: string; inkOn: string; pick: string; on: string }> = {
   ev: {
     bar: 'bg-brand-700',
     ink: 'text-white/80 hover:bg-white/10 hover:text-white',
-    track: 'bg-black/15',
+    inkOn: 'bg-white/15 text-white',
     pick: 'text-brand-800',
     on: 'bg-brand-50 text-brand-800',
   },
   solar: {
     bar: 'bg-sun-500',
     ink: 'text-slate-900/75 hover:bg-black/5 hover:text-slate-900',
-    track: 'bg-black/10',
+    inkOn: 'bg-black/10 text-slate-900',
     pick: 'text-sun-800',
     on: 'bg-sun-50 text-sun-800',
   },

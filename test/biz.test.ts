@@ -35,7 +35,7 @@ describe('알림은 사업마다 따로 (2026-11-03 — 지금까지의 알림�
     expect(isShared('/notifications')).toBe(false);
     expect(bizOf('/notifications', 'solar')).toBe('ev');
   });
-  it('사이드바 「알림」은 그 사업의 알림으로 간다', () => {
+  it('상단 바 「알림」은 그 사업의 알림으로 간다', () => {
     expect(BIZ_ALERTS.ev).toBe('/notifications');
     expect(bizOf(BIZ_ALERTS.solar)).toBe('solar');
   });
