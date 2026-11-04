@@ -232,7 +232,8 @@ function BarLink({ href, label, biz, active, count, blank = false }: {
    * 수가 생기고 사라져도 아무것도 움직이지 않고, 얹은 수가 옆 글자를 덮지도 않는다(링크 사이 여백으로 어림했더니 굵은
    * 「99+」가 「알림」의 첫 글자를 덮었다). 수를 눌러도 그 링크다.
    */
-  const cls = `flex shrink-0 items-center whitespace-nowrap rounded-ctl py-1.5 text-small font-bold transition ${
+  /* 글자 크기는 사이드바 메뉴와 같은 text-base(13px)다 — 12px 이었다(한백 2026-11-04 「상단바 폰트사이즈도 사이드바에 맞춰줘」) */
+  const cls = `flex shrink-0 items-center whitespace-nowrap rounded-ctl py-1.5 text-base font-bold transition ${
     count !== undefined ? 'pl-2.5 pr-8' : 'px-2.5'
   } ${active ? frame.inkOn : frame.ink}`;
   /*
