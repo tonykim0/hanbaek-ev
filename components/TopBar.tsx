@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * 상단 바 — 조회 도구(왼쪽)와 공지 · 알림(오른쪽 끝).
+ * 상단 바 — 공지 · 알림(맨 왼쪽)과 조회 도구.
  *
  * 사이드바는 일의 흐름(진행·접수·정산·관리)만 남기고, 어느 화면에서든 잠깐 찾아보는
  * 조회·자료(자료실·이력)는 여기로 올렸다. 흐름과 참고를 한 기둥에 섞으면
@@ -12,7 +12,8 @@
  *
  * ★공지 · 알림이 여기로 올라왔다★ (한백 지시 2026-11-04 「공지랑 알림을 위로 배너로 올려주고」). 2026-09-04 부터 사이드바
  * 맨 위에 있었는데, 그 자리는 사업 전환(전기차/태양광)에 내줬다 — 로고 밑 사업 이름 바로 밑이 바꾸는 자리다(ConsoleShell).
- * 바의 오른쪽 끝에 붙박아 둔다: 조회 도구는 좁은 화면에서 옆으로 흐르지만(접으면 바 높이를 넘는다) 안 읽은 수는 늘 보여야 한다.
+ * 바의 맨 왼쪽에 붙박아 둔다(아래 자리 주석 — 오른쪽 끝에 두었더니 안 보였다): 조회 도구는 좁은 화면에서 옆으로 흐르지만
+ * (접으면 바 높이를 넘는다) 안 읽은 수는 늘 보여야 한다.
  * 두 사업 모두에 선다 — 그래서 바 위 글자는 사업 색(BIZ_FRAME ink)을 따른다.
  */
 import { useEffect, useState } from 'react';
@@ -143,7 +144,7 @@ export default function TopBar({ role, biz, onMenu }: {
   return (
     /*
      * 사업 색 바 — 크롬(바)과 내용(흰 카드)을 색으로 가른다. 글자는 바 색에 맞춘다(전기차 흰 글자 · 태양광 진한 글자).
-     * 조회 도구는 왼쪽 — 본문 제목과 같은 여백에서 시작한다.
+     * 공지 · 알림이 맨 왼쪽 — 본문 제목과 같은 여백에서 시작한다.
      */
     <header className={`sticky top-0 z-30 flex h-12 items-center gap-1 ${frame.bar} px-5 sm:px-7 print:hidden`}>
       {/* 좁은 화면에서는 사이드바가 서랍이라 여는 자리가 필요하다 — 메뉴 옆이 그 자리다 */}
@@ -157,6 +158,18 @@ export default function TopBar({ role, biz, onMenu }: {
           ☰
         </button>
       )}
+      {/*
+        * 공지 · 알림 — ★바의 맨 왼쪽★. 처음엔 오른쪽 끝에 두었다가 같은 날 옮겼다(한백 「오른쪽 구석에 박아놓으니 안 보여,
+        * 좌측 정렬」) — 넓은 화면에서 오른쪽 끝은 사이드바·본문 제목에서 눈이 가장 먼 자리다. 바로가기와 달리 흐르지 않는다
+        * (shrink-0) — 좁은 화면에서도 안 읽은 수가 늘 보인다.
+        */}
+      <nav aria-label="공지 · 알림" className="flex shrink-0 items-center gap-1">
+        <BarLink href="/notices" label="공지" biz={biz} count={unread} active={pathname.startsWith('/notices')} />
+        {/* 알림은 사업마다 따로다 — 지금 사업의 알림으로 간다(lib/biz BIZ_ALERTS) */}
+        <BarLink href={BIZ_ALERTS[biz]} label="알림" biz={biz} count={alerts} active={pathname.startsWith(BIZ_ALERTS[biz])} />
+      </nav>
+      {/* 가르는 선 — 먼저 읽을 것(공지 · 알림)과 도구는 다른 갈래다. 도구가 서는 사업(전기차)에만 */}
+      {ev && <div className="mx-1 h-5 w-px shrink-0 bg-white/25" />}
       {/*
         * 좁은 화면에서는 바로가기가 옆으로 흐른다 — 접히면 상단 바 높이(h-12)를 넘어
         * 글자가 잘린다. 스크롤바는 감춘다.
@@ -189,12 +202,6 @@ export default function TopBar({ role, biz, onMenu }: {
             active={!t.blank && pathname.startsWith(t.href)}
           />
         ))}
-      </nav>
-      {/* 공지 · 알림 — 바의 오른쪽 끝. 바로가기와 달리 흐르지 않는다(shrink-0) */}
-      <nav aria-label="공지 · 알림" className="ml-auto flex shrink-0 items-center gap-1 pl-2">
-        <BarLink href="/notices" label="공지" biz={biz} count={unread} active={pathname.startsWith('/notices')} />
-        {/* 알림은 사업마다 따로다 — 지금 사업의 알림으로 간다(lib/biz BIZ_ALERTS) */}
-        <BarLink href={BIZ_ALERTS[biz]} label="알림" biz={biz} count={alerts} active={pathname.startsWith(BIZ_ALERTS[biz])} />
       </nav>
     </header>
   );

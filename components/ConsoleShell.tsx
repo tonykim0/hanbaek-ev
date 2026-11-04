@@ -417,7 +417,7 @@ export default function ConsoleShell({
         {solar && <BizSwitch biz={biz} expanded={expanded} />}
 
         {/*
-          공지 · 알림은 여기 없다 — ★상단 바 오른쪽 끝으로 올렸다★ (한백 지시 2026-11-04). 2026-09-04 부터 이 자리(묶음 밖
+          공지 · 알림은 여기 없다 — ★상단 바 맨 왼쪽으로 올렸다★ (한백 지시 2026-11-04). 2026-09-04 부터 이 자리(묶음 밖
           맨 위)에 있었고, 지금 그 자리는 바로 위의 사업 전환이다.
         */}
         <nav aria-label="콘솔 메뉴" className="flex-1 overflow-y-auto px-2 py-2">
