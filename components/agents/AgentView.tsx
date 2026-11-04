@@ -6,7 +6,7 @@ import { loadAgentSide } from '@/lib/agents/scope';
 import { BIZ_AGENTS, type Biz } from '@/lib/biz';
 import type { AgentDetail } from '@/types/agents';
 import { AGENT_KIND_LABEL, isCounterpart, isLead } from '@/types/agents';
-import { Tag, TEXT } from '@/components/ui';
+import { Tag } from '@/components/ui';
 import { HeadlineCounts } from '@/components/agents/HeadlineCounts';
 import { AgentRoom } from '@/components/agents/AgentRoom';
 import { AgentDuties } from '@/components/agents/AgentDuties';
@@ -59,27 +59,31 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
     <>
       {/* 이 담당의 정기 알림(열린구매 상신)은 여기를 열면 읽힌다 — 알림 줄을 누르면 여기로 온다 */}
       <ReadAgentAlarms agentId={agent.id} />
-      <nav className="mb-4">
-        <Link href={BIZ_AGENTS[biz]} className="text-small font-bold text-slate-500 transition hover:text-brand-800">← AI에이전트</Link>
-      </nav>
-      <header className="mb-6 flex flex-wrap items-center gap-x-4 gap-y-3">
-        <AgentMark size="lg" tone={led.tone} live={live} label={`${led.label}${live ? ' · 최근 24시간 대화' : ''}`} />
-        <div className="min-w-0">
-          <p className="mb-0.5 text-small font-bold text-brand-700">AI 담당</p>
-          <h1 className="text-h1 font-black text-slate-900">{agent.name}</h1>
+      {/* 머리말은 다른 화면의 상세와 같은 꼴이다(계약서 작성 PageChrome) — 되돌아가는 길 · 제목 · 곁글 한 줄 (2026-11-05 콘솔 틀에 맞춤) */}
+      <header className="mb-6">
+        <Link href={BIZ_AGENTS[biz]} className="mb-3 inline-flex items-center gap-1 text-base text-slate-500 transition hover:text-brand-700">
+          ← AI에이전트
+        </Link>
+        <div className="flex items-center gap-3.5">
+          <AgentMark size="lg" tone={led.tone} label={`${led.label}${live ? ' · 최근 24시간 대화' : ''}`} />
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+              <h1 className="text-h1 font-black text-slate-900">{agent.name}</h1>
+              {/* 팀에서의 자리 — 팀장 · 실무자 */}
+              <Tag>{lead ? '팀장' : '실무자'}</Tag>
+              {/* 갈래 이름은 운영사 · 사업자 담당에만 — 정산 · 전략·기획은 이름이 곧 갈래라 「정산 담당」 옆의 「정산」이 같은 말을 두 번 한다(규칙 5) */}
+              {isCounterpart(agent.kind) && <Tag>{AGENT_KIND_LABEL[agent.kind]}</Tag>}
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-base text-slate-500">{roleLineOf(agent)}</span>
+              {headline.counts.length > 0 && <HeadlineCounts headline={headline} />}
+            </div>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-          {/* 팀에서의 자리 — 팀장 · 실무자 */}
-          <Tag>{lead ? '팀장' : '실무자'}</Tag>
-          {/* 갈래 이름은 운영사 · 사업자 담당에만 — 정산 · 전략·기획은 이름이 곧 갈래라 「정산 담당」 옆의 「정산」이 같은 말을 두 번 한다(규칙 5) */}
-          {isCounterpart(agent.kind) && <Tag>{AGENT_KIND_LABEL[agent.kind]}</Tag>}
-          <span className={TEXT.meta}>{roleLineOf(agent)}</span>
-          {headline.counts.length > 0 && <HeadlineCounts headline={headline} />}
+        <div className="mt-3">
+          <MailAccount account={account} biz={biz} />
         </div>
       </header>
-      <div className="-mt-3 mb-5">
-        <MailAccount account={account} biz={biz} />
-      </div>
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
         {/* 주를 바꾸면 새로 그린다 — 앞 주의 말이 한 번 비쳤다 바뀌지 않게 */}

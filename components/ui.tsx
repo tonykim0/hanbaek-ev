@@ -109,6 +109,39 @@ export function GroupHead({ step, title, action, meta, children }: {
   );
 }
 
+/**
+ * 구역 머리 — 구역 제목(TEXT.section) + 그 구역의 단추 + 곁글 + 상태 꼬리표. GroupHead 와 같은 줄이고 한 단계 크다:
+ * 판(PANEL) 하나의 머리(「할 일」 · 「사용량」), 화면을 위에서 아래로 나누는 큰 갈래(AI에이전트 팀의 층 1 · 2 · 3).
+ * 단추는 GroupHead 와 같은 까닭으로 ★제목 바로 뒤★다.
+ *
+ * (2026-11-05 한백 「AI 에이전트 페이지 UI도 기존 디자인시스템에 맞춰서」 — 에이전트 화면이 제 「//」 머리를 따로 그리고
+ * 있었다. 그것을 걷으며 여기로 모았다. 구역 제목을 손으로 적은 다른 화면은 고칠 때 이것으로 옮긴다.)
+ */
+export function SectionHead({ step, title, action, meta, children }: {
+  /** 걸음 번호 — 위에서 아래로 차례가 있는 갈래 */
+  step?: number;
+  title: ReactNode;
+  action?: ReactNode;
+  meta?: ReactNode;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+      <h2 className={TEXT.section}>
+        {step !== undefined && (
+          <span className="mr-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-slate-800 px-1 align-[2px] text-tiny font-black tabular-nums text-white">
+            {step}
+          </span>
+        )}
+        {title}
+      </h2>
+      {action}
+      {meta !== undefined && meta !== null && <span className={`${TEXT.meta} tabular-nums`}>{meta}</span>}
+      {children}
+    </div>
+  );
+}
+
 /* ── 단추 ──────────────────────────────────────────────────────────────────
  * 네 가지다. 더 만들지 않는다.
  *   do    그 화면에서 하는 일. 한 상자에 하나만 둔다.

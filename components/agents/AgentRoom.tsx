@@ -19,16 +19,18 @@
  * ★자동의 말★(2026-11-04 · lib/site-mail) — 계약서가 접수되면 콘솔이 그 담당의 이름으로 할 일 · 양식 메일 초안을 남긴다(말의 종류
  * auto). 에이전트의 말과 같은 띠에 「자동」 꼬리표와 그 현장으로 가는 고리를 단다. 초안 카드는 그 말 밑에 선다.
  * 정산 담당의 열린구매 상신 알림(같은 날 · lib/agents/open-purchase)도 자동의 말이다 — 현장 대신 「거래명세서 보기 →」(meta.link).
- * 말은 띠 모양이다(ui.tsx Note 처럼 왼쪽 선 — 판 안이라 사방 테두리를 두르지 않는다). 에이전트의 말만 초록 바탕에 반짝이를 단다.
+ * 말은 띠 모양이다(ui.tsx Note 처럼 왼쪽 선 — 판 안이라 사방 테두리를 두르지 않는다). 에이전트의 말만 연한 사업 색 바탕에 반짝이를 단다
+ * (진행현황 및 메모가 상대 쪽 글을 사업 색 선으로 가르는 것과 같은 결). 기록은 「기록」, 자동의 말은 「자동」 꼬리표 — 글자 표시(▸ ✎)는
+ * 걷었다(2026-11-05 콘솔 틀에 맞춤 — 꼬리표가 콘솔의 말이다). 답을 기다리는 동안 깜빡이던 점도 걷었다 — 단추가 「답 쓰는 중…」이다.
  */
 import Link from 'next/link';
 import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import type { AgentEvent, AgentMail, AgentMessage } from '@/types/agents';
-import { Btn, Err, FIELD, PANEL, Tag, TEXT } from '@/components/ui';
+import { Btn, Err, FIELD, PANEL, SectionHead, Tag, TEXT } from '@/components/ui';
 import { AGENT_FILE_MAX_BYTES, AGENT_FILES_PER_MESSAGE, sizeLabel } from '@/lib/agents/files';
 import { weekRange } from '@/lib/agents/weeks';
-import { AgentHead, Clip, FileChip, LINK, Spark } from './kit';
+import { Clip, FileChip, LINK, Spark } from './kit';
 import { MailCard } from './MailCard';
 
 type Phase = 'idle' | 'sending' | 'thinking';
@@ -205,12 +207,12 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
   return (
     <section className={`${PANEL} flex min-w-0 flex-col`}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-5 pb-3 pt-4">
-        <AgentHead
+        <SectionHead
+          title={week ? '주간 기록' : '대화'}
           meta={week ? `${weekRange(week.start, today)} · 말 ${list.length}건 · 일 ${week.events.length}건` : `${list.length}건`}
-          action={pendingMails > 0 ? <Tag tone="warn">승인 대기 메일 {pendingMails}</Tag> : undefined}
         >
-          {week ? '주간 기록' : '대화'}
-        </AgentHead>
+          {pendingMails > 0 && <Tag tone="warn">승인 대기 메일 {pendingMails}</Tag>}
+        </SectionHead>
         {week && (
           <Link href={home} className="text-small font-bold text-slate-500 transition hover:text-brand-800">
             지금 대화로 →
@@ -229,17 +231,10 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
         {week && rows.length === 0 && <li className={`py-6 text-center ${TEXT.meta}`}>그 주의 기록 0건</li>}
         {phase === 'thinking' && (
           <li className="rounded-box border-l-[3px] border-brand-400 bg-brand-50/70 px-3.5 py-2.5">
-            <p className="flex items-center gap-1.5 text-tiny font-bold text-brand-800">
-              <Spark className="h-3 w-3 animate-pulse text-brand-500" />{agentName}
+            <p className="flex items-center gap-1 text-tiny font-bold text-brand-800">
+              <Spark className="h-3 w-3 text-brand-500" />{agentName}
             </p>
-            <p className="mt-1 flex items-center gap-2 text-small text-slate-600">
-              답 쓰는 중
-              <span className="inline-flex gap-1" aria-hidden>
-                {[0, 1, 2].map((i) => (
-                  <span key={i} className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand-500" style={{ animationDelay: `${i * 0.2}s` }} />
-                ))}
-              </span>
-            </p>
+            <p className="mt-1 text-base text-slate-500">답 쓰는 중…</p>
           </li>
         )}
       </ol>
@@ -350,12 +345,12 @@ function Linked({ text }: { text: string }) {
   );
 }
 
-/* 말의 모양 — 누가 말했는지는 띠의 선과 바탕, 머리의 표시(반짝이 에이전트 · ▸ 지시 · ✎ 기록)로 가른다 */
+/* 말의 모양 — 누가 말했는지는 띠의 선과 바탕, 머리의 표시(반짝이 — 에이전트 · 「자동」 · 「기록」 꼬리표)로 가른다 */
 const ROLE_LOOK = {
   agent: { band: 'border-brand-400 bg-brand-50/70', who: 'text-brand-800', text: 'text-slate-800' },
   auto: { band: 'border-brand-400 bg-brand-50/70', who: 'text-brand-800', text: 'text-slate-800' },
   user: { band: 'border-slate-300', who: 'text-slate-800', text: 'text-slate-800' },
-  note: { band: 'border-dashed border-slate-300 bg-slate-50', who: 'text-slate-500', text: 'text-slate-600' },
+  note: { band: 'border-slate-300 bg-slate-50', who: 'text-slate-600', text: 'text-slate-700' },
 } as const;
 
 function Said({ message: m }: { message: AgentMessage }) {
@@ -367,11 +362,10 @@ function Said({ message: m }: { message: AgentMessage }) {
         <span className="font-semibold tabular-nums text-slate-500">{m.at}</span>
         <span className={`inline-flex items-center gap-1 font-bold ${look.who}`}>
           {(m.role === 'agent' || m.role === 'auto') && <Spark className="h-3 w-3 self-center text-brand-500" />}
-          {m.role === 'user' && <span aria-hidden>▸</span>}
-          {m.role === 'note' && <span aria-hidden>✎ 기록 ·</span>}
           {m.author}
         </span>
         {m.role === 'auto' && <Tag>자동</Tag>}
+        {m.role === 'note' && <Tag>기록</Tag>}
         {(secs !== null || m.meta?.usd !== undefined) && (
           <span className="font-semibold tabular-nums text-slate-500">
             {secs !== null && `${secs}초`}

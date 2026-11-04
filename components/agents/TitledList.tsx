@@ -7,8 +7,8 @@
  */
 import { useState, type ReactNode } from 'react';
 import { useAction } from '@/lib/use-action';
-import { Btn, Err, FIELD, PANEL, TEXT } from '@/components/ui';
-import { AgentHead, Spark } from './kit';
+import { Btn, Err, FIELD, PANEL, SectionHead, TEXT } from '@/components/ui';
+import { Spark } from './kit';
 
 export interface TitledItem {
   id: string;
@@ -36,12 +36,11 @@ export function TitledList({ heading, meta, items, url, placeholder, readOnly = 
   const [adding, setAdding] = useState(false);
   return (
     <section className={`${PANEL} flex flex-col gap-3 p-5`}>
-      <AgentHead
+      <SectionHead
+        title={heading}
         meta={meta ?? `${items.length}건`}
         action={!readOnly && !adding && <Btn size="sm" kind="quiet" onClick={() => setAdding(true)}>추가</Btn>}
-      >
-        {heading}
-      </AgentHead>
+      />
       {adding && <ItemForm url={url} placeholder={placeholder} onDone={() => setAdding(false)} />}
       {items.length > 0 && (
         <ol className="flex flex-col divide-y divide-slate-100">
@@ -68,7 +67,7 @@ function Item({ url, item, n, placeholder, readOnly, clamp }: {
   return (
     <li className="flex flex-col gap-1 py-2.5">
       <div className="flex items-baseline gap-2">
-        <span className="text-tiny font-bold tabular-nums text-brand-600">{String(n).padStart(2, '0')}</span>
+        <span className="text-tiny font-bold tabular-nums text-slate-500">{String(n).padStart(2, '0')}</span>
         <p className="min-w-0 flex-1 break-keep text-base font-bold text-slate-900">{item.title}</p>
         {!readOnly && <Btn size="sm" kind="quiet" onClick={() => setEditing(true)}>수정</Btn>}
       </div>

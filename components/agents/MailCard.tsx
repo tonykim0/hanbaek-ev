@@ -7,7 +7,8 @@
  * 보내기는 되돌릴 수 없어서 한 번 더 묻는다 — 받는 사람을 다시 보여 주고 빨간 「보내기」로 확정한다(ui.tsx Confirm · 화면 규칙 12).
  * 고치기는 누를 때만 칸이 열린다(규칙 4) · 버리기는 줄의 반대쪽 끝이다(규칙 8) · 버린 것은 되살린다(규칙 7). 보내는 메일이 연결되지
  * 않았으면 단추 이름이 그 까닭을 말한다(규칙 3) — 연결하는 자리는 머리말 밑 「보내는 메일」 한 줄이다(같은 단추를 두 번 두지 않는다).
- * 모양은 띠다 — 판 안이라 사방 테두리를 두르지 않는다(규칙 1). 승인 대기는 노랑, 보냄은 초록, 보내지 못함은 빨강 선이다.
+ * 모양은 띠다 — 판 안이라 사방 테두리를 두르지 않는다(규칙 1). 승인 대기는 노랑, 보냄은 초록, 보내지 못함은 빨강 선이다 —
+ * 선 · 바탕은 ui.tsx Note 의 상태 색 그대로다(2026-11-05 콘솔 틀에 맞춤: 「보냄」이 사업 색이었다 — 태양광에서 귤색이면 「봐야 함」과 섞인다).
  */
 import { useState } from 'react';
 import type { AgentMail } from '@/types/agents';
@@ -15,11 +16,11 @@ import { Btn, Confirm, Err, FIELD, Tag, TEXT, type Tone } from '@/components/ui'
 import { FileChip } from './kit';
 
 const LOOK: Record<AgentMail['status'], { band: string; label: string; tone: Tone }> = {
-  draft: { band: 'border-amber-400 bg-amber-50/60', label: '메일 초안 · 승인 대기', tone: 'warn' },
-  sending: { band: 'border-amber-400 bg-amber-50/60', label: '메일 · 보내는 중', tone: 'warn' },
-  sent: { band: 'border-brand-400 bg-brand-50/40', label: '메일 · 보냄', tone: 'ok' },
-  failed: { band: 'border-red-400 bg-red-50/50', label: '메일 · 보내지 못함', tone: 'stop' },
-  discarded: { band: 'border-dashed border-slate-300 bg-slate-50', label: '메일 · 버림', tone: 'mute' },
+  draft: { band: 'border-amber-500 bg-amber-50/70', label: '메일 초안 · 승인 대기', tone: 'warn' },
+  sending: { band: 'border-amber-500 bg-amber-50/70', label: '메일 · 보내는 중', tone: 'warn' },
+  sent: { band: 'border-ok-500 bg-ok-50/60', label: '메일 · 보냄', tone: 'ok' },
+  failed: { band: 'border-red-500 bg-red-50', label: '메일 · 보내지 못함', tone: 'stop' },
+  discarded: { band: 'border-slate-300 bg-slate-50', label: '메일 · 버림', tone: 'mute' },
 };
 
 async function call(url: string, method: 'POST' | 'PATCH', body?: unknown): Promise<{ mail?: AgentMail; error?: string }> {

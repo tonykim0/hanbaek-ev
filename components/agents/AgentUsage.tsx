@@ -7,8 +7,7 @@
  * 표의 칸은 화면 규칙 13 그대로다(담당 왼쪽 · 금액 오른쪽 · 건수 가운데).
  */
 import type { AgentUsage as Usage } from '@/types/agents';
-import { PANEL, TEXT, Td, Th } from '@/components/ui';
-import { AgentHead } from './kit';
+import { PANEL, SectionHead, TEXT, Td, Th } from '@/components/ui';
 
 const MODEL_NAME = 'Claude Opus 5.5';
 
@@ -30,8 +29,8 @@ export function AgentUsage({ usage }: { usage: Usage }) {
   const cached = read > 0 ? Math.round((t.cacheRead / read) * 100) : null;
 
   return (
-    <section className={`${PANEL} mt-6 p-5`}>
-      <AgentHead meta={`${MODEL_NAME} · 비용은 토큰으로 셈한 어림`}>사용량</AgentHead>
+    <section className={`${PANEL} p-5`}>
+      <SectionHead title="사용량" meta={`${MODEL_NAME} · 비용은 토큰으로 셈한 어림`} />
       <div className="mt-3 overflow-x-auto">
         <table className="w-full min-w-[560px] border-collapse text-base">
           <thead className="border-b border-slate-100 bg-slate-50 text-tiny font-bold tracking-[0.06em] text-slate-500">

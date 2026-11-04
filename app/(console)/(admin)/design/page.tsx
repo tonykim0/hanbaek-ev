@@ -14,7 +14,7 @@
  * components/ui.tsx(모양) 와 tailwind.config.js(토큰) 에 먼저 추가한다.
  */
 import {
-  Alerts, Badge, Blank, Btn, Choice, Clear, Empty, Err, FIELD, FIELD_CELL, GroupHead, HR, Note, Saved, Segments, Tag, TEXT, Td, Th, Val,
+  Alerts, Badge, Blank, Btn, Choice, Clear, Empty, Err, FIELD, FIELD_CELL, GroupHead, HR, Note, Saved, SectionHead, Segments, Tag, TEXT, Td, Th, Val,
   type Tone,
 } from '@/components/ui';
 import { BIZES, BIZ_LABEL } from '@/lib/biz';
@@ -181,6 +181,8 @@ export default function DesignPage() {
           ))}
         </div>
         <div className="mt-4 flex flex-col gap-3 border-t border-slate-100 pt-3">
+          <SectionHead title="할 일" action={<Btn kind="quiet" size="sm">추가</Btn>} meta="열린 2건" />
+          <SectionHead step={1} title="전략·기획"><Tag>팀장</Tag></SectionHead>
           <GroupHead title="조건부" meta="1/3 · 해당되는 현장만" />
           <GroupHead step={2} title="서류 · 대조" action={<Btn kind="side" size="sm">다시 대조</Btn>} meta="10-07 14:22 대조"><Tag tone="warn">짚을 것 2</Tag></GroupHead>
         </div>

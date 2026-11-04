@@ -7,9 +7,8 @@
  */
 import Link from 'next/link';
 import type { AgentWeek } from '@/types/agents';
-import { PANEL, TEXT } from '@/components/ui';
+import { PANEL, SectionHead, TEXT } from '@/components/ui';
 import { weekName, weekRange } from '@/lib/agents/weeks';
-import { AgentHead } from './kit';
 
 function countsOf(w: AgentWeek): string {
   return [
@@ -36,7 +35,7 @@ export function AgentWeeks({ home, weeks, selected, today }: {
 }) {
   return (
     <section className={`${PANEL} flex flex-col gap-2 p-5`}>
-      <AgentHead meta={`${weeks.length}주`}>주간 기록</AgentHead>
+      <SectionHead title="주간 기록" meta={`${weeks.length}주`} />
       {weeks.length === 0 ? (
         <p className={TEXT.meta}>기록 0건</p>
       ) : (

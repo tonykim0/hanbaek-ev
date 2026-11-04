@@ -1,23 +1,18 @@
 /**
- * 에이전트 화면의 모양 — ★콘솔 부품(components/ui.tsx) 위에 에이전트다운 것 몇 개만 얹는다★.
- *
- * 2026-11-02 「좀 futurist 하게」로 어두운 관제 화면을 만들었다가, 같은 날 한백 「검정 배경은 지워줘. 기존 디자인컴포넌트의
- * 틀은 맞추되, AI에이전트의 느낌은 지우지마」. 그래서 판(PANEL)·단추(Btn)·꼬리표(Tag)·입력칸(FIELD)·실패 문구(Err)·글자
- * 역할(TEXT)은 ui.tsx 의 것을 그대로 쓰고 화면 규칙 열셋도 그대로다. 이 파일에는 ui.tsx 에 없는 것만 둔다:
- *   AgentMark  담당 표지 — 반짝이가 새겨진 초록 칸 + 모서리의 상태 등
- *   Spark      반짝이 하나 — 대화의 에이전트 줄 · 에이전트가 적은 할 일의 꼬리표
- *   AgentHead  구역 머리 — 구역 제목(TEXT.section) 앞에 「//」
- *   Activity   최근 이레의 활동 칸
- *   TEAM_LINE · DotGrid  팀 화면의 줄기 선 · 점 격자 바탕
+ * 에이전트 화면의 모양 — ★콘솔 부품(components/ui.tsx) 그대로이고, 여기에는 ui.tsx 에 없는 것만 둔다★.
+ *   AgentMark  담당 표지 — 반짝이를 새긴 사업 색 칸 + 모서리의 상태 등
+ *   Spark      반짝이 하나 — 에이전트가 한 것(답 · 적은 할 일 · 올린 목표 · 방향)을 가르는 표시
  *   FileChip   넘긴 파일 한 장 — 누르면 연다
- * 에이전트 화면(팀 · 담당 — 전기차 /admin/agents · 태양광 /solar/agents) 밖으로 가져가지 않는다 — 시공 줄의 자리 정본(construction/shell.tsx)과
- * 같은 자리다. ★콘솔 화면을 어둡게 만들지 않는다★.
+ *   LINK       글 속 고리
  *
- * ★글꼴은 콘솔 것 하나다★(한백 2026-11-02 「폰트는 기존 디자인 시스템 폰트 맞춰줘」) — 고정폭 글꼴로 시각 · 숫자를 그리던
- * 것을 걷었다. 숫자는 본문 글꼴의 자릿수 고정(tabular-nums)으로 줄을 맞춘다.
+ * ★2026-11-05 콘솔 틀에 맞췄다★(한백 「AI 에이전트 페이지 UI도 기존 디자인시스템에 맞춰서 수정해줘」). 11-02 「좀 futurist 하게」 →
+ * 「검정 배경은 지워줘. 기존 디자인컴포넌트의 틀은 맞추되, AI에이전트의 느낌은 지우지마」로 남겨 둔 장식을 걷었다: 표지의 그라데이션 ·
+ * 그림자(콘솔은 그림자를 떠 있는 것에만 쓴다 — /design 「쓰지 않는 것」) · 구역 제목 앞 「//」(→ ui.tsx SectionHead) · 점 격자
+ * 바탕 · 팀 층을 잇는 줄기 선과 마디(→ SectionHead 의 걸음 번호) · 이레 활동 칸(→ 곁글의 셈) · 깜빡이는 등과 점. 에이전트임을
+ * 말하는 것은 반짝이 하나만 남겼다 — 표지와, 에이전트가 한 일에 붙는 작은 표시다. ★콘솔 화면을 어둡게 만들지 않는다★ ·
+ * ★글꼴은 콘솔 것 하나다★(숫자는 tabular-nums). 에이전트 화면(팀 · 담당 — 전기차 /admin/agents · 태양광 /solar/agents) 밖으로
+ * 가져가지 않는다.
  */
-import type { CSSProperties, ReactNode } from 'react';
-import { TEXT } from '@/components/ui';
 import { sizeLabel } from '@/lib/agents/files';
 import type { AgentFile } from '@/types/agents';
 
@@ -34,8 +29,8 @@ export function Spark({ className = '' }: { className?: string }) {
 }
 
 /*
- * ── 상태 등 ── 색은 손봐야 할 것(components/agents/status ledOf), 번지는 고리는 최근 24시간에 대화가 있었다는 것.
- * 색의 뜻은 콘솔과 같다 — 빨강 막는 것 · 노랑 사람이 봐야 하는 것 · 초록 짚을 것 없음 · 회색 아직 일을 맡기지 않음.
+ * ── 상태 등 ── 색은 손봐야 할 것(components/agents/status ledOf). 뜻은 콘솔의 상태 색 그대로다 — 빨강 막는 것 · 노랑 사람이 봐야
+ * 하는 것 · 초록 짚을 것 없음 · 회색 아직 일을 맡기지 않음.
  */
 export type LedTone = 'ok' | 'warn' | 'stop' | 'idle';
 const LED: Record<LedTone, string> = {
@@ -45,10 +40,12 @@ const LED: Record<LedTone, string> = {
   idle: 'bg-slate-300',
 };
 
-/** 담당 표지 — 누가 에이전트인지 한눈에. 등은 표지의 오른쪽 아래 모서리에 선다(사람 목록의 「접속 중」 점처럼) */
-export function AgentMark({ tone, live = false, label, size = 'md' }: {
+/**
+ * 담당 표지 — 누가 에이전트인지 한눈에. 칸은 사업 색 채움 짝(fill · on-fill — 귤색 위에는 진한 반짝이)이고, 등은 오른쪽 아래
+ * 모서리에 선다(사람 목록의 「접속 중」 점처럼). 모서리는 rounded-box — 표지는 누르는 것이 아니다(화면 규칙 11).
+ */
+export function AgentMark({ tone, label, size = 'md' }: {
   tone: LedTone;
-  live?: boolean;
   /** 등의 뜻 — 읽어 주는 말이자 마우스를 얹으면 뜨는 말 */
   label: string;
   size?: 'md' | 'lg';
@@ -56,30 +53,14 @@ export function AgentMark({ tone, live = false, label, size = 'md' }: {
   const lg = size === 'lg';
   return (
     <span role="img" aria-label={label} title={label} className={`relative inline-flex shrink-0 ${lg ? 'h-11 w-11' : 'h-8 w-8'}`}>
-      <span
-        aria-hidden
-        className="flex h-full w-full items-center justify-center rounded-ctl bg-gradient-to-br from-brand-300 via-brand-500 to-brand-700 text-brand-on-fill shadow-[0_8px_18px_-10px_rgb(var(--brand-700)/0.9)]"
-      >
+      <span aria-hidden className="flex h-full w-full items-center justify-center rounded-box bg-brand-fill text-brand-on-fill">
         <Spark className={lg ? 'h-5 w-5' : 'h-4 w-4'} />
       </span>
-      <span aria-hidden className={`absolute -bottom-1 -right-1 inline-flex ${lg ? 'h-3.5 w-3.5' : 'h-3 w-3'}`}>
-        {live && <span className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-70 ${LED[tone]}`} />}
-        <span className={`relative inline-flex h-full w-full rounded-full border-2 border-white ${LED[tone]}`} />
-      </span>
+      <span
+        aria-hidden
+        className={`absolute -bottom-0.5 -right-0.5 rounded-full border-2 border-white ${lg ? 'h-3.5 w-3.5' : 'h-3 w-3'} ${LED[tone]}`}
+      />
     </span>
-  );
-}
-
-/** 구역 머리 — 구역 제목 + 그 구역의 단추(제목 바로 뒤, ui.tsx GroupHead 와 같은 자리) + 곁글(건수) */
-export function AgentHead({ children, meta, action }: { children: ReactNode; meta?: ReactNode; action?: ReactNode }) {
-  return (
-    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-      <h2 className={TEXT.section}>
-        <span aria-hidden className="mr-1 text-brand-400">{'//'}</span>{children}
-      </h2>
-      {action}
-      {meta !== undefined && <span className={`${TEXT.meta} tabular-nums`}>{meta}</span>}
-    </div>
   );
 }
 
@@ -110,44 +91,3 @@ export function FileChip({ file }: { file: Pick<AgentFile, 'name' | 'url' | 'siz
 
 /** 글 속 고리(링크) — 콘솔의 고리 모양 그대로(현장 이름 링크들과 같다) */
 export const LINK = 'font-bold text-brand-800 underline decoration-brand-200 transition hover:decoration-brand-500';
-
-/** 최근 이레의 활동 칸 — 그날 오간 말 수만큼 진하다(0 · 1~2 · 3+) */
-export function Activity({ cells }: { cells: Array<{ day: string; n: number }> }) {
-  const total = cells.reduce((s, c) => s + c.n, 0);
-  return (
-    <span className="inline-flex items-center gap-[3px]" role="img" aria-label={`최근 7일 대화 ${total}건`}>
-      {cells.map((c) => (
-        <span
-          key={c.day}
-          title={`${c.day.slice(5)} · ${c.n}건`}
-          className={`h-3 w-3 rounded-[3px] ${c.n === 0 ? 'bg-slate-200' : c.n < 3 ? 'bg-brand-300' : 'bg-brand-600'}`}
-        />
-      ))}
-    </span>
-  );
-}
-
-/*
- * 팀 화면의 줄기 선 색 — 층(팀장 → 실무자)을 위에서 아래로 잇는다(components/agents/AgentsTeam). 2026-11-04 까지의 조직도
- * (가로 갈래 · 매달린 칸)는 「조직도말고 … 위에서 아래로」로 걷었다.
- */
-export const TEAM_LINE = 'bg-brand-300';
-
-/*
- * ── 점 격자 ── 팀 화면이 서는 바탕. 테두리 없이 가장자리로 갈수록 옅어진다 — 테두리를 두르면 그 안의 칸과 상자가 두 겹이
- * 된다(화면 규칙 1). 바탕만 흐리게 하려고 격자를 따로 깐다(mask 는 안의 칸까지 흐린다).
- */
-const GRID: CSSProperties = {
-  backgroundImage: 'radial-gradient(circle at center, rgba(100,116,139,0.32) 1px, transparent 1.5px)',
-  backgroundSize: '20px 20px',
-  WebkitMaskImage: 'radial-gradient(ellipse 85% 80% at 50% 40%, #000 45%, transparent 100%)',
-  maskImage: 'radial-gradient(ellipse 85% 80% at 50% 40%, #000 45%, transparent 100%)',
-};
-export function DotGrid({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return (
-    <div className={`relative ${className}`}>
-      <div aria-hidden className="pointer-events-none absolute inset-0" style={GRID} />
-      <div className="relative">{children}</div>
-    </div>
-  );
-}

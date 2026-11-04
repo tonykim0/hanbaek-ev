@@ -11,8 +11,8 @@ import Link from 'next/link';
 import { useState } from 'react';
 import type { AgentTask } from '@/types/agents';
 import { useAction } from '@/lib/use-action';
-import { Btn, Err, FIELD, FIELD_BASE, PANEL, Tag, TEXT } from '@/components/ui';
-import { AgentHead, LINK, Spark } from './kit';
+import { Btn, Err, FIELD, FIELD_BASE, PANEL, SectionHead, Tag, TEXT } from '@/components/ui';
+import { LINK, Spark } from './kit';
 
 export function AgentTasks({ agentId, agentName, tasks, sites, today }: {
   agentId: string;
@@ -28,7 +28,7 @@ export function AgentTasks({ agentId, agentName, tasks, sites, today }: {
 
   return (
     <section className={`${PANEL} flex flex-col gap-3 p-5`}>
-      <AgentHead meta={`열린 ${open.length}건`}>할 일</AgentHead>
+      <SectionHead title="할 일" meta={`열린 ${open.length}건`} />
       <TaskForm agentId={agentId} sites={sites} />
       {open.length > 0 && (
         <ul className="flex flex-col divide-y divide-slate-100">
