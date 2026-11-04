@@ -25,6 +25,7 @@ const NOT_CRON = '(?!api/cron/)';
 /**
  * 포털 화면의 옛 주소 → 콘솔의 같은 화면. 콘솔 주소로 들어온 옛 링크도 여기서 갈린다.
  * 실사보고서(/survey/*)는 주소가 같아 적지 않는다.
+ * 포털의 /kapt 가 가던 콘솔 /apartments(K-APT 정보)는 2026-11-04 기능째 걷었다(한백 지시) — 넘길 자리가 없어 줄도 뺐다.
  */
 const MOVED = [
   ['/', '/projects'],
@@ -33,7 +34,6 @@ const MOVED = [
   ['/sk', '/contracts/sk'],
   ['/sk-invest', '/contracts/sk'],
   ['/pluglink', '/contracts/pluglink'],
-  ['/kapt', '/apartments'],
   ['/charger-history', '/lookup'],
   ['/materials', '/library'],
   // 포털 접수는 2026-08-26 에 닫혔다 — 안내 화면이 가리키던 자리로 바로 보낸다

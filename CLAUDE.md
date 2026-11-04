@@ -15,8 +15,8 @@
 4. **포털 폐쇄 (2026-10-01)** — ★hanbaek-form.vercel.app 을 닫았다★(한백 지시). 남아 있던 일 둘(계약서
    작성 · 실사보고서 작성)을 콘솔 안으로 들였다(`/contracts/*` · `/survey/*`) — 이제 둘 다 로그인한다.
    닫은 주소로 오는 요청은 전부 콘솔의 같은 경로로 넘긴다(`next.config.mjs` redirects — api·정적 파일까지).
-   옛 경로(/hec · /nice · /sk · /pluglink · /sk-invest · /kapt · /charger-history · /materials · /intake)도
-   같은 파일이 새 자리로 보낸다. ★계정 없는 협력사·영업자는 계약서를 못 쓴다★ — 계정은 `/admin/accounts`.
+   옛 경로(/hec · /nice · /sk · /pluglink · /sk-invest · /charger-history · /materials · /intake)도
+   같은 파일이 새 자리로 보낸다(/kapt 는 갈 자리인 K-APT 정보를 2026-11-04 걷어 404 다). ★계정 없는 협력사·영업자는 계약서를 못 쓴다★ — 계정은 `/admin/accounts`.
 5. **주소 이전 (2026-11-03)** — ★운영 주소를 hanbaek-ev → hanbaek-re.vercel.app 으로★(한백 「이제 전기차사업관리가 아니라
    신재생사업관리야 — 전기차/태양광」 · re = renewable energy). 시스템 이름도 「한백 신재생사업관리시스템」(`lib/biz` SYSTEM_NAME —
    탭 제목 꼬리는 `app/layout` 의 title.template 이 달고, 화면은 제 이름만 적는다). 옛 주소 둘(hanbaek-ev · hanbaek-form)로 오는
@@ -482,7 +482,7 @@ batch_finals 테이블. 「1차 확정」이라 부르지 않는다 — 1차·2�
 | `/statements` | 협력사 거래명세서 — 위는 월별 지급 그래프, 아래는 배치(지급처×구분×지급일) 상태·세금계산서 첨부·최종 확정. 사이드바에 지급 할 일 수가 붙는다 (2026-08-28 지급 내역을 합쳤다) | 전부 (협력사는 자기 배치만 · 확정·첨부는 관리자) |
 | `/payments/statement` | 거래명세서 한 장 — 배치의 원장 줄. 인쇄물로 그대로 쓴다 | 전부 (협력사는 자기 것만) |
 | `/pricing` | 단가 케이스 관리 | 한백만 |
-| `/library` · `/lookup` · `/apartments` | 자료실 · 충전기/보조금 이력 · K-apt 조회 — 옛 포털의 /materials · /charger-history · /kapt 가 이리로 간다 | 전부 |
+| `/library` · `/lookup` | 자료실 · 충전기/보조금 이력 — 옛 포털의 /materials · /charger-history 가 이리로 간다. ★K-APT 정보(`/apartments` · `/api/kapt/*`)는 2026-11-04 기능째 걷었다★(한백 지시 「K-APT정보 기능은 지우자」 — 화면 · API · `lib/kapt-*` · 옛 주소 /kapt 넘기기). 서류 칸의 「K-apt 스크린샷」(건축물대장 칸의 주차면 증빙)은 다른 것이라 그대로다 | 전부 |
 | `/settings` | 사업자 정보 — 자기 사업자등록증·정산 계좌를 적는다 (도메인 이름은 그대로 「협력사 정보」) | 협력사 (한백은 `/admin/partners` 에서 전 계정을) |
 | `/receivables` · `/pricing` | 위 두 줄과 같은 화면 — 열람 전용도 본다(읽기만) | 한백(관리자·열람 전용) |
 | `/admin/partners` | 협력사 정보 — 계정마다 사업자등록증·계좌·통장사본 | 한백(관리자·열람 전용) — 재무팀이 지급 전에 본다 |

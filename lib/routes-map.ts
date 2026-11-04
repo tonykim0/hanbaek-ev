@@ -35,7 +35,6 @@ export const CONSOLE_PATHS = [
   '/design',
   '/library',
   '/lookup',
-  '/apartments',
   '/solar',       // 태양광 사업(2026-11-03 시작) — 부지 검토 · 현장관리. 문은 (console)/solar/layout: 한백 + 태양광 참여 협력사
   '/login',
 ] as const;
