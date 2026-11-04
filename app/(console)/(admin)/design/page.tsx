@@ -90,7 +90,7 @@ export default function DesignPage() {
         <div className="grid gap-3 lg:grid-cols-2">
           {BIZES.map((b) => (
             <div key={b} data-biz={b} className="rounded-box bg-canvas p-4">
-              <GroupHead title={`${BIZ_LABEL[b]} · 사업 색`} meta={b === 'ev' ? '한백 로고 그린' : '귤색 — 상단 바 · 채움은 300(파스텔)'} />
+              <GroupHead title={`${BIZ_LABEL[b]} · 사업 색`} meta={b === 'ev' ? '한백 로고 그린' : '귤색 — 상단 바 = 채움(fill)'} />
               <div className="mt-2.5 grid grid-cols-10 gap-1">
                 {BRAND.map(([n, cls]) => (
                   <div key={n}>
