@@ -2,12 +2,14 @@
  * PATCH /api/agents/[id]/mails/[mailId] — 메일 초안 고치기 · 버리기 · 되살리기 [한백 관리자]
  *   { action: 'edit', to, cc, subject, body }   승인 대기 · 보내지 못함만
  *   { action: 'discard' } · { action: 'restore' }
- * 보내기는 따로다(./send) — 되돌릴 수 없는 일이라 다른 문으로 둔다.
+ *   { action: 'schedule', day: 'YYYY-MM-DD' }    예약 보내기 — 그날 오전 9시대에 나간다(lib/agents/mail-schedule · 한백 2026-11-05)
+ *   { action: 'unschedule' }                     예약 거두기 — 다시 승인 대기
+ * 보내기는 따로다(./send) — 되돌릴 수 없는 일이라 다른 문으로 둔다. 예약은 그때까지 거둘 수 있어 여기 둔다.
  */
 import { getRepository } from '@/lib/data';
 import { adminWrite, BadRequest } from '@/lib/api/write-route';
 
-type Body = { action?: unknown; to?: unknown; cc?: unknown; subject?: unknown; body?: unknown };
+type Body = { action?: unknown; to?: unknown; cc?: unknown; subject?: unknown; body?: unknown; day?: unknown };
 
 export const PATCH = adminWrite<{ id: string; mailId: string }, Body>(
   '메일은 한백 관리자만 고칠 수 있습니다.',
@@ -23,6 +25,11 @@ export const PATCH = adminWrite<{ id: string; mailId: string }, Body>(
         return { mail: await repo.setAgentMailDiscarded({ ...ref, discarded: true }, actor) };
       case 'restore':
         return { mail: await repo.setAgentMailDiscarded({ ...ref, discarded: false }, actor) };
+      case 'schedule':
+        if (typeof body.day !== 'string') throw new BadRequest('보낼 날(day)이 없습니다.');
+        return { mail: await repo.scheduleAgentMail({ ...ref, day: body.day }, actor) };
+      case 'unschedule':
+        return { mail: await repo.scheduleAgentMail({ ...ref, day: null }, actor) };
       default:
         throw new BadRequest('무엇을 할지(action)가 없습니다.');
     }

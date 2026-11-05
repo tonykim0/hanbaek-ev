@@ -20,6 +20,8 @@ import { getSecret } from '@/lib/auth/secret';
 import { unseal } from '@/lib/agents/secret-box';
 import { mondayOf } from '@/lib/agents/weeks';
 import { today } from '@/lib/date';
+import { GET as cronMails } from '@/app/api/cron/mails/route';
+import { earliestDay } from '@/lib/agents/mail-schedule';
 import { RUN, USERS, actorOf, call, signIn } from './kit';
 
 /* 메일 서버 흉내 — 로그인해 보기와 보내기만 바꿔 끼운다(사람 말로 바꾸는 쪽은 진짜를 쓴다) */
@@ -274,6 +276,94 @@ describe('보내는 메일은 사업마다 — 태양광 AI에이전트는 전�
     expect(off.status).toBe(200);
     expect(await repo.getMailAccount(admin, 'solar')).toBeNull();
     expect((await repo.getMailAccount(admin))?.email).toBe(SENDER);
+  });
+});
+
+describe('예약 보내기 (migrations/0123 · lib/agents/mail-schedule · /api/cron/mails)', () => {
+  const tomorrow = () => earliestDay(new Date(Date.now() + 24 * 3600 * 1000));
+  const patch = (id: string, body: unknown) => call(patchMail, { method: 'PATCH', params: ref(id), body });
+  const cron = (auth?: string) =>
+    cronMails(new Request('http://test.local/api/cron/mails', auth ? { headers: { authorization: auth } } : {}));
+  const due = (id: string) =>
+    getDb().update(agentMails).set({ scheduledAt: new Date(Date.now() - 3600 * 1000) }).where(eq(agentMails.id, id));
+
+  it('날을 골라 예약하면 그날 오전 9시대로 서고, 고치려면 거둬야 한다 · 거두면 승인 대기 · 버리면 예약도 걷힌다', async () => {
+    await connectFake();
+    await signIn(USERS.admin);
+    const id = await draft({ subject: `${mark} 예약` });
+    const day = tomorrow();
+    const r = await patch(id, { action: 'schedule', day });
+    expect(r.status, JSON.stringify(r.json)).toBe(200);
+    expect(r.json?.mail).toMatchObject({ status: 'scheduled', scheduledDay: day, scheduledBy: USERS.admin.name });
+    const [row] = await getDb().select().from(agentMails).where(eq(agentMails.id, id));
+    expect(row.scheduledAt?.toISOString()).toBe(`${day}T00:00:00.000Z`);
+
+    const edit = await patch(id, { action: 'edit', to: 'x@example.com', cc: '', subject: 's', body: 'b' });
+    expect(edit.json?.error).toContain('예약을 취소한 뒤');
+    expect((await patch(id, { action: 'unschedule' })).json?.mail).toMatchObject({ status: 'draft', scheduledDay: null });
+    expect((await patch(id, { action: 'unschedule' })).status).toBe(422);
+    await patch(id, { action: 'schedule', day });
+    expect((await patch(id, { action: 'discard' })).json?.mail).toMatchObject({ status: 'discarded', scheduledDay: null });
+  });
+
+  it('지난 날 · 날 없음 · 받는 사람 없는 메일 · 열람 전용은 예약하지 못한다', async () => {
+    await signIn(USERS.admin);
+    const id = await draft({ subject: `${mark} 예약 막힘` });
+    expect((await patch(id, { action: 'schedule', day: '2020-01-01' })).json?.error).toContain('이미 지난 때');
+    expect((await patch(id, { action: 'schedule' })).status).toBe(400);
+    /* 받는 사람 없는 초안은 양식 메일에서 생긴다(처음 보내는 양식) — 여기서는 줄을 비워 만든다 */
+    const none = await draft({ subject: `${mark} 받는 사람 없음` });
+    await getDb().update(agentMails).set({ to: [], cc: [] }).where(eq(agentMails.id, none));
+    expect((await patch(none, { action: 'schedule', day: tomorrow() })).json?.error).toContain('받는 사람이 없습니다');
+    await signIn(USERS.viewer);
+    expect((await patch(id, { action: 'schedule', day: tomorrow() })).status).toBe(403);
+  });
+
+  it('크론은 CRON_SECRET 으로만 — 때가 된 예약만 보내고, 보낸 사람은 예약한 한백(예약) · 아직인 것은 그대로 · 다시 불려도 한 번', async () => {
+    const before = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = `cron-${RUN}`;
+    try {
+      await connectFake();
+      await signIn(USERS.admin);
+      const now = await draft({ subject: `${mark} 때가 된 예약` });
+      const later = await draft({ subject: `${mark} 아직인 예약` });
+      await patch(now, { action: 'schedule', day: tomorrow() });
+      await patch(later, { action: 'schedule', day: tomorrow() });
+      await due(now);
+
+      expect((await cron()).status).toBe(401);
+      expect((await cron('Bearer wrong')).status).toBe(401);
+      expect((await cron(`Bearer cron-${RUN}`)).status).toBe(200);
+      const [sentRow] = await getDb().select().from(agentMails).where(eq(agentMails.id, now));
+      expect(sentRow).toMatchObject({ status: 'sent', sentBy: `${USERS.admin.name} (예약)` });
+      const [laterRow] = await getDb().select().from(agentMails).where(eq(agentMails.id, later));
+      expect(laterRow.status).toBe('scheduled');
+
+      const calls = smtp.send.mock.calls.length;
+      await cron(`Bearer cron-${RUN}`);
+      expect(smtp.send.mock.calls.length).toBe(calls);
+    } finally {
+      process.env.CRON_SECRET = before;
+    }
+  });
+
+  it('보낼 때 메일 연결이 끊겼으면 예약인 채 두지 않고 「보내지 못함」으로 까닭을 남긴다', async () => {
+    const before = process.env.CRON_SECRET;
+    process.env.CRON_SECRET = `cron-${RUN}`;
+    try {
+      await connectFake();
+      await signIn(USERS.admin);
+      const id = await draft({ subject: `${mark} 끊긴 예약` });
+      await patch(id, { action: 'schedule', day: tomorrow() });
+      await due(id);
+      await getDb().delete(mailAccounts).where(eq(mailAccounts.id, 'mail'));
+      await cron(`Bearer cron-${RUN}`);
+      const [row] = await getDb().select().from(agentMails).where(eq(agentMails.id, id));
+      expect(row.status).toBe('failed');
+      expect(row.error).toContain('메일 연결 전');
+    } finally {
+      process.env.CRON_SECRET = before;
+    }
   });
 });
 

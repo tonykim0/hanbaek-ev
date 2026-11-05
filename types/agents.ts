@@ -232,8 +232,9 @@ export interface AgentUsage {
  *   failed     메일 서버가 받지 않았다 — 고쳐서 다시 보낼 수 있다
  *   discarded  버렸다 — 되살릴 수 있다(화면 규칙 7)
  */
-export type AgentMailStatus = 'draft' | 'sending' | 'sent' | 'failed' | 'discarded';
-export const AGENT_MAIL_STATUSES = ['draft', 'sending', 'sent', 'failed', 'discarded'] as const satisfies readonly AgentMailStatus[];
+/** 메일의 자리 — scheduled 는 한백이 날을 골라 예약한 것(그날 오전 9시대 크론이 보낸다 · migrations/0123) */
+export type AgentMailStatus = 'draft' | 'scheduled' | 'sending' | 'sent' | 'failed' | 'discarded';
+export const AGENT_MAIL_STATUSES = ['draft', 'scheduled', 'sending', 'sent', 'failed', 'discarded'] as const satisfies readonly AgentMailStatus[];
 
 /**
  * 담당이 올린 메일 초안 — ★한백이 승인해야 나간다★(한백 2026-11-03 「난 그거에 대해 승인을 하고 너가 메일을 보내는건데」).
@@ -262,6 +263,9 @@ export interface AgentMail {
   sentAt: string | null;
   /** 승인하고 보낸 사람 */
   sentBy: string | null;
+  /** 예약 — 나갈 날(YYYY-MM-DD, 그날 오전 9시대)과 예약한 사람. 예약이 아니면 null */
+  scheduledDay: string | null;
+  scheduledBy: string | null;
 }
 
 /** 콘솔이 메일을 보내는 계정 — 토큰은 싣지 않는다 */

@@ -843,6 +843,9 @@ export const agentMails = pgTable('agent_mails', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   sentAt: timestamp('sent_at', { withTimezone: true }),
   sentBy: text('sent_by'),
+  /** 예약 보내기 — 그날 오전 9시(한국)와 예약한 사람(migrations/0123 · lib/agents/mail-schedule). status 'scheduled' 일 때만 */
+  scheduledAt: timestamp('scheduled_at', { withTimezone: true }),
+  scheduledBy: text('scheduled_by'),
 }, (t) => ({
   byAgent: index('agent_mails_agent_idx').on(t.agentId, t.createdAt),
   byMessage: index('agent_mails_message_idx').on(t.messageId),

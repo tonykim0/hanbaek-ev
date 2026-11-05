@@ -634,6 +634,10 @@ export interface ProjectRepository {
   setAgentMailDiscarded(input: { agentId: string; id: string; discarded: boolean }, actor: Actor): Promise<AgentMail>;
   /** 보내기 전에 그 줄을 「보내는 중」으로 잡는다 — 같은 메일을 둘이 잡지 못한다 */
   claimAgentMail(input: { agentId: string; id: string }, actor: Actor): Promise<AgentMail>;
+  /** 예약 보내기 — day(YYYY-MM-DD)면 그날 오전 9시대에 나가게, null 이면 예약을 거둔다(lib/agents/mail-schedule · migrations/0123) */
+  scheduleAgentMail(input: { agentId: string; id: string; day: string | null }, actor: Actor): Promise<AgentMail>;
+  /** 때가 된 예약 — 크론이 하나씩 보낸다 */
+  dueAgentMails(actor: Actor, now: Date): Promise<Array<{ agentId: string; id: string; scheduledBy: string | null }>>;
   /**
    * 현장 양식 메일 (lib/site-mail — 나이스 계약서 초안 · 현대엔지니어링 설치승인서) [한백 관리자 · 자동].
    * 지금 서류로 쓴 초안(letter — 붙일 서류가 없으면 null)을 그 양식(kind)의 담당 초안으로 둔다: 같은 초안이 있으면 그대로 · 다르면

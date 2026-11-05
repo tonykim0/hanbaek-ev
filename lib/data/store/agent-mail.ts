@@ -19,7 +19,7 @@
  * 저절로(할 일 · 대화 한 줄 · 서류가 없으면 알림까지), 한백이 다시 요청하면 초안만. 그 양식의 메일이 나가면 finishAgentMail 이
  * 그 현장 · 양식의 할 일을 닫는다.
  */
-import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, lte } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
 import {
@@ -28,6 +28,7 @@ import {
 import { stampOf } from '@/lib/date';
 import { getSecret } from '@/lib/auth/secret';
 import { addressesOf, MAIL_LIMITS } from '@/lib/agents/mime';
+import { scheduledAtOf, scheduleError, scheduleLabel } from '@/lib/agents/mail-schedule';
 import { seal, unseal } from '@/lib/agents/secret-box';
 import { sizeLabel } from '@/lib/agents/files';
 import { intakeSay, missingAlarm, missingError, missingNoteOf, planSiteDraft, siteMailOfKind, taskTitleOf } from '@/lib/site-mail';
@@ -85,6 +86,8 @@ export function mailOf(r: MailRow, files: Map<string, AgentFile>): AgentMail {
     createdAt: stampOf(r.createdAt),
     sentAt: r.sentAt ? stampOf(r.sentAt) : null,
     sentBy: r.sentBy,
+    scheduledDay: r.status === 'scheduled' && r.scheduledAt ? stampOf(r.scheduledAt).slice(0, 10) : null,
+    scheduledBy: r.status === 'scheduled' ? r.scheduledBy ?? null : null,
   };
 }
 
@@ -138,7 +141,7 @@ export const agentMailStore: Pick<
   ProjectRepository,
   | 'getMailAccount' | 'saveMailAccount' | 'deleteMailAccount' | 'mailCredential'
   | 'addAgentMail' | 'linkAgentMails' | 'editAgentMail' | 'setAgentMailDiscarded' | 'claimAgentMail' | 'finishAgentMail'
-  | 'siteMail' | 'projectMails' | 'siteDocFiles'
+  | 'siteMail' | 'projectMails' | 'siteDocFiles' | 'scheduleAgentMail' | 'dueAgentMails'
 > = {
   /**
    * 현장 양식 메일 (lib/site-mail) — 지금 서류로 쓴 초안(letter)을 그 담당의 초안으로 둔다. 한 트랜잭션 · 그 현장 줄을 잡고 본다
@@ -416,6 +419,7 @@ export const agentMailStore: Pick<
       if (!old) throw new Error('메일을 찾을 수 없습니다.');
       const st = statusOf(old.status);
       if (st === 'discarded') throw new Error('버린 메일입니다 — 되살린 뒤 고쳐 주세요.');
+      if (st === 'scheduled') throw new Error('예약한 메일입니다 — 예약을 취소한 뒤 고쳐 주세요.');
       if (st !== 'draft' && st !== 'failed') throw new Error(st === 'sent' ? '이미 보낸 메일은 고칠 수 없습니다.' : '보내는 중인 메일은 고칠 수 없습니다.');
       await tx.update(agentMails).set({ ...letter, updatedAt: new Date() }).where(eq(agentMails.id, old.id));
       await writeAudit(tx, {
@@ -436,11 +440,13 @@ export const agentMailStore: Pick<
         .where(and(eq(agentMails.id, input.id), eq(agentMails.agentId, input.agentId))).for('update');
       if (!old) throw new Error('메일을 찾을 수 없습니다.');
       const st = statusOf(old.status);
-      if (input.discarded && st !== 'draft' && st !== 'failed') {
+      if (input.discarded && st !== 'draft' && st !== 'failed' && st !== 'scheduled') {
         throw new Error(st === 'discarded' ? '이미 버린 메일입니다.' : st === 'sent' ? '이미 보낸 메일은 버릴 수 없습니다.' : '보내는 중인 메일은 버릴 수 없습니다.');
       }
       if (!input.discarded && st !== 'discarded') throw new Error('버린 메일만 되살릴 수 있습니다.');
-      await tx.update(agentMails).set({ status: input.discarded ? 'discarded' : 'draft', updatedAt: new Date() }).where(eq(agentMails.id, old.id));
+      await tx.update(agentMails).set({
+        status: input.discarded ? 'discarded' : 'draft', scheduledAt: null, scheduledBy: null, updatedAt: new Date(),
+      }).where(eq(agentMails.id, old.id));
       await writeAudit(tx, {
         projectId: null, actor, action: input.discarded ? '에이전트 메일 버림' : '에이전트 메일 되살림', field: agentKey,
         oldValue: letterLine({ subject: old.subject, to: old.to ?? [], cc: old.cc ?? [] }), newValue: null,
@@ -448,6 +454,54 @@ export const agentMailStore: Pick<
     });
     const [mail] = await mailsOf([await mailRow(input.agentId, input.id)]);
     return mail;
+  },
+
+  /**
+   * 예약 보내기 — day(YYYY-MM-DD)를 주면 그날 오전 9시대에 나가게 예약한다(승인은 지금 예약하는 사람), null 이면 예약을 거둔다
+   * (초안으로). 승인 대기 · 보내지 못함 · 이미 예약한 것만 예약하고, 받는 사람이 있어야 한다. lib/agents/mail-schedule 이 날을 본다.
+   */
+  async scheduleAgentMail(input, actor): Promise<AgentMail> {
+    assertAdmin(actor, '메일 예약');
+    const { key: agentKey } = await agentLabelOf(input.agentId);
+    if (input.day !== null) {
+      const why = scheduleError(input.day);
+      if (why) throw new Error(why);
+    }
+    const db = getDb();
+    await db.transaction(async (tx) => {
+      const [old] = await tx.select().from(agentMails)
+        .where(and(eq(agentMails.id, input.id), eq(agentMails.agentId, input.agentId))).for('update');
+      if (!old) throw new Error('메일을 찾을 수 없습니다.');
+      const st = statusOf(old.status);
+      const line = letterLine({ subject: old.subject, to: old.to ?? [], cc: old.cc ?? [] });
+      if (input.day === null) {
+        if (st !== 'scheduled') throw new Error('예약한 메일이 아닙니다.');
+        await tx.update(agentMails).set({ status: 'draft', scheduledAt: null, scheduledBy: null, updatedAt: new Date() })
+          .where(eq(agentMails.id, old.id));
+        await writeAudit(tx, { projectId: null, actor, action: '에이전트 메일 예약 취소', field: agentKey, oldValue: line, newValue: null });
+        return;
+      }
+      if (st !== 'draft' && st !== 'failed' && st !== 'scheduled') {
+        throw new Error(st === 'sent' ? '이미 보낸 메일입니다.' : st === 'discarded' ? '버린 메일입니다 — 되살린 뒤 예약해 주세요.' : '보내는 중인 메일입니다.');
+      }
+      if ((old.to ?? []).length === 0) throw new Error('받는 사람이 없습니다 — 「고치기」로 받는 사람을 넣어 주세요.');
+      await tx.update(agentMails).set({
+        status: 'scheduled', scheduledAt: scheduledAtOf(input.day), scheduledBy: actor.name, error: null, updatedAt: new Date(),
+      }).where(eq(agentMails.id, old.id));
+      await writeAudit(tx, {
+        projectId: null, actor, action: '에이전트 메일 예약', field: agentKey, oldValue: null, newValue: `${line} · ${scheduleLabel(input.day)}`,
+      });
+    });
+    const [mail] = await mailsOf([await mailRow(input.agentId, input.id)]);
+    return mail;
+  },
+
+  /** 때가 된 예약 — 예약한 날 오전 9시가 지난 것(크론 /api/cron/mails 가 하나씩 보낸다). 예약한 사람을 같이 */
+  async dueAgentMails(actor, now): Promise<Array<{ agentId: string; id: string; scheduledBy: string | null }>> {
+    assertAdmin(actor, '메일 예약');
+    return getDb().select({ agentId: agentMails.agentId, id: agentMails.id, scheduledBy: agentMails.scheduledBy }).from(agentMails)
+      .where(and(eq(agentMails.status, 'scheduled'), lte(agentMails.scheduledAt, now)))
+      .orderBy(asc(agentMails.scheduledAt), asc(agentMails.createdAt));
   },
 
   async claimAgentMail(input, actor): Promise<AgentMail> {

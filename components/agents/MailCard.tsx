@@ -9,14 +9,20 @@
  * 않았으면 단추 이름이 그 까닭을 말한다(규칙 3) — 연결하는 자리는 머리말 밑 「보내는 메일」 한 줄이다(같은 단추를 두 번 두지 않는다).
  * 모양은 띠다 — 판 안이라 사방 테두리를 두르지 않는다(규칙 1). 승인 대기는 노랑, 보냄은 초록, 보내지 못함은 빨강 선이다 —
  * 선 · 바탕은 ui.tsx Note 의 상태 색 그대로다(2026-11-05 콘솔 틀에 맞춤: 「보냄」이 사업 색이었다 — 태양광에서 귤색이면 「봐야 함」과 섞인다).
+ *
+ * ★예약 보내기★(한백 2026-11-05 「내일 오전 9시에 보내달라」 → 「A로 충분해」 · lib/agents/mail-schedule) — 「예약」을 누르면 날을 고르고
+ * 「○월 ○일 (요일) 오전 9시대에 보내기 예약」으로 확정한다. 그날 아침 크론이 보낸다(Vercel Hobby 라 9시대 — 시각은 고르지 않는다).
+ * 예약한 것은 하늘 선 · 「예약 취소」로 승인 대기로 돌아간다. 고치려면 먼저 예약을 거둔다.
  */
 import { useState } from 'react';
 import type { AgentMail } from '@/types/agents';
 import { Btn, Confirm, Err, FIELD, Tag, TEXT, type Tone } from '@/components/ui';
+import { earliestDay, scheduleError, scheduleLabel } from '@/lib/agents/mail-schedule';
 import { FileChip } from './kit';
 
 const LOOK: Record<AgentMail['status'], { band: string; label: string; tone: Tone }> = {
   draft: { band: 'border-amber-500 bg-amber-50/70', label: '메일 초안 · 승인 대기', tone: 'warn' },
+  scheduled: { band: 'border-sky-500 bg-sky-50/70', label: '메일 · 예약됨', tone: 'stage' },
   sending: { band: 'border-amber-500 bg-amber-50/70', label: '메일 · 보내는 중', tone: 'warn' },
   sent: { band: 'border-ok-500 bg-ok-50/60', label: '메일 · 보냄', tone: 'ok' },
   failed: { band: 'border-red-500 bg-red-50', label: '메일 · 보내지 못함', tone: 'stop' },
@@ -46,8 +52,11 @@ export function MailCard({ agentId, mail, connected, onChange, indent = true }: 
   connected: boolean;
   onChange: (mail: AgentMail) => void;
 }) {
-  const [busy, setBusy] = useState<null | 'send' | 'save' | 'discard' | 'restore'>(null);
+  const [busy, setBusy] = useState<null | 'send' | 'save' | 'discard' | 'restore' | 'schedule' | 'unschedule'>(null);
   const [asking, setAsking] = useState(false);
+  /* 예약 — 날을 고르는 중인가 · 고른 날(가장 이른 날부터) */
+  const [picking, setPicking] = useState(false);
+  const [day, setDay] = useState(() => earliestDay());
   const [editing, setEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState({ to: '', cc: '', subject: '', body: '' });
@@ -55,22 +64,26 @@ export function MailCard({ agentId, mail, connected, onChange, indent = true }: 
   const base = `/api/agents/${agentId}/mails/${mail.id}`;
   const open = mail.status === 'draft' || mail.status === 'failed';
 
-  async function run(kind: 'send' | 'save' | 'discard' | 'restore') {
+  async function run(kind: 'send' | 'save' | 'discard' | 'restore' | 'schedule' | 'unschedule') {
     setBusy(kind);
     setError(null);
     const r = kind === 'send'
       ? await call(`${base}/send`, 'POST')
       : kind === 'save'
         ? await call(base, 'PATCH', { action: 'edit', ...form })
-        : await call(base, 'PATCH', { action: kind });
+        : kind === 'schedule'
+          ? await call(base, 'PATCH', { action: 'schedule', day })
+          : await call(base, 'PATCH', { action: kind });
     setBusy(null);
     if (kind === 'send') setAsking(false);
     if (r.mail) {
       onChange(r.mail);
       if (kind === 'save') setEditing(false);
+      if (kind === 'schedule') setPicking(false);
     }
     if (r.error) setError(r.error);
   }
+  const dayWhy = picking ? scheduleError(day) : null;
 
   function edit() {
     setForm({ to: mail.to.join(', '), cc: mail.cc.join(', '), subject: mail.subject, body: mail.body });
@@ -138,8 +151,40 @@ export function MailCard({ agentId, mail, connected, onChange, indent = true }: 
         </p>
       )}
       {mail.status === 'failed' && mail.error && !error && <Err className="mt-2 block">{mail.error}</Err>}
+      {mail.status === 'scheduled' && mail.scheduledDay && (
+        <p className="mt-2 text-small font-semibold text-slate-800">
+          {scheduleLabel(mail.scheduledDay)}에 나감{mail.scheduledBy ? <span className={`${TEXT.meta} font-normal`}> · 예약 {mail.scheduledBy}</span> : null}
+        </p>
+      )}
 
-      {(open || mail.status === 'discarded') && (
+      {open && !editing && picking && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <input
+            type="date"
+            value={day}
+            min={earliestDay()}
+            onChange={(e) => setDay(e.target.value)}
+            className={`${FIELD} w-auto`}
+            aria-label="보낼 날"
+          />
+          <Btn size="sm" disabled={dayWhy !== null || busy !== null} busy={busy === 'schedule'} busyLabel="예약 중…" onClick={() => void run('schedule')}>
+            {dayWhy ? '고를 수 없는 날' : `${scheduleLabel(day)}에 보내기 예약`}
+          </Btn>
+          <Btn size="sm" kind="quiet" disabled={busy !== null} onClick={() => setPicking(false)}>취소</Btn>
+        </div>
+      )}
+
+      {mail.status === 'scheduled' && (
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <Btn size="sm" kind="quiet" busy={busy === 'unschedule'} busyLabel="거두는 중…" onClick={() => void run('unschedule')}>예약 취소</Btn>
+          <Err>{error}</Err>
+          <Btn size="sm" kind="undo" className="ml-auto" busy={busy === 'discard'} busyLabel="버리는 중…" onClick={() => void run('discard')}>
+            버리기
+          </Btn>
+        </div>
+      )}
+
+      {(open || mail.status === 'discarded') && !picking && (
         <div className="mt-2.5 flex flex-wrap items-center gap-2">
           {open && editing && (
             <>
@@ -154,6 +199,11 @@ export function MailCard({ agentId, mail, connected, onChange, indent = true }: 
                   : mail.to.length === 0 ? '받는 사람 미지정 — 보낼 수 없음'
                     : mail.status === 'failed' ? '다시 보내기' : '승인하고 보내기'}
               </Btn>
+              {connected && mail.to.length > 0 && (
+                <Btn size="sm" kind="side" disabled={busy !== null} onClick={() => { setError(null); setDay(earliestDay()); setPicking(true); }}>
+                  예약
+                </Btn>
+              )}
               <Btn size="sm" kind="quiet" disabled={busy !== null} onClick={edit}>고치기</Btn>
             </>
           )}
