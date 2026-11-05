@@ -22,7 +22,9 @@
 import { and, asc, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
-import { agentFiles, agentMails, agentMessages, agents, agentTasks, mailAccounts, projects } from '@/lib/db/schema';
+import {
+  agentFiles, agentMails, agentMessages, agents, agentTasks, documents, mailAccounts, processDocuments, projects,
+} from '@/lib/db/schema';
 import { stampOf } from '@/lib/date';
 import { getSecret } from '@/lib/auth/secret';
 import { addressesOf, MAIL_LIMITS } from '@/lib/agents/mime';
@@ -136,7 +138,7 @@ export const agentMailStore: Pick<
   ProjectRepository,
   | 'getMailAccount' | 'saveMailAccount' | 'deleteMailAccount' | 'mailCredential'
   | 'addAgentMail' | 'linkAgentMails' | 'editAgentMail' | 'setAgentMailDiscarded' | 'claimAgentMail' | 'finishAgentMail'
-  | 'siteMail' | 'projectMails'
+  | 'siteMail' | 'projectMails' | 'siteDocFiles'
 > = {
   /**
    * 현장 양식 메일 (lib/site-mail) — 지금 서류로 쓴 초안(letter)을 그 담당의 초안으로 둔다. 한 트랜잭션 · 그 현장 줄을 잡고 본다
@@ -331,23 +333,69 @@ export const agentMailStore: Pick<
     const { name: agentName, key: agentKey } = await agentLabelOf(input.agentId);
     const letter = letterOf(input);
     const fileIds = [...new Set(input.fileIds ?? [])];
-    if (fileIds.length > MAIL_LIMITS.files) throw new Error(`붙일 파일은 ${MAIL_LIMITS.files}개까지입니다.`);
+    /* 콘솔이 묶어 올린 현장 서류(lib/agents/bundle-run — 여러 현장의 같은 서류 zip). 우리 Blob 의 이 담당 자리만 받는다 */
+    const docFiles = input.docFiles ?? [];
+    for (const f of docFiles) {
+      let ours = false;
+      try {
+        const u = new URL(f.url);
+        ours = u.protocol === 'https:' && u.hostname.endsWith('.public.blob.vercel-storage.com')
+          && u.pathname.startsWith(`/agent-files/${input.agentId}/bundles/`);
+      } catch { /* 주소가 아니다 */ }
+      if (!ours) throw new Error('붙일 묶음을 찾을 수 없습니다.');
+    }
+    if (fileIds.length + docFiles.length > MAIL_LIMITS.files) throw new Error(`붙일 파일은 ${MAIL_LIMITS.files}개까지입니다.`);
     const db = getDb();
+    let total = docFiles.reduce((n, f) => n + (f.size || 0), 0);
     if (fileIds.length) {
       const files = await db.select({ id: agentFiles.id, size: agentFiles.size }).from(agentFiles)
         .where(and(inArray(agentFiles.id, fileIds), eq(agentFiles.agentId, input.agentId)));
       if (files.length !== fileIds.length) throw new Error('붙일 파일을 찾을 수 없습니다 — 이 담당에게 넘긴 파일만 붙일 수 있습니다.');
-      const total = files.reduce((n, f) => n + f.size, 0);
-      if (total > MAIL_LIMITS.attachBytes) throw new Error(`붙일 파일은 합쳐 ${sizeLabel(MAIL_LIMITS.attachBytes)}까지입니다.`);
+      total += files.reduce((n, f) => n + f.size, 0);
     }
+    if (total > MAIL_LIMITS.attachBytes) throw new Error(`붙일 파일은 합쳐 ${sizeLabel(MAIL_LIMITS.attachBytes)}까지입니다.`);
     const id = crypto.randomUUID();
     await db.transaction(async (tx) => {
-      await tx.insert(agentMails).values({ id, agentId: input.agentId, status: 'draft', ...letter, fileIds });
+      await tx.insert(agentMails).values({ id, agentId: input.agentId, status: 'draft', ...letter, fileIds, docFiles });
       await writeAudit(tx, {
         projectId: null, actor, action: '에이전트 메일 초안 (에이전트가 적음)', field: agentKey, oldValue: null, newValue: letterLine(letter),
       });
     });
     return { id, subject: letter.subject };
+  },
+
+  /**
+   * 여러 현장의 한 서류 칸 — 묶어 메일에 붙일 때(lib/agents/bundle-run). 준 차례대로, 현장마다 그 칸의 파일(없으면 빈 목록).
+   * 계약 서류(documents)와 공정 서류(process_documents)를 table 로 가른다. 없는 현장 id 는 빠진다.
+   */
+  async siteDocFiles(actor, input): Promise<Array<{
+    projectId: string; mgmtNo: string | null; name: string; cpo: string | null; files: Array<{ name: string; url: string }>;
+  }>> {
+    assertAdmin(actor, '현장 서류 묶기');
+    const ids = [...new Set(input.projectIds)];
+    if (ids.length === 0) return [];
+    const db = getDb();
+    const sites = await db.select({ id: projects.id, mgmtNo: projects.mgmtNo, name: projects.name, cpo: projects.cpo })
+      .from(projects).where(inArray(projects.id, ids));
+    const docs = input.table === 'contract'
+      ? await db.select({ projectId: documents.projectId, files: documents.files }).from(documents)
+        .where(and(inArray(documents.projectId, ids), eq(documents.kind, input.kind)))
+      : await db.select({ projectId: processDocuments.projectId, files: processDocuments.files }).from(processDocuments)
+        .where(and(inArray(processDocuments.projectId, ids), eq(processDocuments.kind, input.kind)));
+    const filesOf = new Map<string, Array<{ name: string; url: string }>>();
+    for (const d of docs) {
+      const list = (Array.isArray(d.files) ? d.files : []) as Array<{ name?: unknown; url?: unknown }>;
+      filesOf.set(d.projectId, [
+        ...(filesOf.get(d.projectId) ?? []),
+        ...list.filter((f) => typeof f.url === 'string' && f.url && typeof f.name === 'string')
+          .map((f) => ({ name: f.name as string, url: f.url as string })),
+      ]);
+    }
+    const byId = new Map(sites.map((p) => [p.id, p]));
+    return ids.flatMap((id) => {
+      const p = byId.get(id);
+      return p ? [{ projectId: p.id, mgmtNo: p.mgmtNo, name: p.name, cpo: p.cpo, files: filesOf.get(p.id) ?? [] }] : [];
+    });
   },
 
   async linkAgentMails(input, actor): Promise<void> {

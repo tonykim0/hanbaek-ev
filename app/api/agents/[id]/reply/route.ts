@@ -17,6 +17,8 @@
  * ★장기기억은 메모장, 꺼내 쓰는 것은 그때그때★(한백 2026-11-05 「비용을 줄이면서 장기기억으로 두면서 그때그때 꺼내 쓸 수 있는 방법」 —
  * store/agent-memory · lib/agents/memory · memos): 부를 때 읽는 것은 최근 대화 20~39개와 메모뿐이고, 대화 원문 · 지난 파일은 담당이
  * 찾을 때(search_history · read_file)만 DB 에서 읽는다.
+ * 전기차 담당의 메일 초안은 여러 현장의 같은 서류를 zip 하나로 묶어 붙인다(draft_mail site_docs · lib/agents/bundle-run — 한백
+ * 2026-11-05 「프로젝트마다 저장되어있는 파일을 한꺼번에 불러와서 압축해서 이메일로」).
  */
 import { getRepository } from '@/lib/data';
 import { adminWrite } from '@/lib/api/write-route';
@@ -26,6 +28,7 @@ import { loadAgentBrief } from '@/lib/agents/scope';
 import { siteMailOfCpo } from '@/lib/site-mail';
 import { requestSiteMail } from '@/lib/site-mail-run';
 import { awaitsReply, queryOf, searchText } from '@/lib/agents/memory';
+import { bundleSiteDocs } from '@/lib/agents/bundle-run';
 import {
   HISTORY_PER_MEMBER, memberOf, TEAM_DAYS, TEAM_PER_MEMBER, teamBriefOf, teamHistoryOf, teammatesOf,
 } from '@/lib/agents/team';
@@ -81,6 +84,11 @@ export const POST = adminWrite<{ id: string }, undefined>(
           return made.id;
         },
         siteOf,
+        /* 여러 현장의 같은 서류를 zip 하나로 — 전기차 담당만(태양광 현장의 파일은 아직 · lib/agents/bundle-run) */
+        ...(biz === 'ev' ? {
+          bundleSiteDocs: (q: { sites: string[]; doc: string }) =>
+            bundleSiteDocs({ agent: detail.agent, refs: q.sites, doc: q.doc, siteOf, actor }),
+        } : {}),
         ...(siteSpec ? {
           siteMail: async (projectId: string) => {
             const { plan, mail } = await requestSiteMail(projectId, actor, siteSpec);

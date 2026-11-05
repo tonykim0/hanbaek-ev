@@ -612,9 +612,17 @@ export interface ProjectRepository {
   mailCredential(actor: Actor, agentId: string): Promise<{ email: string; secret: string }>;
   /** 메일 초안 올리기 — 에이전트가 대화 중에(lib/agents/brain draft_mail). 붙일 파일은 그 담당에게 넘긴 파일만 */
   addAgentMail(
-    input: { agentId: string; to: unknown; cc?: unknown; subject: string; body: string; fileIds?: string[] },
+    input: {
+      agentId: string; to: unknown; cc?: unknown; subject: string; body: string; fileIds?: string[];
+      /** 콘솔이 묶어 올린 현장 서류 zip(lib/agents/bundle-run) — 이 담당의 agent-files/<담당>/bundles/ 자리만 */
+      docFiles?: Array<{ name: string; url: string; size: number; contentType: string | null }>;
+    },
     actor: Actor
   ): Promise<{ id: string; subject: string }>;
+  /** 여러 현장의 한 서류 칸 — 묶어 메일에 붙일 때. 준 차례대로, 현장마다 그 칸의 파일 */
+  siteDocFiles(
+    actor: Actor, input: { projectIds: string[]; table: 'contract' | 'process'; kind: string }
+  ): Promise<Array<{ projectId: string; mgmtNo: string | null; name: string; cpo: string | null; files: Array<{ name: string; url: string }> }>>;
   /** 초안을 그것을 쓴 답에 잇는다 — 답은 초안보다 나중에 남는다 */
   linkAgentMails(input: { agentId: string; ids: string[]; messageId: string }, actor: Actor): Promise<void>;
   /** 초안 고치기 — 승인 대기 · 보내지 못함만 */
