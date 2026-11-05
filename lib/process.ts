@@ -502,6 +502,23 @@ export function isHanbaekOnlyProcessField(field: string): boolean {
 export type ProcessEdit = 'all' | 'partner' | 'none';
 
 /**
+ * 그 현장의 공정을 이 사람이 얼마나 고치나 — 한백 관리자는 전부, 그 현장의 시공사는 한백 전용 칸을 뺀 전부.
+ *
+ * 현장 상세의 시공 탭과 시공관리 표(날짜 칸)가 같이 본다 — 두 자리가 따로 정하면 한쪽에서만 열린다.
+ * 실제 판정은 저장소(assertProcessWrite)가 다시 한다. 이 값은 화면이 칸을 잠그는 데만 쓴다.
+ */
+export function processEditOf(
+  actor: { role: string; org: string | null },
+  gcOrg: string | null
+): ProcessEdit {
+  if (actor.role === 'admin') return 'all';
+  const gc = normalizeOrg(gcOrg);
+  const isGcHere =
+    (actor.role === 'cons' || actor.role === 'salesCons') && gc !== null && normalizeOrg(actor.org) === gc;
+  return isGcHere ? 'partner' : 'none';
+}
+
+/**
  * 완료 체크가 여는 단계 — 체크하는 순간 그 단계의 조건이 차 있으면 저절로 넘어간다
  * (한백 확인). 체크는 「이 구간 끝났다」는 선언이라 전이까지가 그 뜻이다.
  *

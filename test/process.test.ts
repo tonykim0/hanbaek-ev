@@ -10,7 +10,7 @@ import {
   advanceBlockers, advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES,
   CHECK_AT, CHECK_HOME, entryOkOf, nextStatusOf, prevStatusOf, STATUS_GATES, stepsOf,
   COURT_AFTER_STATUS, declarationBlockers, isHanbaekOnlyProcessField, mayForceDeclaration, mayForceStatus, statusIndex,
-  canChangeContractDocs, CONTRACT_DOCS_LOCK_AT, contractDocsLockedWhy, PARTNER_DOCS_CLOSED_AT,
+  canChangeContractDocs, CONTRACT_DOCS_LOCK_AT, contractDocsLockedWhy, PARTNER_DOCS_CLOSED_AT, processEditOf,
 } from '@/lib/process';
 import type { GateContext } from '@/lib/process';
 import type { ProcessInfo, ProcessStatus } from '@/types/project';
@@ -278,6 +278,30 @@ describe('한백만 적는 칸', () => {
   it('한백 관리자는 전부 적는다', () => {
     expect(() => assertProcessWrite({ role: 'admin', org: null }, '대광이브이', ['chargerOrderDate']))
       .not.toThrow();
+  });
+});
+
+describe('processEditOf — 현장 상세와 시공관리 표가 같이 보는 손', () => {
+  it('한백 관리자는 전부 · 열람 전용은 없음', () => {
+    expect(processEditOf({ role: 'admin', org: null }, '대광이브이')).toBe('all');
+    expect(processEditOf({ role: 'viewer', org: null }, '대광이브이')).toBe('none');
+  });
+
+  it('그 현장의 시공사·턴키업체는 한백 전용 칸을 뺀 나머지 — 소속의 빈칸은 견주지 않는다', () => {
+    expect(processEditOf({ role: 'cons', org: '대광이브이 ' }, '대광이브이')).toBe('partner');
+    expect(processEditOf({ role: 'salesCons', org: '대광이브이' }, '대광이브이')).toBe('partner');
+  });
+
+  it('남의 현장 · 영업사 · 시공사가 안 정해진 현장은 없음', () => {
+    expect(processEditOf({ role: 'cons', org: '차저스랩' }, '대광이브이')).toBe('none');
+    expect(processEditOf({ role: 'sales', org: '대광이브이' }, '대광이브이')).toBe('none');
+    expect(processEditOf({ role: 'cons', org: null }, null)).toBe('none');
+  });
+
+  it('★저장소의 판정과 어긋나지 않는다★ — 화면이 연 칸을 서버가 거절하지 않는다', () => {
+    const 시공사 = { role: 'cons', org: '대광이브이' };
+    expect(processEditOf(시공사, '대광이브이')).toBe('partner');
+    expect(() => assertProcessWrite(시공사, '대광이브이', ['startActualDate', 'openDate'])).not.toThrow();
   });
 });
 

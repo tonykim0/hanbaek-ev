@@ -98,6 +98,7 @@ export default function ProjectsView({
   band,
   canMove,
   role,
+  org,
 }: {
   /** 이 페이지 국면의 현장들 — 페이지(서버)가 이미 국면으로 걸러서 넘긴다 */
   projects: ProjectSummary[];
@@ -107,6 +108,8 @@ export default function ProjectsView({
   canMove: boolean;
   /** 보는 사람의 구분 — 보드가 「내 차례」 칸을 가리는 데 쓴다 */
   role: Role;
+  /** 보는 사람의 소속 — 표가 줄마다 그 현장의 시공사인지(날짜를 적는지) 가른다 */
+  org: string | null;
 }) {
   const sp = useSearchParams();
 
@@ -311,6 +314,9 @@ export default function ProjectsView({
     });
   }, []);
 
+  /* 줄마다 날짜를 적을 수 있는지 가르는 데 쓴다 — 값이 바뀌지 않으면 같은 객체라 표가 다시 그려지지 않는다 */
+  const viewer = useMemo(() => ({ role, org }), [role, org]);
+
   /* 열 상태 — 「열」 단추(필터 줄)와 표가 같이 본다. 숨긴 열의 필터를 푸는 일이 있어 여기가 주인이다 */
   const columns = useTableColumns(band === '계약' ? 'intake' : 'construction', attrs, setAttr);
 
@@ -467,6 +473,7 @@ export default function ProjectsView({
           onFilter={setAttr}
           tab={band === '계약' ? 'intake' : 'construction'}
           columns={columns}
+          viewer={viewer}
         />
       )}
     </div>

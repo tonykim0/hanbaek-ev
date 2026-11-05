@@ -34,7 +34,7 @@ export default async function ProjectsPage() {
       */}
       <h1 className="mb-5 text-h1 font-black text-slate-900">계약관리</h1>
 
-      <ProjectsView projects={projects} band="계약" canMove={session.role === 'admin'} role={session.role} />
+      <ProjectsView projects={projects} band="계약" canMove={session.role === 'admin'} role={session.role} org={session.org} />
 
     </>
   );

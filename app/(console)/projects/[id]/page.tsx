@@ -2,9 +2,9 @@ import { notFound } from 'next/navigation';
 import ProjectDetailView, { type TabKey } from '@/components/project/DetailView';
 import { getRepository } from '@/lib/data';
 import { actorOf, getSessionUser, viewerOf } from '@/lib/auth/session';
-import { canWrite, effectiveVisibility, isHanbaek, normalizeOrg } from '@/lib/roles';
+import { canWrite, effectiveVisibility, isHanbaek } from '@/lib/roles';
 import { NICE_DRAFT_MAIL } from '@/lib/nice-submit';
-import { canChangeContractDocs, type ProcessEdit } from '@/lib/process';
+import { canChangeContractDocs, processEditOf, type ProcessEdit } from '@/lib/process';
 import { matchingRules, type RuleOptions } from '@/lib/pricing-match';
 import type { SettlementRuleChoice } from '@/types/project';
 import { knownOrgs } from '@/lib/orgs';
@@ -111,15 +111,11 @@ export default async function ProjectPage({
     : null;
 
   /*
-   * 공정 입력 권한 — 한백은 전부, 그 현장의 시공사는 한백 전용 두 칸을 뺀 전부.
+   * 공정 입력 권한 — 한백은 전부, 그 현장의 시공사는 한백 전용 칸을 뺀 전부.
    * 실제 판정은 저장소(assertProcessWrite)가 다시 한다 — 여기 값은 화면이 칸을
-   * 잠그는 데만 쓴다. 영업만(sales)은 공정을 적지 않는다.
+   * 잠그는 데만 쓴다. 영업만(sales)은 공정을 적지 않는다. 시공관리 표와 같은 판정이다.
    */
-  const isGcHere =
-    (session.role === 'cons' || session.role === 'salesCons') &&
-    normalizeOrg(session.org) !== null &&
-    normalizeOrg(session.org) === normalizeOrg(detail.project.gcOrg);
-  const processEdit: ProcessEdit = canEdit ? 'all' : isGcHere ? 'partner' : 'none';
+  const processEdit: ProcessEdit = processEditOf(session, detail.project.gcOrg);
 
   return (
     <ProjectDetailView

@@ -31,7 +31,7 @@ function fmt(d: Date): string {
 }
 
 export function DatePicker({
-  value, onChange, disabled = false, ariaLabel, empty = '날짜 선택', autoOpen = false,
+  value, onChange, disabled = false, ariaLabel, empty = '날짜 선택', autoOpen = false, size = 'md', error = null,
 }: {
   value: string | null;
   /** null = 지운다 */
@@ -42,6 +42,16 @@ export function DatePicker({
   empty?: string;
   /** 나타나자마자 달력을 연다 — 「수정」을 눌러 이 칸이 열린 자리(EditableFact date)에서 한 번 더 누르지 않게 */
   autoOpen?: boolean;
+  /**
+   * sm — 표의 칸(시공관리 표의 날짜 열). 날짜 열이 여덟이라 132px 로는 표가 두 배로 넓어진다.
+   * 글자 크기·폭만 줄고 달력은 같다.
+   */
+  size?: 'md' | 'sm';
+  /**
+   * 저장 실패 — 빨간 테두리로 알리고 이유는 마우스를 올리면 나온다. 표의 칸에는 문구를 놓을 자리가 없다
+   * (환경부 대기번호 칸과 같은 방식). 칸 밖에 자리가 있는 곳은 <Err> 로 단추 옆에 적는다.
+   */
+  error?: string | null;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -109,10 +119,15 @@ export function DatePicker({
         aria-expanded={open}
         disabled={disabled}
         onClick={toggle}
-        className={`w-[132px] rounded-ctl border px-2 py-1 text-left font-semibold tabular-nums transition focus:outline-none focus:ring-2 focus:ring-brand-100 ${
-          value
-            ? 'border-slate-200 bg-white text-slate-800'
-            : 'border-dashed border-slate-300 bg-white text-slate-400'
+        title={error ?? undefined}
+        className={`rounded-ctl border text-left font-semibold tabular-nums transition focus:outline-none focus:ring-2 focus:ring-brand-100 ${
+          size === 'sm' ? 'w-[104px] px-1.5 py-0.5 text-small' : 'w-[132px] px-2 py-1'
+        } ${
+          error
+            ? 'border-red-400 bg-white text-red-800'
+            : value
+              ? 'border-slate-200 bg-white text-slate-800'
+              : 'border-dashed border-slate-300 bg-white text-slate-500'
         } ${disabled ? 'opacity-50' : 'hover:border-brand-300'}`}
       >
         {value ?? empty}

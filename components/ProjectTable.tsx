@@ -12,12 +12,19 @@
  *
  * 단계 칸은 고르는 자리다. 보드는 끌어야 옮겨지지만 표에서는 골라서 옮긴다 —
  * 끌기만 있으면 마우스 없이는 아무것도 못 옮긴다.
+ *
+ * ★시공 날짜도 표에서 적는다★ (한백 지시 2026-11-05 「표에서 날짜를 기입하게」) — 필터로 좁혀 둔 현장들의 날짜를
+ * 하나씩 상세에 들어가 넣지 않고 줄마다 쭉 넣는다. 저장하는 길(/process)과 누가 어느 칸을 적는지(processEditOf ·
+ * 한백 전용 칸)는 현장 상세의 시공 탭과 같다. 날짜는 전이가 아니라 단계를 옮기지 않는다 — 완료 선언(✓)은 여기서
+ * 찍지 않는다. 그것은 조건을 묻는 선언이라 상세의 「다음 단계로 진행」이 한다.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useAction } from '@/lib/use-action';
 import Link from 'next/link';
 import type { ProcessStatus, ProjectSummary } from '@/types/project';
 import { PROCESS_STATUSES, subsidized } from '@/types/project';
+import { isHanbaekOnlyProcessField, processEditOf, stepsOf, type ProcessEdit } from '@/lib/process';
+import { DatePicker } from '@/components/DatePicker';
 import {
   BAND_TONE, bandOfColumn, BOARD_COLUMNS, boardColumnOf, constructionLabelOf, type BoardColumn,
 } from '@/lib/board';
@@ -137,10 +144,12 @@ export function useTableColumns(
 export type TableColumns = ReturnType<typeof useTableColumns>;
 
 export default function ProjectTable({
-  projects, canMove, onMove, busyId, filters, options, onFilter, tab, columns,
+  projects, canMove, onMove, busyId, filters, options, onFilter, tab, columns, viewer,
 }: {
   projects: ProjectSummary[];
   canMove: boolean;
+  /** 보는 사람 — 줄마다 그 현장의 날짜를 적을 수 있는지 가른다(processEditOf) */
+  viewer: { role: string; org: string | null };
   /** 상세를 열 때 먼저 보일 탭 — 이 페이지의 국면(계약·시공)을 따라간다 */
   tab: 'intake' | 'construction';
   onMove: (p: ProjectSummary, status: ProcessStatus) => void;
@@ -263,10 +272,17 @@ export default function ProjectTable({
             {rows.map((p) => {
               const col = boardColumnOf(p);
               const busy = busyId === p.id;
+              const edit = processEditOf(viewer, p.gcOrg);
+              /* 기설치 연동은 충전기 발주·수령을 안 지난다 — 상세에도 그 칸이 없다(lib/process stepsOf) */
+              const charger = stepsOf(p).includes('충전기 발주');
               return (
                 <tr key={p.id} className={`transition hover:bg-brand-50/40 ${busy ? 'opacity-50' : ''}`}>
-                  {/* 현장 열만 왼쪽 — 줄을 찾는 열쇠다(화면 규칙 13, 한백 지시 2026-09-02) */}
-                  <td className="px-3 py-2.5 text-left">
+                  {/*
+                    * 현장 열만 왼쪽 — 줄을 찾는 열쇠다(화면 규칙 13, 한백 지시 2026-09-02).
+                    * 최소 폭을 준다 — 날짜 칸이 달력 단추가 되며 넓어지자 브라우저가 이 열을 눌러 현장명이 글자 몇 개씩 접혔다.
+                    * 좁으면 접지 않고 표가 가로로 밀린다.
+                    */}
+                  <td className="min-w-[220px] px-3 py-2.5 text-left">
                     <Link
                       href={`/projects/${p.id}?tab=${tab}`}
                       className="font-bold text-slate-900 hover:text-brand-800 hover:underline"
@@ -314,24 +330,32 @@ export default function ProjectTable({
                   {show('power') && <Cell value={p.powerType} />}
                   {show('sales') && <Cell value={p.salesOrg} />}
                   {show('gc') && <Cell value={p.gcOrg} />}
-                  {show('envApproval') && <MilestoneCell date={p.milestones.envApprovalDate} />}
+                  {/* 자체투자·연동은 환경부 승인이 없다 — 상세 머리말의 그 칸과 같은 판정이다(subsidized) */}
+                  {show('envApproval') && (subsidized(p.bizType) ? (
+                    <MilestoneCell p={p} field="envApprovalDate" label="환경부 승인일" date={p.milestones.envApprovalDate} canEdit={canDate(edit, 'envApprovalDate')} />
+                  ) : <NaCell />)}
                   {show('notify') && (p.milestones.notifySkipped ? (
                     /* 대상 아님은 규칙상 없는 것이다 — 「—」(아직)와 갈라 적는다(화면 규칙 10, 감사 L5) */
-                    <td className="whitespace-nowrap px-3 py-2.5"><span className="text-slate-300">해당없음</span></td>
+                    <NaCell />
                   ) : (
-                    <MilestoneCell date={p.milestones.notifyDate} done={p.milestones.notifyDone} />
+                    <MilestoneCell p={p} field="notifyDate" label="행위신고일" date={p.milestones.notifyDate} done={p.milestones.notifyDone} canEdit={canDate(edit, 'notifyDate')} />
                   ))}
-                  {show('chargerOrder') && <MilestoneCell date={p.milestones.chargerOrderDate} />}
-                  {show('chargerRecv') && (
-                    <MilestoneCell date={p.milestones.chargerRecvDate} done={p.milestones.chargerDone} />
+                  {show('chargerOrder') && (charger ? (
+                    <MilestoneCell p={p} field="chargerOrderDate" label="충전기 발주일" date={p.milestones.chargerOrderDate} canEdit={canDate(edit, 'chargerOrderDate')} />
+                  ) : <NaCell />)}
+                  {show('chargerRecv') && (charger ? (
+                    <MilestoneCell p={p} field="chargerRecvDate" label="충전기 수령일" date={p.milestones.chargerRecvDate} done={p.milestones.chargerDone} canEdit={canDate(edit, 'chargerRecvDate')} />
+                  ) : <NaCell />)}
+                  {show('start') && (
+                    <MilestoneCell p={p} field="startActualDate" label="착공일" date={p.milestones.startDate} canEdit={canDate(edit, 'startActualDate')} />
                   )}
-                  {show('start') && <MilestoneCell date={p.milestones.startDate} />}
                   {show('install') && (
-                    <MilestoneCell date={p.milestones.installDoneDate} done={p.milestones.installConfirmed} />
+                    <MilestoneCell p={p} field="installDoneDate" label="설치완료일" date={p.milestones.installDoneDate} done={p.milestones.installConfirmed} canEdit={canDate(edit, 'installDoneDate')} />
                   )}
                   {show('comm') && (
-                    <MilestoneCell date={p.milestones.openDate} done={p.milestones.openDone} />
+                    <MilestoneCell p={p} field="openDate" label="개통완료일" date={p.milestones.openDate} done={p.milestones.openDone} canEdit={canDate(edit, 'openDate')} />
                   )}
+                  {/* 준공서류 제출은 날짜가 아니라 선언이다(조건을 묻는다) — 상세의 「준공서류 제출 완료」에서만 찍는다 */}
                   {show('completion') && <MilestoneCell date={p.milestones.completionSubmitAt} />}
                   {show('created') && (
                     <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-500">
@@ -562,27 +586,114 @@ function StageCell({
   );
 }
 
+/** 표에서 적는 날짜 칸 — 이름은 저장 라우트(/process)의 칸 이름과 같다 */
+type TableDateField =
+  | 'envApprovalDate' | 'notifyDate' | 'chargerOrderDate' | 'chargerRecvDate'
+  | 'startActualDate' | 'installDoneDate' | 'openDate';
+
+/** 그 칸을 적을 수 있나 — 시공사는 한백 전용 칸(환경부 승인일·충전기 발주일)을 못 적는다. 상세와 같은 목록이고 저장소가 다시 본다 */
+function canDate(edit: ProcessEdit, field: TableDateField): boolean {
+  return edit === 'all' || (edit === 'partner' && !isHanbaekOnlyProcessField(field));
+}
+
+/** 규칙상 없는 칸 — 고치는 자리를 주지 않는다(화면 규칙 10) */
+function NaCell() {
+  return (
+    <td className="whitespace-nowrap px-3 py-2.5"><span className="text-slate-500">해당없음</span></td>
+  );
+}
+
+/** 완료 선언의 표시 — 날짜와 따로 산다(날짜 없이 선언만 있는 옛 현장이 있다) */
+function DoneMark({ gap = false }: { gap?: boolean }) {
+  return (
+    <span aria-label="완료 확인됨" title="완료 확인됨" className={`font-black text-ok-600 ${gap ? 'ml-1' : ''}`}>
+      ✓
+    </span>
+  );
+}
+
 /**
  * 마일스톤 칸 — 날짜가 곧 그 일의 여부다.
  * 완료 체크가 따로 있는 단계(행위신고·충전기 수령·설치·개통)는 ✓ 를 얹는다.
+ * 적을 수 있는 사람에게는 달력이다(DateEditCell).
  */
-function MilestoneCell({ date, done }: { date: string | null; done?: boolean }) {
+function MilestoneCell({
+  p, field, label, date, done, canEdit = false,
+}: {
+  date: string | null;
+  done?: boolean;
+  /** 적는 칸이면 셋 다 준다 — 없으면 글자만 */
+  p?: ProjectSummary;
+  field?: TableDateField;
+  label?: string;
+  canEdit?: boolean;
+}) {
+  if (canEdit && p && field && label) {
+    return <DateEditCell p={p} field={field} label={label} date={date} done={done} />;
+  }
   return (
     <td className="whitespace-nowrap px-3 py-2.5 tabular-nums">
       {date ? (
         <span className="text-slate-600">
           {date}
-          {done && (
-            <span aria-label="완료 확인됨" title="완료 확인됨" className="ml-1 font-black text-brand-600">
-              ✓
-            </span>
-          )}
+          {done && <DoneMark gap />}
         </span>
       ) : done ? (
-        <span aria-label="완료 확인됨" title="완료 확인됨" className="font-black text-brand-600">✓</span>
+        <DoneMark />
       ) : (
         <span className="text-slate-300">—</span>
       )}
+    </td>
+  );
+}
+
+/**
+ * 표에서 적는 날짜 칸 — 표의 칸은 늘 열린 입력칸이다(화면 규칙 4 의 예외 — 여러 건을 쭉 넣는 자리).
+ *
+ * 고른 날짜는 서버가 다시 그려 줄 때까지 그 자리에 둔다 — 옛 날짜로 잠깐 되돌아가면 저장이 안 된 줄 안다.
+ * 실패하면 서버 값으로 되돌리고 칸을 빨갛게 한다(이유는 마우스를 올리면 — 환경부 대기번호 칸과 같다).
+ */
+function DateEditCell({
+  p, field, label, date, done,
+}: {
+  p: ProjectSummary;
+  field: TableDateField;
+  label: string;
+  date: string | null;
+  done?: boolean;
+}) {
+  const { busy, error, run } = useAction();
+  /** 고른 값 — undefined 면 서버 값을 그린다 */
+  const [picked, setPicked] = useState<string | null | undefined>(undefined);
+  // 서버가 따라잡으면(다른 사람이 고친 것까지) 서버 값이 이긴다
+  useEffect(() => setPicked(undefined), [date]);
+  const shown = picked === undefined ? date : picked;
+
+  async function save(next: string | null) {
+    if (next === shown) return;
+    setPicked(next);
+    const ok = await run({
+      url: `/api/projects/${p.id}/process`,
+      body: { [field]: next },
+      fail: '저장하지 못했습니다.',
+    });
+    if (!ok) setPicked(undefined);
+  }
+
+  return (
+    <td className="whitespace-nowrap px-3 py-2">
+      <span className="inline-flex items-center">
+        <DatePicker
+          size="sm"
+          ariaLabel={`${p.name} ${label}`}
+          value={shown}
+          empty="—"
+          disabled={busy}
+          error={error}
+          onChange={(v) => void save(v)}
+        />
+        {done && <DoneMark gap />}
+      </span>
     </td>
   );
 }
