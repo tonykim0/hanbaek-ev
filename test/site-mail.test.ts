@@ -23,10 +23,13 @@ describe('양식', () => {
     expect(taskTitleOf(HEC)).toBe('설치승인서 메일 보내기');
   });
 
-  it('현대엔지니어링 본문은 인사 · 현장 · 주소 · 맺음', () => {
-    const { subject, body } = HEC.letter({ name: '울산 ○○아파트', addr: '울산광역시 남구 1', parkTotal: null, bizType: null, installLoc: null }, 0);
-    expect(subject).toBe('설치승인서 송부 — 울산 ○○아파트');
-    expect(body).toBe('안녕하세요, 설치승인서 송부드립니다.\n\n현장 : 울산 ○○아파트\n주소 : 울산광역시 남구 1\n\n감사합니다');
+  it('현대엔지니어링은 한백 양식 — 「[한백] 설치승인서 1개 국소 (현장명 N기)」 · 인사 · 맺음(2026-11-05)', () => {
+    const site = { name: '코리아골프클럽', addr: '경기도 1', parkTotal: null, bizType: null, installLoc: null };
+    const { subject, body } = HEC.letter(site, 4);
+    expect(subject).toBe('[한백] 설치승인서 1개 국소 (코리아골프클럽 4기)');
+    expect(body).toBe('안녕하세요, 매니저님.\n\n한백 김정우입니다.\n\n설치승인서 송부드립니다.\n\n감사합니다.\n김정우 드림');
+    /* 대수를 모르면 현장명만 */
+    expect(HEC.letter(site, 0).subject).toBe('[한백] 설치승인서 1개 국소 (코리아골프클럽)');
   });
 
   it('조사는 받침을 본다', () => {
