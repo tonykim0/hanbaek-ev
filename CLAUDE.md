@@ -942,7 +942,7 @@ bulletpoint는 다 왼쪽정렬로」). 단가표의 조건 행(설치조건·�
     없는 주소다(2026-11-04 `worktree-biz-switch-color` → `…-git-worktree-biz-swi-f714e8-…`, 사용자가 「열 수 없대」).
     브랜치 이름이 23자를 넘으면(앞뒤 고정 40자) `npx vercel ls` 의 그 배포를 `npx vercel inspect <배포 주소>` 로 열어 Aliases 의 주소를 준다.
     ★사용자는 프리뷰를 보고 판단한다★ — 프로덕션이 아니라. Vercel 로그인이 필요하다(curl 은 401, 상태는
-    `npx vercel ls` 로). DB 는 개발 DB(시드 5건 · `admin`/`dev1234!`). ★Blob 은 프로덕션 스토어를 같이
+    `npx vercel ls` 로). DB 는 개발 DB(시드 5건 · `admin`/`dev1234!`). ★2026-11-05 까지는 아니었다★ — Vercel 의 Preview 전용 DATABASE_URL 이 개발 DB 가 아닌 곳(운영으로 보인다 — 값은 Sensitive 라 못 읽었다)을 가리켜, 개발 계정이 프리뷰에서 거절되고 프리뷰의 로그인 잠금이 개발 DB 에 안 남았다. 개발 DB 주소(.env.local 의 6543 풀러)로 바꿨다(`npx vercel env update DATABASE_URL --environment preview`). 그 전 프리뷰에서 고친 것은 그 DB 에 들어갔다. ★프리뷰 빌드는 마이그레이션을 건너뛴다★(scripts/migrate.ts) — 새 마이그레이션이 있는 브랜치는 로컬에서 `npm run db:migrate` 로 개발 DB 에 먼저 적용해야 프리뷰가 돈다. ★Blob 은 프로덕션 스토어를 같이
     쓴다★ — 파일 올리기 시험은 프로덕션 자료실에 남는다. 실데이터가 걸린 확인만 머지 뒤 프로덕션에서.
   - **머지 = 배포**: 사용자가 「올려」 하면 워크트리에서
     `git fetch origin && git rebase origin/main && git push --force-with-lease origin <브랜치>` 로 브랜치를 최신
