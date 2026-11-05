@@ -45,13 +45,15 @@ const WEEK_THREAD_LIMIT = 1000;
  * 주간 기록이 감사기록에서 읽는 일 — 할 일이 적히고 끝나고, 업무 정의가 바뀐 때. 감사기록은 지운 할 일·업무 정의의 흔적도
  * 남아 있어 「그 주에 무엇을 했나」를 그대로 보여준다(할 일 표는 지금 상태만 안다). 이름은 아래 쓰기들이 남기는 그대로다.
  */
-const DUTY_ACTIONS = ['에이전트 업무 정의', '에이전트 업무 정의 수정', '에이전트 업무 정의 삭제'];
+const DUTY_ACTION = { add: '에이전트 업무 정의', edit: '에이전트 업무 정의 수정', del: '에이전트 업무 정의 삭제' } as const;
 const TASK_ADDED = ['에이전트 할 일', '에이전트 할 일 (에이전트가 적음)'];
 const TASK_DONE = ['에이전트 할 일 끝냄', '에이전트 할 일 끝냄 (에이전트가 적음)'];
 /** 메일이 나간 때 — store/agent-mail finishAgentMail 이 남긴다 */
 const MAIL_SENT = '에이전트 메일 보냄';
 /** 에이전트가 한 쓰기의 감사기록 꼬리 — 사람이 한 것과 가른다 */
 export const BY_AGENT = ' (에이전트가 적음)';
+/** 업무 정의가 바뀐 때 — 담당이 대화 중에 했으면(한백이 시켜서) 꼬리가 붙는다(2026-11-05) */
+const DUTY_ACTIONS = Object.values(DUTY_ACTION).flatMap((a) => [a, `${a}${BY_AGENT}`]);
 /**
  * 팀 목표 · 방향이 바뀐 때 — store/agent-team 이 팀장의 열쇠로 남긴다(migrations/0120). 팀장이 대화 중에 했으면 꼬리가 붙는다
  */
@@ -76,7 +78,7 @@ const dutyTitleOf = (v: string | null) => (v ?? '').split(' — ')[0];
 function eventOf(row: typeof auditLog.$inferSelect, agentName: string): AgentEvent | null {
   const at = stampOf(row.at);
   const by = actorName(row.actor);
-  /* 목표 · 방향 — 팀장이 대화 중에 했으면 적은 쪽이 팀장이다 */
+  /* 목표 · 방향 · 업무 정의 — 담당이 대화 중에 했으면 적은 쪽이 담당이다 */
   const byAgent = row.action.endsWith(BY_AGENT);
   const direction = byAgent ? row.action.slice(0, -BY_AGENT.length) : row.action;
   const who = byAgent ? { by: agentName, byAgent: true } : { by, byAgent: false };
@@ -88,13 +90,15 @@ function eventOf(row: typeof auditLog.$inferSelect, agentName: string): AgentEve
     case DIRECTION_ACTION.del:
       return { at, kind: 'direction-deleted', title: dutyTitleOf(row.oldValue), ...who, before: row.oldValue };
   }
+  switch (direction) {
+    case DUTY_ACTION.add:
+      return { at, kind: 'duty-added', title: dutyTitleOf(row.newValue), ...who, after: row.newValue };
+    case DUTY_ACTION.edit:
+      return { at, kind: 'duty-edited', title: dutyTitleOf(row.newValue), ...who, before: row.oldValue, after: row.newValue };
+    case DUTY_ACTION.del:
+      return { at, kind: 'duty-deleted', title: dutyTitleOf(row.oldValue), ...who, before: row.oldValue };
+  }
   switch (row.action) {
-    case '에이전트 업무 정의':
-      return { at, kind: 'duty-added', title: dutyTitleOf(row.newValue), by, byAgent: false, after: row.newValue };
-    case '에이전트 업무 정의 수정':
-      return { at, kind: 'duty-edited', title: dutyTitleOf(row.newValue), by, byAgent: false, before: row.oldValue, after: row.newValue };
-    case '에이전트 업무 정의 삭제':
-      return { at, kind: 'duty-deleted', title: dutyTitleOf(row.oldValue), by, byAgent: false, before: row.oldValue };
     case '에이전트 할 일':
       return { at, kind: 'task-added', title: row.newValue ?? '', by, byAgent: false };
     case '에이전트 할 일 (에이전트가 적음)':
@@ -423,6 +427,7 @@ export const agentStore: Pick<
   async saveAgentDuty(input, actor): Promise<string> {
     assertAdmin(actor, '업무 정의');
     const agent = await agentRow(input.agentId);
+    const tail = input.byAgent ? BY_AGENT : '';
     const title = clip(input.title, MAX.dutyTitle, '업무 이름');
     if (!title) throw new Error('업무 이름을 적어주세요.');
     const body = clip(input.body, MAX.dutyBody, '업무 정의');
@@ -432,10 +437,11 @@ export const agentStore: Pick<
       const [old] = await db.select().from(agentDuties)
         .where(and(eq(agentDuties.id, input.id), eq(agentDuties.agentId, agent.id))).limit(1);
       if (!old) throw new Error('업무 정의를 찾을 수 없습니다.');
+      if (old.title === title && old.body === body) return old.id;
       await db.transaction(async (tx) => {
         await tx.update(agentDuties).set({ title, body, updatedAt: new Date() }).where(eq(agentDuties.id, old.id));
         await writeAudit(tx, {
-          projectId: null, actor, action: '에이전트 업무 정의 수정', field: agentAuditKey(agent),
+          projectId: null, actor, action: `${DUTY_ACTION.edit}${tail}`, field: agentAuditKey(agent),
           oldValue: `${old.title} — ${old.body}`.slice(0, 2000), newValue: `${title} — ${body}`.slice(0, 2000),
         });
       });
@@ -448,14 +454,14 @@ export const agentStore: Pick<
         .from(agentDuties).where(eq(agentDuties.agentId, agent.id));
       await tx.insert(agentDuties).values({ id, agentId: agent.id, title, body, sort: top + 10 });
       await writeAudit(tx, {
-        projectId: null, actor, action: '에이전트 업무 정의', field: agentAuditKey(agent),
+        projectId: null, actor, action: `${DUTY_ACTION.add}${tail}`, field: agentAuditKey(agent),
         oldValue: null, newValue: `${title} — ${body}`.slice(0, 2000),
       });
     });
     return id;
   },
 
-  async deleteAgentDuty(input, actor): Promise<void> {
+  async deleteAgentDuty(input, actor): Promise<{ title: string }> {
     assertAdmin(actor, '업무 정의');
     const agent = await agentRow(input.agentId);
     const db = getDb();
@@ -465,10 +471,11 @@ export const agentStore: Pick<
     await db.transaction(async (tx) => {
       await tx.delete(agentDuties).where(eq(agentDuties.id, old.id));
       await writeAudit(tx, {
-        projectId: null, actor, action: '에이전트 업무 정의 삭제', field: agentAuditKey(agent),
+        projectId: null, actor, action: `${DUTY_ACTION.del}${input.byAgent ? BY_AGENT : ''}`, field: agentAuditKey(agent),
         oldValue: `${old.title} — ${old.body}`.slice(0, 2000), newValue: null,
       });
     });
+    return { title: old.title };
   },
 
   async addAgentTask(input, actor): Promise<{ id: string; title: string }> {

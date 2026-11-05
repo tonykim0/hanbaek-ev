@@ -191,6 +191,8 @@ export interface AgentMessageMeta {
   told?: string[];
   /** 이 답에서 적거나 고치거나 지운 메모의 이름(save_memo · delete_memo) */
   memos?: string[];
+  /** 이 답에서 한백이 시켜 넣거나 고치거나 뺀 업무 정의의 이름(save_duty · delete_duty) */
+  duties?: string[];
   /** 팀원의 말(peer)을 보낸 담당 — 대화에서 그 담당으로 가는 고리 */
   from?: { id: string; name: string };
   /**

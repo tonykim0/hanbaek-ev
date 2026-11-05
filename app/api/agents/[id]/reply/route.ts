@@ -89,6 +89,9 @@ export const POST = adminWrite<{ id: string }, undefined>(
             return { id: mail.id, subject: mail.subject, plan, to: mail.to };
           },
         } : {}),
+        /* 업무 정의 — 한백이 대화에서 시킬 때 담당이 넣고 고치고 뺀다(감사기록에 「에이전트가 적음」) */
+        saveDuty: (d) => repo.saveAgentDuty({ agentId, id: d.id ?? undefined, title: d.title, body: d.body, byAgent: true }, actor),
+        deleteDuty: async (id) => (await repo.deleteAgentDuty({ agentId, id, byAgent: true }, actor)).title,
         /* 기억의 손 — 메모장(적은 쪽에 담당 이름) · 대화 원문 찾기 · 지난 파일 */
         saveMemo: (m) => repo.saveAgentMemo({ agentId, ...m, byAgent: true }, actor),
         deleteMemo: async (m) => (await repo.deleteAgentMemo({ agentId, ...m, byAgent: true }, actor)).title,

@@ -167,6 +167,9 @@ const RULES = `일하는 법:
   「[메모 …]」는 네 메모와 팀 공용 메모의 제목이고, 이번 말에 제목의 낱말이 나온 메모는 「[펼친 메모 …]」로 붙어 있다.
   지시와 관련 있어 보이는 메모가 펼쳐지지 않았으면 open_memo 로 연다. 한백에게 다시 묻기 전에 메모 → search_history 순으로 찾는다.
   한백이 전에 말한 것을 다시 묻지 않는다. 지난 파일은 read_file 로 다시 연다.
+- 업무 정의는 한백이 정한다. 한백이 업무 정의에 넣어 달라 · 고쳐 달라 · 빼 달라고 하면 save_duty · delete_duty 로 그 답에서 바로 하고
+  한 줄로 말한다 — 권한이 없다고 하지 않는다. 고칠 때는 같은 줄(id)을 고치고, 내용은 앞의 것을 살려 전체를 다시 쓴다. 한백이 시키지
+  않은 업무 정의는 바꾸지 않는다 — 바꾸면 좋겠다 싶으면 답에 제안만 한다. 업무 정의는 일하는 규칙이고, 들은 사실은 메모에 적는다.
 - 한백이 알려 준 사실(사람 · 연락처 · 숫자 · 일정 · 조건) · 정한 것 · 바라는 방식 · 고쳐 준 것은 그 답에서 save_memo 로 남긴다.
   같은 주제의 메모가 있으면 새로 만들지 않고 그 메모에 덧붙이거나(append) 고친다. 팀원도 알아야 하면 팀 공용(scope team)에 적는다.
   제목은 콘솔이 메모를 펼치는 낱말이다 — 운영사 · 사업자 · 현장 번호 · 사람 · 주제를 「 · 」로 잇는다(예: 나이스인프라 · 김민수 대리 · 세금계산서).
@@ -180,13 +183,14 @@ const RULES = `일하는 법:
   받는 사람 주소는 업무 정의 · 대화 · 자료에 적힌 것만 쓴다. 모르면 초안을 올리지 말고 누구에게 보낼지 묻는다.
   초안을 올렸으면 답에 한 줄로 말하고(본문을 답에 다시 옮겨 적지 않는다), 같은 메일을 두 번 올리지 않는다.`;
 
+/** 시스템 — 업무 정의. 고칠 줄의 id 를 같이 준다(save_duty · delete_duty — 한백이 시킬 때만) */
 function dutiesBlock(duties: AgentDuty[]): string {
   if (duties.length === 0) {
     return '[업무 정의]\n아직 한백이 정한 업무 정의가 없다. 위 역할대로 일하고, 업무 정의를 적어 달라고 한 번 말한다.';
   }
   return [
     '[업무 정의 — 한백이 정한 것. 이것이 너의 일이다]',
-    ...duties.map((d, i) => `${i + 1}. ${d.title}${d.body.trim() ? `\n${d.body.trim()}` : ''}`),
+    ...duties.map((d, i) => `${i + 1}. ${d.title} (id=${d.id})${d.body.trim() ? `\n${d.body.trim()}` : ''}`),
   ].join('\n');
 }
 
@@ -291,6 +295,10 @@ export interface AgentHands {
   }): Promise<{ id: string; title: string }>;
   /** 메모 지우기 — 지운 메모의 이름 */
   deleteMemo?(input: { scope: MemoScope; id: string }): Promise<string>;
+  /** 업무 정의 넣기(id 없이) · 고치기(id) — 한백이 시킬 때만. 줄의 id 를 돌려준다 */
+  saveDuty?(input: { id: string | null; title: string; body: string }): Promise<string>;
+  /** 업무 정의 빼기 — 뺀 줄의 이름 */
+  deleteDuty?(id: string): Promise<string>;
 }
 
 /** 한 답에서 적는 메모 상한 — 잘못 돈 답이 메모장을 채우지 않게 */
@@ -375,6 +383,36 @@ const PRICING_TOOL = {
     + '영업비 · 시공비 · 마진은 한백 안의 값이라 운영사에 보내는 메일에 쓰지 않는다.',
   input_schema: { type: 'object', properties: {} },
 };
+
+/**
+ * 업무 정의의 도구 — 모두가 쥔다(라우트가 손을 이어 줄 때). 한백이 대화에서 시킬 때만 쓴다(한백 2026-11-05 「나랑 대화하다가 내가
+ * 업무 정의에 넣어달라는건 바로 넣어줄수 있나?」 — 그전에는 「업무 정의에는 제가 넣을 수 없습니다」라고 답했다).
+ */
+const DUTY_TOOLS = [
+  {
+    name: 'save_duty',
+    description: '네 업무 정의에 한 줄을 넣거나(id 없이) 고친다(id — [업무 정의]의 id). 한백이 업무 정의에 넣어 달라 · 고쳐 달라고 했을 때만 '
+      + '쓴다. 고칠 때는 앞의 내용을 살려 전체를 다시 쓴다. 다음에 부를 때부터 이 정의대로 일한다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '고칠 줄의 id — 새로 넣으면 비운다' },
+        title: { type: 'string', description: '업무 이름 (60자 이내)' },
+        body: { type: 'string', description: '정의 — 무엇을, 언제, 어떤 기준으로, 결과는 어떤 모양으로 (4000자 이내, 마크다운 없이)' },
+      },
+      required: ['title', 'body'],
+    },
+  },
+  {
+    name: 'delete_duty',
+    description: '네 업무 정의에서 한 줄을 뺀다 — 한백이 빼 달라고 했을 때만.',
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: '[업무 정의]의 id' } },
+      required: ['id'],
+    },
+  },
+];
 
 /**
  * 기억의 도구 — 모두가 쥔다(라우트가 손을 이어 줄 때 · lib/agents/memory · memos). 메모장(장기기억)을 열고 적고, 메모에 없으면 대화
@@ -509,7 +547,7 @@ const LEAD_TOOLS = [
  * 모두(라우트가 손을 이어 줄 때), 목표 · 방향과 웹 검색은 전략·기획(목표 · 방향도 라우트가 손을 이어 줄 때)
  */
 export function toolsOf(
-  agent: Agent, hands: Pick<AgentHands, 'siteMail' | 'pricingTable' | 'saveDirection' | 'tellTeammate' | 'saveMemo'>
+  agent: Agent, hands: Pick<AgentHands, 'siteMail' | 'pricingTable' | 'saveDirection' | 'tellTeammate' | 'saveMemo' | 'saveDuty'>
 ): unknown[] {
   const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
   return [
@@ -517,6 +555,7 @@ export function toolsOf(
     ...TASK_TOOLS,
     ...(siteSpec ? [siteMailTool(siteSpec)] : []),
     ...(agent.kind === 'operator' && hands.pricingTable ? [PRICING_TOOL] : []),
+    ...(hands.saveDuty ? DUTY_TOOLS : []),
     ...(hands.saveMemo ? MEMORY_TOOLS : []),
     ...(hands.tellTeammate ? TEAM_TOOLS : []),
     ...(isLead(agent.kind) && hands.saveDirection ? LEAD_TOOLS : []),
@@ -614,6 +653,7 @@ export async function agentReply(input: {
   const directions: string[] = [];
   const told: string[] = [];
   const memoed: string[] = [];
+  const dutied: string[] = [];
   let usd = 0;
   /* 바퀴마다의 토큰을 모은다 — 사용량 표가 캐시가 얼마나 먹었는지 보여 준다(store/agents agentUsage) */
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -688,6 +728,24 @@ export async function agentReply(input: {
         if (!id) return fail('id 가 비었다.');
         directions.push(await hands.deleteDirection(id));
         return { type: 'tool_result', tool_use_id: block.id, content: '지웠다 — 실무자들은 다음에 부를 때부터 읽지 않는다.' };
+      }
+      if (block.name === 'save_duty' && hands.saveDuty) {
+        const title = str(args.title);
+        if (!title) return fail('title 이 비었다.');
+        const id = str(args.id) || null;
+        if (id && !input.duties.some((d) => d.id === id)) return fail(`id=${id} 업무 정의가 없다 — [업무 정의]의 id 를 쓴다.`);
+        const saved = await hands.saveDuty({ id, title, body: typeof args.body === 'string' ? args.body.trim() : '' });
+        dutied.push(title);
+        return {
+          type: 'tool_result', tool_use_id: block.id,
+          content: `${id ? '고쳤다' : '넣었다'} (id=${saved}) — 다음에 부를 때부터 이 정의대로 일한다. 화면의 업무 정의에도 보인다.`,
+        };
+      }
+      if (block.name === 'delete_duty' && hands.deleteDuty) {
+        const id = str(args.id);
+        if (!id) return fail('id 가 비었다.');
+        dutied.push(await hands.deleteDuty(id));
+        return { type: 'tool_result', tool_use_id: block.id, content: '뺐다 — 다음에 부를 때부터 읽지 않는다.' };
       }
       if (block.name === 'open_memo') {
         const ids = Array.isArray(args.ids) ? args.ids.map(str).filter(Boolean) : [str(args.ids)].filter(Boolean);
@@ -863,12 +921,13 @@ export async function agentReply(input: {
     ...(directions.length ? { directions } : {}),
     ...(told.length ? { told } : {}),
     ...(memoed.length ? { memos: memoed } : {}),
+    ...(dutied.length ? { duties: dutied } : {}),
     tokens,
     ...(searchCount ? { searches: searchCount } : {}),
   };
   if (!text) {
     // 할 일 · 메일 초안은 이미 남았을 수 있다 — 그 사실은 남긴다
-    if (added.length || done.length || mails.length || directions.length || told.length || memoed.length) {
+    if (added.length || done.length || mails.length || directions.length || told.length || memoed.length || dutied.length) {
       return {
         text: [
           added.length ? `할 일을 적었습니다: ${added.join(' · ')}` : '',
@@ -877,6 +936,7 @@ export async function agentReply(input: {
           directions.length ? `목표 · 방향을 고쳤습니다: ${directions.join(' · ')}` : '',
           told.length ? `팀원에게 남겼습니다: ${told.join(' · ')}` : '',
           memoed.length ? `메모를 적었습니다: ${memoed.join(' · ')}` : '',
+          dutied.length ? `업무 정의를 고쳤습니다: ${dutied.join(' · ')}` : '',
         ].filter(Boolean).join('\n'),
         meta: { model: MODEL, ms: Date.now() - started, usd, ...acted },
       };

@@ -539,6 +539,7 @@ function Said({ message: m, team }: { message: AgentMessage; team: string }) {
     m.meta?.done?.length ? `할 일 ${m.meta.done.length}건 끝냄` : null,
     m.meta?.mails?.length ? `메일 초안 ${m.meta.mails.length}통` : null,
     m.meta?.directions?.length ? `목표 · 방향 ${m.meta.directions.length}건 고침` : null,
+    m.meta?.duties?.length ? `업무 정의 ${m.meta.duties.length}건 고침` : null,
     m.meta?.memos?.length ? `메모 ${m.meta.memos.length}건 적음` : null,
     m.meta?.told?.length ? `${m.meta.told.join(' · ')}에게 남김` : null,
   ].filter((x): x is string => x !== null);
@@ -567,7 +568,7 @@ function Said({ message: m, team }: { message: AgentMessage; team: string }) {
             ))}
           </ul>
         ) : null}
-        {/* 답 밑 한 줄 — 한 일(할 일 · 메일 · 목표 · 방향 · 메모 · 팀원에게 남김) · 고리 · 복사 · 걸린 시간과 비용 */}
+        {/* 답 밑 한 줄 — 한 일(할 일 · 메일 · 목표 · 방향 · 업무 정의 · 메모 · 팀원에게 남김) · 고리 · 복사 · 걸린 시간과 비용 */}
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
           {did.map((d) => <Tag key={d} tone="ok">{d}</Tag>)}
           {m.role === 'auto' && m.meta?.site && (

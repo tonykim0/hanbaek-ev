@@ -517,8 +517,9 @@ export interface ProjectRepository {
   /** 담당 하나 — 업무 정의 · 할 일 · 최근 대화(넘긴 파일 포함) · 주간 기록. week(그 주 월요일)를 주면 그 주의 말과 일 */
   getAgent(id: string, actor: Actor, opts?: { week?: string | null }): Promise<AgentDetail>;
   /** 업무 정의 넣기 · 고치기(id 가 있으면) — id 를 돌려준다 */
-  saveAgentDuty(input: { agentId: string; id?: string; title: string; body: string }, actor: Actor): Promise<string>;
-  deleteAgentDuty(input: { agentId: string; id: string }, actor: Actor): Promise<void>;
+  /** byAgent 면 담당이 대화 중에 한백이 시켜서 고친 것 — 감사기록에 꼬리가 붙는다(주간 기록의 「에이전트가 적음」) */
+  saveAgentDuty(input: { agentId: string; id?: string; title: string; body: string; byAgent?: boolean }, actor: Actor): Promise<string>;
+  deleteAgentDuty(input: { agentId: string; id: string; byAgent?: boolean }, actor: Actor): Promise<{ title: string }>;
   /*
    * 팀 (store/agent-team · migrations/0120) — 팀장(전략·기획)이 세운 목표 · 방향을 실무자 모두가 읽고, 팀장은 실무자가 한백과
    * 나눈 것을 읽는다(한백 2026-11-04 「상호보완구조」).

@@ -154,23 +154,25 @@ describe('도구 — 목표 · 방향은 팀장만, 팀원 읽기 · 남기기�
   const names = (tools: unknown[]) => tools.map((t) => (t as { name: string }).name);
   const hands = {
     saveDirection: async () => ({ id: 'x', title: 'x' }), tellTeammate: async () => '정산 담당', saveMemo: async () => ({ id: 'm', title: 'm' }),
+    saveDuty: async () => 'd',
   };
+  const DUTY = ['save_duty', 'delete_duty'];
   const MEMORY = ['open_memo', 'save_memo', 'delete_memo', 'search_history', 'read_file'];
 
   it('팀장은 라우트가 손을 이어 줄 때 메모장 · 팀의 도구 · save_direction · delete_direction 을 쥔다(웹 검색은 그대로)', () => {
     expect(names(toolsOf(LEAD, hands))).toEqual([
-      'add_task', 'complete_task', 'draft_mail', ...MEMORY, 'team_history', 'tell_teammate',
+      'add_task', 'complete_task', 'draft_mail', ...DUTY, ...MEMORY, 'team_history', 'tell_teammate',
       'save_direction', 'delete_direction', 'web_search',
     ]);
     expect(names(toolsOf({ ...LEAD, id: 'solar-strategy', biz: 'solar' }, hands))).toContain('tell_teammate');
-    for (const t of ['save_direction', 'tell_teammate', 'open_memo']) expect(names(toolsOf(LEAD, {}))).not.toContain(t);
+    for (const t of ['save_direction', 'tell_teammate', 'open_memo', 'save_duty']) expect(names(toolsOf(LEAD, {}))).not.toContain(t);
   });
 
   it('실무자도 메모장을 쓰고 팀원을 읽고 남긴다 — 목표 · 방향은 손이 이어져도 쥐지 않는다', () => {
     for (const a of [NICE, SETTLE, LUMORA]) {
       const got = names(toolsOf(a, hands));
       expect(got, a.id).not.toContain('save_direction');
-      for (const t of [...MEMORY, 'team_history', 'tell_teammate']) expect(got, a.id).toContain(t);
+      for (const t of [...DUTY, ...MEMORY, 'team_history', 'tell_teammate']) expect(got, a.id).toContain(t);
     }
   });
 });

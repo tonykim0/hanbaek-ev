@@ -88,6 +88,26 @@ describe('업무 정의', () => {
     expect((await repo.getAgent(AGENT, admin)).duties.some((d) => d.id === id)).toBe(false);
   });
 
+  it('담당이 대화 중에 한백이 시켜 고친 것(byAgent)은 주간 기록에 그 담당이 적은 것으로 선다 · 같은 것으로 고치면 그대로', async () => {
+    const id = await repo.saveAgentDuty({ agentId: AGENT, title: `${mark} 단가표 정리`, body: '정책이 오면', byAgent: true }, admin);
+    expect(await repo.saveAgentDuty({ agentId: AGENT, id, title: `${mark} 단가표 정리`, body: '정책이 오면' }, admin)).toBe(id);
+    await repo.saveAgentDuty({ agentId: AGENT, id, title: `${mark} 단가표 정리`, body: '정책이 오면 바로', byAgent: true }, admin);
+    expect(await repo.deleteAgentDuty({ agentId: AGENT, id, byAgent: true }, admin)).toEqual({ title: `${mark} 단가표 정리` });
+
+    const rows = await db().select().from(auditLog)
+      .where(and(like(auditLog.action, '에이전트 업무 정의%'), or(like(auditLog.newValue, `%${mark} 단가표%`), like(auditLog.oldValue, `%${mark} 단가표%`))));
+    expect(rows.map((r) => r.action).sort()).toEqual(
+      ['에이전트 업무 정의 (에이전트가 적음)', '에이전트 업무 정의 삭제 (에이전트가 적음)', '에이전트 업무 정의 수정 (에이전트가 적음)'],
+    );
+    const week = mondayOf(today());
+    const events = (await repo.getAgent(AGENT, admin, { week })).week?.events.filter((e) => e.title.includes(`${mark} 단가표`)) ?? [];
+    expect(events.map((e) => [e.kind, e.byAgent, e.by])).toEqual([
+      ['duty-added', true, 'SK일렉링크 담당'], ['duty-edited', true, 'SK일렉링크 담당'], ['duty-deleted', true, 'SK일렉링크 담당'],
+    ]);
+    const weekRow = (await repo.getAgent(AGENT, admin)).weeks.find((w) => w.start === week);
+    expect(weekRow?.dutyChanges).toBeGreaterThanOrEqual(3);
+  });
+
   it('이름 없는 정의는 422 · 글이 아닌 값은 400', async () => {
     await signIn(USERS.admin);
     expect((await call(postDuty, { body: { title: '   ' }, params })).status).toBe(422);
