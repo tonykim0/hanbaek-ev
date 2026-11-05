@@ -1,19 +1,23 @@
 /**
  * 여러 현장의 같은 서류를 받아 zip 하나로 묶고 Blob 에 올린다 (서버 전용 — 이름 · 판단은 lib/agents/bundle).
  *
- * 한백 2026-11-05 「콘솔 프로젝트마다 저장되어있는 파일을 한꺼번에 불러와서 압축해서 이메일로 보내고 싶은데」. 담당의 draft_mail 이
- * site_docs 를 받으면 라우트가 이것을 부르고, 돌려준 zip 을 25MB 안이면 첨부(agent_mails.doc_files)로, 넘으면 본문의 링크로 단다.
+ * 한백 2026-11-05 「콘솔 프로젝트마다 저장되어있는 파일을 한꺼번에 불러와서 압축해서 이메일로 보내고 싶은데」. 담당의
+ * bundle_site_docs 가 이것을 부르고, ★한 통에 들어갈 만큼씩 나눈 묶음★(lib/agents/bundle packSites — 같은 날 「B로하자」)을 하나씩
+ * 올린다. 담당은 묶음마다 draft_mail attach_bundle_ids 로 한 통씩 쓰고(agent_mails.doc_files 첨부), 한 현장만으로 상한을 넘은 묶음만
+ * link_bundle_ids 로 본문에 링크를 단다. 묶음 id 는 올린 자리의 무작위 마디라, 뒤의 답에서도 bundleFileOf 로 다시 찾는다.
  *
  * ★운영사 담당은 제 운영사 현장만 묶는다★ — 현대엔지니어링 담당이 다른 운영사의 서류를 실수로 보내지 않게. 정산 · 전략·기획은
  * 전기차 현장 모두. zip 은 이 담당의 자리(agent-files/<담당>/bundles/<무작위>/)에 남는다 — 메일을 보낼 때 그 주소에서 다시 받아
  * 붙이고(app/api/agents/[id]/mails/[mailId]/send), 링크로 보낼 때는 받는 사람이 그 주소로 받는다(주소는 무작위라 추측할 수 없다).
  */
 import JSZip from 'jszip';
-import { put } from '@vercel/blob';
+import { list, put } from '@vercel/blob';
 import type { Actor } from '@/lib/data/repository';
 import { getRepository } from '@/lib/data';
 import type { Agent } from '@/types/agents';
-import { BUNDLE_LIMIT, bundleEntryName, bundleZipName, docSlotOf, sizeText, type BundleResult } from './bundle';
+import {
+  BUNDLE_LIMIT, bundleEntryName, bundleZipName, docSlotOf, packSites, partBytesOf, sizeText, type BundlePart, type BundleResult,
+} from './bundle';
 
 /** 파일 하나를 받는 시간 · 한꺼번에 받는 수 */
 const FETCH_MS = 30_000;
@@ -33,6 +37,8 @@ export async function bundleSiteDocs(input: {
   agent: Agent;
   refs: string[];
   doc: string;
+  /** 한 묶음(메일 한 통)의 상한 MB — 비우면 기본 20MB(lib/agents/bundle PART_MB) */
+  maxMb?: number | null;
   siteOf(ref: string): string | null;
   actor: Actor;
 }): Promise<BundleResult> {
@@ -79,23 +85,53 @@ export async function bundleSiteDocs(input: {
     if (total > BUNDLE_LIMIT.bytes) throw new Error(`묶을 파일이 ${sizeText(BUNDLE_LIMIT.bytes)}를 넘는다 — 현장을 나눠 두 통으로 보낸다.`);
   }
 
-  const zip = new JSZip();
-  const used = new Set<string>();
-  jobs.forEach((j, k) => zip.file(bundleEntryName(j.site, slot, j.file.name, used), bytes[k]));
-  /* 서류는 대개 이미 압축된 꼴(pdf · pptx · jpg)이라 세게 누르지 않는다 */
-  const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 3 } });
-  const name = bundleZipName(slot, withFiles.length);
-  const blob = await put(`agent-files/${agent.id}/bundles/${crypto.randomUUID()}/${name}`, buf, {
-    access: 'public',
-    contentType: 'application/zip',
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-  });
+  /* 나눈다 — 현장을 쪼개지 않고 차례대로 한 묶음이 상한 안에 들게(lib/agents/bundle packSites) */
+  const limit = partBytesOf(input.maxMb);
+  const siteBytes = withFiles.map((s) => jobs.reduce((n, j, k) => (j.site === s ? n + bytes[k].length : n), 0));
+  const groups = packSites(siteBytes, limit);
+  const folder = `agent-files/${agent.id}/bundles`;
+  const parts: BundlePart[] = [];
+  for (const [g, group] of groups.entries()) {
+    const zip = new JSZip();
+    const used = new Set<string>();
+    const members = group.map((i) => withFiles[i]);
+    jobs.forEach((j, k) => {
+      if (members.includes(j.site)) zip.file(bundleEntryName(j.site, slot, j.file.name, used), bytes[k]);
+    });
+    /* 서류는 대개 이미 압축된 꼴(pdf · pptx · jpg)이라 세게 누르지 않는다 */
+    const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 3 } });
+    const name = bundleZipName(slot, members.length, { index: g + 1, total: groups.length });
+    const id = crypto.randomUUID();
+    const blob = await put(`${folder}/${id}/${name}`, buf, {
+      access: 'public',
+      contentType: 'application/zip',
+      token: process.env.BLOB_READ_WRITE_TOKEN,
+    });
+    parts.push({
+      id,
+      zip: { name, url: blob.url, size: buf.length, contentType: 'application/zip' },
+      sites: members.map((m) => ({ mgmtNo: m.mgmtNo, name: m.name, files: m.files.length })),
+      over: buf.length > limit,
+    });
+  }
   return {
     slot,
-    zip: { name, url: blob.url, size: buf.length, contentType: 'application/zip' },
-    included: withFiles.map((s) => ({ mgmtNo: s.mgmtNo, name: s.name, files: s.files.length })),
+    limit,
+    parts,
     missing,
     unknown,
     otherCpo,
   };
+}
+
+/** 앞서 올린 묶음 하나 — id 는 올린 자리의 무작위 마디. 이 담당의 자리에서만 찾는다(없으면 null) */
+export async function bundleFileOf(agentId: string, id: string): Promise<BundlePart['zip'] | null> {
+  if (!/^[0-9a-f-]{36}$/.test(id)) return null;
+  const { blobs } = await list({ prefix: `agent-files/${agentId}/bundles/${id}/`, limit: 1, token: process.env.BLOB_READ_WRITE_TOKEN });
+  const b = blobs[0];
+  if (!b) return null;
+  const tail = b.pathname.slice(b.pathname.lastIndexOf('/') + 1);
+  let name = tail;
+  try { name = decodeURIComponent(tail); } catch { /* 이미 글자 그대로다 */ }
+  return { name, url: b.url, size: b.size, contentType: 'application/zip' };
 }

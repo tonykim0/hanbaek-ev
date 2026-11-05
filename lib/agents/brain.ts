@@ -42,7 +42,7 @@ import { agentFileRead } from './files';
 import { fileText, fileTextsOf } from './file-text';
 import { awaitsReply, pendingOf } from './memory';
 import { MEMO_MAX, memoBlock, memosToOpen, memoText } from './memos';
-import { attachable, bundleLinkLines, bundleSummary, type BundleResult } from './bundle';
+import { attachable, bundleLinkLines, bundleText, type BundlePart, type BundleResult } from './bundle';
 import { josa, siteMailOfCpo, type SiteMailSpec } from '@/lib/site-mail';
 import type {
   Agent, AgentDuty, AgentFile, AgentMemo, AgentMemos, AgentMessage, AgentMessageMeta, AgentSource, AgentTask, AgentTeam, MemoScope,
@@ -183,8 +183,9 @@ const RULES = `일하는 법:
   업무 정의에 메일을 보내는 경우와 양식이 있으면 그대로 따르고, 한백이 메일을 쓰라고 할 때나 업무 정의가 정한 경우에만 올린다.
   받는 사람 주소는 업무 정의 · 대화 · 자료에 적힌 것만 쓴다. 모르면 초안을 올리지 말고 누구에게 보낼지 묻는다.
   초안을 올렸으면 답에 한 줄로 말하고(본문을 답에 다시 옮겨 적지 않는다), 같은 메일을 두 번 올리지 않는다.
-  여러 현장의 서류를 한 통으로 보내야 하면 draft_mail 의 site_docs(관리번호들 + 서류 칸 이름)로 콘솔이 묶어 붙이게 한다 — 한백에게
-  파일을 모아 올려 달라고 하지 않는다. 묶은 결과(뺀 현장 · 링크로 단 것)는 답에 그대로 전한다.`;
+  여러 현장의 서류를 한 통으로 보내야 하면 bundle_site_docs(관리번호들 + 서류 칸 이름)로 콘솔이 묶게 하고, 묶음마다 draft_mail 의
+  attach_bundle_ids 로 한 통씩 쓴다 — 한 통에 들어갈 만큼씩 나뉘니 제목 · 본문에는 그 묶음에 든 현장만 쓴다. 한백에게 파일을 모아
+  올려 달라고 하지 않는다. 뺀 현장 · 나눈 수는 답에 그대로 전한다.`;
 
 /** 시스템 — 업무 정의. 고칠 줄의 id 를 같이 준다(save_duty · delete_duty — 한백이 시킬 때만) */
 function dutiesBlock(duties: AgentDuty[]): string {
@@ -273,9 +274,12 @@ export interface AgentHands {
     docFiles?: Array<{ name: string; url: string; size: number; contentType: string | null }>;
   }): Promise<string>;
   /**
-   * 여러 현장의 같은 서류를 zip 하나로 묶어 올린다 — 전기차 담당만(lib/agents/bundle-run). 묶을 파일이 없으면 사람 말로 던진다
+   * 여러 현장의 같은 서류를 한 통에 들어갈 만큼씩 zip 으로 나눠 묶어 올린다 — 전기차 담당만(lib/agents/bundle-run). 묶을 파일이 없으면
+   * 사람 말로 던진다
    */
-  bundleSiteDocs?(input: { sites: string[]; doc: string }): Promise<BundleResult>;
+  bundleSiteDocs?(input: { sites: string[]; doc: string; maxMb: number | null }): Promise<BundleResult>;
+  /** 앞서 올린 묶음 하나(id) — 뒤의 답에서 붙일 때. 이 담당의 것이 아니면 null */
+  bundleFile?(id: string): Promise<BundlePart['zip'] | null>;
   /** 관리번호(또는 현장 id) → 현장 id. 모르면 null */
   siteOf(ref: string): string | null;
   /**
@@ -315,8 +319,11 @@ export interface AgentHands {
 /** 한 답에서 적는 메모 상한 — 잘못 돈 답이 메모장을 채우지 않게 */
 const MEMOS_PER_TURN = 6;
 
-/** 한 답에 올리는 메일 초안 상한 — 잘못 돈 답이 초안을 쏟아 내지 않게 */
-const MAILS_PER_TURN = 3;
+/**
+ * 한 답에 올리는 메일 초안 상한 — 잘못 돈 답이 초안을 쏟아 내지 않게. 여러 현장 묶음이 한 통 20MB 안으로 나뉘면 묶음마다 한 통이라
+ * 셋으로는 모자랐다(현대 16개소 62.6MB → 넷, 2026-11-05)
+ */
+const MAILS_PER_TURN = 8;
 
 /**
  * 할 일 적기 — 전기차 담당은 관련 현장(관리번호)을 붙인다. 태양광 담당은 붙이지 않는다: 할 일의 현장 칸은 전기차 현장이고
@@ -351,18 +358,18 @@ const COMPLETE_TASK_TOOL = {
 };
 
 /**
- * 메일 초안 — 전기차 담당은 site_docs 로 여러 현장의 같은 서류를 zip 하나로 묶어 붙인다(lib/agents/bundle · 한백 2026-11-05
- * 「콘솔 프로젝트마다 저장되어있는 파일을 한꺼번에 불러와서 압축해서 이메일로」). 태양광 현장의 파일은 아직 묶지 않는다.
+ * 메일 초안 — 전기차 담당은 bundle_site_docs 로 묶은 현장 서류를 attach_bundle_ids 로 붙인다(lib/agents/bundle · 한백 2026-11-05
+ * 「콘솔 프로젝트마다 저장되어있는 파일을 한꺼번에 불러와서 압축해서 이메일로」 · 「B로하자」 — 첨부로만, 한 통에 들어갈 만큼씩).
+ * 태양광 현장의 파일은 아직 묶지 않는다.
  */
-function draftMailTool(withSiteDocs: boolean) {
+function draftMailTool(withBundles: boolean) {
   return {
     name: 'draft_mail',
     description: '한백이 승인할 메일 초안을 올린다. 너는 메일을 보내지 못한다 — 한백이 초안을 보고 「승인하고 보내기」를 눌러야 나간다. '
       + '업무 정의에 정해진 경우 · 양식이 있으면 그대로 따른다. 받는 사람 주소는 업무 정의 · 대화 · 자료에 적힌 것만 쓰고 지어내지 않는다.'
-      + (withSiteDocs
-        ? ' 여러 현장의 같은 서류(설치승인서 · 계약서 등 콘솔 현장에 올라가 있는 서류)를 한 통으로 보낼 때는 site_docs 를 쓴다 — 콘솔이 '
-          + '현장마다 그 서류 칸의 파일을 받아 zip 하나로 묶어 붙인다(25MB 를 넘으면 본문 끝에 내려받기 링크를 단다). 한백에게 파일을 '
-          + '모아 올려 달라고 하지 않는다.'
+      + (withBundles
+        ? ' bundle_site_docs 로 묶은 현장 서류는 attach_bundle_ids 로 붙인다 — 묶음이 여럿이면 묶음마다 한 통씩, 제목 · 본문에는 그 묶음에 든 '
+          + '현장만 쓴다. 한 현장만으로 상한을 넘은 묶음만 link_bundle_ids 로 본문에 내려받기 링크를 단다.'
         : ''),
     input_schema: {
       type: 'object',
@@ -374,15 +381,13 @@ function draftMailTool(withSiteDocs: boolean) {
         attach_file_ids: {
           type: 'array', items: { type: 'string' }, description: '붙일 파일 — 「[넘긴 파일 … · id=…]」의 id (선택)',
         },
-        ...(withSiteDocs ? {
-          site_docs: {
-            type: 'object',
-            description: '여러 현장의 같은 서류를 zip 하나로 묶어 붙인다 (선택)',
-            properties: {
-              sites: { type: 'array', items: { type: 'string' }, description: '현장 관리번호들, 예: HB-2026-270' },
-              doc: { type: 'string', description: '서류 칸 이름 — 콘솔 서류 칸의 이름대로, 예: 설치승인서 · 계약서 · 사업자등록증' },
-            },
-            required: ['sites', 'doc'],
+        ...(withBundles ? {
+          attach_bundle_ids: {
+            type: 'array', items: { type: 'string' }, description: '첨부로 붙일 묶음 — bundle_site_docs 가 돌려준 묶음의 id (선택)',
+          },
+          link_bundle_ids: {
+            type: 'array', items: { type: 'string' },
+            description: '첨부로 못 붙는 묶음(한 현장만으로 상한을 넘은 것)의 id — 본문 끝에 내려받기 링크로 단다 (선택)',
           },
         } : {}),
       },
@@ -390,6 +395,23 @@ function draftMailTool(withSiteDocs: boolean) {
     },
   };
 }
+
+/** 여러 현장의 같은 서류를 묶는다 — 전기차 담당(라우트가 손을 이어 줄 때). 묶기만 하고, 메일은 draft_mail 로 묶음마다 쓴다 */
+const BUNDLE_TOOL = {
+  name: 'bundle_site_docs',
+  description: '여러 현장의 같은 서류(설치승인서 · 계약서 등 콘솔 현장에 올라가 있는 서류 칸)를 zip 으로 묶는다. 한 통에 첨부로 들어갈 만큼씩 '
+    + '(기본 20MB) 현장을 쪼개지 않고 나눠 묶고, 묶음마다 id 를 돌려준다 — 그 id 로 draft_mail 의 attach_bundle_ids 에 붙여 묶음마다 '
+    + '한 통씩 초안을 쓴다. 한백에게 파일을 모아 올려 달라고 하지 않는다. 운영사 담당은 제 운영사 현장만 묶인다.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      sites: { type: 'array', items: { type: 'string' }, description: '현장 관리번호들, 예: HB-2026-270' },
+      doc: { type: 'string', description: '서류 칸 이름 — 콘솔 서류 칸의 이름대로, 예: 설치승인서 · 계약서 · 사업자등록증' },
+      max_mb: { type: 'number', description: '메일 한 통에 붙일 묶음의 크기 MB (선택 — 기본 20, 5~25). 한백이 정하면 그 값' },
+    },
+    required: ['sites', 'doc'],
+  },
+};
 
 /** 현장 양식 메일 도구 — 그 운영사의 양식(spec)으로만 쓴다 */
 function siteMailTool(spec: SiteMailSpec) {
@@ -587,6 +609,7 @@ export function toolsOf(
     addTaskTool(agent.biz === 'ev'),
     COMPLETE_TASK_TOOL,
     draftMailTool(Boolean(hands.bundleSiteDocs)),
+    ...(hands.bundleSiteDocs ? [BUNDLE_TOOL] : []),
     ...(siteSpec ? [siteMailTool(siteSpec)] : []),
     ...(agent.kind === 'operator' && hands.pricingTable ? [PRICING_TOOL] : []),
     ...(hands.saveDuty ? DUTY_TOOLS : []),
@@ -688,6 +711,8 @@ export async function agentReply(input: {
   const told: string[] = [];
   const memoed: string[] = [];
   const dutied: string[] = [];
+  /* 이 답에서 묶은 현장 서류 — id → zip(draft_mail 이 붙인다) */
+  const bundles = new Map<string, BundlePart['zip']>();
   let usd = 0;
   /* 바퀴마다의 토큰을 모은다 — 사용량 표가 캐시가 얼마나 먹었는지 보여 준다(store/agents agentUsage) */
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -716,29 +741,49 @@ export async function agentReply(input: {
         done.push(await hands.completeTask(id));
         return { type: 'tool_result', tool_use_id: block.id, content: '끝냈다' };
       }
+      if (block.name === 'bundle_site_docs' && hands.bundleSiteDocs) {
+        const sites = Array.isArray(args.sites) ? args.sites.map(str).filter(Boolean) : [];
+        const doc = str(args.doc);
+        if (sites.length === 0 || !doc) return fail('sites(관리번호들)와 doc(서류 이름)가 있어야 한다.');
+        const maxMb = typeof args.max_mb === 'number' && Number.isFinite(args.max_mb) ? args.max_mb : null;
+        const b = await hands.bundleSiteDocs({ sites, doc, maxMb });
+        for (const part of b.parts) bundles.set(part.id, part.zip);
+        return { type: 'tool_result', tool_use_id: block.id, content: bundleText(b) };
+      }
       if (block.name === 'draft_mail') {
         if (mails.length >= MAILS_PER_TURN) return fail(`한 답에 메일 초안은 ${MAILS_PER_TURN}통까지다.`);
         const subject = str(args.subject);
         const ids = Array.isArray(args.attach_file_ids) ? args.attach_file_ids.map(str).filter(Boolean) : [];
         let body = str(args.body);
-        /* 여러 현장의 같은 서류 — 묶어 올리고, 25MB 안이면 첨부 · 넘으면 본문 끝의 링크(lib/agents/bundle) */
-        const sd = args.site_docs as { sites?: unknown; doc?: unknown } | undefined;
-        let docFiles: Array<{ name: string; url: string; size: number; contentType: string | null }> = [];
-        let bundled = '';
-        if (sd && hands.bundleSiteDocs) {
-          const sites = Array.isArray(sd.sites) ? sd.sites.map(str).filter(Boolean) : [];
-          if (sites.length === 0 || !str(sd.doc)) return fail('site_docs 에는 sites(관리번호들)와 doc(서류 이름)가 있어야 한다.');
-          const b = await hands.bundleSiteDocs({ sites, doc: str(sd.doc) });
-          const how = attachable(b.zip.size) ? 'attach' : 'link';
-          if (how === 'attach') docFiles = [b.zip];
-          else body += bundleLinkLines(b.zip);
-          bundled = ` ${bundleSummary(b, how)}.`;
+        /* 묶은 현장 서류(bundle_site_docs) — 첨부 묶음은 docFiles 로, 링크 묶음은 본문 끝 줄로(lib/agents/bundle) */
+        const idsOf = (v: unknown) => (Array.isArray(v) ? v.map(str).filter(Boolean) : []);
+        const attachIds = idsOf(args.attach_bundle_ids);
+        const linkIds = idsOf(args.link_bundle_ids);
+        const docFiles: Array<{ name: string; url: string; size: number; contentType: string | null }> = [];
+        if (attachIds.length || linkIds.length) {
+          if (!hands.bundleFile) return fail('이 담당은 현장 서류 묶음을 붙이지 못한다.');
+          const zipOf = async (id: string) => bundles.get(id) ?? (await hands.bundleFile!(id));
+          for (const bid of attachIds) {
+            const z = await zipOf(bid);
+            if (!z) return fail(`묶음 id=${bid} 를 찾지 못했다 — bundle_site_docs 가 돌려준 id 를 쓴다.`);
+            if (!attachable(z.size, docFiles.reduce((n, f) => n + f.size, 0))) {
+              return fail(`묶음 「${z.name}」(${z.size}바이트)까지 붙이면 한 통의 첨부 한도를 넘는다 — 묶음마다 한 통씩 쓰거나 링크로 단다.`);
+            }
+            docFiles.push(z);
+          }
+          for (const bid of linkIds) {
+            const z = await zipOf(bid);
+            if (!z) return fail(`묶음 id=${bid} 를 찾지 못했다 — bundle_site_docs 가 돌려준 id 를 쓴다.`);
+            body += bundleLinkLines(z);
+          }
         }
         const id = await hands.draftMail({ to: args.to, cc: args.cc, subject, body, fileIds: ids, docFiles });
         mails.push(subject);
         return {
           type: 'tool_result', tool_use_id: block.id,
-          content: `초안을 올렸다 (id=${id}) — 한백이 승인하면 나간다. 아직 보내지 않았다.${bundled}`,
+          content: `초안을 올렸다 (id=${id}) — 한백이 승인하면 나간다. 아직 보내지 않았다.`
+            + (docFiles.length ? ` 붙인 묶음: ${docFiles.map((f) => f.name).join(', ')}.` : '')
+            + (linkIds.length ? ` 링크로 단 묶음 ${linkIds.length}개.` : ''),
         };
       }
       if (block.name === 'site_mail' && siteSpec && hands.siteMail) {
