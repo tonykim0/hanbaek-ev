@@ -70,12 +70,14 @@ const GROUPS: Group[] = [
      *
      * ★맨 위 — 현황 위다. 이름은 「AI에이전트」★ (한백 지시 2026-11-04 「사이드바에서 에이전트를 현황 위로 올려주고
      * AI에이전트 라고 명칭을 바꿔줘」). 관리자만 보는 묶음이라 다른 계정의 사이드바는 그대로 현황이 맨 위다.
-     * 접힌 사이드바(56px)에는 「AI에이전트」가 안 들어가 짧은 이름은 「AI」다. 화면 제목도 같은 이름이다(메뉴 이름 = 화면 이름).
+     * 접힌 사이드바(56px)에는 「AI에이전트」가 안 들어가 짧은 이름은 「AI」다. ★메뉴는 「팀 현황」이다★(2026-11-05 한백 「AI에이전트 하고
+     * 또 AI에이전트라고 적어놨네. 이 페이지의 제목을 바꿔보」 — 묶음 이름과 메뉴 이름이 같은 말을 두 번 했다). 화면 제목도 같은
+     * 이름이다(메뉴 이름 = 화면 이름). 「AI에이전트」는 묶음 이름으로만 남는다.
      */
     label: 'AI에이전트',
     adminOnly: true,
     items: [
-      { href: '/admin/agents', label: 'AI에이전트', short: 'AI', note: '전략 · 운영사별 · 정산', adminOnly: true },
+      { href: '/admin/agents', label: '팀 현황', short: 'AI', note: '전략 · 운영사별 · 정산', adminOnly: true },
     ],
   },
   {
@@ -271,7 +273,7 @@ const SOLAR_GROUPS: Group[] = [
     label: 'AI에이전트',
     adminOnly: true,
     items: [
-      { href: '/solar/agents', label: 'AI에이전트', short: 'AI', note: '전략 · 사업자별 · 정산', adminOnly: true },
+      { href: '/solar/agents', label: '팀 현황', short: 'AI', note: '전략 · 사업자별 · 정산', adminOnly: true },
     ],
   },
   {

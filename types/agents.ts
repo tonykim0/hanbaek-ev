@@ -305,6 +305,11 @@ export interface AgentSummary extends Agent {
   openTasks: number;
   /** 기한이 지난 열린 할 일 */
   lateTasks: number;
+  /**
+   * 맨 앞의 열린 할 일 — 현황의 「지금 하는 일」 한 줄(한백 2026-11-05 「각 담당자별로 현재 하고 있는 업무를 한줄로」).
+   * 담당 화면의 할 일 목록과 같은 차례(기한 지난 것 · 이른 것이 앞, 기한 없는 것은 그 뒤). 열린 것이 없으면 null
+   */
+  topTask: AgentTask | null;
   /** 마지막 말 — 없으면 null */
   last: { role: AgentMessageRole; at: string; line: string } | null;
   /** 최근 7일(한국 달력, 오래된 날부터 오늘까지)의 말 수 — 가지 줄의 활동 칸 */

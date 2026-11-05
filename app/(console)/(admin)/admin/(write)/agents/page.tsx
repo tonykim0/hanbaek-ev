@@ -1,6 +1,7 @@
 import { AgentsTeam } from '@/components/agents/AgentsTeam';
 
-export const metadata = { title: 'AI에이전트' };
+/* 탭은 화면 밖에서 읽히니 묶음 이름을 앞에 단다 — 화면 안의 제목은 「팀 현황」(사이드바 묶음 「AI에이전트」 밑) */
+export const metadata = { title: 'AI에이전트 팀 현황' };
 export const dynamic = 'force-dynamic';
 
 /**

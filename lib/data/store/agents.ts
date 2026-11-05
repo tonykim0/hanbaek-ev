@@ -9,7 +9,7 @@
  *
  * 에이전트가 보는 현장·지급·기성은 여기 없다 — 콘솔이 이미 셈하는 것을 부를 때마다 읽는다(lib/agents/scope).
  */
-import { and, asc, desc, eq, gte, inArray, lt, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, isNull, lt, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
@@ -247,7 +247,7 @@ export const agentStore: Pick<
     /* 활동 칸 이레 — 한국 달력으로 오늘부터 엿새 전까지 */
     const days = Array.from({ length: ACTIVITY_DAYS }, (_, i) => shiftDay(now, i - (ACTIVITY_DAYS - 1)));
     const dayOfAt = sql<string>`to_char(${agentMessages.at} at time zone 'Asia/Seoul', 'YYYY-MM-DD')`;
-    const [rows, duties, tasks, lasts, recent, mails] = await allSlots([
+    const [rows, duties, tasks, lasts, recent, mails, openRows] = await allSlots([
       () => db.select().from(agents).where(eq(agents.biz, biz)).orderBy(asc(agents.sort)),
       () => db.select({ agentId: agentDuties.agentId, n: sql<number>`count(*)::int` })
         .from(agentDuties).groupBy(agentDuties.agentId),
@@ -269,10 +269,24 @@ export const agentStore: Pick<
         .groupBy(agentMessages.agentId, dayOfAt),
       () => db.select({ agentId: agentMails.agentId, n: sql<number>`count(*)::int` })
         .from(agentMails).where(inArray(agentMails.status, PENDING_MAIL)).groupBy(agentMails.agentId),
+      /* 「지금 하는 일」 — 그 사업 담당의 열린 할 일(끝낸 것은 안 읽는다 · 열린 것은 몇 안 된다) */
+      () => db.select({ t: agentTasks, projectName: projects.name, agentName: agents.name })
+        .from(agentTasks)
+        .innerJoin(agents, eq(agents.id, agentTasks.agentId))
+        .leftJoin(projects, eq(projects.id, agentTasks.projectId))
+        .where(and(eq(agents.biz, biz), isNull(agentTasks.doneAt))),
     ] as const);
+    /* 담당마다 맨 앞의 할 일 — 담당 화면의 할 일 목록과 같은 차례(taskOrder: 기한 지난 것 · 이른 것이 앞) */
+    const topOf = new Map<string, AgentTask>();
+    for (const { t, projectName, agentName } of openRows) {
+      const task = taskOf(t, projectName ?? null, agentName);
+      const cur = topOf.get(t.agentId);
+      if (!cur || taskOrder(task, cur) < 0) topOf.set(t.agentId, task);
+    }
     const mailOf = new Map(mails.map((m) => [m.agentId, m.n]));
     const dutyOf = new Map(duties.map((d) => [d.agentId, d.n]));
-    const taskOf = new Map(tasks.map((t) => [t.agentId, t]));
+    /* 담당마다 열린 · 기한 지난 할 일 수 — 이름이 위 taskOf(할 일 한 줄 짓기)를 가리지 않게 */
+    const countOf = new Map(tasks.map((t) => [t.agentId, t]));
     const lastOf = new Map(lasts.map((m) => [m.agentId, m]));
     const dayKey = (agentId: string, day: string) => `${agentId}|${day}`;
     const recentOf = new Map(recent.map((x) => [dayKey(x.agentId, x.day), x]));
@@ -281,8 +295,9 @@ export const agentStore: Pick<
       return {
         ...agentOf(r),
         duties: dutyOf.get(r.id) ?? 0,
-        openTasks: taskOf.get(r.id)?.open ?? 0,
-        lateTasks: taskOf.get(r.id)?.late ?? 0,
+        openTasks: countOf.get(r.id)?.open ?? 0,
+        lateTasks: countOf.get(r.id)?.late ?? 0,
+        topTask: topOf.get(r.id) ?? null,
         activity: days.map((day) => ({ day, n: recentOf.get(dayKey(r.id, day))?.n ?? 0 })),
         usdToday: Number(recentOf.get(dayKey(r.id, now))?.usd ?? 0),
         pendingMails: mailOf.get(r.id) ?? 0,

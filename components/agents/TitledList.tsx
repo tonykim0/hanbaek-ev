@@ -5,7 +5,7 @@
  * 칸이 열린다(화면 규칙 4). 넣고 고치면 url 에 POST { id?, title, body }, 지우면 url/{id} 에 DELETE. 고친 기록은 감사기록에 앞뒤가
  * 남고 주간 기록이 보여준다. 읽기만(readOnly)이면 단추가 없다 — 실무자 화면의 목표 · 방향(팀장 쪽에서 고친다).
  */
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useAction } from '@/lib/use-action';
 import { Btn, Err, FIELD, PANEL, SectionHead, TEXT } from '@/components/ui';
 import { Spark } from './kit';
@@ -30,7 +30,7 @@ export function TitledList({ heading, meta, items, url, placeholder, readOnly = 
   url: string;
   placeholder: { title: string; body: string };
   readOnly?: boolean;
-  /** 내용을 세 줄까지만 — 다른 칸과 나란히 서는 자리(팀 화면) */
+  /** 내용을 세 줄까지만 — 넘치면 「펼치기」(팀 화면 · 담당 화면의 목표 · 방향 — 길게 서서 할 일을 화면 밖으로 밀었다) */
   clamp?: boolean;
 }) {
   const [adding, setAdding] = useState(false);
@@ -57,6 +57,19 @@ function Item({ url, item, n, placeholder, readOnly, clamp }: {
   url: string; item: TitledItem; n: number; placeholder: { title: string; body: string }; readOnly: boolean; clamp: boolean;
 }) {
   const [editing, setEditing] = useState(false);
+  const [more, setMore] = useState(false);
+  const [overflow, setOverflow] = useState(false);
+  const bodyRef = useRef<HTMLParagraphElement>(null);
+  /* 세 줄을 넘는지는 그려 봐야 안다 — 폭이 바뀌면 다시 잰다. 펼친 동안은 재지 않는다(「접기」가 남아야 한다) */
+  useEffect(() => {
+    const el = bodyRef.current;
+    if (!clamp || more || !el) return;
+    const check = () => setOverflow(el.scrollHeight > el.clientHeight + 1);
+    check();
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [clamp, more, item.body, editing]);
   if (editing) {
     return (
       <li className="py-2.5">
@@ -72,9 +85,12 @@ function Item({ url, item, n, placeholder, readOnly, clamp }: {
         {!readOnly && <Btn size="sm" kind="quiet" onClick={() => setEditing(true)}>수정</Btn>}
       </div>
       {item.body.trim() && (
-        <p className={`whitespace-pre-wrap break-keep pl-6 text-small leading-relaxed text-slate-600 ${clamp ? 'line-clamp-3' : ''}`}>
+        <p ref={bodyRef} className={`whitespace-pre-wrap break-keep pl-6 text-small leading-relaxed text-slate-600 ${clamp && !more ? 'line-clamp-3' : ''}`}>
           {item.body}
         </p>
+      )}
+      {clamp && (overflow || more) && (
+        <Btn size="sm" kind="quiet" className="ml-6 self-start" onClick={() => setMore((v) => !v)}>{more ? '접기' : '펼치기'}</Btn>
       )}
       {/* 누가 · 언제 — 무엇이 바뀌었는지는 주간 기록이 그 주에 앞뒤를 보여준다 */}
       {(item.author || item.updatedAt) && (

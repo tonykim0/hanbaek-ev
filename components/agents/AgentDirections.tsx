@@ -16,7 +16,7 @@ export function AgentDirections({ leadId, directions, leadLink, clamp = false }:
   directions: AgentDirection[];
   /** 실무자 화면 — 읽기만 하고 머리 곁에 팀장 화면으로 가는 고리를 단다 */
   leadLink?: { href: string; name: string };
-  /** 내용을 세 줄까지만 — 팀 화면 */
+  /** 내용을 세 줄까지만, 넘치면 「펼치기」 — 팀 화면 · 담당 화면 */
   clamp?: boolean;
 }) {
   return (
