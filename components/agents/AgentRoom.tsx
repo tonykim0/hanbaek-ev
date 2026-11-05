@@ -1,36 +1,43 @@
 'use client';
 
 /**
- * 담당과의 대화 — 지시 · 기록 · 에이전트의 답이 오래된 것부터 로그처럼 쌓인다. 이것이 그 담당과의 커뮤니케이션 기록이다.
+ * 담당과의 대화 — 지시 · 기록 · 에이전트의 답이 오래된 것부터 쌓인다. 이것이 그 담당과의 커뮤니케이션 기록이다.
+ *
+ * ★채팅 화면의 문법을 따른다★(한백 2026-11-05 「에이전트와 대화창 UI를 최신 채팅창 가이드라인 맞춰서 개선해줘」):
+ *   - 한백이 한 말(지시 · 기록)은 오른쪽 말풍선, 담당의 말(답 · 자동)은 왼쪽 표지 옆 맨글 — 누가 말했는지를 자리로 가른다.
+ *     기록은 점선 말풍선에 「기록」 꼬리표, 자동은 「자동」 꼬리표다. 그전의 띠(왼쪽 선)는 모든 말이 같은 줄에 서서 누구 말인지 읽어야 했다.
+ *   - 날이 바뀌면 가름줄(「오늘 · 11월 5일 (수)」) · 말마다는 시각만.
+ *   - 쓰는 칸은 아래에 붙는다 — 한 상자 안에 넘긴 파일 · 글 · 단추(파일 · 기록만 남기기 · 보내기). 글이 늘면 칸이 따라 늘고(열 줄까지),
+ *     ↵ 가 보내기 · ⇧↵ 가 줄 바꿈이다(한글 조합 중의 ↵ 는 보내지 않는다). 답을 기다리는 동안에도 다음 말을 쓸 수 있다 — 보내기만 막힌다.
+ *   - 맨 아래를 보고 있을 때만 새 말을 따라 내려간다. 위로 올려 읽는 중이면 「최근 말로 ↓」가 뜬다(떠 있는 것이라 그림자가 있다).
+ *   - 답을 쓰는 동안 그 자리에 담당의 표지와 「답 쓰는 중… 12초」 — 답은 5초에서 1분까지 걸린다. 깜빡임은 쓰지 않는다(콘솔 틀).
+ *   - 답의 「- 」 목록은 내어쓰기로 그린다(답은 마크다운 없이 줄바꿈과 「- 」만 쓴다 — lib/agents/brain). 복사는 답 밑이다.
  *
  * 남기는 길이 둘이다.
- *   보내기        지시를 남기고 에이전트를 부른다(/messages → /reply). 답을 쓰는 동안 단추가 「답 쓰는 중…」이다.
+ *   보내기        지시를 남기고 에이전트를 부른다(/messages → /reply).
  *   기록만 남기기  에이전트를 부르지 않는다 — 운영사 담당자와 통화한 내용 같은 것. 다음 대화에서 에이전트가 근거로 읽는다.
- * 답이 실패해도 지시는 남아 있다 — 마지막 말이 답 없는 지시면 「다시 묻기」가 선다(화면 규칙 9: 무엇이 되었는지 그 자리에).
+ * 답이 실패해도 지시는 남아 있다 — 마지막 말이 답 없는 지시면 그 밑에 「다시 묻기」가 선다(화면 규칙 9: 무엇이 되었는지 그 자리에).
  *
- * ★파일을 넘긴다★(한백 지시 2026-11-02) — 「파일 첨부」나 끌어다 놓기로 고르면 그 자리에서 Blob 에 바로 올라가고(/files 토큰),
+ * ★파일을 넘긴다★(한백 지시 2026-11-02) — 「파일」이나 끌어다 놓기로 고르면 그 자리에서 Blob 에 바로 올라가고(/files 토큰),
  * 보내기 · 기록만 남기기 때 그 말에 붙는다. 올리는 동안은 보내지 못한다(단추 이름이 말한다). 에이전트가 읽는 법은 lib/agents/files.
  *
  * ★주간 기록★ — 한 주를 고르면(week) 그 주의 말과, 그 사이에 할 일이 적히고 끝나고 업무 정의가 바뀌고 메일이 나간 일이 시각
  * 순으로 선다. 지난 기록을 보는 자리라 쓰는 칸은 없다 — 「지금 대화로」가 돌아가는 길이다.
  *
- * ★메일 초안★(한백 2026-11-03) — 담당이 올린 초안은 그것을 쓴 답 바로 밑에 선다(MailCard). 한백이 「승인하고 보내기」를 눌러야
- * 나간다. 답에 이어지지 못한 초안(답을 남기다 끊긴 것)은 올린 시각의 자리에 따로 선다.
+ * ★메일 초안★(한백 2026-11-03) — 담당이 올린 초안은 그것을 쓴 답 바로 밑에 선다(MailCard — 표지 폭만큼 들여 담당 쪽에). 한백이
+ * 「승인하고 보내기」를 눌러야 나간다. 답에 이어지지 못한 초안(답을 남기다 끊긴 것)은 올린 시각의 자리에 따로 선다.
  * ★자동의 말★(2026-11-04 · lib/site-mail) — 계약서가 접수되면 콘솔이 그 담당의 이름으로 할 일 · 양식 메일 초안을 남긴다(말의 종류
- * auto). 에이전트의 말과 같은 띠에 「자동」 꼬리표와 그 현장으로 가는 고리를 단다. 초안 카드는 그 말 밑에 선다.
- * 정산 담당의 열린구매 상신 알림(같은 날 · lib/agents/open-purchase)도 자동의 말이다 — 현장 대신 「거래명세서 보기 →」(meta.link).
- * 말은 띠 모양이다(ui.tsx Note 처럼 왼쪽 선 — 판 안이라 사방 테두리를 두르지 않는다). 에이전트의 말만 연한 사업 색 바탕에 반짝이를 단다
- * (진행현황 및 메모가 상대 쪽 글을 사업 색 선으로 가르는 것과 같은 결). 기록은 「기록」, 자동의 말은 「자동」 꼬리표 — 글자 표시(▸ ✎)는
- * 걷었다(2026-11-05 콘솔 틀에 맞춤 — 꼬리표가 콘솔의 말이다). 답을 기다리는 동안 깜빡이던 점도 걷었다 — 단추가 「답 쓰는 중…」이다.
+ * auto). 「자동」 꼬리표와 그 현장으로 가는 고리를 단다. 정산 담당의 열린구매 상신 알림(lib/agents/open-purchase)도 자동의 말이다 —
+ * 현장 대신 「거래명세서 보기 →」(meta.link).
  */
 import Link from 'next/link';
-import { useEffect, useRef, useState, type DragEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import type { AgentEvent, AgentMail, AgentMessage } from '@/types/agents';
-import { Btn, Err, FIELD, PANEL, SectionHead, Tag, TEXT } from '@/components/ui';
+import { Btn, Err, PANEL, SectionHead, Tag, TEXT } from '@/components/ui';
 import { AGENT_FILE_MAX_BYTES, AGENT_FILES_PER_MESSAGE, sizeLabel } from '@/lib/agents/files';
-import { weekRange } from '@/lib/agents/weeks';
-import { Clip, FileChip, LINK, Spark } from './kit';
+import { shiftDay, weekRange } from '@/lib/agents/weeks';
+import { AgentMark, Clip, FileChip, LINK, Spark } from './kit';
 import { MailCard } from './MailCard';
 
 type Phase = 'idle' | 'sending' | 'thinking';
@@ -50,6 +57,22 @@ async function post(url: string, body?: unknown): Promise<{ ok: true; message: A
   } catch {
     return { ok: false, error: '네트워크 오류입니다. 다시 시도해주세요.' };
   }
+}
+
+/** 맨 아래에서 이만큼(px) 안이면 「맨 아래를 보는 중」 — 새 말을 따라 내려간다 */
+const NEAR_BOTTOM = 96;
+/** 쓰는 칸이 늘어나는 끝 — 넘으면 칸 안에서 민다 */
+const COMPOSER_MAX_PX = 240;
+
+const WEEKDAY = '일월화수목금토';
+
+/** 날 가름줄의 이름 — 「오늘 · 11월 5일 (수)」 · 「어제 · …」 · 다른 해면 해까지 */
+function dayHead(day: string, today: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  const label = `${m}월 ${d}일 (${WEEKDAY[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]})`;
+  if (day === today) return `오늘 · ${label}`;
+  if (day === shiftDay(today, -1)) return `어제 · ${label}`;
+  return day.slice(0, 4) === today.slice(0, 4) ? label : `${y}년 ${label}`;
 }
 
 export function AgentRoom({ agentId, agentName, home, messages, mails, connected, week, today }: {
@@ -74,8 +97,13 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
+  const [atBottom, setAtBottom] = useState(true);
+  const [waited, setWaited] = useState(0);
   const scroller = useRef<HTMLOListElement>(null);
   const picker = useRef<HTMLInputElement>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
+  /* 맨 아래를 보는 중인가 — 그리기와 무관하게 스크롤 때마다 바뀌니 ref 로 들고, 단추를 띄울지만 state 로 */
+  const follow = useRef(true);
 
   /* 서버가 다시 그리면(할 일이 바뀌어 refresh · 다른 주를 골라 이동) 그 목록을 믿는다 — 도는 중에는 내 것을 지킨다 */
   useEffect(() => {
@@ -87,11 +115,53 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mails]);
 
-  /* 새 말이 붙으면 맨 아래로 — 지난 주를 펼쳤을 때는 그 주의 처음부터 읽는다 */
-  useEffect(() => {
+  function toBottom(smooth = false) {
     const el = scroller.current;
-    if (el) el.scrollTop = week ? 0 : el.scrollHeight;
-  }, [list.length, phase, week]);
+    if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
+    follow.current = true;
+    setAtBottom(true);
+  }
+
+  /* 처음 열 때 — 지금 대화는 맨 아래(최근 말)부터, 지난 주는 그 주의 처음부터 읽는다 */
+  useLayoutEffect(() => {
+    const el = scroller.current;
+    if (!el) return;
+    if (week) el.scrollTop = 0;
+    else toBottom();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [week]);
+
+  /* 새 말이 붙으면 — 맨 아래를 보고 있을 때만 따라 내려간다(위로 올려 읽는 중이면 「최근 말로 ↓」) */
+  useLayoutEffect(() => {
+    if (!week && follow.current) toBottom();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [list.length, mailList.length, phase]);
+
+  /* 쓰는 칸은 글을 따라 는다 — 끝(COMPOSER_MAX_PX)을 넘으면 칸 안에서 민다 */
+  useLayoutEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_PX)}px`;
+  }, [body]);
+
+  /* 답을 기다린 초 — 답은 5초에서 1분까지 걸린다. 멈춘 것인지 도는 것인지 보이게 */
+  useEffect(() => {
+    if (phase !== 'thinking') return;
+    const t0 = Date.now();
+    setWaited(0);
+    const id = window.setInterval(() => setWaited(Math.round((Date.now() - t0) / 1000)), 1000);
+    return () => window.clearInterval(id);
+  }, [phase]);
+
+  function onScroll() {
+    const el = scroller.current;
+    if (!el) return;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < NEAR_BOTTOM;
+    follow.current = near;
+    if (near !== atBottom) setAtBottom(near);
+  }
 
   const update = (key: string, patch: Partial<Pending>) => setPending((p) => p.map((x) => (x.key === key ? { ...x, ...patch } : x)));
 
@@ -138,8 +208,10 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
   async function ask() {
     setPhase('thinking');
     setError(null);
+    follow.current = true; // 내가 부른 답은 따라 내려간다
     const r = await post(`/api/agents/${agentId}/reply`);
     setPhase('idle');
+    box.current?.focus();
     if (!r.ok) {
       setError(r.error);
       return;
@@ -162,6 +234,7 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
     if (!text && ready.length === 0) return;
     setPhase('sending');
     setError(null);
+    follow.current = true; // 내가 보낸 말은 보이게 맨 아래로
     const r = await post(`/api/agents/${agentId}/messages`, {
       body: text, note, files: ready.map((p) => ({ pathname: p.pathname, name: p.name })),
     });
@@ -170,7 +243,8 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
       setError(r.error);
       return;
     }
-    setBody('');
+    // 보내는 동안 이어 쓴 글은 지키고, 보낸 글만 덜어 낸다
+    setBody((b) => (b.trim() === text ? '' : b));
     setPending((p) => p.filter((x) => x.state === 'fail')); // 못 올린 것은 남겨 둔다 — 보이게
     setList((l) => [...l, r.message]);
     if (note) {
@@ -196,17 +270,29 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
   const loose = mailList.filter((m) => !m.messageId || !shown.has(m.messageId));
   const pendingMails = mailList.filter((m) => m.status === 'draft' || m.status === 'failed').length;
 
-  /* 주간 기록 — 말과 일을 시각 순으로 한 줄에 */
+  /* 말 · 일 · 따로 선 초안을 시각 순으로 — 날이 바뀌면 가름줄 */
   const rows: Array<{ at: string; said?: AgentMessage; event?: AgentEvent; mail?: AgentMail }> = [
     ...list.map((m) => ({ at: m.at, said: m })),
     ...(week ? week.events.map((e) => ({ at: e.at, event: e })) : []),
     ...loose.map((m) => ({ at: m.createdAt, mail: m })),
   ].sort((a, b) => a.at.localeCompare(b.at));
   const card = (m: AgentMail) => <MailCard key={m.id} agentId={agentId} mail={m} connected={connected} onChange={mailChanged} />;
+  const items: ReactNode[] = [];
+  let day = '';
+  for (const r of rows) {
+    const d = r.at.slice(0, 10);
+    if (d !== day) {
+      day = d;
+      items.push(<DayRule key={`day|${d}`} label={dayHead(d, today)} />);
+    }
+    if (r.said) items.push(<Said key={r.said.id} message={r.said} />, ...(mailsOf.get(r.said.id) ?? []).map(card));
+    else if (r.mail) items.push(card(r.mail));
+    else items.push(<Happened key={`${r.event!.at}|${r.event!.kind}|${r.event!.title}`} event={r.event!} />);
+  }
 
   return (
-    <section className={`${PANEL} flex min-w-0 flex-col`}>
-      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 px-5 pb-3 pt-4">
+    <section className={`${PANEL} flex min-w-0 flex-col lg:h-full`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 border-b border-slate-100 px-5 pb-3 pt-4">
         <SectionHead
           title={week ? '주간 기록' : '대화'}
           meta={week ? `${weekRange(week.start, today)} · 말 ${list.length}건 · 일 ${week.events.length}건` : `${list.length}건`}
@@ -220,111 +306,154 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
         )}
       </div>
 
-      <ol ref={scroller} className="flex max-h-[62vh] min-h-[220px] flex-col gap-2 overflow-y-auto border-t border-slate-100 px-5 py-3">
-        {rows.map((r) => {
-          if (r.said) {
-            return [<Said key={r.said.id} message={r.said} />, ...(mailsOf.get(r.said.id) ?? []).map(card)];
-          }
-          if (r.mail) return card(r.mail);
-          return <Happened key={`${r.event!.at}|${r.event!.kind}|${r.event!.title}`} event={r.event!} />;
-        })}
-        {week && rows.length === 0 && <li className={`py-6 text-center ${TEXT.meta}`}>그 주의 기록 0건</li>}
-        {phase === 'thinking' && (
-          <li className="rounded-box border-l-[3px] border-brand-400 bg-brand-50/70 px-3.5 py-2.5">
-            <p className="flex items-center gap-1 text-tiny font-bold text-brand-800">
-              <Spark className="h-3 w-3 text-brand-500" />{agentName}
-            </p>
-            <p className="mt-1 text-base text-slate-500">답 쓰는 중…</p>
-          </li>
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <ol
+          ref={scroller}
+          onScroll={onScroll}
+          role="log"
+          aria-live="polite"
+          aria-label={week ? '주간 기록' : `${agentName}과의 대화`}
+          className="flex max-h-[65vh] min-h-[240px] flex-col gap-4 overflow-y-auto px-5 py-4 lg:max-h-none lg:flex-1"
+        >
+          {/* 처음 — 말이 없으면 그 담당의 표지만(빈 판이 고장처럼 보이지 않게) */}
+          {!week && rows.length === 0 && phase === 'idle' && (
+            <li className="m-auto flex flex-col items-center gap-2 py-8">
+              <AgentMark size="lg" />
+              <span className="text-base font-bold text-slate-800">{agentName}</span>
+              <span className={TEXT.meta}>대화 0건</span>
+            </li>
+          )}
+          {week && rows.length === 0 && <li className={`m-auto py-8 ${TEXT.meta}`}>그 주의 기록 0건</li>}
+          {items}
+          {unanswered && (
+            <li className="flex items-center justify-end gap-2">
+              <Tag tone="warn">답 없음</Tag>
+              <Btn size="sm" kind="side" onClick={() => void ask()}>다시 묻기</Btn>
+            </li>
+          )}
+          {phase === 'thinking' && (
+            <li className="flex gap-3">
+              <AgentMark />
+              <div className="min-w-0 pt-0.5">
+                <p className="text-small font-bold text-slate-800">{agentName}</p>
+                <p className="mt-0.5 text-base text-slate-500">
+                  답 쓰는 중… <span className="tabular-nums">{waited}초</span>
+                </p>
+              </div>
+            </li>
+          )}
+        </ol>
+        {/* 위로 올려 읽는 중일 때만 — 떠 있는 것이라 그림자가 있다(/design 「그림자는 떠 있는 것에만」) */}
+        {!week && !atBottom && (
+          <button
+            type="button"
+            onClick={() => toBottom(true)}
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-ctl border border-slate-200 bg-white px-3 py-1.5 text-small font-bold text-slate-700 shadow-md transition hover:border-brand-300 hover:text-brand-800"
+          >
+            최근 말로 ↓
+          </button>
         )}
-      </ol>
+      </div>
 
       {!week && (
         <div
-          className={`flex flex-col gap-2 border-t px-5 py-3 transition ${dragging ? 'border-brand-300 bg-brand-50/60' : 'border-slate-100'}`}
+          className="border-t border-slate-100 px-4 pb-4 pt-3"
           onDragOver={(e) => { e.preventDefault(); if (phase === 'idle') setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
         >
-          {unanswered && (
-            <div className="flex flex-wrap items-center gap-2">
-              <Tag tone="warn">답 없음</Tag>
-              <Btn size="sm" kind="side" onClick={() => void ask()}>다시 묻기</Btn>
-            </div>
-          )}
-          <textarea
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && canSend) void send(false);
-            }}
-            rows={3}
-            disabled={phase !== 'idle'}
-            placeholder={`${agentName}에게 — 파일은 끌어다 놓아도 됩니다`}
-            className={`${FIELD} resize-y leading-relaxed`}
-          />
-          {pending.length > 0 && (
-            <ul className="flex flex-wrap gap-1.5">
-              {pending.map((p) => (
-                <li
-                  key={p.key}
-                  className={`inline-flex max-w-full items-center gap-1.5 rounded-ctl border px-2 py-1 text-small font-semibold ${
-                    p.state === 'fail' ? 'border-red-200 bg-red-50 text-red-800' : 'border-slate-200 bg-white text-slate-700'
-                  }`}
-                >
-                  <Clip className="h-3.5 w-3.5 shrink-0 text-slate-500" />
-                  <span className="min-w-0 truncate">{p.name}</span>
-                  <span className="shrink-0 text-tiny font-semibold tabular-nums text-slate-500">
-                    {p.state === 'up' ? `올리는 중 ${p.pct}%` : p.state === 'fail' ? p.error : sizeLabel(p.size)}
-                  </span>
-                  {p.state !== 'up' && (
-                    <button
-                      type="button"
-                      aria-label={`${p.name} 빼기`}
-                      onClick={() => setPending((l) => l.filter((x) => x.key !== p.key))}
-                      className="shrink-0 rounded-tag px-1 text-slate-400 transition hover:text-red-700"
-                    >
-                      ×
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <Btn
-              size="sm"
-              disabled={!canSend}
-              busy={phase === 'thinking'}
-              busyLabel="답 쓰는 중…"
-              onClick={() => void send(false)}
-            >
-              {uploading ? '파일 올리는 중 — 보내기 대기' : '보내기'}
-            </Btn>
-            <Btn size="sm" kind="side" disabled={!canSend} busy={phase === 'sending'} busyLabel="남기는 중…" onClick={() => void send(true)}>
-              기록만 남기기
-            </Btn>
-            <Btn
-              size="sm"
-              kind="quiet"
-              disabled={phase !== 'idle' || pending.length >= AGENT_FILES_PER_MESSAGE}
-              onClick={() => picker.current?.click()}
-            >
-              파일 첨부
-            </Btn>
-            <input
-              ref={picker}
-              type="file"
-              multiple
-              className="hidden"
-              onChange={(e) => { attach([...(e.target.files ?? [])]); e.target.value = ''; }}
+          {/* 쓰는 상자 하나 — 넘긴 파일 · 글 · 단추가 한 겹 안에(입력칸의 테두리가 그 한 겹이다 — 화면 규칙 1) */}
+          <div
+            className={`rounded-ctl border transition focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-100 ${
+              dragging ? 'border-brand-400 bg-brand-50/60' : 'border-slate-200 bg-white'
+            }`}
+          >
+            {pending.length > 0 && (
+              <ul className="flex flex-wrap gap-1.5 px-3 pt-2.5">
+                {pending.map((p) => (
+                  <li
+                    key={p.key}
+                    className={`inline-flex max-w-full items-center gap-1.5 rounded-ctl border px-2 py-1 text-small font-semibold ${
+                      p.state === 'fail' ? 'border-red-200 bg-red-50 text-red-800' : 'border-slate-200 bg-white text-slate-700'
+                    }`}
+                  >
+                    <Clip className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+                    <span className="min-w-0 truncate">{p.name}</span>
+                    <span className="shrink-0 text-tiny font-semibold tabular-nums text-slate-500">
+                      {p.state === 'up' ? `올리는 중 ${p.pct}%` : p.state === 'fail' ? p.error : sizeLabel(p.size)}
+                    </span>
+                    {p.state !== 'up' && (
+                      <button
+                        type="button"
+                        aria-label={`${p.name} 빼기`}
+                        onClick={() => setPending((l) => l.filter((x) => x.key !== p.key))}
+                        className="shrink-0 rounded-tag px-1 text-slate-500 transition hover:text-red-700"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+            <textarea
+              ref={box}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              onKeyDown={(e) => {
+                // ↵ 보내기 · ⇧↵ 줄 바꿈 — 한글을 조합하는 중의 ↵ 는 글자를 맺는 것이라 보내지 않는다(isComposing · 229)
+                if (e.key !== 'Enter' || e.shiftKey || e.nativeEvent.isComposing || e.keyCode === 229) return;
+                e.preventDefault();
+                if (canSend) void send(false);
+              }}
+              rows={1}
+              aria-label={`${agentName}에게 보낼 말`}
+              placeholder={dragging ? '놓으면 파일이 붙습니다' : `${agentName}에게 — 파일은 끌어다 놓아도 됩니다`}
+              className="block max-h-60 w-full resize-none bg-transparent px-3.5 py-2.5 text-base leading-relaxed text-slate-900 placeholder:text-slate-400 focus:outline-none"
             />
-            <span className="hidden text-tiny font-semibold text-slate-500 sm:inline">⌘↵ 보내기</span>
-            <Err>{error}</Err>
+            <div className="flex flex-wrap items-center gap-2 px-2 pb-2">
+              <Btn
+                size="sm"
+                kind="quiet"
+                disabled={phase !== 'idle' || pending.length >= AGENT_FILES_PER_MESSAGE}
+                onClick={() => picker.current?.click()}
+                className="inline-flex items-center gap-1"
+              >
+                <Clip className="h-3.5 w-3.5" />파일
+              </Btn>
+              <input
+                ref={picker}
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => { attach([...(e.target.files ?? [])]); e.target.value = ''; }}
+              />
+              <span className={`hidden sm:inline ${TEXT.meta}`}>↵ 보내기 · ⇧↵ 줄 바꿈</span>
+              <Err>{error}</Err>
+              <span className="ml-auto flex items-center gap-2">
+                <Btn size="sm" kind="side" disabled={!canSend} busy={phase === 'sending'} busyLabel="남기는 중…" onClick={() => void send(true)}>
+                  기록만 남기기
+                </Btn>
+                <Btn size="sm" disabled={!canSend} busy={phase === 'thinking'} busyLabel="답 쓰는 중…" onClick={() => void send(false)}>
+                  {uploading ? '파일 올리는 중 — 보내기 대기' : '보내기'}
+                </Btn>
+              </span>
+            </div>
           </div>
         </div>
       )}
     </section>
+  );
+}
+
+/** 날 가름줄 — 가는 선 사이의 날짜(층을 나누는 가장 약한 수단 — 화면 규칙 1) */
+function DayRule({ label }: { label: string }) {
+  return (
+    <li role="separator" className="flex items-center gap-3 py-1">
+      <span aria-hidden className="h-px flex-1 bg-slate-100" />
+      <span className={`${TEXT.meta} tabular-nums`}>{label}</span>
+      <span aria-hidden className="h-px flex-1 bg-slate-100" />
+    </li>
   );
 }
 
@@ -345,63 +474,112 @@ function Linked({ text }: { text: string }) {
   );
 }
 
-/* 말의 모양 — 누가 말했는지는 띠의 선과 바탕, 머리의 표시(반짝이 — 에이전트 · 「자동」 · 「기록」 꼬리표)로 가른다 */
-const ROLE_LOOK = {
-  agent: { band: 'border-brand-400 bg-brand-50/70', who: 'text-brand-800', text: 'text-slate-800' },
-  auto: { band: 'border-brand-400 bg-brand-50/70', who: 'text-brand-800', text: 'text-slate-800' },
-  user: { band: 'border-slate-300', who: 'text-slate-800', text: 'text-slate-800' },
-  note: { band: 'border-slate-300 bg-slate-50', who: 'text-slate-600', text: 'text-slate-700' },
-} as const;
+/** 「- 」 · 「• 」로 시작하는 줄 — 들여쓴 만큼 한 단계 안쪽 */
+const BULLET_RE = /^(\s*)[-•]\s+/;
 
-function Said({ message: m }: { message: AgentMessage }) {
-  const look = ROLE_LOOK[m.role];
-  const secs = m.meta?.ms ? Math.max(1, Math.round(m.meta.ms / 1000)) : null;
+/**
+ * 말의 글 — 줄마다 그린다. 「- 」 목록은 내어쓰기(줄이 접혀도 글머리 뒤에 선다), 빈 줄은 문단 사이 틈. 답은 마크다운 없이 줄바꿈과
+ * 「- 」만 쓴다(lib/agents/brain) — 그 밖의 글자는 그대로 보인다.
+ */
+function Body({ text, className = '' }: { text: string; className?: string }) {
   return (
-    <li className={`rounded-box border-l-[3px] px-3.5 py-2.5 ${look.band}`}>
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-tiny">
-        <span className="font-semibold tabular-nums text-slate-500">{m.at}</span>
-        <span className={`inline-flex items-center gap-1 font-bold ${look.who}`}>
-          {(m.role === 'agent' || m.role === 'auto') && <Spark className="h-3 w-3 self-center text-brand-500" />}
-          {m.author}
-        </span>
-        {m.role === 'auto' && <Tag>자동</Tag>}
-        {m.role === 'note' && <Tag>기록</Tag>}
-        {(secs !== null || m.meta?.usd !== undefined) && (
-          <span className="font-semibold tabular-nums text-slate-500">
-            {secs !== null && `${secs}초`}
-            {m.meta?.usd !== undefined && ` · $${m.meta.usd.toFixed(2)}`}
-          </span>
+    <div className={`break-keep text-base leading-relaxed ${className}`}>
+      {text.split('\n').map((line, i) => {
+        if (!line.trim()) return <div key={i} aria-hidden className="h-2" />;
+        const b = BULLET_RE.exec(line);
+        if (!b) return <p key={i} className="whitespace-pre-wrap"><Linked text={line} /></p>;
+        return (
+          <p key={i} className={`flex gap-2 ${b[1].length >= 2 ? 'pl-5' : 'pl-1'}`}>
+            <span aria-hidden className="select-none text-slate-500">•</span>
+            <span className="min-w-0 flex-1 whitespace-pre-wrap"><Linked text={line.slice(b[0].length)} /></span>
+          </p>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * 말 한마디 — 한백의 말(지시 · 기록)은 오른쪽 말풍선, 담당의 말(답 · 자동)은 왼쪽 표지 옆 맨글. 말풍선의 모서리는 rounded-box
+ * (누르는 것이 아니다 — 화면 규칙 11). 기록은 점선 말풍선과 「기록」 꼬리표 — 에이전트를 부르지 않은 말이다.
+ */
+function Said({ message: m }: { message: AgentMessage }) {
+  const time = m.at.slice(11, 16);
+  if (m.role === 'user' || m.role === 'note') {
+    const note = m.role === 'note';
+    return (
+      <li className="flex flex-col items-end gap-1 pl-10 sm:pl-16">
+        <p className={`flex flex-wrap items-center justify-end gap-x-1.5 ${TEXT.meta} tabular-nums`}>
+          {note && <Tag>기록</Tag>}
+          <span>{m.author}</span>
+          <span>{time}</span>
+        </p>
+        {m.body && (
+          <Body
+            text={m.body}
+            className={`max-w-full rounded-box px-3.5 py-2.5 text-slate-900 ${note ? 'border border-dashed border-slate-300 bg-white' : 'bg-slate-100'}`}
+          />
         )}
-        {m.meta?.added?.length ? <Tag tone="ok">할 일 {m.meta.added.length}건 적음</Tag> : null}
-        {m.meta?.done?.length ? <Tag tone="ok">할 일 {m.meta.done.length}건 끝냄</Tag> : null}
-        {m.meta?.mails?.length ? <Tag tone="ok">메일 초안 {m.meta.mails.length}통</Tag> : null}
-        {m.meta?.directions?.length ? <Tag tone="ok">목표 · 방향 {m.meta.directions.length}건 고침</Tag> : null}
-        {m.role === 'agent' && <span className="ml-auto"><CopyBtn text={m.body} /></span>}
-        {m.role === 'auto' && m.meta?.site && (
-          <Link href={`/projects/${encodeURIComponent(m.meta.site.id)}?tab=intake`} className={`ml-auto text-small font-bold ${LINK}`}>
-            현장 보기 →
-          </Link>
+        {m.files.length > 0 && (
+          <div className="flex flex-wrap justify-end gap-1.5">
+            {m.files.map((f) => <FileChip key={f.id} file={f} />)}
+          </div>
         )}
-        {/* 정기 알림(열린구매 상신)이 짚는 화면 — 「거래명세서 보기 →」 */}
-        {m.role === 'auto' && m.meta?.link && (
-          <Link href={m.meta.link.href} className={`ml-auto text-small font-bold ${LINK}`}>{m.meta.link.label}</Link>
+      </li>
+    );
+  }
+
+  const secs = m.meta?.ms ? Math.max(1, Math.round(m.meta.ms / 1000)) : null;
+  const did = [
+    m.meta?.added?.length ? `할 일 ${m.meta.added.length}건 적음` : null,
+    m.meta?.done?.length ? `할 일 ${m.meta.done.length}건 끝냄` : null,
+    m.meta?.mails?.length ? `메일 초안 ${m.meta.mails.length}통` : null,
+    m.meta?.directions?.length ? `목표 · 방향 ${m.meta.directions.length}건 고침` : null,
+  ].filter((x): x is string => x !== null);
+  return (
+    <li className="flex gap-3 pr-4 sm:pr-10">
+      <AgentMark />
+      <div className="min-w-0 flex-1">
+        <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+          <span className="text-small font-bold text-slate-800">{m.author}</span>
+          {m.role === 'auto' && <Tag>자동</Tag>}
+          <span className={`${TEXT.meta} tabular-nums`}>{time}</span>
+        </p>
+        {m.body && <Body text={m.body} className="mt-1 text-slate-800" />}
+        {m.files.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {m.files.map((f) => <FileChip key={f.id} file={f} />)}
+          </div>
         )}
-      </div>
-      {m.body && <p className={`mt-1 whitespace-pre-wrap break-keep text-base leading-relaxed ${look.text}`}><Linked text={m.body} /></p>}
-      {m.files.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {m.files.map((f) => <FileChip key={f.id} file={f} />)}
+        {m.meta?.sources?.length ? (
+          <ul className="mt-2 flex flex-col gap-0.5">
+            {m.meta.sources.map((s) => (
+              <li key={s.url} className="min-w-0 truncate text-small">
+                <a href={s.url} target="_blank" rel="noreferrer" className={LINK}>{s.title || s.url}</a>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {/* 답 밑 한 줄 — 한 일(할 일 · 메일 · 목표 · 방향) · 고리 · 복사 · 걸린 시간과 비용 */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+          {did.map((d) => <Tag key={d} tone="ok">{d}</Tag>)}
+          {m.role === 'auto' && m.meta?.site && (
+            <Link href={`/projects/${encodeURIComponent(m.meta.site.id)}?tab=intake`} className={`text-small font-bold ${LINK}`}>
+              현장 보기 →
+            </Link>
+          )}
+          {/* 정기 알림(열린구매 상신)이 짚는 화면 — 「거래명세서 보기 →」 */}
+          {m.role === 'auto' && m.meta?.link && (
+            <Link href={m.meta.link.href} className={`text-small font-bold ${LINK}`}>{m.meta.link.label}</Link>
+          )}
+          {m.role === 'agent' && m.body && <CopyBtn text={m.body} />}
+          {(secs !== null || m.meta?.usd !== undefined) && (
+            <span className={`${TEXT.meta} tabular-nums`}>
+              {[secs !== null ? `${secs}초` : null, m.meta?.usd !== undefined ? `$${m.meta.usd.toFixed(2)}` : null].filter(Boolean).join(' · ')}
+            </span>
+          )}
         </div>
-      )}
-      {m.meta?.sources?.length ? (
-        <ul className="mt-2 flex flex-col gap-0.5">
-          {m.meta.sources.map((s) => (
-            <li key={s.url} className="min-w-0 truncate text-small">
-              <a href={s.url} target="_blank" rel="noreferrer" className={LINK}>{s.title || s.url}</a>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      </div>
     </li>
   );
 }

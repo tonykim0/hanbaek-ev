@@ -39,7 +39,7 @@ async function call(url: string, method: 'POST' | 'PATCH', body?: unknown): Prom
 
 export function MailCard({ agentId, mail, connected, onChange, indent = true }: {
   agentId: string;
-  /** 대화에서는 그 답 밑으로 들여쓴다 — 현장 화면에서는 들여쓰지 않는다 */
+  /** 대화에서는 담당의 표지 폭만큼 들여 그 답의 글줄에 맞춘다(AgentRoom — 표지 32px + 틈 12px) — 현장 화면에서는 들여쓰지 않는다 */
   indent?: boolean;
   mail: AgentMail;
   /** 콘솔에 보내는 메일이 연결돼 있는가 */
@@ -81,7 +81,7 @@ export function MailCard({ agentId, mail, connected, onChange, indent = true }: 
   const who = [mail.to.join(', '), mail.cc.length ? `참조 ${mail.cc.join(', ')}` : ''].filter(Boolean).join(' · ');
 
   return (
-    <li className={`${indent ? 'ml-4 ' : ''}rounded-box border-l-[3px] px-3.5 py-3 ${look.band}`}>
+    <li className={`${indent ? 'ml-11 ' : ''}rounded-box border-l-[3px] px-3.5 py-3 ${look.band}`}>
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
         <Tag tone={look.tone}>{look.label}</Tag>
         <span className={`${TEXT.meta} tabular-nums`}>{mail.createdAt}</span>

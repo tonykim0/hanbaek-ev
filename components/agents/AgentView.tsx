@@ -106,18 +106,24 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
       </header>
 
       <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_380px]">
-        {/* 주를 바꾸면 새로 그린다 — 앞 주의 말이 한 번 비쳤다 바뀌지 않게 */}
-        <AgentRoom
-          key={detail.week?.start ?? 'live'}
-          agentId={agent.id}
-          agentName={agent.name}
-          home={home}
-          messages={detail.messages}
-          mails={detail.mails}
-          connected={account !== null}
-          week={detail.week}
-          today={side.today}
-        />
+        {/*
+          대화는 화면 높이에 맞춘 판이고 오른쪽을 내려 읽는 동안에도 위에 붙어 있다 — 쓰는 칸이 늘 보이게(2026-11-05 채팅 화면의 문법).
+          높이는 머리말 밑에서 화면 끝까지(보드 판과 같은 방식 — ProjectBoard 의 100vh − 14rem). 좁은 화면은 판이 제 높이다.
+        */}
+        <div className="min-w-0 lg:sticky lg:top-[calc(var(--console-top)+1rem)] lg:h-[calc(100vh-18rem)] lg:min-h-[480px]">
+          {/* 주를 바꾸면 새로 그린다 — 앞 주의 말이 한 번 비쳤다 바뀌지 않게 */}
+          <AgentRoom
+            key={detail.week?.start ?? 'live'}
+            agentId={agent.id}
+            agentName={agent.name}
+            home={home}
+            messages={detail.messages}
+            mails={detail.mails}
+            connected={account !== null}
+            week={detail.week}
+            today={side.today}
+          />
+        </div>
         {/*
           오른쪽은 손이 자주 가는 차례다(2026-11-05 「뒤죽박죽」): 할 일 → 업무 정의 → 팀 목표 · 방향(세 줄까지, 펼치기) → 주간 기록.
           그전에는 주간 기록 밑에 목표 · 방향 전문이 길게 서서 할 일이 화면 밖으로 밀렸다.
