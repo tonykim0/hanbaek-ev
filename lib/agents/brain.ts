@@ -990,11 +990,19 @@ export async function agentReply(input: {
       throw new Error('에이전트가 이 지시에 답하지 않았습니다 — 말을 바꿔 다시 물어 주세요.');
     }
     if (res.stop_reason === 'tool_use') {
-      messages.push({ role: 'assistant', content: res.content as unknown as Anthropic.ContentBlockParam[] });
       const results: Anthropic.ToolResultBlockParam[] = [];
       for (const block of res.content) {
         if (block.type === 'tool_use') results.push(await runTool(block));
       }
+      /*
+       * 도구 차례라면서 도구 덩이가 없는 응답이 왔다(2026-11-05 운영 — 다음 바퀴가 「messages.22: user messages must have non-empty
+       * content」 400 으로 죽어 「다시 묻기」만 남았다). 빈 결과를 보내지 않고 받은 글로 끝낸다 — 무엇이 왔는지는 로그에 남긴다
+       */
+      if (results.length === 0) {
+        console.error('[agent]', agent.id, '도구 차례인데 도구 덩이 없음', res.content.map((b) => b.type).join(','));
+        break;
+      }
+      messages.push({ role: 'assistant', content: res.content as unknown as Anthropic.ContentBlockParam[] });
       messages.push({ role: 'user', content: results });
       continue;
     }
