@@ -18,7 +18,7 @@
  * 한백 전용 칸)는 현장 상세의 시공 탭과 같다. 날짜는 전이가 아니라 단계를 옮기지 않는다 — 완료 선언(✓)은 여기서
  * 찍지 않는다. 그것은 조건을 묻는 선언이라 상세의 「다음 단계로 진행」이 한다.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useAction } from '@/lib/use-action';
 import Link from 'next/link';
 import type { ProcessStatus, ProjectSummary } from '@/types/project';
@@ -30,8 +30,8 @@ import {
 } from '@/lib/board';
 import type { AttrFilters, AttrKey } from '@/lib/project-filter';
 import {
-  DEFAULT_HIDDEN, passesCharger, PICK_GROUPS, PICKABLE, qtyOf, sortProjects, tableSheet, termsOf,
-  type ColKey, type SortKey, type TableTab,
+  DATE_COLS, DATE_KEYS, DEFAULT_HIDDEN, PICK_GROUPS, PICKABLE, qtyOf, restoreHidden, sortProjects, tableSheet, termsOf,
+  type ColKey, type SortKey, type TableDateField, type TableTab,
 } from '@/lib/project-table';
 import { today } from '@/lib/date';
 import { Badge, Blank, Btn, Err, Tag } from '@/components/ui';
@@ -57,13 +57,16 @@ export function useTableColumns(
   useEffect(() => {
     try {
       const raw = localStorage.getItem(storageKey);
-      if (raw) setHidden(new Set(JSON.parse(raw) as ColKey[]));
+      if (raw) setHidden(restoreHidden(JSON.parse(raw), DEFAULT_HIDDEN[tab]));
     } catch { /* 저장값이 없거나 깨졌으면 페이지 기본으로 */ }
-  }, [storageKey]);
+  }, [storageKey, tab]);
 
   function setHiddenAndSave(next: Set<ColKey>) {
     setHidden(next);
-    try { localStorage.setItem(storageKey, JSON.stringify([...next])); } catch { /* 못 남겨도 화면은 돈다 */ }
+    try {
+      /* 그때 있던 열(seen)을 같이 남긴다 — 나중에 열이 더해지면 그 열은 페이지 기본을 따른다(restoreHidden) */
+      localStorage.setItem(storageKey, JSON.stringify({ hidden: [...next], seen: PICKABLE.map((c) => c.key) }));
+    } catch { /* 못 남겨도 화면은 돈다 */ }
   }
 
   /** 열 여러 개를 한 번에 켜고 끈다 — 그룹 토글과 개별 토글이 같은 길을 쓴다 */
@@ -204,14 +207,10 @@ export default function ProjectTable({
               {show('power') && head('수전방식', { attr: 'power' })}
               {show('sales') && head('영업사', { attr: 'sales' })}
               {show('gc') && head('시공사', { attr: 'gc' })}
-              {show('envApproval') && head('환경부 승인일')}
-              {show('notify') && head('행위신고')}
-              {show('chargerOrder') && head('충전기 발주')}
-              {show('chargerRecv') && head('충전기 수령')}
-              {show('start') && head('착공')}
-              {show('install') && head('설치완료')}
-              {show('comm') && head('개통')}
-              {show('completion') && head('준공서류')}
+              {/* 날짜 열 — 정의(무슨 값 · 어디에 저장 · 언제 해당없음)는 lib/project-table DATE_COLS 한 곳이다 */}
+              {DATE_KEYS.filter(show).map((k) => (
+                <Fragment key={k}>{head(PICKABLE.find((c) => c.key === k)?.label ?? k)}</Fragment>
+              ))}
               {show('created') && head('접수일', { sort: 'created', attr: 'month' })}
             </tr>
           </thead>
@@ -220,8 +219,6 @@ export default function ProjectTable({
               const col = boardColumnOf(p);
               const busy = busyId === p.id;
               const edit = processEditOf(viewer, p.gcOrg);
-              /* 기설치 연동은 충전기 발주·수령을 안 지난다 — 상세에도 그 칸이 없다(lib/process stepsOf) */
-              const charger = passesCharger(p);
               return (
                 <tr key={p.id} className={`transition hover:bg-brand-50/40 ${busy ? 'opacity-50' : ''}`}>
                   {/*
@@ -277,33 +274,21 @@ export default function ProjectTable({
                   {show('power') && <Cell value={p.powerType} />}
                   {show('sales') && <Cell value={p.salesOrg} />}
                   {show('gc') && <Cell value={p.gcOrg} />}
-                  {/* 자체투자·연동은 환경부 승인이 없다 — 상세 머리말의 그 칸과 같은 판정이다(subsidized) */}
-                  {show('envApproval') && (subsidized(p.bizType) ? (
-                    <MilestoneCell p={p} field="envApprovalDate" label="환경부 승인일" date={p.milestones.envApprovalDate} canEdit={canDate(edit, 'envApprovalDate')} />
-                  ) : <NaCell />)}
-                  {show('notify') && (p.milestones.notifySkipped ? (
-                    /* 대상 아님은 규칙상 없는 것이다 — 「—」(아직)와 갈라 적는다(화면 규칙 10, 감사 L5) */
-                    <NaCell />
-                  ) : (
-                    <MilestoneCell p={p} field="notifyDate" label="행위신고일" date={p.milestones.notifyDate} done={p.milestones.notifyDone} canEdit={canDate(edit, 'notifyDate')} />
-                  ))}
-                  {show('chargerOrder') && (charger ? (
-                    <MilestoneCell p={p} field="chargerOrderDate" label="충전기 발주일" date={p.milestones.chargerOrderDate} canEdit={canDate(edit, 'chargerOrderDate')} />
-                  ) : <NaCell />)}
-                  {show('chargerRecv') && (charger ? (
-                    <MilestoneCell p={p} field="chargerRecvDate" label="충전기 수령일" date={p.milestones.chargerRecvDate} done={p.milestones.chargerDone} canEdit={canDate(edit, 'chargerRecvDate')} />
-                  ) : <NaCell />)}
-                  {show('start') && (
-                    <MilestoneCell p={p} field="startActualDate" label="착공일" date={p.milestones.startDate} canEdit={canDate(edit, 'startActualDate')} />
-                  )}
-                  {show('install') && (
-                    <MilestoneCell p={p} field="installDoneDate" label="설치완료일" date={p.milestones.installDoneDate} done={p.milestones.installConfirmed} canEdit={canDate(edit, 'installDoneDate')} />
-                  )}
-                  {show('comm') && (
-                    <MilestoneCell p={p} field="openDate" label="개통완료일" date={p.milestones.openDate} done={p.milestones.openDone} canEdit={canDate(edit, 'openDate')} />
-                  )}
-                  {/* 준공서류 제출은 날짜가 아니라 선언이다(조건을 묻는다) — 상세의 「준공서류 제출 완료」에서만 찍는다 */}
-                  {show('completion') && <MilestoneCell date={p.milestones.completionSubmitAt} />}
+                  {DATE_KEYS.filter(show).map((k) => {
+                    const c = DATE_COLS[k]!;
+                    if (c.na?.(p)) return <NaCell key={k} />;
+                    return (
+                      <MilestoneCell
+                        key={k}
+                        p={p}
+                        field={c.field}
+                        label={c.name}
+                        date={c.date(p)}
+                        done={c.done?.(p)}
+                        canEdit={c.field !== undefined && canDate(edit, c.field)}
+                      />
+                    );
+                  })}
                   {show('created') && (
                     <td className="whitespace-nowrap px-3 py-2.5 tabular-nums text-slate-500">
                       {p.createdAt}
@@ -586,11 +571,6 @@ function StageCell({
     </>
   );
 }
-
-/** 표에서 적는 날짜 칸 — 이름은 저장 라우트(/process)의 칸 이름과 같다 */
-type TableDateField =
-  | 'envApprovalDate' | 'notifyDate' | 'chargerOrderDate' | 'chargerRecvDate'
-  | 'startActualDate' | 'installDoneDate' | 'openDate';
 
 /** 그 칸을 적을 수 있나 — 시공사는 한백 전용 칸(환경부 승인일·충전기 발주일)을 못 적는다. 상세와 같은 목록이고 저장소가 다시 본다 */
 function canDate(edit: ProcessEdit, field: TableDateField): boolean {

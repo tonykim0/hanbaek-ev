@@ -417,8 +417,30 @@ export const processes = pgTable('processes', {
   commDoneDate: text('comm_done_date'),
   /** 개통완료일 — 통신까지 끝나고 실제 개통된 날. 시공사가 적는다 */
   openDate: text('open_date'),
-  /** 행위신고일 — 파일을 올리면 그 날이 기본으로 들어간다(비어 있을 때만) */
+  /** 행위신고 신청일 — 파일을 올리면 그 날이 기본으로 들어간다(비어 있을 때만) */
   notifyDate: text('notify_date'),
+  /*
+   * 시공 기록 날짜 (migrations/0121, 한백 지시 2026-11-05) — 기록만이다. 단계를 넘기는 조건이 아니다.
+   * 적는 사람은 한백과 그 현장의 시공사다.
+   */
+  /** 행위신고 완료일 — 신고증명서를 받은 날(notifyDoneAt 은 「완료했다」는 선언이라 다른 칸이다) */
+  notifyCertDate: text('notify_cert_date'),
+  /** 착공서류(안전계획서 · 위험성평가) 제출일 */
+  preStartSubmitDate: text('prestart_submit_date'),
+  /** 기초 및 배관/배선일 */
+  foundationDate: text('foundation_date'),
+  /** 충전기 및 캐노피 설치일 — 설치를 다 마친 날(installDoneDate)과 다르다 */
+  chargerInstallDate: text('charger_install_date'),
+  /** 전기사용신청일 — 시공완료 뒤 첫 걸음(한백 공정 설명) */
+  elecApplyDate: text('elec_apply_date'),
+  /** 사용전점검/검사일 — 모자분리에서는 「전기안전점검」이라 부른다. 같은 점검이다 */
+  safetyCheckDate: text('safety_check_date'),
+  /** 한전 외선공사일 — 한전불입만(모자분리는 한전 외선공사가 없다) */
+  kepcoLineDate: text('kepco_line_date'),
+  /** 계량기 부설일 — 한전불입만 */
+  meterDate: text('meter_date'),
+  /** 지자체 사용검사 신청일 */
+  useInspectApplyDate: text('use_inspect_apply_date'),
   /** 발주한 수량 — 한백이 적는다. 수령 수량과 가른다(부분 입고·오배송을 알아야 한다) */
   chargerOrderQty: integer('charger_order_qty'),
   modemOrderQty: integer('modem_order_qty'),

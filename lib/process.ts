@@ -502,6 +502,15 @@ export function isHanbaekOnlyProcessField(field: string): boolean {
 export type ProcessEdit = 'all' | 'partner' | 'none';
 
 /**
+ * 한전 외선공사 · 계량기 부설이 있는 현장인가 — 한전불입이 든 현장이다(한백 공정 설명 2026-11-05: 모자분리는 큰 외선공사가
+ * 없고 아파트 배선으로 쓴다). 수전방식을 모르면 있다고 본다 — 칸을 숨기면 빠뜨린 것이 안 보인다.
+ * 시공 탭의 줄과 표의 「해당없음」이 같이 본다.
+ */
+export function hasKepcoWork(powerType: PowerType | null | undefined): boolean {
+  return !powerType || powerType.includes('한전불입');
+}
+
+/**
  * 그 현장의 공정을 이 사람이 얼마나 고치나 — 한백 관리자는 전부, 그 현장의 시공사는 한백 전용 칸을 뺀 전부.
  *
  * 현장 상세의 시공 탭과 시공관리 표(날짜 칸)가 같이 본다 — 두 자리가 따로 정하면 한쪽에서만 열린다.

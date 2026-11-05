@@ -891,6 +891,28 @@ export interface ProcessInfo {
    * 때만), 실제 접수일이 다르면 고친다.
    */
   notifyDate: string | null;
+  /*
+   * 시공 기록 날짜 (migrations/0121, 한백 지시 2026-11-05) — 기록만이다(단계를 넘기는 조건이 아니다).
+   * 자리는 시공 탭의 그 구간 상자(components/project/construction/milestones), 표의 열은 lib/project-table.
+   */
+  /** 행위신고 완료일 — 신고증명서를 받은 날. 「완료」 선언(notifyDoneAt)과 다른 칸이다 */
+  notifyCertDate: string | null;
+  /** 착공서류(안전계획서 · 위험성평가) 제출일 */
+  preStartSubmitDate: string | null;
+  /** 기초 및 배관/배선일 */
+  foundationDate: string | null;
+  /** 충전기 및 캐노피 설치일 — 설치완료일(다 마친 날)과 다르다 */
+  chargerInstallDate: string | null;
+  /** 전기사용신청일 */
+  elecApplyDate: string | null;
+  /** 사용전점검/검사일(모자분리에서는 「전기안전점검」) */
+  safetyCheckDate: string | null;
+  /** 한전 외선공사일 — 한전불입만 */
+  kepcoLineDate: string | null;
+  /** 계량기 부설일 — 한전불입만 */
+  meterDate: string | null;
+  /** 지자체 사용검사 신청일 */
+  useInspectApplyDate: string | null;
   notifyDoneAt: string | null;       // 행위신고 완료 → 「충전기 발주」 조건 (연동은 「개통 및 통신확인」)
   /**
    * 행위신고 불필요로 판정한 날 — 신고 없이 시공으로 가는 현장이 있다 (한백 지시 2026-08-26).
@@ -1290,6 +1312,16 @@ export interface ProjectSummary {
     openDate: string | null;
     openDone: boolean;
     completionSubmitAt: string | null;
+    /* 시공 기록 날짜 (migrations/0121) — 표의 열과 엑셀이 쓴다(lib/project-table) */
+    notifyCertDate: string | null;
+    preStartSubmitDate: string | null;
+    foundationDate: string | null;
+    chargerInstallDate: string | null;
+    elecApplyDate: string | null;
+    safetyCheckDate: string | null;
+    kepcoLineDate: string | null;
+    meterDate: string | null;
+    useInspectApplyDate: string | null;
   };
 }
 

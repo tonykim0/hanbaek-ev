@@ -27,6 +27,9 @@ const DATE_FIELDS = [
    */
   'openDate',
   'notifyDate',
+  /* 시공 기록 날짜 (migrations/0121, 2026-11-05) — 화면(milestones DateField)과 같은 이름이어야 한다. 빠지면 400 이다(위 openDate 참고) */
+  'notifyCertDate', 'preStartSubmitDate', 'foundationDate', 'chargerInstallDate',
+  'elecApplyDate', 'safetyCheckDate', 'kepcoLineDate', 'meterDate', 'useInspectApplyDate',
   'notifyDoneAt', 'notifySkippedAt', 'notifyRequiredAt', 'chargerDoneAt', 'installConfirmedAt', 'openDoneAt',
   'completionSubmitAt',
 ] as const;

@@ -17,7 +17,7 @@ import {
 } from '@/lib/doc-rules';
 
 import {
-  advanceBlockers, missingCompletionDocs, type GateContext,
+  advanceBlockers, hasKepcoWork, missingCompletionDocs, type GateContext,
   nextStatusOf,
   stepsOf,
 } from '@/lib/process';
@@ -25,7 +25,10 @@ import {
 /** 고칠 수 있는 날짜 칸 — 이름은 서버(ProcessPatch)와 같아야 한다 */
 export type DateField =
   | 'notifyDate' | 'chargerOrderDate' | 'chargerShipDate' | 'chargerRecvDate'
-  | 'startActualDate' | 'installDoneDate' | 'commDoneDate' | 'openDate';
+  | 'startActualDate' | 'installDoneDate' | 'commDoneDate' | 'openDate'
+  /* 시공 기록 날짜 (migrations/0121) — 기록만이다. 단계를 넘기는 조건이 아니다 */
+  | 'notifyCertDate' | 'preStartSubmitDate' | 'foundationDate' | 'chargerInstallDate'
+  | 'elecApplyDate' | 'safetyCheckDate' | 'kepcoLineDate' | 'meterDate' | 'useInspectApplyDate';
 
 /** 묶음별 완료 체크 칸 */
 export type CheckField =
@@ -157,12 +160,21 @@ export function groupsByStatus(
   /* 준공서류 중 아직 안 온 것 — 완료 선언을 막는 것과 같은 판정을 쓴다 */
   const missingDocs = missingCompletionDocs(p, ctx);
 
+  /* 한전 외선공사 · 계량기 부설이 있는 현장인가 — lib/process 의 한 곳(표와 같이 본다) */
+  const kepcoWork = hasKepcoWork(ctx.powerType);
+
   return {
     '행위신고': [
       {
         title: '행위신고',
-        // 신고일은 파일을 올리면 그 날로 들어간다(비어 있을 때만) — 다르면 여기서 고친다
-        rows: [{ label: '행위신고일', field: 'notifyDate', value: p.notifyDate }],
+        /*
+         * 신청일은 파일을 올리면 그 날로 들어간다(비어 있을 때만) — 다르면 여기서 고친다.
+         * 완료일(신고증명서를 받은 날)은 기록이다 — 넘어가는 조건은 여전히 신청일과 파일이다(한백 지시 2026-11-05).
+         */
+        rows: [
+          { label: '행위신고 신청일', field: 'notifyDate', value: p.notifyDate },
+          { label: '행위신고 완료일', field: 'notifyCertDate', value: p.notifyCertDate },
+        ],
         docs: ['notify'],
         /*
          * 둘은 서로를 막는다 — 한 현장이 「했다」와 「필요 없다」를 같이 말할 수는 없다.
@@ -266,7 +278,15 @@ export function groupsByStatus(
          * startPlanDate 칸은 저장소에 남아 있지만 화면에 그리지 않는다.
          */
         title: '착공',
-        rows: [{ label: '착공일', field: 'startActualDate', value: p.startActualDate, trigger: '착공' }],
+        /*
+         * 착공서류 제출일은 착공일 앞, 기초 및 배관/배선일은 뒤 — 일이 일어나는 차례다(한백 지시 2026-11-05).
+         * 둘 다 기록이다 — 넘어가는 조건이 아니다.
+         */
+        rows: [
+          { label: '착공서류 제출일', field: 'preStartSubmitDate', value: p.preStartSubmitDate },
+          { label: '착공일', field: 'startActualDate', value: p.startActualDate, trigger: '착공' },
+          { label: '기초 및 배관/배선일', field: 'foundationDate', value: p.foundationDate },
+        ],
         /*
          * 착공일 아래에 선다 — 착공 전에 갖추는 안전서류다(한백 지시 2026-08-31).
          * 착공계는 그 바로 밑이다(한백 지시 2026-09-17) — SK 현장에만 선다(doc-rules 의 only).
@@ -276,20 +296,50 @@ export function groupsByStatus(
       {
         title: '설치',
         opensNext: true,
-        /* 설치완료일이 곧 시공일자다 — 운영사 시스템의 「공통」 묶음에서 그 값이다 */
-        rows: [{ label: '설치완료일', field: 'installDoneDate', value: p.installDoneDate }],
+        /*
+         * 설치완료일이 곧 시공일자다 — 운영사 시스템의 「공통」 묶음에서 그 값이다.
+         * 충전기 및 캐노피 설치일은 그 앞의 한 걸음이다(기록 — 한백 지시 2026-11-05).
+         */
+        rows: [
+          { label: '충전기 및 캐노피 설치일', field: 'chargerInstallDate', value: p.chargerInstallDate },
+          { label: '설치완료일', field: 'installDoneDate', value: p.installDoneDate },
+        ],
         extras: ['installedQty'],
         /*
          * 사진 뒤에 설치완료 때 같이 내는 것들을 둔다 (한백 지시 2026-08-26).
-         * 전기사용신청 접수증은 개통 상자에 있었는데, 신청은 설치 무렵의 일이라 여기로 옮겼다.
+         * ★전기사용신청 접수증은 「전기연결 · 사용검사」 상자로 옮겼다★ (한백 지시 2026-11-05 — 「시공완료 후에는
+         * 전기사용신청 → 사용전점검/검사 → 사용검사 → 개통」). 2026-08-26 에는 설치 무렵의 일이라 이리 왔었다 —
+         * 신청일 칸이 그 상자에 서면서 접수증도 그 옆으로 간다. 넘어가는 조건이 아니라 자리만 바뀐다.
          */
         /* installNotice(충전시설 설치 신고서)는 발주 상자로 옮겼다 (2026-08-31) */
-        docs: ['photoDone', 'installReport', 'elecapply'],
+        docs: ['photoDone', 'installReport'],
         advance: { label: '다음 단계로 진행', target: '개통 및 통신확인', field: 'installConfirmedAt' },
       },
     ],
     // 통신·개통을 마치면 준공서류 칸이 열린다 — 칸 이름이 곧 이 상자다
     '개통 및 통신확인': [
+      /*
+       * ★시공완료 뒤의 전기 일 — 개통 앞에 선다★ (한백 지시 2026-11-05, 한백의 공정 설명):
+       *   한전불입 — 전기사용신청 → 한전불입금 납부 → 사용전점검/검사 → 전기연결(한전 외선공사 · 계량기) → 사용검사 → 개통
+       *   모자분리 — 전기사용신청 → 전기안전점검(= 사용전점검/검사) → 사용검사 → 개통
+       * 그래서 한전 외선공사 · 계량기 줄은 한전불입이 든 현장에만 선다(수전방식을 모르면 세운다 — 빠뜨린 것이 안 보이면 안 된다).
+       * 날짜는 다 기록이다 — 넘어가는 조건이 아니다. 필증(사용전점검/검사 · 사용검사)은 준공서류라 그 상자에 그대로 둔다.
+       */
+      {
+        title: '전기연결 · 사용검사',
+        rows: [
+          { label: '전기사용신청일', field: 'elecApplyDate', value: p.elecApplyDate },
+          { label: '사용전점검/검사일', field: 'safetyCheckDate', value: p.safetyCheckDate },
+          ...(kepcoWork
+            ? ([
+              { label: '한전 외선공사일', field: 'kepcoLineDate', value: p.kepcoLineDate },
+              { label: '계량기 부설일', field: 'meterDate', value: p.meterDate },
+            ] satisfies MilestoneRow[])
+            : []),
+          { label: '지자체 사용검사 신청일', field: 'useInspectApplyDate', value: p.useInspectApplyDate },
+        ],
+        docs: ['elecapply', 'kepcofee'],
+      },
       {
         title: '개통',
         opensNext: true,
@@ -297,7 +347,8 @@ export function groupsByStatus(
           { label: '통신완료일', field: 'commDoneDate', value: p.commDoneDate },
           { label: '개통완료일', field: 'openDate', value: p.openDate },
         ],
-        docs: ['kepcofee', 'comm'],
+        /* 한전시설부담금은 위 「전기연결 · 사용검사」 상자로 옮겼다 — 불입금 납부는 사용전점검 앞의 일이다(2026-11-05) */
+        docs: ['comm'],
         /* 「개통완료」 칸을 걷었다(2026-08-31) — 개통을 마치면 곧바로 준공서류 칸이 열린다 */
         advance: { label: '다음 단계로 진행', target: '준공서류 접수/검토', field: 'openDoneAt' },
       },

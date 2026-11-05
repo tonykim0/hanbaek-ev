@@ -10,7 +10,7 @@ import {
   advanceBlockers, advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES,
   CHECK_AT, CHECK_HOME, entryOkOf, nextStatusOf, prevStatusOf, STATUS_GATES, stepsOf,
   COURT_AFTER_STATUS, declarationBlockers, isHanbaekOnlyProcessField, mayForceDeclaration, mayForceStatus, statusIndex,
-  canChangeContractDocs, CONTRACT_DOCS_LOCK_AT, contractDocsLockedWhy, PARTNER_DOCS_CLOSED_AT, processEditOf,
+  canChangeContractDocs, CONTRACT_DOCS_LOCK_AT, contractDocsLockedWhy, PARTNER_DOCS_CLOSED_AT, processEditOf, hasKepcoWork,
 } from '@/lib/process';
 import type { GateContext } from '@/lib/process';
 import type { ProcessInfo, ProcessStatus } from '@/types/project';
@@ -839,5 +839,14 @@ describe('mayForceStatus — 강행은 준공완료 하나뿐', () => {
     const p = P({ status: '준공서류 접수/검토', docs: [], completionSubmitAt: '2026-09-15' });
     expect(canEnter('준공완료', p, ENV).ok).toBe(false);
     expect(advanceBlockers('준공완료', 'completionSubmitAt', p, ENV).length).toBeGreaterThan(0);
+  });
+});
+
+describe('hasKepcoWork — 한전 외선공사 · 계량기 부설이 있는 현장', () => {
+  it('한전불입이 들면 있다 · 모자분리만이면 없다 · 모르면 있다고 본다(칸을 숨기지 않는다)', () => {
+    expect(hasKepcoWork('한전불입')).toBe(true);
+    expect(hasKepcoWork('한전불입+모자분리')).toBe(true);
+    expect(hasKepcoWork('모자분리')).toBe(false);
+    expect(hasKepcoWork(null)).toBe(true);
   });
 });
