@@ -115,6 +115,9 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mails]);
 
+  /* 팀 화면 주소 — 이 담당의 화면(home = 팀 화면/담당)에서 끝 마디를 뗀 것. 팀원의 말이 보낸 담당으로 간다 */
+  const team = home.slice(0, home.lastIndexOf('/'));
+
   function toBottom(smooth = false) {
     const el = scroller.current;
     if (!el) return;
@@ -285,7 +288,7 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
       day = d;
       items.push(<DayRule key={`day|${d}`} label={dayHead(d, today)} />);
     }
-    if (r.said) items.push(<Said key={r.said.id} message={r.said} />, ...(mailsOf.get(r.said.id) ?? []).map(card));
+    if (r.said) items.push(<Said key={r.said.id} message={r.said} team={team} />, ...(mailsOf.get(r.said.id) ?? []).map(card));
     else if (r.mail) items.push(card(r.mail));
     else items.push(<Happened key={`${r.event!.at}|${r.event!.kind}|${r.event!.title}`} event={r.event!} />);
   }
@@ -500,10 +503,11 @@ function Body({ text, className = '' }: { text: string; className?: string }) {
 }
 
 /**
- * 말 한마디 — 한백의 말(지시 · 기록)은 오른쪽 말풍선, 담당의 말(답 · 자동)은 왼쪽 표지 옆 맨글. 말풍선의 모서리는 rounded-box
- * (누르는 것이 아니다 — 화면 규칙 11). 기록은 점선 말풍선과 「기록」 꼬리표 — 에이전트를 부르지 않은 말이다.
+ * 말 한마디 — 한백의 말(지시 · 기록)은 오른쪽 말풍선, 담당의 말(답 · 자동 · 팀원)은 왼쪽 표지 옆 맨글. 말풍선의 모서리는 rounded-box
+ * (누르는 것이 아니다 — 화면 규칙 11). 기록은 점선 말풍선과 「기록」 꼬리표 — 에이전트를 부르지 않은 말이다. 팀원의 말(같은 사업의
+ * 다른 담당이 tell_teammate 로 남긴 것)은 보낸 담당의 이름 · 「팀원」 꼬리표 · 그 담당으로 가는 고리. team — 팀 화면 주소.
  */
-function Said({ message: m }: { message: AgentMessage }) {
+function Said({ message: m, team }: { message: AgentMessage; team: string }) {
   const time = m.at.slice(11, 16);
   if (m.role === 'user' || m.role === 'note') {
     const note = m.role === 'note';
@@ -535,6 +539,8 @@ function Said({ message: m }: { message: AgentMessage }) {
     m.meta?.done?.length ? `할 일 ${m.meta.done.length}건 끝냄` : null,
     m.meta?.mails?.length ? `메일 초안 ${m.meta.mails.length}통` : null,
     m.meta?.directions?.length ? `목표 · 방향 ${m.meta.directions.length}건 고침` : null,
+    m.meta?.memos?.length ? `메모 ${m.meta.memos.length}건 적음` : null,
+    m.meta?.told?.length ? `${m.meta.told.join(' · ')}에게 남김` : null,
   ].filter((x): x is string => x !== null);
   return (
     <li className="flex gap-3 pr-4 sm:pr-10">
@@ -543,6 +549,7 @@ function Said({ message: m }: { message: AgentMessage }) {
         <p className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
           <span className="text-small font-bold text-slate-800">{m.author}</span>
           {m.role === 'auto' && <Tag>자동</Tag>}
+          {m.role === 'peer' && <Tag>팀원</Tag>}
           <span className={`${TEXT.meta} tabular-nums`}>{time}</span>
         </p>
         {m.body && <Body text={m.body} className="mt-1 text-slate-800" />}
@@ -560,7 +567,7 @@ function Said({ message: m }: { message: AgentMessage }) {
             ))}
           </ul>
         ) : null}
-        {/* 답 밑 한 줄 — 한 일(할 일 · 메일 · 목표 · 방향) · 고리 · 복사 · 걸린 시간과 비용 */}
+        {/* 답 밑 한 줄 — 한 일(할 일 · 메일 · 목표 · 방향 · 메모 · 팀원에게 남김) · 고리 · 복사 · 걸린 시간과 비용 */}
         <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1.5">
           {did.map((d) => <Tag key={d} tone="ok">{d}</Tag>)}
           {m.role === 'auto' && m.meta?.site && (
@@ -571,6 +578,11 @@ function Said({ message: m }: { message: AgentMessage }) {
           {/* 정기 알림(열린구매 상신)이 짚는 화면 — 「거래명세서 보기 →」 */}
           {m.role === 'auto' && m.meta?.link && (
             <Link href={m.meta.link.href} className={`text-small font-bold ${LINK}`}>{m.meta.link.label}</Link>
+          )}
+          {m.role === 'peer' && m.meta?.from && (
+            <Link href={`${team}/${encodeURIComponent(m.meta.from.id)}`} className={`text-small font-bold ${LINK}`}>
+              {m.meta.from.name} 보기 →
+            </Link>
           )}
           {m.role === 'agent' && m.body && <CopyBtn text={m.body} />}
           {(secs !== null || m.meta?.usd !== undefined) && (
