@@ -23,73 +23,24 @@ import { useAction } from '@/lib/use-action';
 import Link from 'next/link';
 import type { ProcessStatus, ProjectSummary } from '@/types/project';
 import { PROCESS_STATUSES, subsidized } from '@/types/project';
-import { isHanbaekOnlyProcessField, processEditOf, stepsOf, type ProcessEdit } from '@/lib/process';
+import { isHanbaekOnlyProcessField, processEditOf, type ProcessEdit } from '@/lib/process';
 import { DatePicker } from '@/components/DatePicker';
 import {
-  BAND_TONE, bandOfColumn, BOARD_COLUMNS, boardColumnOf, constructionLabelOf, type BoardColumn,
+  BAND_TONE, bandOfColumn, boardColumnOf, constructionLabelOf, type BoardColumn,
 } from '@/lib/board';
 import type { AttrFilters, AttrKey } from '@/lib/project-filter';
-import { Badge, Blank, Tag } from '@/components/ui';
+import {
+  DEFAULT_HIDDEN, passesCharger, PICK_GROUPS, PICKABLE, qtyOf, sortProjects, tableSheet, termsOf,
+  type ColKey, type SortKey, type TableTab,
+} from '@/lib/project-table';
+import { today } from '@/lib/date';
+import { Badge, Blank, Btn, Err, Tag } from '@/components/ui';
 import CheckMenu from '@/components/CheckMenu';
 
-type SortKey = 'name' | 'stage' | 'qty' | 'term' | 'created';
-
-/**
- * 골라 볼 수 있는 열 — 현장(이름)만 항상 있다.
- * 고른 것은 브라우저에 페이지별로 남는다(계약·시공이 각자 다른 열을 본다).
+/*
+ * 열 정의·정렬·엑셀 한 장은 lib/project-table 에 있다 — 「엑셀 받기」가 화면과 같은 열·같은 차례로 내려면
+ * 같은 정의를 봐야 한다(2026-11-05).
  */
-const PICKABLE = [
-  { key: 'stage', label: '단계', attr: 'col', group: '기본' },
-  { key: 'qty', label: '대수', group: '기본' },
-  { key: 'term', label: '계약연수', attr: 'term', group: '기본' },
-  { key: 'cpo', label: '운영사', attr: 'cpo', group: '기본' },
-  { key: 'sales', label: '영업사', attr: 'sales', group: '기본' },
-  { key: 'gc', label: '시공사', attr: 'gc', group: '기본' },
-  { key: 'created', label: '접수일', attr: 'month', group: '기본' },
-  // 영업(계약) 단계에서 다루는 속성
-  { key: 'queue', label: '환경부 대기번호', attr: 'queue', group: '영업' },
-  { key: 'biz', label: '사업유형', attr: 'biz', group: '영업' },
-  { key: 'bldg', label: '건축물', attr: 'bldg', group: '영업' },
-  { key: 'power', label: '수전방식', attr: 'power', group: '영업' },
-  // 시공 마일스톤 — 날짜의 유무가 곧 그 일의 여부다. 완료 체크는 ✓ 로 얹는다.
-  // 한 칸 — 환경부 승인과 운영사 시공승인을 같은 날로 본다 (한백 2026-08-27)
-  { key: 'envApproval', label: '환경부 승인일', group: '시공' },
-  { key: 'notify', label: '행위신고', group: '시공' },
-  { key: 'chargerOrder', label: '충전기 발주', group: '시공' },
-  { key: 'chargerRecv', label: '충전기 수령', group: '시공' },
-  { key: 'start', label: '착공', group: '시공' },
-  { key: 'install', label: '설치완료', group: '시공' },
-  { key: 'comm', label: '개통', group: '시공' },
-  { key: 'completion', label: '준공서류', group: '시공' },
-] as const satisfies readonly { key: string; label: string; attr?: AttrKey; group: '기본' | '영업' | '시공' }[];
-type ColKey = (typeof PICKABLE)[number]['key'];
-const PICK_GROUPS = ['기본', '영업', '시공'] as const;
-
-/**
- * 페이지별 기본 열 — 사용자가 「열」에서 고르기 전의 시작점.
- * 계약 페이지에는 아직 없는 시공 일정을, 시공 페이지에는 계약 속성을 접어 둔다.
- */
-const MILESTONE_KEYS: readonly ColKey[] = [
-  'envApproval', 'notify', 'chargerOrder', 'chargerRecv',
-  'start', 'install', 'comm', 'completion',
-];
-const DEFAULT_HIDDEN: Record<'intake' | 'construction', readonly ColKey[]> = {
-  intake: MILESTONE_KEYS,
-  construction: ['queue', 'biz', 'bldg', 'power', 'created'],
-};
-
-const COLUMN_ORDER = new Map(BOARD_COLUMNS.map((c, i) => [c.key, i]));
-const qtyOf = (p: ProjectSummary) => p.lines.reduce((s, l) => s + l.qty, 0);
-
-/**
- * 계약연수 — 라인마다 다를 수 있다.
- * 7년 3대 + 10년 4대인 현장이 있어서 하나로 뭉개면 계약이 달라진다.
- */
-function termsOf(p: ProjectSummary): string {
-  const years = [...new Set(p.lines.map((l) => l.termYears))].sort((a, b) => a - b);
-  return years.length === 0 ? '—' : years.map((y) => `${y}년`).join(' · ');
-}
-const maxTermOf = (p: ProjectSummary) => Math.max(0, ...p.lines.map((l) => l.termYears));
 
 /**
  * 열 상태 — 표 밖(필터 줄)의 「열」 단추와 표가 같은 것을 봐야 해서 훅으로 뺐다
@@ -97,7 +48,7 @@ const maxTermOf = (p: ProjectSummary) => Math.max(0, ...p.lines.map((l) => l.ter
  * 숨긴 열에 걸린 필터를 푸는 일이 있어 필터의 주인(껍데기)이 부르는 것이 맞다.
  */
 export function useTableColumns(
-  tab: 'intake' | 'construction',
+  tab: TableTab,
   filters: AttrFilters,
   onFilter: (key: AttrKey, values: string[]) => void
 ) {
@@ -143,15 +94,27 @@ export function useTableColumns(
 
 export type TableColumns = ReturnType<typeof useTableColumns>;
 
+/**
+ * 정렬 상태 — 머리글을 눌러 고른다. 표 밖(필터 줄)의 「엑셀 받기」가 화면과 같은 차례로 내야 해서
+ * 껍데기가 쥔다(열 상태와 같은 까닭).
+ */
+export function useTableSort() {
+  const [sort, setSort] = useState<SortKey>('stage');
+  const [desc, setDesc] = useState(false);
+  return { sort, desc, setSort, setDesc };
+}
+
+export type TableSort = ReturnType<typeof useTableSort>;
+
 export default function ProjectTable({
-  projects, canMove, onMove, busyId, filters, options, onFilter, tab, columns, viewer,
+  projects, canMove, onMove, busyId, filters, options, onFilter, tab, columns, sort: sorting, viewer,
 }: {
   projects: ProjectSummary[];
   canMove: boolean;
   /** 보는 사람 — 줄마다 그 현장의 날짜를 적을 수 있는지 가른다(processEditOf) */
   viewer: { role: string; org: string | null };
   /** 상세를 열 때 먼저 보일 탭 — 이 페이지의 국면(계약·시공)을 따라간다 */
-  tab: 'intake' | 'construction';
+  tab: TableTab;
   onMove: (p: ProjectSummary, status: ProcessStatus) => void;
   busyId: string | null;
   /** 지금 걸린 필터 — 껍데기가 쥐고 있다 */
@@ -160,31 +123,15 @@ export default function ProjectTable({
   onFilter: (key: AttrKey, values: string[]) => void;
   /** 열 상태 — 껍데기가 useTableColumns 로 쥐고 「열」 단추와 나눠 쓴다 */
   columns: TableColumns;
+  /** 정렬 상태 — 껍데기가 useTableSort 로 쥐고 「엑셀 받기」와 나눠 쓴다 */
+  sort: TableSort;
 }) {
-  const [sort, setSort] = useState<SortKey>('stage');
-  const [desc, setDesc] = useState(false);
+  const { sort, desc, setSort, setDesc } = sorting;
 
   const { hidden } = columns;
   const show = (k: ColKey) => !hidden.has(k);
 
-  const rows = useMemo(() => {
-    const dir = desc ? -1 : 1;
-    const val = (p: ProjectSummary): number | string => {
-      switch (sort) {
-        case 'name': return p.name;
-        case 'stage': return COLUMN_ORDER.get(boardColumnOf(p)) ?? 0;
-        case 'qty': return qtyOf(p);
-        case 'term': return maxTermOf(p);
-        case 'created': return p.createdAt;
-      }
-    };
-    return [...projects].sort((a, b) => {
-      const x = val(a);
-      const y = val(b);
-      if (typeof x === 'string' && typeof y === 'string') return x.localeCompare(y, 'ko') * dir;
-      return ((x as number) - (y as number)) * dir;
-    });
-  }, [projects, sort, desc]);
+  const rows = useMemo(() => sortProjects(projects, sort, desc), [projects, sort, desc]);
 
   /** 정렬 단추. 필터가 함께 붙는 열은 attr 를 준다. */
   function head(
@@ -274,7 +221,7 @@ export default function ProjectTable({
               const busy = busyId === p.id;
               const edit = processEditOf(viewer, p.gcOrg);
               /* 기설치 연동은 충전기 발주·수령을 안 지난다 — 상세에도 그 칸이 없다(lib/process stepsOf) */
-              const charger = stepsOf(p).includes('충전기 발주');
+              const charger = passesCharger(p);
               return (
                 <tr key={p.id} className={`transition hover:bg-brand-50/40 ${busy ? 'opacity-50' : ''}`}>
                   {/*
@@ -474,6 +421,60 @@ export function ColumnPicker({ columns }: { columns: TableColumns }) {
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * 「엑셀 받기」 — 표를 그대로 엑셀로 (한백 지시 2026-11-05 「표를 엑셀로 다운받게」).
+ *
+ * ★화면에서 보는 그대로★ — 걸러 둔 줄, 머리글로 고른 정렬, 「열」에서 켜 둔 열. 다른 열이 필요하면 「열」에서
+ * 켜고 받는다. 자료는 이미 브라우저에 있어 서버에 다시 묻지 않는다 — 그래서 협력사는 자기 현장만, 금액은
+ * 처음부터 없다(표에 실리는 값 그대로다). 만드는 코드(jszip)는 누를 때 불러온다 — 표를 여는 데 싣지 않는다.
+ */
+export function ExportButton({
+  projects, columns, sort, tab, fileBase,
+}: {
+  /** 걸러 둔 줄 — 껍데기의 filtered */
+  projects: ProjectSummary[];
+  columns: TableColumns;
+  sort: TableSort;
+  tab: TableTab;
+  /** 파일·시트 이름의 앞 — 「시공관리」면 시공관리_2026-11-05.xlsx */
+  fileBase: string;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function download() {
+    setBusy(true);
+    setError(null);
+    try {
+      const [{ buildXlsx }, { downloadBlob }] = await Promise.all([
+        import('@/lib/xlsx-write'),
+        import('@/lib/download'),
+      ]);
+      const sheet = tableSheet(sortProjects(projects, sort.sort, sort.desc), columns.hidden, tab);
+      const bytes = await buildXlsx({ name: fileBase, ...sheet });
+      downloadBlob(
+        new Blob([bytes as BlobPart], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+        `${fileBase}_${today()}.xlsx`
+      );
+    } catch {
+      setError('엑셀을 만들지 못했습니다. 다시 눌러 주세요.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const none = projects.length === 0;
+  return (
+    <span className="flex shrink-0 items-center gap-2">
+      <Btn kind="side" busy={busy} busyLabel="만드는 중…" disabled={none} onClick={() => void download()}>
+        {/* 못 하는 이유를 단추 이름에 적는다(화면 규칙 3) */}
+        {none ? '0건 — 받을 것 없음' : '엑셀 받기'}
+      </Btn>
+      <Err>{error}</Err>
+    </span>
   );
 }
 

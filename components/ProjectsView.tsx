@@ -25,7 +25,7 @@ import {
 import { ALL_YEARS, businessYearsOf, inBusinessYear } from '@/lib/business-year';
 import ProjectBoard from './ProjectBoard';
 import type { Role } from '@/lib/roles';
-import ProjectTable, { ColumnPicker, useTableColumns } from '@/components/ProjectTable';
+import ProjectTable, { ColumnPicker, ExportButton, useTableColumns, useTableSort } from '@/components/ProjectTable';
 
 type ViewKey = 'board' | 'table';
 type FlagKey = 'rejected' | 'unpriced' | 'stalled';
@@ -319,6 +319,8 @@ export default function ProjectsView({
 
   /* 열 상태 — 「열」 단추(필터 줄)와 표가 같이 본다. 숨긴 열의 필터를 푸는 일이 있어 여기가 주인이다 */
   const columns = useTableColumns(band === '계약' ? 'intake' : 'construction', attrs, setAttr);
+  /* 정렬도 여기가 쥔다 — 「엑셀 받기」가 화면과 같은 차례로 낸다 */
+  const sort = useTableSort();
 
   return (
     <div>
@@ -421,6 +423,20 @@ export default function ProjectsView({
           )}
           {year !== ALL_YEARS && <span className="font-normal text-slate-400"> · {year}년</span>}
         </p>
+
+        {/*
+          * 「엑셀 받기」는 건수 바로 옆이다 — 받는 것이 곧 그 건수다(걸러 둔 줄 · 켜 둔 열 그대로).
+          * 표 보기에만 선다 — 보드에는 열이 없다.
+          */}
+        {view === 'table' && (
+          <ExportButton
+            projects={filtered}
+            columns={columns}
+            sort={sort}
+            tab={band === '계약' ? 'intake' : 'construction'}
+            fileBase={band === '계약' ? '계약관리' : '시공관리'}
+          />
+        )}
       </div>
 
       {open && (
@@ -473,6 +489,7 @@ export default function ProjectsView({
           onFilter={setAttr}
           tab={band === '계약' ? 'intake' : 'construction'}
           columns={columns}
+          sort={sort}
           viewer={viewer}
         />
       )}
