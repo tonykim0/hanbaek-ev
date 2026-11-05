@@ -109,6 +109,19 @@ export function useTableSort() {
 
 export type TableSort = ReturnType<typeof useTableSort>;
 
+/*
+ * ★현장 열은 가로로 밀어도 왼쪽에 붙어 있다★ (한백 지시 2026-11-05 「표에서 정보가 많아져서 오른쪽으로 드래그하더라도
+ * 현장명은 고정값으로」) — 시공 날짜 열이 열일곱으로 늘어 표가 화면 두 배를 넘는다. 어느 줄의 날짜인지 이름이 같이 보여야 한다.
+ *
+ * 붙은 칸은 제 바탕이 있어야 한다 — 없으면 밀려 들어오는 칸의 글자가 비친다. 그래서 줄 위의 옅은 바탕(hover)도 반투명이
+ * 아니라 불투명 brand-50 이다(줄과 붙은 칸이 같은 색이어야 한 줄로 읽힌다). 경계는 테두리가 아니라 그림자 한 줄이다 —
+ * 표가 border-collapse 라 칸의 테두리는 칸을 따라 붙지 않고 밀려간다.
+ * 머리 칸은 몸 칸보다 위다 — 머리 줄도 위에 붙어(sticky top) 있어 둘이 겹치는 모서리가 생긴다.
+ */
+const PIN_EDGE = 'shadow-[inset_-1px_0_0_theme(colors.slate.200)]';
+const PIN_HEAD = `sticky left-0 z-20 bg-slate-50 ${PIN_EDGE}`;
+const PIN_CELL = `sticky left-0 z-[1] bg-white group-hover:bg-brand-50 ${PIN_EDGE}`;
+
 export default function ProjectTable({
   projects, canMove, onMove, busyId, filters, options, onFilter, tab, columns, sort: sorting, viewer,
 }: {
@@ -139,13 +152,13 @@ export default function ProjectTable({
   /** 정렬 단추. 필터가 함께 붙는 열은 attr 를 준다. */
   function head(
     label: string,
-    opts: { sort?: SortKey; attr?: AttrKey; left?: boolean } = {}
+    opts: { sort?: SortKey; attr?: AttrKey; left?: boolean; pin?: boolean } = {}
   ) {
-    const { sort: key, attr, left } = opts;
+    const { sort: key, attr, left, pin } = opts;
     const on = key !== undefined && sort === key;
     return (
       <th
-        className={`whitespace-nowrap px-3 py-2 ${left ? 'text-left' : ''}`}
+        className={`whitespace-nowrap px-3 py-2 ${left ? 'text-left' : ''} ${pin ? PIN_HEAD : ''}`}
       >
         <div className="inline-flex items-center gap-1">
           {key ? (
@@ -196,7 +209,7 @@ export default function ProjectTable({
           {/* 머리글은 붙여 둔다 — 138건을 훑으면서 어느 열인지 계속 알아야 한다 */}
           <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-tiny tracking-[0.06em]">
             <tr>
-              {head('현장', { sort: 'name', left: true })}
+              {head('현장', { sort: 'name', left: true, pin: true })}
               {show('stage') && head('단계', { sort: 'stage', attr: 'col' })}
               {show('qty') && head('대수', { sort: 'qty' })}
               {show('term') && head('계약연수', { sort: 'term', attr: 'term' })}
@@ -220,13 +233,14 @@ export default function ProjectTable({
               const busy = busyId === p.id;
               const edit = processEditOf(viewer, p.gcOrg);
               return (
-                <tr key={p.id} className={`transition hover:bg-brand-50/40 ${busy ? 'opacity-50' : ''}`}>
+                <tr key={p.id} className={`group transition hover:bg-brand-50 ${busy ? 'opacity-50' : ''}`}>
                   {/*
                     * 현장 열만 왼쪽 — 줄을 찾는 열쇠다(화면 규칙 13, 한백 지시 2026-09-02).
                     * 최소 폭을 준다 — 날짜 칸이 달력 단추가 되며 넓어지자 브라우저가 이 열을 눌러 현장명이 글자 몇 개씩 접혔다.
                     * 좁으면 접지 않고 표가 가로로 밀린다.
+                    * ★가로로 밀어도 이 열은 왼쪽에 붙어 있다★(PIN_CELL — 한백 지시 2026-11-05 「오른쪽으로 드래그하더라도 현장명은 고정」).
                     */}
-                  <td className="min-w-[220px] px-3 py-2.5 text-left">
+                  <td className={`min-w-[220px] max-w-[300px] px-3 py-2.5 text-left ${PIN_CELL}`}>
                     <Link
                       href={`/projects/${p.id}?tab=${tab}`}
                       className="font-bold text-slate-900 hover:text-brand-800 hover:underline"
