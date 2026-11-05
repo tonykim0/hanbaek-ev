@@ -10,12 +10,15 @@
  * ★담당들은 팀이다★ (한백 2026-11-04 「전략 및 기획담당이 팀장이고 그 운영사/사업자 담당자는 실무자들이야 … 상호보완구조」 —
  * lib/agents/team). 모두가 시스템에서 팀의 목표 · 방향을 읽고, 팀장(전략·기획)은 그것을 올리는 save_direction · delete_direction 을
  * 더 쥔다. ★팀원끼리 서로 읽고 서로에게 남긴다★(한백 2026-11-05 「각 담당자들끼리 서로 정보 공유 필요해. 즉 모든 에이전트들간
- * 대화필요」): 모두가 마지막 지시 곁에 다른 팀원들의 최근 기록([팀 소식])을 받고, team_history 로 팀원 하나를 깊이 읽고,
- * tell_teammate 로 팀원의 대화에 말을 남긴다(받은 담당은 다음에 불릴 때 읽는다 — 저절로 부르지 않는다).
+ * 대화필요」): 모두가 마지막 지시 곁에 다른 팀원들의 한 줄 현황([팀 현황])을 받고, team_history 로 팀원 하나를 깊이(낱말로는 기간
+ * 상관없이) 읽고, tell_teammate 로 팀원의 대화에 말을 남긴다(받은 담당은 다음에 불릴 때 읽는다 — 저절로 부르지 않는다). 팀이 같이
+ * 알아야 할 것은 팀 공용 메모에 적는다.
  *
- * ★한백이 한 말은 전부 기억한다★(한백 2026-11-05 「담당자가 내가 말한 모든 정보를 기억해주길 바래」 — lib/agents/memory). 최근 40~59개는
- * 말 그대로, 그 앞은 [지난 대화]로(한백의 말은 전문 · 나머지는 앞부분) 대화 맨 앞에 싣고, search_history · read_file 로 지난 것을
- * 전문으로 찾고 다시 연다.
+ * ★장기기억은 메모장, 꺼내 쓰는 것은 그때그때★(한백 2026-11-05 「담당자가 내가 말한 모든 정보를 기억해주길 바래」 → 「모든 대화를 매번
+ * 다 읽는건 너무 비효율적」 → 「비용을 줄이면서 장기기억으로 두면서 그때그때 꺼내 쓸 수 있는 방법」 — lib/agents/memory · memos).
+ * 부를 때 읽는 것은 최근 대화 20~39개와 메모 제목뿐이다. 이번 말에 제목의 낱말이 나온 메모는 콘솔이 펼쳐 붙이고(왕복이 늘지 않는다),
+ * 나머지는 담당이 open_memo 로 연다. 한백이 알려 준 사실 · 정한 것 · 바라는 방식은 담당이 save_memo 로 적는다. 메모에도 없으면
+ * search_history(대화 원문 전부) · read_file(지난 파일)로 찾는다 — 대화가 쌓여도 부를 때 읽는 양이 그대로다.
  * ★메일은 초안까지다★ — 나가는 것은 한백이 그 초안의 「승인하고 보내기」를 눌렀을 때뿐이다(한백 2026-11-03 「난 그거에 대해
  * 승인을 하고 너가 메일을 보내는건데」 · app/api/agents/[id]/mails/[mailId]/send).
  *
@@ -23,8 +26,10 @@
  * 서버가 글자를 뽑아서(lib/agents/file-text), 그 밖의 형식은 이름만.
  *
  * ★바뀌는 자료는 마지막 지시 곁에 둔다★ — 시스템에는 바뀌지 않는 것(역할 · 일하는 법 · 업무 정의)만 두고, 그때그때 바뀌는
- * 오늘 · 열린 할 일 · 콘솔 자료는 마지막 지시에 붙인다. 그래야 지난 대화(넘긴 PDF 포함)가 캐시에서 싸게 읽힌다 — 바뀌는
- * 자료가 앞에 있으면 그 뒤의 대화 전부를 매번 새로 읽는다.
+ * 오늘 · 열린 할 일 · 콘솔 자료 · 팀원 · 메모는 마지막 지시 ★뒤에★ 붙인다. 그래야 지난 대화(넘긴 PDF 포함)가 캐시에서 싸게 읽힌다.
+ * ★캐시 표지는 둘을 손으로 단다★(2026-11-05 실측 — 자동 표지 하나만 두었을 때 다음 지시에서 캐시 읽기가 0 이었다. 읽기는 앞 요청이
+ * 표지를 단 자리에서만 맞는데, 자동 표지는 늘 지금 자료 뒤에 서고 지금 자료는 다음 요청에서 빠져서다): 시스템 끝(도구 · 시스템이
+ * 늘 맞는다)과 마지막 지시의 지금 자료 바로 앞(다음 요청에서 그 앞의 대화 전부가 맞는다). 요청 끝의 자동 표지는 한 답 안의 바퀴용이다.
  *
  * 모델은 claude-opus-5-5 다 — 생각을 끌 수 없고(adaptive 가 늘 돈다) 강도는 effort 가 정한다. 설치된 SDK(0.52)가
  * output_config · 새 웹 검색 · 서버 대체(fallbacks)의 타입을 모르므로 요청 타입을 넓혀 보낸다(lib/survey/read-plate 와 같은 방식).
@@ -35,10 +40,11 @@ import { logLlmCall, usdOf } from '@/lib/llm-usage';
 import { solarApiKey } from '@/lib/solar/api-key';
 import { agentFileRead } from './files';
 import { fileText, fileTextsOf } from './file-text';
-import { awaitsReply, fileIn, recallBlock, searchThread, splitThread } from './memory';
+import { awaitsReply, pendingOf } from './memory';
+import { MEMO_MAX, memoBlock, memosToOpen, memoText } from './memos';
 import { josa, siteMailOfCpo, type SiteMailSpec } from '@/lib/site-mail';
 import type {
-  Agent, AgentDuty, AgentFile, AgentMessage, AgentMessageMeta, AgentSource, AgentTask, AgentTeam,
+  Agent, AgentDuty, AgentFile, AgentMemo, AgentMemos, AgentMessage, AgentMessageMeta, AgentSource, AgentTask, AgentTeam, MemoScope,
 } from '@/types/agents';
 import { isLead } from '@/types/agents';
 import { directionsBlock, HISTORY_DAYS, teamLineOf, TELLS_PER_TURN } from './team';
@@ -157,8 +163,14 @@ const RULES = `일하는 법:
   한백이 끝났다고 알려 준 할 일은 complete_task 로 끝낸다. 적거나 끝냈으면 답에 한 줄로 말한다.
 - 「[기록 …]」으로 시작하는 말은 한백이 남긴 기록이다(운영사 · 사업자 담당자와 통화한 내용 같은 것). 답을 바라는 말이 아니지만 근거로 쓴다.
 - 「[넘긴 파일 …]」은 한백이 너에게 준 파일이다. 읽을 수 있으면 읽고 근거로 쓴다. 이름만 알고 열지 못한 파일은 그렇다고 말한다.
-- 대화 맨 앞의 「[지난 대화 …]」는 이 대화창의 앞부분이다 — 한백이 한 말은 전문이니 그대로 기억하고 쓴다. 한백이 전에 말한 것을
-  다시 묻지 않는다. 네 지난 답의 전문이나 오래된 말이 필요하면 search_history 로 찾고, 지난 파일은 read_file 로 다시 연다.
+- 기억은 메모장에 둔다. 대화는 최근 것만 실려 있다 — 그 앞의 일은 메모와 search_history 로 안다.
+  「[메모 …]」는 네 메모와 팀 공용 메모의 제목이고, 이번 말에 제목의 낱말이 나온 메모는 「[펼친 메모 …]」로 붙어 있다.
+  지시와 관련 있어 보이는 메모가 펼쳐지지 않았으면 open_memo 로 연다. 한백에게 다시 묻기 전에 메모 → search_history 순으로 찾는다.
+  한백이 전에 말한 것을 다시 묻지 않는다. 지난 파일은 read_file 로 다시 연다.
+- 한백이 알려 준 사실(사람 · 연락처 · 숫자 · 일정 · 조건) · 정한 것 · 바라는 방식 · 고쳐 준 것은 그 답에서 save_memo 로 남긴다.
+  같은 주제의 메모가 있으면 새로 만들지 않고 그 메모에 덧붙이거나(append) 고친다. 팀원도 알아야 하면 팀 공용(scope team)에 적는다.
+  제목은 콘솔이 메모를 펼치는 낱말이다 — 운영사 · 사업자 · 현장 번호 · 사람 · 주제를 「 · 」로 잇는다(예: 나이스인프라 · 김민수 대리 · 세금계산서).
+  내용은 짧게, 날짜와 누가 말했는지를 붙인다. 비밀번호 같은 비밀은 적지 않는다. 적었으면 답에 한 줄로 말한다.
 - 「[팀원 …]」으로 시작하는 말은 같은 팀의 다른 담당이 너에게 남긴 것이다 — 한백의 지시가 아니다. 근거로 쓰고, 맡을 일이면
   할 일에 적고, 그 팀원이 알아야 할 답이 있으면 tell_teammate 로 돌려준다.
 - 「[지금 …]」으로 시작하는 덩이는 마지막 지시를 받은 때의 콘솔 자료다 — 한백이 쓴 말이 아니다.
@@ -228,23 +240,19 @@ export function toMessages(history: AgentMessage[], texts?: Map<string, string>)
   return out;
 }
 
-/** 대화 맨 앞에 지난 대화를 붙인다 — 맨 앞이라 최근의 시작이 움직일 때(20개마다)까지 캐시에 남는다(lib/agents/memory) */
-export function withRecall(messages: Anthropic.MessageParam[], recall: string | null): Anthropic.MessageParam[] {
-  if (!recall || messages.length === 0) return messages;
-  const [first, ...rest] = messages;
-  const blocks: Anthropic.ContentBlockParam[] = typeof first.content === 'string'
-    ? [{ type: 'text', text: first.content }]
-    : first.content;
-  return [{ role: first.role, content: [{ type: 'text', text: recall }, ...blocks] }, ...rest];
-}
-
-/** 마지막 지시 앞에 지금의 자료를 붙인다 — 바뀌는 것이 대화의 끝에 있어야 앞의 대화가 캐시에 남는다 */
+/**
+ * 마지막 말 뒤에 지금의 자료를 붙이고, 그 바로 앞에 캐시 표지를 단다 — 다음 요청에서는 지금 자료가 빠지므로, 표지가 그 앞에 있어야
+ * 다음 요청이 여기까지의 대화를 캐시에서 읽는다(읽기는 앞 요청이 표지를 단 자리에서만 맞는다). 표지는 바이트가 아니라 자리라 다음
+ * 요청에서 빠져도 앞부분을 바꾸지 않는다.
+ */
 export function withContext(messages: Anthropic.MessageParam[], context: string): Anthropic.MessageParam[] {
   const last = messages[messages.length - 1];
   const blocks: Anthropic.ContentBlockParam[] = typeof last.content === 'string'
     ? [{ type: 'text', text: last.content }]
-    : last.content;
-  return [...messages.slice(0, -1), { role: last.role, content: [{ type: 'text', text: context }, ...blocks] }];
+    : [...last.content];
+  const end = blocks.length - 1;
+  blocks[end] = { ...blocks[end], cache_control: { type: 'ephemeral' } } as Anthropic.ContentBlockParam;
+  return [...messages.slice(0, -1), { role: last.role, content: [...blocks, { type: 'text', text: context }] }];
 }
 
 /** 에이전트가 쥔 손 — 라우트가 저장소에 이어 준다(이 파일은 저장소를 모른다) */
@@ -268,12 +276,25 @@ export interface AgentHands {
   deleteDirection?(id: string): Promise<string>;
   /**
    * 팀원 하나가 한백 · 팀원과 나눈 것(lib/agents/team teamHistoryOf). query 를 주면 날수와 상관없이 그 팀원의 대화 전부에서
-   * 찾는다(lib/agents/memory searchThread). 모르는 팀원이면 사람 말로 던진다
+   * 찾는다(store/agent-memory searchAgentMessages). 모르는 팀원이면 사람 말로 던진다
    */
   teamHistory?(member: string, days: number, query?: string): Promise<string>;
   /** 팀원의 대화에 말을 남긴다 — 받은 팀원의 이름을 돌려준다. 모르는 팀원 · 다른 사업이면 사람 말로 던진다 */
   tellTeammate?(member: string, body: string): Promise<string>;
+  /** 이 대화창의 원문 찾기 — 담당이 읽을 글(lib/agents/memory searchText)을 돌려준다 */
+  searchHistory?(q: { query: string; from: string; to: string }): Promise<string>;
+  /** 이 담당에게 넘긴 파일 하나 — 아니면 null */
+  readFile?(id: string): Promise<AgentFile | null>;
+  /** 메모 넣기(id 없이) · 고치기(id) · 덧붙이기(append) — 저장소가 틀리면 사람 말로 던진다 */
+  saveMemo?(input: {
+    scope: MemoScope; id: string | null; title?: string; body?: string; append?: boolean;
+  }): Promise<{ id: string; title: string }>;
+  /** 메모 지우기 — 지운 메모의 이름 */
+  deleteMemo?(input: { scope: MemoScope; id: string }): Promise<string>;
 }
+
+/** 한 답에서 적는 메모 상한 — 잘못 돈 답이 메모장을 채우지 않게 */
+const MEMOS_PER_TURN = 6;
 
 /** 한 답에 올리는 메일 초안 상한 — 잘못 돈 답이 초안을 쏟아 내지 않게 */
 const MAILS_PER_TURN = 3;
@@ -356,13 +377,49 @@ const PRICING_TOOL = {
 };
 
 /**
- * 기억의 도구 — 모두가 쥔다(lib/agents/memory). 대화가 길면 앞부분은 [지난 대화]로 줄어 있다 — 전문 · 지난 파일은 여기서.
+ * 기억의 도구 — 모두가 쥔다(라우트가 손을 이어 줄 때 · lib/agents/memory · memos). 메모장(장기기억)을 열고 적고, 메모에 없으면 대화
+ * 원문 · 지난 파일을 찾는다.
  */
 const MEMORY_TOOLS = [
   {
+    name: 'open_memo',
+    description: '메모를 연다 — 「[메모 …]」 목록의 id. 지시와 관련 있어 보이는데 「[펼친 메모 …]」에 없는 메모를 볼 때 쓴다. 여러 장을 한 번에 연다.',
+    input_schema: {
+      type: 'object',
+      properties: { ids: { type: 'array', items: { type: 'string' }, description: '열 메모의 id 들' } },
+      required: ['ids'],
+    },
+  },
+  {
+    name: 'save_memo',
+    description: '메모를 적는다. 한백이 알려 준 사실 · 정한 것 · 바라는 방식 · 고쳐 준 것을 남길 때 쓴다. id 없이 쓰면 새 메모(title 필수), '
+      + 'id 와 append 를 주면 그 메모 끝에 body 를 덧붙이고, id 만 주면 그 메모를 body(와 title)로 바꾼다 — 바꾸는 것은 펼쳤거나 연 메모만. '
+      + `같은 주제의 메모가 있으면 새로 만들지 않는다. 이름 ${MEMO_MAX.title}자 · 내용 ${MEMO_MAX.body}자까지.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '덧붙이거나 바꿀 메모의 id — 새 메모면 비운다' },
+        scope: { type: 'string', enum: ['mine', 'team'], description: '새 메모의 자리 — mine 내 메모(기본) · team 팀 공용(팀원도 알아야 할 때)' },
+        title: { type: 'string', description: '제목 = 펼칠 낱말 — 운영사 · 사업자 · 현장 번호 · 사람 · 주제를 「 · 」로' },
+        body: { type: 'string', description: '내용 — 짧게, 날짜와 누가 말했는지를 붙여서. 덧붙일 때는 덧붙일 줄만' },
+        append: { type: 'boolean', description: 'true 면 그 메모 끝에 body 를 덧붙인다' },
+      },
+      required: ['body'],
+    },
+  },
+  {
+    name: 'delete_memo',
+    description: '메모를 지운다. 한백이 지우라고 했거나 다른 메모에 합친 것만 지운다.',
+    input_schema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: '지울 메모의 id' } },
+      required: ['id'],
+    },
+  },
+  {
     name: 'search_history',
-    description: '이 대화창의 지난 말(한백의 지시 · 기록, 네 답, 자동 · 팀원의 말)을 전문으로 찾는다 — 최근 것부터 20개까지. '
-      + '[지난 대화]에 앞부분만 있는 네 답 · 오래된 말이 필요할 때 쓴다. 낱말은 띄어 쓴 것 모두가 들어 있는 말만 찾는다.',
+    description: '이 대화창의 원문 전부(한백의 지시 · 기록, 네 답, 자동 · 팀원의 말)에서 찾는다 — 최근 것부터 20개까지 전문으로. '
+      + '메모에 없는 지난 일이 필요할 때 쓴다. 낱말은 띄어 쓴 것 모두가 들어 있는 말만 찾는다.',
     input_schema: {
       type: 'object',
       properties: {
@@ -388,11 +445,11 @@ const TEAM_TOOLS = [
   {
     name: 'team_history',
     description: '팀원 한 사람이 한백 · 팀원과 나눈 것(지시 · 기록 · 답 · 자동 · 팀원의 말 전문, 열린 할 일 · 끝낸 할 일, 업무 정의 '
-      + '전문)을 깊이 읽는다. [팀 소식]의 몇 줄로 모자랄 때 쓴다.',
+      + '전문)을 깊이 읽는다. [팀 현황]의 한 줄로 모자랄 때 쓴다.',
     input_schema: {
       type: 'object',
       properties: {
-        member: { type: 'string', description: '팀원의 id — [팀 소식]의 「id=…」' },
+        member: { type: 'string', description: '팀원의 id — [팀 현황]의 「id=…」' },
         days: { type: 'integer', description: `최근 며칠 (선택 — 기본 ${HISTORY_DAYS}, 최대 90)` },
         query: {
           type: 'string',
@@ -409,7 +466,7 @@ const TEAM_TOOLS = [
     input_schema: {
       type: 'object',
       properties: {
-        member: { type: 'string', description: '팀원의 id — [팀 소식]의 「id=…」' },
+        member: { type: 'string', description: '팀원의 id — [팀 현황]의 「id=…」' },
         message: { type: 'string', description: '남길 말 — 무엇이 언제 왜, 현장은 관리번호로 (4000자 이내, 마크다운 없이)' },
       },
       required: ['member', 'message'],
@@ -452,7 +509,7 @@ const LEAD_TOOLS = [
  * 모두(라우트가 손을 이어 줄 때), 목표 · 방향과 웹 검색은 전략·기획(목표 · 방향도 라우트가 손을 이어 줄 때)
  */
 export function toolsOf(
-  agent: Agent, hands: Pick<AgentHands, 'siteMail' | 'pricingTable' | 'saveDirection' | 'tellTeammate'>
+  agent: Agent, hands: Pick<AgentHands, 'siteMail' | 'pricingTable' | 'saveDirection' | 'tellTeammate' | 'saveMemo'>
 ): unknown[] {
   const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
   return [
@@ -460,7 +517,7 @@ export function toolsOf(
     ...TASK_TOOLS,
     ...(siteSpec ? [siteMailTool(siteSpec)] : []),
     ...(agent.kind === 'operator' && hands.pricingTable ? [PRICING_TOOL] : []),
-    ...MEMORY_TOOLS,
+    ...(hands.saveMemo ? MEMORY_TOOLS : []),
     ...(hands.tellTeammate ? TEAM_TOOLS : []),
     ...(isLead(agent.kind) && hands.saveDirection ? LEAD_TOOLS : []),
     ...(agent.kind === 'strategy' ? [WEB_SEARCH] : []),
@@ -481,6 +538,17 @@ const WEB_SEARCH = {
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 
+/** 바퀴마다의 글을 모은다 — 같은 글은 한 번, 앞 글을 품은 새 글은 앞 글 자리에(lib/agents/brain agentReply) */
+export function pushSaid(texts: string[], said: string): void {
+  const t = said.trim();
+  if (!t) return;
+  const flat = (s: string) => s.replace(/\s+/g, ' ');
+  if (texts.some((x) => flat(x) === flat(t))) return;
+  const i = texts.findIndex((x) => flat(t).includes(flat(x)));
+  if (i >= 0) texts[i] = t;
+  else if (!texts.some((x) => flat(x).includes(flat(t)))) texts.push(t);
+}
+
 export interface AgentTurn {
   text: string;
   meta: AgentMessageMeta;
@@ -494,14 +562,16 @@ export async function agentReply(input: {
   agent: Agent;
   duties: AgentDuty[];
   tasks: AgentTask[];
-  /** 이 담당과 나눈 말 전부(오래된 것부터 — store/agents agentThread). 최근 것은 그대로, 앞의 것은 [지난 대화]로 싣는다 */
-  thread: AgentMessage[];
+  /** 최근 대화 20~39개(오래된 것부터 — store/agent-memory agentRecent). 그 앞은 메모 · search_history 로 안다 */
+  recent: AgentMessage[];
+  /** 이 담당이 읽는 메모 — 자기 메모 · 팀 공용(store/agent-memory agentMemos). 제목은 늘, 내용은 펼친 것만 싣는다 */
+  memos: AgentMemos;
   brief: string;
   today: string;
   /** 그 사업의 팀 — 팀장 · 실무자 · 팀 목표 · 방향(store/agent-team agentTeam) */
   team: AgentTeam;
-  /** 다른 팀원들의 최근 기록(lib/agents/team teamDigestOf). 마지막 지시 곁에 붙는다 */
-  teamDigest?: string | null;
+  /** 다른 팀원들의 한 줄 현황(lib/agents/team teamBriefOf). 마지막 지시 곁에 붙는다 */
+  teamBrief?: string | null;
   hands: AgentHands;
 }): Promise<AgentTurn> {
   const { agent, hands } = input;
@@ -512,20 +582,27 @@ export async function agentReply(input: {
       text: `너는 한백의 「${agent.name}」이다. ${companyLineOf(agent)} 너는 이 대화창에서 한백 관리자와 일한다.\n\n`
         + `${roleOf(agent)}\n\n${teamLineOf(agent, input.team)}\n\n${RULES}\n\n`
         + `${directionsBlock(input.team.directions, isLead(agent.kind))}\n\n${dutiesBlock(input.duties)}`,
+      /* 도구 · 시스템은 담당마다 늘 같다 — 여기 표지가 있어야 지시가 바뀌어도 이만큼은 캐시에서 읽는다 */
+      cache_control: { type: 'ephemeral' as const },
     },
   ];
   const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
   const tools = toolsOf(agent, hands);
-  if (!awaitsReply(input.thread)) throw new Error('답할 지시가 없습니다.');
-  const { older, recent } = splitThread(input.thread);
+  const { recent } = input;
+  if (!awaitsReply(recent)) throw new Error('답할 지시가 없습니다.');
   const said = toMessages(recent, await fileTextsOf(recent));
   if (said.length === 0 || said[said.length - 1].role !== 'user') {
     throw new Error('답할 지시가 없습니다.');
   }
+  /* 메모 — 제목은 늘, 이번 말에 제목의 낱말이 나온 것은 펼쳐서(lib/agents/memos). 이 답 동안 열고 고친 것을 여기서 따라간다 */
+  const memoOf = new Map<string, AgentMemo>([...input.memos.mine, ...input.memos.team].map((m) => [m.id, m]));
+  const opened = memosToOpen([...input.memos.mine, ...input.memos.team], pendingOf(recent));
+  const seen = new Set(opened.map((m) => m.id));
   const messages = withContext(
-    withRecall(said, recallBlock(older)),
+    said,
     `[지금 — 이 지시를 받은 때의 콘솔 자료]\n오늘: ${input.today} (한국)\n\n${tasksBlock(input.tasks)}\n\n${input.brief}`
-      + (input.teamDigest ? `\n\n${input.teamDigest}` : ''),
+      + (input.teamBrief ? `\n\n${input.teamBrief}` : '')
+      + `\n\n${memoBlock(input.memos, opened)}`,
   );
 
   const started = Date.now();
@@ -536,6 +613,7 @@ export async function agentReply(input: {
   const mails: string[] = [];
   const directions: string[] = [];
   const told: string[] = [];
+  const memoed: string[] = [];
   let usd = 0;
   /* 바퀴마다의 토큰을 모은다 — 사용량 표가 캐시가 얼마나 먹었는지 보여 준다(store/agents agentUsage) */
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -611,14 +689,58 @@ export async function agentReply(input: {
         directions.push(await hands.deleteDirection(id));
         return { type: 'tool_result', tool_use_id: block.id, content: '지웠다 — 실무자들은 다음에 부를 때부터 읽지 않는다.' };
       }
-      if (block.name === 'search_history') {
+      if (block.name === 'open_memo') {
+        const ids = Array.isArray(args.ids) ? args.ids.map(str).filter(Boolean) : [str(args.ids)].filter(Boolean);
+        if (ids.length === 0) return fail('ids 가 비었다.');
+        const found = ids.map((id) => memoOf.get(id)).filter((m): m is AgentMemo => Boolean(m));
+        for (const m of found) seen.add(m.id);
+        const missing = ids.filter((id) => !memoOf.has(id));
         return {
           type: 'tool_result', tool_use_id: block.id,
-          content: searchThread(input.thread, { query: str(args.query), from: str(args.from), to: str(args.to) }),
+          content: [...found.map(memoText), ...(missing.length ? [`없는 메모: ${missing.join(', ')}`] : [])].join('\n\n'),
         };
       }
-      if (block.name === 'read_file') {
-        const f = fileIn(input.thread, str(args.file_id));
+      if (block.name === 'save_memo' && hands.saveMemo) {
+        if (memoed.length >= MEMOS_PER_TURN) return fail(`한 답에 메모는 ${MEMOS_PER_TURN}번까지 적는다.`);
+        const id = str(args.id) || null;
+        const body = typeof args.body === 'string' ? args.body.trim() : '';
+        const title = str(args.title) || undefined;
+        const append = args.append === true;
+        const old = id ? memoOf.get(id) : undefined;
+        if (id && !old) return fail(`id=${id} 메모가 없다 — 「[메모 …]」의 id 를 쓴다.`);
+        /* 통째로 바꾸는 것은 내용을 본 메모만 — 안 보고 바꾸면 앞의 내용이 사라진다 */
+        if (old && !append && !seen.has(old.id)) return fail('바꾸기 전에 open_memo 로 읽는다 — 덧붙이기만이면 append 를 true 로.');
+        if (!old && !title) return fail('새 메모에는 title 이 필요하다.');
+        const scope: MemoScope = old?.scope ?? (args.scope === 'team' ? 'team' : 'mine');
+        const saved = await hands.saveMemo({ scope, id, title, body, append });
+        const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
+        memoOf.set(saved.id, {
+          id: saved.id, scope, title: saved.title,
+          body: old ? (append ? [old.body.trim(), body].filter(Boolean).join('\n') : body) : body,
+          author: agent.name, byAgent: true, updatedAt: old ? now : null, createdAt: old?.createdAt ?? now,
+        });
+        seen.add(saved.id);
+        memoed.push(saved.title);
+        return {
+          type: 'tool_result', tool_use_id: block.id,
+          content: `${old ? (append ? '덧붙였다' : '고쳤다') : '적었다'} (id=${saved.id} · ${scope === 'team' ? '팀 공용' : '내 메모'})`,
+        };
+      }
+      if (block.name === 'delete_memo' && hands.deleteMemo) {
+        const old = memoOf.get(str(args.id));
+        if (!old) return fail(`id=${str(args.id) || '(비어 있음)'} 메모가 없다.`);
+        memoed.push(await hands.deleteMemo({ scope: old.scope, id: old.id }));
+        memoOf.delete(old.id);
+        return { type: 'tool_result', tool_use_id: block.id, content: '지웠다.' };
+      }
+      if (block.name === 'search_history' && hands.searchHistory) {
+        return {
+          type: 'tool_result', tool_use_id: block.id,
+          content: await hands.searchHistory({ query: str(args.query), from: str(args.from), to: str(args.to) }),
+        };
+      }
+      if (block.name === 'read_file' && hands.readFile) {
+        const f = await hands.readFile(str(args.file_id));
         if (!f) return fail(`이 대화창에 넘긴 파일 중 id=${str(args.file_id) || '(비어 있음)'} 가 없다.`);
         const read = agentFileRead(f.name);
         /* PDF · 그림은 대화에 붙일 때와 같은 덩이로 돌려준다(도구 결과에도 문서 · 그림 덩이가 든다 — SDK 0.52 타입은 그림까지만 안다) */
@@ -707,7 +829,11 @@ export async function agentReply(input: {
         if (c.type === 'web_search_result_location' && !sources.has(c.url)) sources.set(c.url, { url: c.url, title: c.title });
       }
     }
-    if (said.trim()) texts.push(said.trim());
+    /*
+     * 도구를 부르며 답을 먼저 써 두고, 도구 결과를 받은 뒤 같은 답을 다시 쓰는 일이 있다(2026-11-05 실측 — 할 일을 적으며 같은 두 문단이
+     * 두 번 나갔다). 앞 바퀴의 글과 같으면 버리고, 앞 글을 품은 새 글이면 갈아 끼운다
+     */
+    pushSaid(texts, said);
 
     if (res.stop_reason === 'refusal') {
       throw new Error('에이전트가 이 지시에 답하지 않았습니다 — 말을 바꿔 다시 물어 주세요.');
@@ -736,12 +862,13 @@ export async function agentReply(input: {
     ...(mails.length ? { mails } : {}),
     ...(directions.length ? { directions } : {}),
     ...(told.length ? { told } : {}),
+    ...(memoed.length ? { memos: memoed } : {}),
     tokens,
     ...(searchCount ? { searches: searchCount } : {}),
   };
   if (!text) {
     // 할 일 · 메일 초안은 이미 남았을 수 있다 — 그 사실은 남긴다
-    if (added.length || done.length || mails.length || directions.length || told.length) {
+    if (added.length || done.length || mails.length || directions.length || told.length || memoed.length) {
       return {
         text: [
           added.length ? `할 일을 적었습니다: ${added.join(' · ')}` : '',
@@ -749,6 +876,7 @@ export async function agentReply(input: {
           mails.length ? `메일 초안을 올렸습니다: ${mails.join(' · ')}` : '',
           directions.length ? `목표 · 방향을 고쳤습니다: ${directions.join(' · ')}` : '',
           told.length ? `팀원에게 남겼습니다: ${told.join(' · ')}` : '',
+          memoed.length ? `메모를 적었습니다: ${memoed.join(' · ')}` : '',
         ].filter(Boolean).join('\n'),
         meta: { model: MODEL, ms: Date.now() - started, usd, ...acted },
       };

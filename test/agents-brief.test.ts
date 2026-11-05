@@ -199,12 +199,15 @@ describe('지난 대화를 에이전트에게 넘기는 모양', () => {
     ]);
   });
 
-  it('지금의 콘솔 자료는 마지막 지시 앞에 붙는다 — 앞의 대화는 그대로(캐시가 남는다)', () => {
+  it('지금의 콘솔 자료는 마지막 지시 뒤에, 캐시 표지는 그 바로 앞에 — 앞의 대화는 그대로(다음 지시에서 캐시가 맞는다)', () => {
     const m = withContext(toMessages([said('user', '첫 지시'), said('agent', '답'), said('user', '둘째 지시')]), '[지금 — 자료]');
     expect(m[0]).toEqual({ role: 'user', content: '[김한백 · 2026-11-02 10:00] 첫 지시' });
     expect(m[2]).toEqual({
       role: 'user',
-      content: [{ type: 'text', text: '[지금 — 자료]' }, { type: 'text', text: '[김한백 · 2026-11-02 10:00] 둘째 지시' }],
+      content: [
+        { type: 'text', text: '[김한백 · 2026-11-02 10:00] 둘째 지시', cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: '[지금 — 자료]' },
+      ],
     });
   });
 

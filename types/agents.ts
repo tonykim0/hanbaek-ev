@@ -86,6 +86,34 @@ export interface AgentDirection {
   createdAt: string;
 }
 
+/** 메모가 누구의 것인가 — 그 담당만(mine) · 그 사업의 팀 모두(team) */
+export type MemoScope = 'mine' | 'team';
+export const MEMO_SCOPES = ['mine', 'team'] as const satisfies readonly MemoScope[];
+
+/**
+ * 메모 한 장 (migrations/0122) — 담당이 한백에게서 들은 사실 · 정한 것 · 바라는 방식을 주제마다(한백 2026-11-05 「비용을 줄이면서
+ * 장기기억으로 두면서 그때그때 꺼내 쓸 수 있는 방법」). 담당은 제목만 늘 읽고 내용은 그때그때 꺼내 쓴다(lib/agents/memos).
+ */
+export interface AgentMemo {
+  id: string;
+  scope: MemoScope;
+  /** 펼칠 낱말이기도 하다 — 운영사 · 사업자 · 현장 번호 · 사람 · 주제를 「 · 」로 잇는다 */
+  title: string;
+  body: string;
+  /** 마지막으로 적은 쪽 — 사람 이름 또는 담당 이름 */
+  author: string;
+  byAgent: boolean;
+  /** 마지막으로 고친 때(YYYY-MM-DD HH:mm) — 처음 적은 그대로면 null */
+  updatedAt: string | null;
+  createdAt: string;
+}
+
+/** 담당 하나가 읽는 메모 — 자기 메모와 그 사업의 팀 공용 메모(최근에 고친 것부터) */
+export interface AgentMemos {
+  mine: AgentMemo[];
+  team: AgentMemo[];
+}
+
 /** 사업 하나의 팀 — 팀장 · 실무자(조직 순서) · 팀장이 세운 목표 · 방향 */
 export interface AgentTeam {
   lead: Agent | null;
@@ -161,6 +189,8 @@ export interface AgentMessageMeta {
   directions?: string[];
   /** 이 답에서 말을 남긴 팀원의 이름(tell_teammate) */
   told?: string[];
+  /** 이 답에서 적거나 고치거나 지운 메모의 이름(save_memo · delete_memo) */
+  memos?: string[];
   /** 팀원의 말(peer)을 보낸 담당 — 대화에서 그 담당으로 가는 고리 */
   from?: { id: string; name: string };
   /**

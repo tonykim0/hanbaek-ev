@@ -11,26 +11,25 @@
  *
  *   teamLineOf       시스템 — 팀에서의 자리(팀장 · 실무자)와 서로 무엇을 읽고 남기는지
  *   directionsBlock  시스템 — 팀 목표 · 방향(아래로). 팀 모두가 부를 때마다 읽는다 — 바뀔 때만 바뀌어 캐시에 남는다
- *   teamDigestOf     마지막 지시 곁 — 다른 팀원마다 최근 2주의 업무 정의 · 할 일 · 말 몇 줄(옆으로 · 위로)
+ *   teamBriefOf      마지막 지시 곁 — 다른 팀원마다 한 줄(최근 2주의 대화 수 · 열린 할 일 · 마지막 말). 자세히는 team_history 로 꺼내 본다
+ *                    (한백 2026-11-05 「모든 대화를 매번 다 읽는건 너무 비효율적」 — 그전에는 팀원마다 말 여섯 줄씩 늘 붙였다)
  *   teamHistoryOf    team_history 도구 — 팀원 하나의 대화 · 할 일 · 업무 정의를 깊이
  *
- * [팀 소식]은 바뀌는 자료라 시스템이 아니라 마지막 지시 곁에 붙는다(lib/agents/brain 「바뀌는 자료는 마지막 지시 곁」) — 앞의
- * 대화가 캐시에서 싸게 읽히게. 팀원 여섯이 다 상한까지 차도 몇 천 토큰이다(Opus 5.5 입력 100만에 $4 — 한 번에 몇 센트).
+ * [팀 현황]은 바뀌는 자료라 시스템이 아니라 마지막 지시 곁에 붙는다(lib/agents/brain 「바뀌는 자료는 마지막 지시 곁」) — 앞의
+ * 대화가 캐시에서 싸게 읽히게. 팀이 같이 알아야 할 것은 팀 공용 메모(lib/agents/memos)에 있다.
  */
 import type { Agent, AgentDirection, AgentMessage, AgentTask, AgentTeam, TeamMemberLog } from '@/types/agents';
 import { isLead } from '@/types/agents';
 
-/** 부를 때마다 읽는 [팀 소식] — 최근 날수 · 팀원 한 사람의 말 수 */
+/** 부를 때마다 읽는 [팀 현황] — 최근 날수 · 팀원 한 사람의 마지막 말 하나 */
 export const TEAM_DAYS = 14;
-export const TEAM_PER_MEMBER = 6;
+export const TEAM_PER_MEMBER = 1;
 /** team_history — 기본 날수 · 팀원 한 사람의 말 상한 */
 export const HISTORY_DAYS = 30;
 export const HISTORY_PER_MEMBER = 80;
-/** 한 말의 글자 상한 — [팀 소식]은 한 줄로(답은 길어 더 짧게), team_history 는 넉넉히 */
-const DIGEST_CLIP = { said: 200, agent: 160 } as const;
+/** 한 말의 글자 상한 — [팀 현황]은 마지막 말 앞부분만, team_history 는 넉넉히 */
+const BRIEF_CLIP = 80;
 const HISTORY_CLIP = 1500;
-/** [팀 소식]에 적는 할 일 수 — 넘으면 「…」 */
-const DIGEST_TASKS = { open: 8, done: 5 } as const;
 /** 한 답에서 팀원에게 남기는 말의 상한 — 잘못 돈 답이 팀원들의 대화를 채우지 않게 */
 export const TELLS_PER_TURN = 3;
 
@@ -57,12 +56,10 @@ function tailOf(m: AgentMessage): string {
     m.meta?.done?.length ? `할 일 끝냄: ${m.meta.done.join(' · ')}` : '',
     m.meta?.mails?.length ? `메일 초안: ${m.meta.mails.join(' · ')}` : '',
     m.meta?.told?.length ? `팀원에게 남김: ${m.meta.told.join(' · ')}` : '',
+    m.meta?.memos?.length ? `메모: ${m.meta.memos.join(' · ')}` : '',
   ].filter(Boolean);
   return parts.length ? ` [${parts.join(' / ')}]` : '';
 }
-
-const taskLine = (t: AgentTask) => `${t.title}${t.due ? `(기한 ${t.due.slice(5)})` : ''}`;
-const more = (n: number, shown: number) => (n > shown ? ' …' : '');
 
 /** 같은 팀의 다른 담당 — 팀장 먼저, 그다음 실무자(조직 순서) */
 export function teammatesOf(agent: Agent, team: Pick<AgentTeam, 'lead' | 'members'>): Agent[] {
@@ -70,11 +67,12 @@ export function teammatesOf(agent: Agent, team: Pick<AgentTeam, 'lead' | 'member
 }
 
 /** 팀이 서로 무엇을 읽고 남기는지 — 팀장 · 실무자 모두 같다 */
-const SHARE = '팀원들이 한백과 나눈 지시 · 기록 · 답 · 할 일을 너도 알고, 네 것도 팀원 모두가 읽는다 — 마지막 지시 곁의 [팀 소식]이 '
-  + '최근 것이고, 더 깊이는 team_history 로 읽는다(낱말을 주면 기간과 상관없이 그 팀원의 대화 전부에서 찾는다). '
+const SHARE = '팀원들이 한백과 나눈 지시 · 기록 · 답 · 할 일을 너도 꺼내 보고, 네 것도 팀원 모두가 본다 — 마지막 지시 곁의 [팀 현황]이 '
+  + '팀원마다 한 줄 현황이고, 자세히는 team_history 로 읽는다(낱말을 주면 기간과 상관없이 그 팀원의 대화 전부에서 찾는다). '
+  + '팀이 같이 알아야 할 사실 · 정한 것은 팀 공용 메모에 적는다(save_memo scope team). '
   + '팀원이 알아야 할 것(그 팀원의 운영사 · 사업자 · 일에 걸린 사실, 한백이 전해 '
   + '달라고 한 것, 그 팀원에게 묻거나 맡길 것)은 tell_teammate 로 그 팀원의 대화에 남긴다 — 그 팀원은 다음에 불릴 때 읽는다. '
-  + '팀원에게 물을 것이 [팀 소식] · team_history 에 이미 있으면 남기지 않고 읽어서 쓴다.';
+  + '팀원에게 물을 것이 팀 공용 메모 · team_history 에 이미 있으면 남기지 않고 읽어서 쓴다.';
 
 /** 시스템 — 팀에서의 자리. 팀장은 목표 · 방향을 세우고, 실무자는 그 방향에 맞춰 일한다. 서로의 기록은 모두가 읽는다 */
 export function teamLineOf(agent: Agent, team: Pick<AgentTeam, 'lead' | 'members'>): string {
@@ -102,29 +100,18 @@ export function directionsBlock(directions: AgentDirection[], forLead: boolean):
   ].join('\n');
 }
 
-/** 마지막 지시 곁 — 다른 팀원마다 업무 정의 이름 · 할 일 · 최근 말 몇 줄 */
-export function teamDigestOf(logs: TeamMemberLog[], days: number = TEAM_DAYS): string {
-  const head = `[팀 소식 — 다른 팀원 ${logs.length}명이 최근 ${days}일 동안 한백 · 팀원과 나눈 것. 더 깊이는 team_history]`;
-  if (logs.length === 0) return `${head}\n- 팀원 없음`;
-  const blocks = logs.map((l) => {
-    const open = l.tasks.filter((t) => !t.doneAt);
-    const done = l.tasks.filter((t) => t.doneAt);
-    return [
-      `[${isLead(l.agent.kind) ? '팀장' : '실무자'} · ${l.agent.name} · id=${l.agent.id}]`,
-      `업무 정의 ${l.duties.length}${l.duties.length ? `: ${l.duties.map((d) => d.title).join(' · ')}` : ''}`,
-      `열린 할 일 ${open.length}${open.length
-        ? `: ${open.slice(0, DIGEST_TASKS.open).map(taskLine).join(' · ')}${more(open.length, DIGEST_TASKS.open)}` : ''}`,
-      ...(done.length
-        ? [`끝낸 할 일 ${done.length}: ${done.slice(0, DIGEST_TASKS.done).map((t) => t.title).join(' · ')}${more(done.length, DIGEST_TASKS.done)}`]
-        : []),
-      `대화 ${l.total}건${l.total > l.messages.length ? ` — 최근 ${l.messages.length}건` : ''}`,
-      ...l.messages.map((m) => {
-        const said = cut(oneLine(m.body), m.role === 'agent' ? DIGEST_CLIP.agent : DIGEST_CLIP.said);
-        return `- ${m.at.slice(5)} ${whoSaid(m)}: ${said || '(파일만)'}${tailOf(m)}`;
-      }),
-    ].join('\n');
-  });
-  return [head, ...blocks].join('\n\n');
+/** 마지막 지시 곁 — 다른 팀원마다 한 줄: 자리 · 이름 · id · 최근 대화 수 · 열린 할 일 · 마지막 말(앞부분) */
+export function teamBriefOf(logs: TeamMemberLog[], days: number = TEAM_DAYS): string {
+  const head = `[팀 현황 — 같은 사업의 다른 담당 ${logs.length}명 · 최근 ${days}일. 자세히는 team_history, 같이 알 것은 팀 공용 메모]`;
+  if (logs.length === 0) return `${head}\n- 없음`;
+  return [head, ...logs.map((l) => {
+    const open = l.tasks.filter((t) => !t.doneAt).length;
+    const last = l.messages.at(-1);
+    const said = last
+      ? ` · 마지막 ${last.at.slice(5)} ${whoSaid(last)}: ${cut(oneLine(last.body), BRIEF_CLIP) || '(파일만)'}`
+      : '';
+    return `- ${isLead(l.agent.kind) ? '팀장' : '실무자'} ${l.agent.name} (id=${l.agent.id}) — 대화 ${l.total}건 · 열린 할 일 ${open}${said}`;
+  })].join('\n');
 }
 
 /** team_history 도구의 답 — 팀원 하나를 깊이: 업무 정의 전문 · 할 일 · 대화(오래된 것부터) */

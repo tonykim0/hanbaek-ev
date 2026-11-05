@@ -179,7 +179,7 @@ export function taskOrder(a: AgentTask, b: AgentTask): number {
 export const agentStore: Pick<
   ProjectRepository,
   | 'listAgents' | 'getAgent' | 'saveAgentDuty' | 'deleteAgentDuty'
-  | 'addAgentTask' | 'setAgentTaskDone' | 'deleteAgentTask' | 'addAgentMessage' | 'agentUsage' | 'agentRemind' | 'agentThread'
+  | 'addAgentTask' | 'setAgentTaskDone' | 'deleteAgentTask' | 'addAgentMessage' | 'agentUsage' | 'agentRemind'
 > = {
   /*
    * 사용량 — 이번 달 · 지난달(한국 달력)의 답 수와 비용 어림, 이번 달 토큰 (한백 2026-11-03 「사용량 추적도 해야할듯」).
@@ -310,22 +310,6 @@ export const agentStore: Pick<
           : null,
       };
     });
-  },
-
-  /**
-   * 담당 하나와 나눈 말 전부(오래된 것부터, 넘긴 파일 포함) — 에이전트를 부를 때 읽는다(lib/agents/memory). 화면의 대화(getAgent)는
-   * 최근 300개뿐이지만, 담당은 한백이 한 말을 다 기억해야 한다(한백 2026-11-05 「담당자가 내가 말한 모든 정보를 기억해주길 바래」).
-   */
-  async agentThread(id, actor): Promise<AgentMessage[]> {
-    assertAdmin(actor, '에이전트');
-    const db = getDb();
-    const [rows, files] = await allSlots([
-      () => db.select().from(agentMessages).where(eq(agentMessages.agentId, id)).orderBy(asc(agentMessages.at)),
-      () => db.select().from(agentFiles).where(eq(agentFiles.agentId, id)).orderBy(asc(agentFiles.at)),
-    ] as const);
-    const filesOf = new Map<string, AgentFile[]>();
-    for (const f of files) filesOf.set(f.messageId, [...(filesOf.get(f.messageId) ?? []), fileOf(f)]);
-    return rows.map((m) => messageOf(m, filesOf.get(m.id) ?? []));
   },
 
   async getAgent(id, actor, opts): Promise<AgentDetail> {

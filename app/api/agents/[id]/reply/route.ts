@@ -1,8 +1,8 @@
 /**
  * POST /api/agents/[id]/reply — 에이전트가 마지막 지시에 답한다 [한백 관리자]
  *
- * 업무 정의 · 열린 할 일 · 지금 콘솔 자료(lib/agents/scope — 저장하지 않고 이때 읽는다) · 지난 대화(넘긴 파일 포함 —
- * lib/agents/file-text)를 들고 부른다.
+ * 업무 정의 · 열린 할 일 · 지금 콘솔 자료(lib/agents/scope — 저장하지 않고 이때 읽는다) · 최근 대화(넘긴 파일 포함 —
+ * lib/agents/file-text) · 메모를 들고 부른다.
  * 대화 중에 에이전트가 적거나 끝낸 할 일은 이 요청을 보낸 관리자의 이름으로 감사기록에 남고, 적은 쪽에는 에이전트
  * 이름이 선다(store/agents). 답은 대화에 남는다.
  * 에이전트가 올린 메일 초안(draft_mail)은 답을 남긴 뒤 그 답에 잇는다 — 대화에서 그 답 밑에 서고, 한백이 승인해야 나간다
@@ -12,10 +12,11 @@
  * 운영사 담당은 pricing_table 로 그 운영사의 지금 단가표를 읽는다(lib/agents/pricing-table — 읽기만, 한백 2026-11-04).
  * 태양광 담당(migrations/0118)은 태양광 자료를 읽는다(상담 접수한 현장 — lib/agents/solar-brief). 양식 메일 · 단가표는 없다.
  * ★담당들은 팀이다★(migrations/0120 · lib/agents/team) — 모두가 그 사업의 팀 목표 · 방향을 읽고, 팀장(전략·기획)은 목표 · 방향을
- * 올린다(save_direction). ★팀원끼리 서로 읽고 남긴다★(한백 2026-11-05): 모두가 다른 팀원들의 최근 기록([팀 소식])을 같이 받고, 팀원
+ * 올린다(save_direction). ★팀원끼리 서로 읽고 남긴다★(한백 2026-11-05): 모두가 다른 팀원들의 한 줄 현황([팀 현황])을 같이 받고, 팀원
  * 하나를 깊이 읽고(team_history), 팀원의 대화에 말을 남긴다(tell_teammate — 받은 담당은 다음에 불릴 때 읽는다).
- * ★지난 대화는 전부 읽는다★(한백 2026-11-05 「내가 말한 모든 정보를 기억」 — store/agents agentThread · lib/agents/memory). 화면의
- * 대화(getAgent)는 최근 300개뿐이라 따로 읽는다.
+ * ★장기기억은 메모장, 꺼내 쓰는 것은 그때그때★(한백 2026-11-05 「비용을 줄이면서 장기기억으로 두면서 그때그때 꺼내 쓸 수 있는 방법」 —
+ * store/agent-memory · lib/agents/memory · memos): 부를 때 읽는 것은 최근 대화 20~39개와 메모뿐이고, 대화 원문 · 지난 파일은 담당이
+ * 찾을 때(search_history · read_file)만 DB 에서 읽는다.
  */
 import { getRepository } from '@/lib/data';
 import { adminWrite } from '@/lib/api/write-route';
@@ -24,9 +25,9 @@ import { pricingTableText } from '@/lib/agents/pricing-table';
 import { loadAgentBrief } from '@/lib/agents/scope';
 import { siteMailOfCpo } from '@/lib/site-mail';
 import { requestSiteMail } from '@/lib/site-mail-run';
-import { awaitsReply, searchThread } from '@/lib/agents/memory';
+import { awaitsReply, queryOf, searchText } from '@/lib/agents/memory';
 import {
-  HISTORY_PER_MEMBER, memberOf, TEAM_DAYS, TEAM_PER_MEMBER, teamDigestOf, teamHistoryOf, teammatesOf,
+  HISTORY_PER_MEMBER, memberOf, TEAM_DAYS, TEAM_PER_MEMBER, teamBriefOf, teamHistoryOf, teammatesOf,
 } from '@/lib/agents/team';
 import { isLead } from '@/types/agents';
 
@@ -41,8 +42,8 @@ export const POST = adminWrite<{ id: string }, undefined>(
     const repo = getRepository();
     const detail = await repo.getAgent(params.id, actor);
     const agentId = detail.agent.id;
-    const thread = await repo.agentThread(agentId, actor);
-    if (!awaitsReply(thread)) throw new Error('답할 지시가 없습니다 — 먼저 말을 남겨 주세요.');
+    const recent = await repo.agentRecent(agentId, actor);
+    if (!awaitsReply(recent)) throw new Error('답할 지시가 없습니다 — 먼저 말을 남겨 주세요.');
 
     /*
      * 사업마다의 자료 — 전기차 정산 담당은 열린구매 글에 쓸 지급처 사업자·계좌까지 읽는다. 팀(목표 · 방향)과 다른 팀원들의
@@ -50,10 +51,11 @@ export const POST = adminWrite<{ id: string }, undefined>(
      */
     const { biz } = detail.agent;
     const lead = isLead(detail.agent.kind);
-    const [{ today, brief, siteOf }, team, logs] = await Promise.all([
+    const [{ today, brief, siteOf }, team, logs, memos] = await Promise.all([
       loadAgentBrief(detail.agent, actor),
       repo.agentTeam(actor, biz),
       repo.agentTeamLog(actor, biz, { days: TEAM_DAYS, perMember: TEAM_PER_MEMBER, exclude: agentId }),
+      repo.agentMemos(actor, agentId),
     ]);
     const mates = teammatesOf(detail.agent, team);
     const drafted: string[] = [];
@@ -64,11 +66,12 @@ export const POST = adminWrite<{ id: string }, undefined>(
       agent: detail.agent,
       duties: detail.duties,
       tasks: detail.tasks,
-      thread,
+      recent,
+      memos,
       brief,
       today,
       team,
-      teamDigest: mates.length ? teamDigestOf(logs) : null,
+      teamBrief: mates.length ? teamBriefOf(logs) : null,
       hands: {
         addTask: async (t) => (await repo.addAgentTask({ agentId, ...t, byAgent: true }, actor)).id,
         completeTask: async (id) => (await repo.setAgentTaskDone({ agentId, id, done: true, byAgent: true }, actor)).title,
@@ -86,6 +89,16 @@ export const POST = adminWrite<{ id: string }, undefined>(
             return { id: mail.id, subject: mail.subject, plan, to: mail.to };
           },
         } : {}),
+        /* 기억의 손 — 메모장(적은 쪽에 담당 이름) · 대화 원문 찾기 · 지난 파일 */
+        saveMemo: (m) => repo.saveAgentMemo({ agentId, ...m, byAgent: true }, actor),
+        deleteMemo: async (m) => (await repo.deleteAgentMemo({ agentId, ...m, byAgent: true }, actor)).title,
+        searchHistory: async (q) => {
+          const query = queryOf(q);
+          if (!query) return '찾을 낱말(query)이나 날짜(from · to)를 준다.';
+          const { hits, total } = await repo.searchAgentMessages(agentId, actor, query);
+          return searchText(hits, total, query);
+        },
+        readFile: (id) => repo.agentFileOf(agentId, id, actor),
         ...(operatorCpo ? {
           pricingTable: async () => pricingTableText(await repo.listPricingRules(actor), operatorCpo),
         } : {}),
@@ -93,9 +106,13 @@ export const POST = adminWrite<{ id: string }, undefined>(
         ...(mates.length ? {
           teamHistory: async (ref: string, days: number, query?: string) => {
             const member = memberOf(mates, ref);
-            if (!member) throw new Error(`팀원 「${ref}」를 찾지 못했다 — [팀 소식]의 id 를 쓴다.`);
+            if (!member) throw new Error(`팀원 「${ref}」를 찾지 못했다 — [팀 현황]의 id 를 쓴다.`);
             /* 낱말을 주면 그 팀원의 대화 전부에서 — 날수 상한이 없다(한백의 말을 팀이 다 나눠 알게) */
-            if (query) return searchThread(await repo.agentThread(member.id, actor), { query }, member.name);
+            const q = query ? queryOf({ query }) : null;
+            if (q) {
+              const { hits, total } = await repo.searchAgentMessages(member.id, actor, q);
+              return searchText(hits, total, q, member.name);
+            }
             const span = Math.min(MAX_HISTORY_DAYS, Math.max(1, Math.round(days)));
             const [log] = await repo.agentTeamLog(actor, biz, { days: span, perMember: HISTORY_PER_MEMBER, memberId: member.id });
             if (!log) throw new Error(`팀원 「${ref}」의 기록을 읽지 못했다.`);
@@ -103,7 +120,7 @@ export const POST = adminWrite<{ id: string }, undefined>(
           },
           tellTeammate: async (ref: string, body: string) => {
             const member = memberOf(mates, ref);
-            if (!member) throw new Error(`팀원 「${ref}」를 찾지 못했다 — [팀 소식]의 id 를 쓴다.`);
+            if (!member) throw new Error(`팀원 「${ref}」를 찾지 못했다 — [팀 현황]의 id 를 쓴다.`);
             return (await repo.tellAgent({ fromId: agentId, toId: member.id, body }, actor)).name;
           },
         } : {}),

@@ -76,15 +76,13 @@ describe('담당마다 쥐는 도구', () => {
 
   it('운영사 담당은 단가표를 읽는다 — 라우트가 손을 이어 줄 때만', () => {
     expect(names(toolsOf(NICE, { pricingTable: read, siteMail: mail }))).toEqual(
-      ['add_task', 'complete_task', 'draft_mail', 'site_mail', 'pricing_table', 'search_history', 'read_file'],
+      ['add_task', 'complete_task', 'draft_mail', 'site_mail', 'pricing_table'],
     );
     expect(names(toolsOf(NICE, {}))).not.toContain('pricing_table');
   });
 
   it('정산 · 전략·기획은 단가표 도구가 없다', () => {
     expect(names(toolsOf(SETTLE, { pricingTable: read }))).not.toContain('pricing_table');
-    expect(names(toolsOf(PLAN, { pricingTable: read }))).toEqual(
-      ['add_task', 'complete_task', 'draft_mail', 'search_history', 'read_file', 'web_search'],
-    );
+    expect(names(toolsOf(PLAN, { pricingTable: read }))).toEqual(['add_task', 'complete_task', 'draft_mail', 'web_search']);
   });
 });

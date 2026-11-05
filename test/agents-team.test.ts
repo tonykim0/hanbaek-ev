@@ -9,7 +9,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  directionsBlock, memberOf, TEAM_DAYS, teamDigestOf, teamHistoryOf, teamLineOf, teammatesOf,
+  directionsBlock, memberOf, TEAM_DAYS, teamBriefOf, teamHistoryOf, teamLineOf, teammatesOf,
 } from '@/lib/agents/team';
 import { toolsOf } from '@/lib/agents/brain';
 import type { Agent, AgentDirection, AgentMessage, AgentTask, TeamMemberLog } from '@/types/agents';
@@ -53,7 +53,7 @@ describe('시스템 — 팀에서의 자리 (teamLineOf)', () => {
     const line = teamLineOf(LEAD, TEAM);
     expect(line).toContain('너는 이 팀의 팀장이다');
     expect(line).toContain('현대엔지니어링 담당 · 나이스인프라 담당 · 정산 담당');
-    expect(line).toContain('[팀 소식]');
+    expect(line).toContain('[팀 현황]');
     expect(line).toContain('save_direction');
     expect(line).toContain('한백과 합의한 것만');
   });
@@ -62,8 +62,9 @@ describe('시스템 — 팀에서의 자리 (teamLineOf)', () => {
     const line = teamLineOf(NICE, TEAM);
     expect(line).toContain('너는 이 팀의 실무자다');
     expect(line).toContain('팀장은 전략·기획 담당이다');
-    expect(line).toContain('네 것도 팀원 모두가 읽는다');
-    expect(line).toContain('[팀 소식]');
+    expect(line).toContain('네 것도 팀원 모두가 본다');
+    expect(line).toContain('팀 공용 메모');
+    expect(line).toContain('[팀 현황]');
     expect(line).toContain('team_history');
     expect(line).toContain('tell_teammate');
     expect(line).toContain('같은 팀의 실무자: 현대엔지니어링 담당 · 정산 담당.');
@@ -93,49 +94,30 @@ describe('시스템 — 팀 목표 · 방향 (directionsBlock)', () => {
   });
 });
 
-describe('마지막 지시 곁 — 다른 팀원들의 기록 (teamDigestOf)', () => {
-  it('팀원마다 업무 정의 · 할 일 · 최근 말 — 누가 한 말인지 · 넘긴 파일 · 답이 한 일 · 팀원의 말까지', () => {
-    const text = teamDigestOf([
+describe('마지막 지시 곁 — 다른 팀원마다 한 줄 (teamBriefOf)', () => {
+  it('자리 · 이름 · id · 대화 수 · 열린 할 일 · 마지막 말(앞부분) — 말이 없는 팀원도 자리를 지킨다', () => {
+    const long = '가'.repeat(300);
+    const text = teamBriefOf([
       log(LEAD, {
-        messages: [said({ role: 'agent', author: '전략·기획 담당', body: '나이스 쪽에 알렸습니다.', meta: { told: ['나이스인프라 담당'] } })],
-        total: 1,
+        messages: [said({ role: 'agent', author: '전략·기획 담당', body: '나이스 쪽에 알렸습니다.', at: '2026-11-05 10:00' })],
+        total: 4,
       }),
       log(NICE, {
-        duties: [{ id: 'u1', title: '영업정책이 바뀌면 단가표 업데이트', body: '', updatedAt: null }],
-        tasks: [task({ title: '계약서 초안 메일 보내기', due: '2026-11-07' }), task({ title: '단가 회신 확인', doneAt: '2026-11-03 12:00' })],
-        messages: [
-          said({ role: 'note', body: '나이스 김대리와 통화 — 11월부터 공동주택 단가 인하', files: [{ id: 'f', name: '정책.pdf', url: 'u', size: 1, contentType: null }] }),
-          said({ role: 'agent', author: '나이스인프라 담당', body: '정리했습니다.', meta: { added: ['단가 회신 확인'] } }),
-          said({ role: 'peer', author: '전략·기획 담당', body: '4분기 나이스 비중 40% 목표', meta: { from: { id: 'strategy', name: '전략·기획 담당' } } }),
-        ],
-        total: 3,
+        tasks: [task({ title: '계약서 초안 메일 보내기' }), task({ title: '회신 확인' }), task({ title: '끝낸 것', doneAt: '2026-11-03 12:00' })],
+        messages: [said({ role: 'peer', author: '전략·기획 담당', body: `${long}\n둘째 줄`, at: '2026-11-04 09:30' })],
+        total: 9,
       }),
       log(SETTLE),
     ]);
-    expect(text).toContain(`[팀 소식 — 다른 팀원 3명이 최근 ${TEAM_DAYS}일 동안 한백 · 팀원과 나눈 것`);
-    expect(text).toContain('[팀장 · 전략·기획 담당 · id=strategy]');
-    expect(text).toContain('답: 나이스 쪽에 알렸습니다. [팀원에게 남김: 나이스인프라 담당]');
-    expect(text).toContain('팀원 전략·기획 담당의 말: 4분기 나이스 비중 40% 목표');
-    expect(text).toContain('[실무자 · 나이스인프라 담당 · id=op-nice]');
-    expect(text).toContain('업무 정의 1: 영업정책이 바뀌면 단가표 업데이트');
-    expect(text).toContain('열린 할 일 1: 계약서 초안 메일 보내기(기한 11-07)');
-    expect(text).toContain('끝낸 할 일 1: 단가 회신 확인');
-    expect(text).toContain('- 11-04 09:30 기록(김정우): 나이스 김대리와 통화 — 11월부터 공동주택 단가 인하 [넘긴 파일: 정책.pdf]');
-    expect(text).toContain('답: 정리했습니다. [할 일 적음: 단가 회신 확인]');
-    /* 말이 없는 실무자도 자리를 지킨다 — 0건 */
-    expect(text).toContain('[실무자 · 정산 담당 · id=settlement]\n업무 정의 0\n열린 할 일 0\n대화 0건');
+    expect(text).toContain(`[팀 현황 — 같은 사업의 다른 담당 3명 · 최근 ${TEAM_DAYS}일. 자세히는 team_history, 같이 알 것은 팀 공용 메모]`);
+    expect(text).toContain('- 팀장 전략·기획 담당 (id=strategy) — 대화 4건 · 열린 할 일 0 · 마지막 11-05 10:00 답: 나이스 쪽에 알렸습니다.');
+    expect(text).toContain(`- 실무자 나이스인프라 담당 (id=op-nice) — 대화 9건 · 열린 할 일 2 · 마지막 11-04 09:30 팀원 전략·기획 담당의 말: ${'가'.repeat(80)}…`);
+    expect(text).not.toContain('둘째 줄');
+    expect(text).toContain('- 실무자 정산 담당 (id=settlement) — 대화 0건 · 열린 할 일 0');
   });
 
-  it('한 말은 한 줄로 자른다 — 답은 더 짧게, 실린 것보다 많으면 「최근 n건」', () => {
-    const long = '가'.repeat(500);
-    const text = teamDigestOf([log(HEC, {
-      messages: [said({ role: 'user', body: `${long}\n둘째 줄` }), said({ role: 'agent', author: 'x', body: long })],
-      total: 9,
-    })]);
-    expect(text).toContain('대화 9건 — 최근 2건');
-    expect(text).toContain(`한백 지시(김정우): ${'가'.repeat(200)}…`);
-    expect(text).toContain(`답: ${'가'.repeat(160)}…`);
-    expect(text).not.toContain('둘째 줄');
+  it('팀원이 없으면 없다고', () => {
+    expect(teamBriefOf([])).toMatch(/\n- 없음$/);
   });
 });
 
@@ -168,28 +150,27 @@ describe('team_history — 팀원 하나를 깊이 (teamHistoryOf · memberOf)',
   });
 });
 
-describe('도구 — 목표 · 방향은 팀장만, 팀원 읽기 · 남기기와 기억은 모두', () => {
+describe('도구 — 목표 · 방향은 팀장만, 팀원 읽기 · 남기기와 메모장은 모두', () => {
   const names = (tools: unknown[]) => tools.map((t) => (t as { name: string }).name);
-  const hands = { saveDirection: async () => ({ id: 'x', title: 'x' }), tellTeammate: async () => '정산 담당' };
+  const hands = {
+    saveDirection: async () => ({ id: 'x', title: 'x' }), tellTeammate: async () => '정산 담당', saveMemo: async () => ({ id: 'm', title: 'm' }),
+  };
+  const MEMORY = ['open_memo', 'save_memo', 'delete_memo', 'search_history', 'read_file'];
 
-  it('팀장은 라우트가 손을 이어 줄 때 팀의 도구 · save_direction · delete_direction 을 쥔다(웹 검색은 그대로)', () => {
+  it('팀장은 라우트가 손을 이어 줄 때 메모장 · 팀의 도구 · save_direction · delete_direction 을 쥔다(웹 검색은 그대로)', () => {
     expect(names(toolsOf(LEAD, hands))).toEqual([
-      'add_task', 'complete_task', 'draft_mail', 'search_history', 'read_file', 'team_history', 'tell_teammate',
+      'add_task', 'complete_task', 'draft_mail', ...MEMORY, 'team_history', 'tell_teammate',
       'save_direction', 'delete_direction', 'web_search',
     ]);
     expect(names(toolsOf({ ...LEAD, id: 'solar-strategy', biz: 'solar' }, hands))).toContain('tell_teammate');
-    expect(names(toolsOf(LEAD, {}))).not.toContain('save_direction');
-    expect(names(toolsOf(LEAD, {}))).not.toContain('tell_teammate');
+    for (const t of ['save_direction', 'tell_teammate', 'open_memo']) expect(names(toolsOf(LEAD, {}))).not.toContain(t);
   });
 
-  it('실무자도 팀원을 읽고 남긴다 — 목표 · 방향은 손이 이어져도 쥐지 않는다', () => {
+  it('실무자도 메모장을 쓰고 팀원을 읽고 남긴다 — 목표 · 방향은 손이 이어져도 쥐지 않는다', () => {
     for (const a of [NICE, SETTLE, LUMORA]) {
       const got = names(toolsOf(a, hands));
       expect(got, a.id).not.toContain('save_direction');
-      expect(got, a.id).toContain('team_history');
-      expect(got, a.id).toContain('tell_teammate');
-      expect(got, a.id).toContain('search_history');
-      expect(got, a.id).toContain('read_file');
+      for (const t of [...MEMORY, 'team_history', 'tell_teammate']) expect(got, a.id).toContain(t);
     }
   });
 });

@@ -10,6 +10,7 @@ import { Tag, TEXT } from '@/components/ui';
 import { HeadlineCounts } from '@/components/agents/HeadlineCounts';
 import { AgentRoom } from '@/components/agents/AgentRoom';
 import { AgentDuties } from '@/components/agents/AgentDuties';
+import { AgentMemos } from '@/components/agents/AgentMemos';
 import { AgentDirections } from '@/components/agents/AgentDirections';
 import { AgentTasks } from '@/components/agents/AgentTasks';
 import { AgentWeeks } from '@/components/agents/AgentWeeks';
@@ -48,8 +49,9 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
   /* redirect 는 던져서 멈춘다 — 위 try 밖에서 */
   if (agent.biz !== biz) redirect(`${BIZ_AGENTS[agent.biz]}/${agent.id}${week ? `?week=${encodeURIComponent(week)}` : ''}`);
   const home = `${BIZ_AGENTS[agent.biz]}/${agent.id}`;
-  const [side, account, team] = await Promise.all([
+  const [side, account, team, memos] = await Promise.all([
     loadAgentSide(biz, actor), getRepository().getMailAccount(actor, biz), getRepository().agentTeam(actor, biz),
+    getRepository().agentMemos(actor, agent.id),
   ]);
   const lead = isLead(agent.kind);
   const headline = side.headline(agent);
@@ -125,7 +127,7 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
           />
         </div>
         {/*
-          오른쪽은 손이 자주 가는 차례다(2026-11-05 「뒤죽박죽」): 할 일 → 업무 정의 → 팀 목표 · 방향(세 줄까지, 펼치기) → 주간 기록.
+          오른쪽은 손이 자주 가는 차례다(2026-11-05 「뒤죽박죽」): 할 일 → 업무 정의 → 팀 목표 · 방향(세 줄까지, 펼치기) → 메모 → 주간 기록.
           그전에는 주간 기록 밑에 목표 · 방향 전문이 길게 서서 할 일이 화면 밖으로 밀렸다.
         */}
         <div className="flex flex-col gap-4">
@@ -141,6 +143,8 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
               clamp
             />
           )}
+          {/* 메모장 — 담당이 대화 중에 적고 한백이 고친다. 담당은 제목만 늘 읽고 내용은 그때그때 꺼내 쓴다 */}
+          <AgentMemos agentId={agent.id} memos={memos} />
           <AgentWeeks home={home} weeks={detail.weeks} selected={detail.week?.start ?? null} today={side.today} />
         </div>
       </div>

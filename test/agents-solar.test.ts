@@ -102,12 +102,12 @@ describe('태양광 담당이 쥐는 도구', () => {
 
   it('사업자 담당 — 할 일 · 메일 초안. 양식 메일 · 단가표는 없다(손을 이어 줘도)', () => {
     const tools = toolsOf(HENERGY, { pricingTable: read, siteMail: mail });
-    expect(names(tools)).toEqual(['add_task', 'complete_task', 'draft_mail', 'search_history', 'read_file']);
+    expect(names(tools)).toEqual(['add_task', 'complete_task', 'draft_mail']);
     expect(siteParam(tools)).toBe(false);
   });
 
   it('전략·기획은 웹 검색을 쥔다 — 전기차와 같다', () => {
-    expect(names(toolsOf(PLAN, {}))).toEqual(['add_task', 'complete_task', 'draft_mail', 'search_history', 'read_file', 'web_search']);
+    expect(names(toolsOf(PLAN, {}))).toEqual(['add_task', 'complete_task', 'draft_mail', 'web_search']);
   });
 
   it('전기차 담당의 할 일에는 현장(관리번호) 칸이 그대로 있다', () => {

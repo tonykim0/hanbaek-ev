@@ -18,7 +18,10 @@ import { POST as postDirection } from '@/app/api/agents/[id]/directions/route';
 import { DELETE as deleteDirection } from '@/app/api/agents/[id]/directions/[directionId]/route';
 import { getRepository } from '@/lib/data';
 import { getDb } from '@/lib/db/client';
-import { agentDirections, agentDuties, agentMessages, agentTasks, auditLog } from '@/lib/db/schema';
+import { agentDirections, agentDuties, agentFiles, agentMemos, agentMessages, agentTasks, auditLog } from '@/lib/db/schema';
+import { RECENT_MIN, RECENT_STEP } from '@/lib/agents/memory';
+import { POST as postMemo } from '@/app/api/agents/[id]/memos/[scope]/route';
+import { DELETE as deleteMemo } from '@/app/api/agents/[id]/memos/[scope]/[memoId]/route';
 import { mondayOf } from '@/lib/agents/weeks';
 import { agentAuditKey } from '@/types/agents';
 import { today } from '@/lib/date';
@@ -29,6 +32,7 @@ const admin = actorOf(USERS.admin);
 const AGENT = 'op-sk';
 const params = { id: AGENT };
 const mark = `[시험 ${RUN}]`;
+const db = () => getDb();
 
 afterAll(async () => {
   const db = getDb();
@@ -36,6 +40,7 @@ afterAll(async () => {
   await db.delete(agentTasks).where(like(agentTasks.title, `%${RUN}%`));
   await db.delete(agentDuties).where(like(agentDuties.title, `%${RUN}%`));
   await db.delete(agentDirections).where(like(agentDirections.title, `%${RUN}%`));
+  await db.delete(agentMemos).where(like(agentMemos.title, `%${RUN}%`));
   /* 주간 기록이 감사기록을 읽는다 — 시험이 남긴 줄이 개발 DB 의 주간 기록에 섞이지 않게 걷는다 */
   await db.delete(auditLog).where(and(
     like(auditLog.action, '에이전트%'),
@@ -411,14 +416,14 @@ describe('팀 — 팀장 · 실무자 (migrations/0120)', () => {
     const body = `${mark} HB-2026-033 계약서 접수 — 영업비 1차가 열립니다`;
     expect(await repo.tellAgent({ fromId: 'op-nice', toId: 'settlement', body }, admin)).toEqual({ id: 'settlement', name: '정산 담당' });
 
-    const thread = await repo.agentThread('settlement', admin);
+    const thread = await repo.agentRecent('settlement', admin);
     const got = thread.at(-1)!;
     expect(got).toMatchObject({ role: 'peer', author: '나이스인프라 담당', body, meta: { from: { id: 'op-nice', name: '나이스인프라 담당' } } });
     /* 화면의 대화 · 주간 기록에도 선다 */
     const detail = await repo.getAgent('settlement', admin);
     expect(detail.messages.at(-1)?.id).toBe(got.id);
     expect(detail.weeks.find((w) => w.start === mondayOf(today()))?.peer).toBeGreaterThanOrEqual(1);
-    /* 팀장이 [팀 소식]으로 읽는다 */
+    /* 팀원이 team_history 로 읽는다 */
     const [settle] = await repo.agentTeamLog(admin, 'ev', { days: 1, perMember: 3, memberId: 'settlement' });
     expect(settle.messages.map((m) => m.body)).toContain(body);
 
@@ -429,23 +434,124 @@ describe('팀 — 팀장 · 실무자 (migrations/0120)', () => {
       .rejects.toThrow('한백 관리자만');
   });
 
-  it('지난 대화는 전부 읽는다(agentThread) — 화면의 300개보다 앞의 말도, 오래된 것부터, 넘긴 파일과 함께', async () => {
-    /* 아주 오래된 말 하나를 300개 넘게 앞에 둔다 — 화면(getAgent)에는 안 실려도 에이전트는 읽는다 */
+  it('최근 대화만 읽는다(agentRecent) — 20~39개, 오래된 것부터, 시작이 20개씩 움직인다', async () => {
     const db = getDb();
-    const oldest = { id: crypto.randomUUID(), agentId: 'op-everon', role: 'user', author: '김정우', body: `${mark} 2020년의 지시`,
-      at: new Date('2020-01-02T00:00:00+09:00') };
-    const filler = Array.from({ length: 300 }, (_, i) => ({
-      id: crypto.randomUUID(), agentId: 'op-everon', role: 'note', author: '김정우', body: `${mark} 채움 ${i}`,
+    /* 아주 오래된 말을 앞에 둔다 — 최근 대화에는 안 실린다(찾을 때만 읽는다) */
+    const old = Array.from({ length: 45 }, (_, i) => ({
+      id: crypto.randomUUID(), agentId: 'op-everon', role: 'note', author: '김정우', body: `${mark} 옛 기록 ${i}`,
       at: new Date(Date.UTC(2020, 1, 1, 0, i)),
     }));
-    await db.insert(agentMessages).values([oldest, ...filler]);
-    const thread = await repo.agentThread('op-everon', admin);
-    expect(thread.length).toBeGreaterThan(300);
-    expect(thread[0].body).toBe(`${mark} 2020년의 지시`);
-    expect(thread.findIndex((m) => m.body === `${mark} 채움 0`)).toBeLessThan(thread.findIndex((m) => m.body === `${mark} 채움 299`));
-    const shown = (await repo.getAgent('op-everon', admin)).messages;
-    expect(shown.length).toBeLessThanOrEqual(300);
-    expect(shown.map((m) => m.body)).not.toContain(`${mark} 2020년의 지시`);
-    await expect(repo.agentThread('op-everon', actorOf(USERS.viewer))).rejects.toThrow('한백 관리자만');
+    await db.insert(agentMessages).values(old);
+    await repo.addAgentMessage({ agentId: 'op-everon', role: 'user', body: `${mark} 오늘의 지시` }, admin);
+    const recent = await repo.agentRecent('op-everon', admin);
+    expect(recent.length).toBeGreaterThanOrEqual(RECENT_MIN);
+    expect(recent.length).toBeLessThan(RECENT_MIN + RECENT_STEP);
+    expect(recent.at(-1)?.body).toBe(`${mark} 오늘의 지시`);
+    expect(recent.map((m) => m.body)).not.toContain(`${mark} 옛 기록 0`);
+    expect(recent[0].role).not.toBe('agent');
+    await expect(repo.agentRecent('op-everon', actorOf(USERS.viewer))).rejects.toThrow('한백 관리자만');
+  });
+
+  it('대화 원문 찾기(searchAgentMessages) — 낱말 모두 · 파일 이름 · 날짜 · 그 담당의 것만, 맞은 전체 수와 최근 것부터', async () => {
+    const db = getDb();
+    const at = (d: string) => new Date(`${d}T09:00:00+09:00`);
+    const rows = [
+      { body: `${mark} 세아청솔 계약서 초안 보내줘`, at: at('2026-08-01') },
+      { body: `${mark} 세아청솔 단가는 100% 확인`, at: at('2026-09-01') },
+      { body: `${mark} 반달마을 회신`, at: at('2026-10-01') },
+    ].map((r) => ({ id: crypto.randomUUID(), agentId: 'op-everon', role: 'user', author: '김정우', ...r }));
+    await db.insert(agentMessages).values(rows);
+    await db.insert(agentFiles).values({
+      id: crypto.randomUUID(), agentId: 'op-everon', messageId: rows[2].id, name: `${RUN}_정책표.pdf`, pathname: 'agent-files/op-everon/x/p.pdf',
+      url: 'https://example.invalid/p.pdf', size: 1, contentType: 'application/pdf',
+    });
+    const find = (terms: string[], from: string | null = null, to: string | null = null, id = 'op-everon') =>
+      repo.searchAgentMessages(id, admin, { terms: [RUN, ...terms], from, to });
+
+    const both = await find(['세아청솔']);
+    expect(both.total).toBe(2);
+    expect(both.hits.map((m) => m.body)).toEqual([`${mark} 세아청솔 단가는 100% 확인`, `${mark} 세아청솔 계약서 초안 보내줘`]);
+    expect((await find(['세아청솔', '초안'])).hits.map((m) => m.body)).toEqual([`${mark} 세아청솔 계약서 초안 보내줘`]);
+    /* 파일 이름으로도 찾고, 찾은 말에 파일이 붙어 온다 */
+    const byFile = await find(['정책표']);
+    expect(byFile.hits.map((m) => m.body)).toEqual([`${mark} 반달마을 회신`]);
+    expect(byFile.hits[0].files.map((f) => f.name)).toEqual([`${RUN}_정책표.pdf`]);
+    /* 날짜는 그날 포함(한국 달력) */
+    expect((await find([], '2026-09-01', '2026-10-01')).total).toBe(2);
+    expect((await find([], '2026-09-02', '2026-10-31')).total).toBe(1);
+    /* LIKE 의 특수 글자는 글자 그대로 — 「%」가 아무 글자나 되지 않는다 */
+    expect((await find(['100%'])).total).toBe(1);
+    expect((await find(['0%확'])).total).toBe(0);
+    /* 다른 담당의 대화에서는 안 나온다 */
+    expect((await find(['세아청솔'], null, null, 'op-nice')).total).toBe(0);
+    await expect(repo.searchAgentMessages('op-everon', actorOf(USERS.viewer), { terms: ['x'], from: null, to: null }))
+      .rejects.toThrow('한백 관리자만');
+
+    /* 지난 파일 하나(read_file) — 그 담당의 것만 */
+    const fileId = byFile.hits[0].files[0].id;
+    expect((await repo.agentFileOf('op-everon', fileId, admin))?.name).toBe(`${RUN}_정책표.pdf`);
+    expect(await repo.agentFileOf('op-nice', fileId, admin)).toBeNull();
   });
 });
+
+describe('메모장 — 담당의 장기기억 (migrations/0122)', () => {
+  it('내 메모는 그 담당만, 팀 공용은 같은 사업의 담당 모두 — 다른 사업과는 안 나눈다', async () => {
+    const mine = await repo.saveAgentMemo({ agentId: 'op-nice', scope: 'mine', title: `${mark} 나이스인프라 · 김민수 대리`, body: 'kim@x' }, admin);
+    const team = await repo.saveAgentMemo(
+      { agentId: 'op-nice', scope: 'team', title: `${mark} 세금계산서 · 발행 방식`, body: '나이스는 말일 묶음', byAgent: true }, admin,
+    );
+    const nice = await repo.agentMemos(admin, 'op-nice');
+    expect(nice.mine.map((m) => m.id)).toContain(mine.id);
+    expect(nice.team.find((m) => m.id === team.id)).toMatchObject({ scope: 'team', author: '나이스인프라 담당', byAgent: true });
+    const settle = await repo.agentMemos(admin, 'settlement');
+    expect(settle.team.map((m) => m.id)).toContain(team.id);
+    expect(settle.mine.map((m) => m.id)).not.toContain(mine.id);
+    const lumora = await repo.agentMemos(admin, 'solar-lumora');
+    expect([...lumora.mine, ...lumora.team].map((m) => m.id)).not.toContain(team.id);
+    /* 다른 담당 · 다른 자리로는 못 고친다 */
+    await expect(repo.saveAgentMemo({ agentId: 'settlement', scope: 'mine', id: mine.id, body: 'x' }, admin)).rejects.toThrow('찾을 수 없습니다');
+    await expect(repo.saveAgentMemo({ agentId: 'solar-lumora', scope: 'team', id: team.id, body: 'x' }, admin)).rejects.toThrow('찾을 수 없습니다');
+    /* 팀 공용은 같은 사업의 다른 담당 화면에서도 고친다 */
+    await repo.saveAgentMemo({ agentId: 'settlement', scope: 'team', id: team.id, body: '나이스는 말일 묶음 · 11월부터' }, admin);
+    expect((await repo.agentMemos(admin, 'op-nice')).team.find((m) => m.id === team.id)).toMatchObject({
+      body: '나이스는 말일 묶음 · 11월부터', author: USERS.admin.name, byAgent: false,
+    });
+  });
+
+  it('덧붙이기 · 바꾸기 · 같은 것은 그대로 · 지우기 — 감사기록에 앞뒤가 남는다', async () => {
+    const { id } = await repo.saveAgentMemo({ agentId: 'op-nice', scope: 'mine', title: `${mark} 반달마을 · 회신`, body: '11-01 회신 대기' }, admin);
+    await repo.saveAgentMemo({ agentId: 'op-nice', scope: 'mine', id, body: '11-05 회신 옴', append: true, byAgent: true }, admin);
+    const got = () => repo.agentMemos(admin, 'op-nice').then((m) => m.mine.find((x) => x.id === id));
+    expect((await got())?.body).toBe('11-01 회신 대기\n11-05 회신 옴');
+    expect((await got())?.updatedAt).not.toBeNull();
+    await repo.saveAgentMemo({ agentId: 'op-nice', scope: 'mine', id, title: `${mark} 반달마을 · 회신 끝`, body: '끝남' }, admin);
+    expect(await got()).toMatchObject({ title: `${mark} 반달마을 · 회신 끝`, body: '끝남' });
+    const before = await db().select().from(auditLog).where(and(like(auditLog.action, '에이전트 메모%'), like(auditLog.newValue, `%${RUN}%`)));
+    await repo.saveAgentMemo({ agentId: 'op-nice', scope: 'mine', id, body: '끝남' }, admin);
+    const after = await db().select().from(auditLog).where(and(like(auditLog.action, '에이전트 메모%'), like(auditLog.newValue, `%${RUN}%`)));
+    expect(after.length).toBe(before.length);
+    expect(after.some((r) => r.action === '에이전트 메모 수정 (에이전트가 적음)' && r.field === '나이스인프라 담당')).toBe(true);
+
+    expect(await repo.deleteAgentMemo({ agentId: 'op-nice', scope: 'mine', id }, admin)).toEqual({ title: `${mark} 반달마을 · 회신 끝` });
+    expect(await got()).toBeUndefined();
+    await expect(repo.saveAgentMemo({ agentId: 'op-nice', scope: 'mine', title: '  ', body: 'x' }, admin)).rejects.toThrow('이름');
+    await expect(repo.saveAgentMemo({ agentId: 'op-nice', scope: 'mine', title: 'x', body: 'x' }, actorOf(USERS.viewer))).rejects.toThrow('한백 관리자만');
+  });
+
+  it('화면의 문 — 자리 · 이름이 틀리면 400, 협력사 · 열람 전용은 403, 넣고 고치고 지운다', async () => {
+    await signIn(USERS.admin);
+    expect((await call(postMemo, { params: { id: 'op-nice', scope: 'other' }, body: { title: 'x', body: '' } })).status).toBe(400);
+    expect((await call(postMemo, { params: { id: 'op-nice', scope: 'mine' }, body: { body: 'x' } })).status).toBe(400);
+    const made = await call(postMemo, { params: { id: 'op-nice', scope: 'team' }, body: { title: `${mark} 화면에서 적음`, body: '내용' } });
+    expect(made.status).toBe(200);
+    const memoId = String(made.json?.id);
+    expect((await call(postMemo, { params: { id: 'op-nice', scope: 'team' }, body: { id: memoId, title: `${mark} 화면에서 고침`, body: '내용2' } })).status).toBe(200);
+    expect((await call(deleteMemo, { method: 'DELETE', params: { id: 'op-nice', scope: 'team', memoId } })).status).toBe(200);
+    expect((await call(deleteMemo, { method: 'DELETE', params: { id: 'op-nice', scope: 'team', memoId } })).status).toBe(422);
+    for (const u of [USERS.ecoelec, USERS.viewer]) {
+      await signIn(u);
+      expect((await call(postMemo, { params: { id: 'op-nice', scope: 'mine' }, body: { title: 'x', body: '' } })).status, u.id).toBe(403);
+    }
+  });
+});
+

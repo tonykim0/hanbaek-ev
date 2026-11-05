@@ -738,6 +738,24 @@ export const agentDirections = pgTable('agent_directions', {
   byAgent: index('agent_directions_agent_idx').on(t.agentId, t.sort),
 }));
 
+/**
+ * 메모장 — 담당이 한백에게서 들은 사실 · 정한 것 · 바라는 방식을 주제마다 한 장씩(migrations/0122). agent_id 가 있으면 그 담당의
+ * 메모, 없으면 그 사업(biz)의 팀 공용 메모. 담당은 제목만 늘 읽고 내용은 그때그때 꺼내 쓴다(lib/agents/memos · store/agent-memory)
+ */
+export const agentMemos = pgTable('agent_memos', {
+  id: text('id').primaryKey(),
+  biz: text('biz').notNull(),
+  agentId: text('agent_id').references(() => agents.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  body: text('body').notNull().default(''),
+  author: text('author').notNull(),
+  byAgent: boolean('by_agent').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }),
+}, (t) => ({
+  byAgent: index('agent_memos_agent_idx').on(t.agentId),
+}));
+
 /** 할 일 — 한백이 적거나 대화 중에 에이전트가 적는다(author). 기한은 'YYYY-MM-DD' 글자 */
 export const agentTasks = pgTable('agent_tasks', {
   id: text('id').primaryKey(),

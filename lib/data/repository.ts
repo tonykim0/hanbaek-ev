@@ -16,8 +16,7 @@ import type { DraftPlan } from '@/lib/site-mail';
 import type { RetouchLog } from '@/lib/retouch/types';
 import type { ConsultDup } from '@/lib/consult-dup';
 import type {
-  AgentDetail, AgentMail, AgentMessage, AgentMessageMeta, AgentMessageRole, AgentSummary, AgentTeam, AgentUsage, MailAccountInfo,
-  TeamMemberLog,
+  AgentDetail, AgentFile, AgentMail, AgentMemos, AgentMessage, AgentMessageMeta, AgentMessageRole, AgentSummary, AgentTeam, AgentUsage, MailAccountInfo, MemoScope, TeamMemberLog,
 } from '@/types/agents';
 import type {
   NoteScope,
@@ -538,8 +537,28 @@ export interface ProjectRepository {
   ): Promise<TeamMemberLog[]>;
   /** 팀원에게 말을 남긴다(tell_teammate) — 받은 담당의 대화에 「팀원」의 말로. 같은 사업만. 받은 담당을 돌려준다 */
   tellAgent(input: { fromId: string; toId: string; body: string }, actor: Actor): Promise<{ id: string; name: string }>;
-  /** 담당 하나와 나눈 말 전부(오래된 것부터, 넘긴 파일 포함) — 에이전트를 부를 때 읽는다 */
-  agentThread(id: string, actor: Actor): Promise<AgentMessage[]>;
+  /*
+   * 담당의 기억 (store/agent-memory · migrations/0122) — 부를 때 읽는 것은 최근 대화와 메모뿐, 원문 · 지난 파일은 찾을 때만
+   * (한백 2026-11-05 「비용을 줄이면서 장기기억으로 두면서 그때그때 꺼내 쓸 수 있는 방법」).
+   */
+  /** 최근 대화 — 시작이 20개씩 움직이는 20~39개, 오래된 것부터(넘긴 파일 포함) */
+  agentRecent(id: string, actor: Actor): Promise<AgentMessage[]>;
+  /** 대화 원문 찾기 — 낱말 모두(글 · 쓴 사람 · 파일 이름) · 날짜. 최근 것부터 limit 개와 맞은 전체 수 */
+  searchAgentMessages(
+    id: string, actor: Actor, q: { terms: string[]; from: string | null; to: string | null }, limit?: number
+  ): Promise<{ hits: AgentMessage[]; total: number }>;
+  /** 이 담당에게 넘긴 파일 하나 — 아니면 null */
+  agentFileOf(agentId: string, fileId: string, actor: Actor): Promise<AgentFile | null>;
+  /** 담당 하나가 읽는 메모 — 자기 메모 · 그 사업의 팀 공용 메모 */
+  agentMemos(actor: Actor, agentId: string): Promise<AgentMemos>;
+  /** 메모 넣기(id 없이) · 고치기(id) · 덧붙이기(append). byAgent 면 적은 쪽에 담당 이름 */
+  saveAgentMemo(
+    input: {
+      agentId: string; scope: MemoScope; id?: string | null; title?: string; body?: string; append?: boolean; byAgent?: boolean;
+    },
+    actor: Actor
+  ): Promise<{ id: string; title: string }>;
+  deleteAgentMemo(input: { agentId: string; scope: MemoScope; id: string; byAgent?: boolean }, actor: Actor): Promise<{ title: string }>;
   /** 할 일 적기 — byAgent 면 적은 쪽에 에이전트 이름이 남는다(대화 중 에이전트의 도구) */
   addAgentTask(
     input: { agentId: string; title: string; note?: string | null; due?: string | null; projectId?: string | null; byAgent?: boolean },
