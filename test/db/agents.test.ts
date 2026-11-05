@@ -378,14 +378,20 @@ describe('팀 — 팀장 · 실무자 (migrations/0120)', () => {
     expect(weekRow?.directionChanges).toBeGreaterThanOrEqual(3);
   });
 
-  it('팀장은 실무자의 기록을 읽는다 — 팀장 자신과 다른 사업은 빠지고, 한 사람만 깊이도 읽는다', async () => {
+  it('팀원끼리 서로의 기록을 읽는다 — 읽는 담당 자신과 다른 사업은 빠지고, 한 사람만 깊이도 읽는다', async () => {
     await repo.addAgentMessage({ agentId: 'op-nice', role: 'note', body: `${mark} 나이스 김대리 통화 — 단가 인하 예고` }, admin);
     await repo.addAgentMessage({ agentId: 'strategy', role: 'note', body: `${mark} 팀장에게 남긴 기록` }, admin);
     await repo.addAgentMessage({ agentId: 'solar-lumora', role: 'note', body: `${mark} 루모라 미팅` }, admin);
     await repo.addAgentTask({ agentId: 'op-nice', title: `${mark} 단가 회신 받기` }, admin);
 
-    const logs = await repo.agentTeamLog(admin, 'ev', { days: 14, perMember: 6 });
+    /* 팀장이 읽을 때 — 실무자 여섯 */
+    const logs = await repo.agentTeamLog(admin, 'ev', { days: 14, perMember: 6, exclude: 'strategy' });
     expect(logs.map((l) => l.agent.id)).toEqual(['op-hec', 'op-nice', 'op-sk', 'op-pluglink', 'op-everon', 'settlement']);
+    /* 실무자가 읽을 때 — 팀장과 다른 실무자들(2026-11-05 부터 팀원 모두가 서로 읽는다) */
+    const fromNice = await repo.agentTeamLog(admin, 'ev', { days: 14, perMember: 6, exclude: 'op-nice' });
+    expect(fromNice.map((l) => l.agent.id)).toContain('strategy');
+    expect(fromNice.map((l) => l.agent.id)).not.toContain('op-nice');
+    expect(fromNice.flatMap((l) => l.messages.map((m) => m.body))).toContain(`${mark} 팀장에게 남긴 기록`);
     const nice = logs.find((l) => l.agent.id === 'op-nice')!;
     expect(nice.messages.at(-1)?.body).toBe(`${mark} 나이스 김대리 통화 — 단가 인하 예고`);
     expect(nice.tasks.some((t) => t.title === `${mark} 단가 회신 받기` && !t.doneAt)).toBe(true);
@@ -399,5 +405,47 @@ describe('팀 — 팀장 · 실무자 (migrations/0120)', () => {
     expect(one.messages.map((m) => m.body)).toEqual([`${mark} 루모라 미팅`]);
     expect(await repo.agentTeamLog(admin, 'ev', { days: 30, perMember: 5, memberId: 'solar-lumora' })).toEqual([]);
     await expect(repo.agentTeamLog(actorOf(USERS.viewer), 'ev', { days: 14, perMember: 6 })).rejects.toThrow('한백 관리자만');
+  });
+
+  it('팀원에게 말을 남긴다(tell_teammate) — 받은 담당의 대화에 「팀원」의 말로 서고, 팀원들도 읽는다. 다른 사업 · 자기 자신은 거절', async () => {
+    const body = `${mark} HB-2026-033 계약서 접수 — 영업비 1차가 열립니다`;
+    expect(await repo.tellAgent({ fromId: 'op-nice', toId: 'settlement', body }, admin)).toEqual({ id: 'settlement', name: '정산 담당' });
+
+    const thread = await repo.agentThread('settlement', admin);
+    const got = thread.at(-1)!;
+    expect(got).toMatchObject({ role: 'peer', author: '나이스인프라 담당', body, meta: { from: { id: 'op-nice', name: '나이스인프라 담당' } } });
+    /* 화면의 대화 · 주간 기록에도 선다 */
+    const detail = await repo.getAgent('settlement', admin);
+    expect(detail.messages.at(-1)?.id).toBe(got.id);
+    expect(detail.weeks.find((w) => w.start === mondayOf(today()))?.peer).toBeGreaterThanOrEqual(1);
+    /* 팀장이 [팀 소식]으로 읽는다 */
+    const [settle] = await repo.agentTeamLog(admin, 'ev', { days: 1, perMember: 3, memberId: 'settlement' });
+    expect(settle.messages.map((m) => m.body)).toContain(body);
+
+    await expect(repo.tellAgent({ fromId: 'op-nice', toId: 'solar-lumora', body: `${mark} x` }, admin)).rejects.toThrow('다른 사업');
+    await expect(repo.tellAgent({ fromId: 'op-nice', toId: 'op-nice', body: `${mark} x` }, admin)).rejects.toThrow('자기 자신');
+    await expect(repo.tellAgent({ fromId: 'op-nice', toId: 'settlement', body: '  ' }, admin)).rejects.toThrow('비었다');
+    await expect(repo.tellAgent({ fromId: 'op-nice', toId: 'settlement', body: `${mark} x` }, actorOf(USERS.viewer)))
+      .rejects.toThrow('한백 관리자만');
+  });
+
+  it('지난 대화는 전부 읽는다(agentThread) — 화면의 300개보다 앞의 말도, 오래된 것부터, 넘긴 파일과 함께', async () => {
+    /* 아주 오래된 말 하나를 300개 넘게 앞에 둔다 — 화면(getAgent)에는 안 실려도 에이전트는 읽는다 */
+    const db = getDb();
+    const oldest = { id: crypto.randomUUID(), agentId: 'op-everon', role: 'user', author: '김정우', body: `${mark} 2020년의 지시`,
+      at: new Date('2020-01-02T00:00:00+09:00') };
+    const filler = Array.from({ length: 300 }, (_, i) => ({
+      id: crypto.randomUUID(), agentId: 'op-everon', role: 'note', author: '김정우', body: `${mark} 채움 ${i}`,
+      at: new Date(Date.UTC(2020, 1, 1, 0, i)),
+    }));
+    await db.insert(agentMessages).values([oldest, ...filler]);
+    const thread = await repo.agentThread('op-everon', admin);
+    expect(thread.length).toBeGreaterThan(300);
+    expect(thread[0].body).toBe(`${mark} 2020년의 지시`);
+    expect(thread.findIndex((m) => m.body === `${mark} 채움 0`)).toBeLessThan(thread.findIndex((m) => m.body === `${mark} 채움 299`));
+    const shown = (await repo.getAgent('op-everon', admin)).messages;
+    expect(shown.length).toBeLessThanOrEqual(300);
+    expect(shown.map((m) => m.body)).not.toContain(`${mark} 2020년의 지시`);
+    await expect(repo.agentThread('op-everon', actorOf(USERS.viewer))).rejects.toThrow('한백 관리자만');
   });
 });

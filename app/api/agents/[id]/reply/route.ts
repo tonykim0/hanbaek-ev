@@ -11,18 +11,22 @@
  * 현장의 서류를 붙인 양식 초안을 쓴다(lib/site-mail-run requestSiteMail — 단추와 같은 길). 그 초안도 이 답 밑에 선다.
  * 운영사 담당은 pricing_table 로 그 운영사의 지금 단가표를 읽는다(lib/agents/pricing-table — 읽기만, 한백 2026-11-04).
  * 태양광 담당(migrations/0118)은 태양광 자료를 읽는다(상담 접수한 현장 — lib/agents/solar-brief). 양식 메일 · 단가표는 없다.
- * ★담당들은 팀이다★(migrations/0120 · lib/agents/team) — 모두가 그 사업의 팀 목표 · 방향을 읽고, 팀장(전략·기획)은 실무자들의
- * 최근 기록([팀 소식])을 같이 받으며 목표 · 방향을 올리고(save_direction) 실무자 하나를 깊이 읽는다(team_history).
+ * ★담당들은 팀이다★(migrations/0120 · lib/agents/team) — 모두가 그 사업의 팀 목표 · 방향을 읽고, 팀장(전략·기획)은 목표 · 방향을
+ * 올린다(save_direction). ★팀원끼리 서로 읽고 남긴다★(한백 2026-11-05): 모두가 다른 팀원들의 최근 기록([팀 소식])을 같이 받고, 팀원
+ * 하나를 깊이 읽고(team_history), 팀원의 대화에 말을 남긴다(tell_teammate — 받은 담당은 다음에 불릴 때 읽는다).
+ * ★지난 대화는 전부 읽는다★(한백 2026-11-05 「내가 말한 모든 정보를 기억」 — store/agents agentThread · lib/agents/memory). 화면의
+ * 대화(getAgent)는 최근 300개뿐이라 따로 읽는다.
  */
 import { getRepository } from '@/lib/data';
 import { adminWrite } from '@/lib/api/write-route';
-import { agentReply, HISTORY_TURNS } from '@/lib/agents/brain';
+import { agentReply } from '@/lib/agents/brain';
 import { pricingTableText } from '@/lib/agents/pricing-table';
 import { loadAgentBrief } from '@/lib/agents/scope';
 import { siteMailOfCpo } from '@/lib/site-mail';
 import { requestSiteMail } from '@/lib/site-mail-run';
+import { awaitsReply, searchThread } from '@/lib/agents/memory';
 import {
-  HISTORY_PER_MEMBER, memberOf, TEAM_DAYS, TEAM_PER_MEMBER, teamDigestOf, teamHistoryOf,
+  HISTORY_PER_MEMBER, memberOf, TEAM_DAYS, TEAM_PER_MEMBER, teamDigestOf, teamHistoryOf, teammatesOf,
 } from '@/lib/agents/team';
 import { isLead } from '@/types/agents';
 
@@ -36,21 +40,22 @@ export const POST = adminWrite<{ id: string }, undefined>(
   async ({ params, actor }) => {
     const repo = getRepository();
     const detail = await repo.getAgent(params.id, actor);
-    const last = detail.messages[detail.messages.length - 1];
-    if (!last || last.role !== 'user') throw new Error('답할 지시가 없습니다 — 먼저 말을 남겨 주세요.');
+    const agentId = detail.agent.id;
+    const thread = await repo.agentThread(agentId, actor);
+    if (!awaitsReply(thread)) throw new Error('답할 지시가 없습니다 — 먼저 말을 남겨 주세요.');
 
     /*
-     * 사업마다의 자료 — 전기차 정산 담당은 열린구매 글에 쓸 지급처 사업자·계좌까지 읽는다. 팀(목표 · 방향)은 모두가, 실무자들의
-     * 최근 기록은 팀장만 읽는다
+     * 사업마다의 자료 — 전기차 정산 담당은 열린구매 글에 쓸 지급처 사업자·계좌까지 읽는다. 팀(목표 · 방향)과 다른 팀원들의
+     * 최근 기록은 모두가 읽는다
      */
     const { biz } = detail.agent;
     const lead = isLead(detail.agent.kind);
     const [{ today, brief, siteOf }, team, logs] = await Promise.all([
       loadAgentBrief(detail.agent, actor),
       repo.agentTeam(actor, biz),
-      lead ? repo.agentTeamLog(actor, biz, { days: TEAM_DAYS, perMember: TEAM_PER_MEMBER }) : Promise.resolve(null),
+      repo.agentTeamLog(actor, biz, { days: TEAM_DAYS, perMember: TEAM_PER_MEMBER, exclude: agentId }),
     ]);
-    const agentId = detail.agent.id;
+    const mates = teammatesOf(detail.agent, team);
     const drafted: string[] = [];
     const siteSpec = detail.agent.kind === 'operator' ? siteMailOfCpo(detail.agent.cpo) : null;
     /* 운영사 담당은 그 운영사의 단가표를 읽는다(읽기만 — 부를 때만 저장소에서) */
@@ -59,11 +64,11 @@ export const POST = adminWrite<{ id: string }, undefined>(
       agent: detail.agent,
       duties: detail.duties,
       tasks: detail.tasks,
-      history: detail.messages.slice(-HISTORY_TURNS),
+      thread,
       brief,
       today,
       team,
-      teamDigest: logs ? teamDigestOf(logs) : null,
+      teamDigest: mates.length ? teamDigestOf(logs) : null,
       hands: {
         addTask: async (t) => (await repo.addAgentTask({ agentId, ...t, byAgent: true }, actor)).id,
         completeTask: async (id) => (await repo.setAgentTaskDone({ agentId, id, done: true, byAgent: true }, actor)).title,
@@ -84,20 +89,30 @@ export const POST = adminWrite<{ id: string }, undefined>(
         ...(operatorCpo ? {
           pricingTable: async () => pricingTableText(await repo.listPricingRules(actor), operatorCpo),
         } : {}),
+        /* 팀의 손 — 같은 사업의 다른 담당만(자기 자신 · 다른 사업은 memberOf 가 못 찾는다) */
+        ...(mates.length ? {
+          teamHistory: async (ref: string, days: number, query?: string) => {
+            const member = memberOf(mates, ref);
+            if (!member) throw new Error(`팀원 「${ref}」를 찾지 못했다 — [팀 소식]의 id 를 쓴다.`);
+            /* 낱말을 주면 그 팀원의 대화 전부에서 — 날수 상한이 없다(한백의 말을 팀이 다 나눠 알게) */
+            if (query) return searchThread(await repo.agentThread(member.id, actor), { query }, member.name);
+            const span = Math.min(MAX_HISTORY_DAYS, Math.max(1, Math.round(days)));
+            const [log] = await repo.agentTeamLog(actor, biz, { days: span, perMember: HISTORY_PER_MEMBER, memberId: member.id });
+            if (!log) throw new Error(`팀원 「${ref}」의 기록을 읽지 못했다.`);
+            return teamHistoryOf(log, span);
+          },
+          tellTeammate: async (ref: string, body: string) => {
+            const member = memberOf(mates, ref);
+            if (!member) throw new Error(`팀원 「${ref}」를 찾지 못했다 — [팀 소식]의 id 를 쓴다.`);
+            return (await repo.tellAgent({ fromId: agentId, toId: member.id, body }, actor)).name;
+          },
+        } : {}),
         /* 팀장의 손 — 목표 · 방향은 적은 쪽에 팀장 이름이 남는다 */
         ...(lead ? {
           saveDirection: (d: { id: string | null; title: string; body: string }) =>
             repo.saveAgentDirection({ leadId: agentId, ...d, byAgent: true }, actor),
           deleteDirection: async (id: string) =>
             (await repo.deleteAgentDirection({ leadId: agentId, id, byAgent: true }, actor)).title,
-          teamHistory: async (ref: string, days: number) => {
-            const member = memberOf(team.members, ref);
-            if (!member) throw new Error(`실무자 「${ref}」를 찾지 못했다 — [팀 소식]의 id 를 쓴다.`);
-            const span = Math.min(MAX_HISTORY_DAYS, Math.max(1, Math.round(days)));
-            const [log] = await repo.agentTeamLog(actor, biz, { days: span, perMember: HISTORY_PER_MEMBER, memberId: member.id });
-            if (!log) throw new Error(`실무자 「${ref}」의 기록을 읽지 못했다.`);
-            return teamHistoryOf(log, span);
-          },
         } : {}),
       },
     });

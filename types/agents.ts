@@ -131,9 +131,12 @@ export interface AgentTask {
  *   agent  에이전트의 말
  *   auto   자동 — 콘솔이 규칙대로 그 담당의 이름으로 한 일(계약서가 접수되면 할 일 · 양식 메일 초안, lib/site-mail).
  *          모델을 부르지 않는다 — 답 수 · 비용(사용량 표)에 세지 않는다
+ *   peer   팀원의 말 — 같은 사업의 다른 담당이 대화 중에 이 담당에게 남긴 것(tell_teammate, 한백 2026-11-05 「각 담당자들끼리
+ *          서로 정보 공유 필요해. 즉 모든 에이전트들간 대화필요」). 받은 담당을 부르지 않는다 — 다음에 한백이 부를 때 읽는다
+ *          (서로 저절로 부르면 한백 없이 돈이 돌고 둘이 끝없이 주고받을 수 있다). author 는 보낸 담당의 이름, meta.from 이 그 담당
  */
-export type AgentMessageRole = 'user' | 'note' | 'agent' | 'auto';
-export const AGENT_MESSAGE_ROLES = ['user', 'note', 'agent', 'auto'] as const satisfies readonly AgentMessageRole[];
+export type AgentMessageRole = 'user' | 'note' | 'agent' | 'auto' | 'peer';
+export const AGENT_MESSAGE_ROLES = ['user', 'note', 'agent', 'auto', 'peer'] as const satisfies readonly AgentMessageRole[];
 
 export interface AgentSource {
   url: string;
@@ -156,6 +159,10 @@ export interface AgentMessageMeta {
   mails?: string[];
   /** 이 답에서 팀장이 올리거나 고치거나 지운 목표 · 방향의 이름 */
   directions?: string[];
+  /** 이 답에서 말을 남긴 팀원의 이름(tell_teammate) */
+  told?: string[];
+  /** 팀원의 말(peer)을 보낸 담당 — 대화에서 그 담당으로 가는 고리 */
+  from?: { id: string; name: string };
   /**
    * 이 답에 든 토큰 — 도구를 쓰고 다시 부른 바퀴까지 합친 것(2026-11-03 부터 적는다 · 그 전 답에는 없다).
    * 캐시 읽기가 많을수록 싸다(입력 값의 5%) — 사용량 표가 그 몫을 보여 준다.
@@ -269,6 +276,8 @@ export interface AgentWeek {
   note: number;
   agent: number;
   auto: number;
+  /** 팀원(같은 사업의 다른 담당)이 남긴 말 */
+  peer: number;
   /** 그 주에 적힌 할 일 · 끝난 할 일 */
   tasksAdded: number;
   tasksDone: number;

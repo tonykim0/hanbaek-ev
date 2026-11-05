@@ -8,8 +8,14 @@
  * 계약서가 접수되면 콘솔이 그 담당의 이름으로 할 일 · 양식 메일 초안을 저절로 남긴다(말의 종류 auto) — 대화에서는 「[자동 …]」으로 읽는다.
  *
  * ★담당들은 팀이다★ (한백 2026-11-04 「전략 및 기획담당이 팀장이고 그 운영사/사업자 담당자는 실무자들이야 … 상호보완구조」 —
- * lib/agents/team). 모두가 시스템에서 팀의 목표 · 방향을 읽고, 팀장(전략·기획)은 마지막 지시 곁에 실무자들의 최근 기록([팀 소식])을
- * 받으며 목표 · 방향을 올리는 save_direction · delete_direction 과 실무자 하나를 깊이 읽는 team_history 를 더 쥔다.
+ * lib/agents/team). 모두가 시스템에서 팀의 목표 · 방향을 읽고, 팀장(전략·기획)은 그것을 올리는 save_direction · delete_direction 을
+ * 더 쥔다. ★팀원끼리 서로 읽고 서로에게 남긴다★(한백 2026-11-05 「각 담당자들끼리 서로 정보 공유 필요해. 즉 모든 에이전트들간
+ * 대화필요」): 모두가 마지막 지시 곁에 다른 팀원들의 최근 기록([팀 소식])을 받고, team_history 로 팀원 하나를 깊이 읽고,
+ * tell_teammate 로 팀원의 대화에 말을 남긴다(받은 담당은 다음에 불릴 때 읽는다 — 저절로 부르지 않는다).
+ *
+ * ★한백이 한 말은 전부 기억한다★(한백 2026-11-05 「담당자가 내가 말한 모든 정보를 기억해주길 바래」 — lib/agents/memory). 최근 40~59개는
+ * 말 그대로, 그 앞은 [지난 대화]로(한백의 말은 전문 · 나머지는 앞부분) 대화 맨 앞에 싣고, search_history · read_file 로 지난 것을
+ * 전문으로 찾고 다시 연다.
  * ★메일은 초안까지다★ — 나가는 것은 한백이 그 초안의 「승인하고 보내기」를 눌렀을 때뿐이다(한백 2026-11-03 「난 그거에 대해
  * 승인을 하고 너가 메일을 보내는건데」 · app/api/agents/[id]/mails/[mailId]/send).
  *
@@ -28,13 +34,14 @@ import Anthropic from '@anthropic-ai/sdk';
 import { logLlmCall, usdOf } from '@/lib/llm-usage';
 import { solarApiKey } from '@/lib/solar/api-key';
 import { agentFileRead } from './files';
-import { fileTextsOf } from './file-text';
+import { fileText, fileTextsOf } from './file-text';
+import { awaitsReply, fileIn, recallBlock, searchThread, splitThread } from './memory';
 import { josa, siteMailOfCpo, type SiteMailSpec } from '@/lib/site-mail';
 import type {
   Agent, AgentDuty, AgentFile, AgentMessage, AgentMessageMeta, AgentSource, AgentTask, AgentTeam,
 } from '@/types/agents';
 import { isLead } from '@/types/agents';
-import { directionsBlock, HISTORY_DAYS, teamLineOf } from './team';
+import { directionsBlock, HISTORY_DAYS, teamLineOf, TELLS_PER_TURN } from './team';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 /*
@@ -53,8 +60,6 @@ const CALL_TIMEOUT_MS = 110_000;
 const MAX_ROUNDS = 6;
 /** 이 시간이 지나면 다음 바퀴를 돌지 않는다 — 라우트가 끊기기 전에 받은 데까지 남긴다 */
 const ROUND_BUDGET_MS = 170_000;
-/** 에이전트가 읽는 지난 대화 — 최근 것부터 */
-export const HISTORY_TURNS = 40;
 /** 웹 검색 한 번의 값(달러) — 1,000번에 10달러 */
 const SEARCH_USD = 0.01;
 const FALLBACK_BETA = 'server-side-fallback-2026-07-01';
@@ -152,6 +157,10 @@ const RULES = `일하는 법:
   한백이 끝났다고 알려 준 할 일은 complete_task 로 끝낸다. 적거나 끝냈으면 답에 한 줄로 말한다.
 - 「[기록 …]」으로 시작하는 말은 한백이 남긴 기록이다(운영사 · 사업자 담당자와 통화한 내용 같은 것). 답을 바라는 말이 아니지만 근거로 쓴다.
 - 「[넘긴 파일 …]」은 한백이 너에게 준 파일이다. 읽을 수 있으면 읽고 근거로 쓴다. 이름만 알고 열지 못한 파일은 그렇다고 말한다.
+- 대화 맨 앞의 「[지난 대화 …]」는 이 대화창의 앞부분이다 — 한백이 한 말은 전문이니 그대로 기억하고 쓴다. 한백이 전에 말한 것을
+  다시 묻지 않는다. 네 지난 답의 전문이나 오래된 말이 필요하면 search_history 로 찾고, 지난 파일은 read_file 로 다시 연다.
+- 「[팀원 …]」으로 시작하는 말은 같은 팀의 다른 담당이 너에게 남긴 것이다 — 한백의 지시가 아니다. 근거로 쓰고, 맡을 일이면
+  할 일에 적고, 그 팀원이 알아야 할 답이 있으면 tell_teammate 로 돌려준다.
 - 「[지금 …]」으로 시작하는 덩이는 마지막 지시를 받은 때의 콘솔 자료다 — 한백이 쓴 말이 아니다.
 - 「[자동 …]」으로 시작하는 말은 콘솔이 규칙대로 네 이름으로 한 일이다(계약서가 접수되면 할 일 · 양식 메일 초안). 네가 한 일로 알고 이어서 챙긴다.
 - 메일은 draft_mail 로 초안만 올린다. 너는 메일을 보내지 못한다 — 한백이 초안을 보고 「승인하고 보내기」를 눌러야 나간다.
@@ -206,6 +215,8 @@ export function toMessages(history: AgentMessage[], texts?: Map<string, string>)
     if (m.role === 'agent') return { role: 'assistant' as const, content: m.body };
     // 자동의 말은 모델이 쓴 말이 아니다 — 표지를 단 기록으로 넣는다(대화 맨 앞에 와도 빠지지 않게)
     if (m.role === 'auto') return { role: 'user' as const, content: `[자동 — ${m.author} · ${m.at}] ${m.body}` };
+    // 팀원의 말도 이 담당이 쓴 말이 아니다 — 보낸 담당의 이름을 단 표지로(한백의 지시와 갈리게)
+    if (m.role === 'peer') return { role: 'user' as const, content: `[팀원 — ${m.author} · ${m.at}] ${m.body}` };
     const head = m.role === 'note' ? `[기록 — ${m.author} · ${m.at}] ${m.body}` : `[${m.author} · ${m.at}] ${m.body}`;
     if (!m.files?.length) return { role: 'user' as const, content: head };
     return {
@@ -215,6 +226,16 @@ export function toMessages(history: AgentMessage[], texts?: Map<string, string>)
   });
   while (out.length > 0 && out[0].role === 'assistant') out.shift();
   return out;
+}
+
+/** 대화 맨 앞에 지난 대화를 붙인다 — 맨 앞이라 최근의 시작이 움직일 때(20개마다)까지 캐시에 남는다(lib/agents/memory) */
+export function withRecall(messages: Anthropic.MessageParam[], recall: string | null): Anthropic.MessageParam[] {
+  if (!recall || messages.length === 0) return messages;
+  const [first, ...rest] = messages;
+  const blocks: Anthropic.ContentBlockParam[] = typeof first.content === 'string'
+    ? [{ type: 'text', text: first.content }]
+    : first.content;
+  return [{ role: first.role, content: [{ type: 'text', text: recall }, ...blocks] }, ...rest];
 }
 
 /** 마지막 지시 앞에 지금의 자료를 붙인다 — 바뀌는 것이 대화의 끝에 있어야 앞의 대화가 캐시에 남는다 */
@@ -245,8 +266,13 @@ export interface AgentHands {
   saveDirection?(input: { id: string | null; title: string; body: string }): Promise<{ id: string; title: string }>;
   /** 팀장만 — 팀 목표 · 방향 지우기. 지운 줄의 이름을 돌려준다 */
   deleteDirection?(id: string): Promise<string>;
-  /** 팀장만 — 실무자 하나가 한백과 나눈 것(lib/agents/team teamHistoryOf). 모르는 실무자면 사람 말로 던진다 */
-  teamHistory?(member: string, days: number): Promise<string>;
+  /**
+   * 팀원 하나가 한백 · 팀원과 나눈 것(lib/agents/team teamHistoryOf). query 를 주면 날수와 상관없이 그 팀원의 대화 전부에서
+   * 찾는다(lib/agents/memory searchThread). 모르는 팀원이면 사람 말로 던진다
+   */
+  teamHistory?(member: string, days: number, query?: string): Promise<string>;
+  /** 팀원의 대화에 말을 남긴다 — 받은 팀원의 이름을 돌려준다. 모르는 팀원 · 다른 사업이면 사람 말로 던진다 */
+  tellTeammate?(member: string, body: string): Promise<string>;
 }
 
 /** 한 답에 올리는 메일 초안 상한 — 잘못 돈 답이 초안을 쏟아 내지 않게 */
@@ -330,7 +356,69 @@ const PRICING_TOOL = {
 };
 
 /**
- * 팀장의 도구 — 팀 목표 · 방향을 올리고 고치고 지운다(실무자 모두가 읽는다), 실무자 하나의 기록을 깊이 읽는다.
+ * 기억의 도구 — 모두가 쥔다(lib/agents/memory). 대화가 길면 앞부분은 [지난 대화]로 줄어 있다 — 전문 · 지난 파일은 여기서.
+ */
+const MEMORY_TOOLS = [
+  {
+    name: 'search_history',
+    description: '이 대화창의 지난 말(한백의 지시 · 기록, 네 답, 자동 · 팀원의 말)을 전문으로 찾는다 — 최근 것부터 20개까지. '
+      + '[지난 대화]에 앞부분만 있는 네 답 · 오래된 말이 필요할 때 쓴다. 낱말은 띄어 쓴 것 모두가 들어 있는 말만 찾는다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: '찾을 낱말 — 현장 이름 · 관리번호 · 사람 · 파일 이름 등 (선택)' },
+        from: { type: 'string', description: '이날부터 YYYY-MM-DD (선택)' },
+        to: { type: 'string', description: '이날까지 YYYY-MM-DD (선택)' },
+      },
+    },
+  },
+  {
+    name: 'read_file',
+    description: '한백이 이 대화창에 넘긴 파일 하나를 다시 연다 — 「… id=…」의 id. 최근 대화에 붙어 있지 않은 지난 파일을 볼 때 쓴다.',
+    input_schema: {
+      type: 'object',
+      properties: { file_id: { type: 'string', description: '넘긴 파일의 id' } },
+      required: ['file_id'],
+    },
+  },
+];
+
+/** 팀의 도구 — 모두가 쥔다(라우트가 손을 이어 줄 때). 같은 사업의 팀원끼리만 */
+const TEAM_TOOLS = [
+  {
+    name: 'team_history',
+    description: '팀원 한 사람이 한백 · 팀원과 나눈 것(지시 · 기록 · 답 · 자동 · 팀원의 말 전문, 열린 할 일 · 끝낸 할 일, 업무 정의 '
+      + '전문)을 깊이 읽는다. [팀 소식]의 몇 줄로 모자랄 때 쓴다.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        member: { type: 'string', description: '팀원의 id — [팀 소식]의 「id=…」' },
+        days: { type: 'integer', description: `최근 며칠 (선택 — 기본 ${HISTORY_DAYS}, 최대 90)` },
+        query: {
+          type: 'string',
+          description: '찾을 낱말 (선택) — 주면 날수와 상관없이 그 팀원의 대화 전부에서 낱말이 든 말을 전문으로 찾는다',
+        },
+      },
+      required: ['member'],
+    },
+  },
+  {
+    name: 'tell_teammate',
+    description: '팀원 한 사람의 대화창에 말을 남긴다 — 그 팀원이 알아야 할 사실 · 한백이 전해 달라고 한 것 · 그 팀원에게 묻거나 맡길 것. '
+      + `그 팀원은 다음에 불릴 때 읽는다(지금 답하지 않는다). 한 답에 ${TELLS_PER_TURN}번까지. 같은 말을 두 번 남기지 않는다.`,
+    input_schema: {
+      type: 'object',
+      properties: {
+        member: { type: 'string', description: '팀원의 id — [팀 소식]의 「id=…」' },
+        message: { type: 'string', description: '남길 말 — 무엇이 언제 왜, 현장은 관리번호로 (4000자 이내, 마크다운 없이)' },
+      },
+      required: ['member', 'message'],
+    },
+  },
+];
+
+/**
+ * 팀장의 도구 — 팀 목표 · 방향을 올리고 고치고 지운다(실무자 모두가 읽는다).
  * 올리는 것은 한백이 정하라고 했거나 합의한 것만 — 실무자 모두의 지시가 되는 글이라서다.
  */
 const LEAD_TOOLS = [
@@ -357,32 +445,23 @@ const LEAD_TOOLS = [
       required: ['id'],
     },
   },
-  {
-    name: 'team_history',
-    description: '실무자 한 사람이 한백과 나눈 것(지시 · 기록 · 답 · 자동의 말 전문, 열린 할 일 · 끝낸 할 일, 업무 정의 전문)을 깊이 '
-      + '읽는다. [팀 소식]의 몇 줄로 모자랄 때 쓴다.',
-    input_schema: {
-      type: 'object',
-      properties: {
-        member: { type: 'string', description: '실무자의 id — [팀 소식]의 「id=…」' },
-        days: { type: 'integer', description: `최근 며칠 (선택 — 기본 ${HISTORY_DAYS}, 최대 90)` },
-      },
-      required: ['member'],
-    },
-  },
 ];
 
 /**
- * 이 담당이 쥐는 도구 — 할 일 · 메일은 모두, 양식 메일 · 단가표는 운영사 담당(라우트가 손을 이어 줄 때), 팀장의 도구와 웹 검색은
- * 전략·기획(팀장의 도구도 라우트가 손을 이어 줄 때)
+ * 이 담당이 쥐는 도구 — 할 일 · 메일 · 기억은 모두, 양식 메일 · 단가표는 운영사 담당(라우트가 손을 이어 줄 때), 팀의 도구는
+ * 모두(라우트가 손을 이어 줄 때), 목표 · 방향과 웹 검색은 전략·기획(목표 · 방향도 라우트가 손을 이어 줄 때)
  */
-export function toolsOf(agent: Agent, hands: Pick<AgentHands, 'siteMail' | 'pricingTable' | 'saveDirection'>): unknown[] {
+export function toolsOf(
+  agent: Agent, hands: Pick<AgentHands, 'siteMail' | 'pricingTable' | 'saveDirection' | 'tellTeammate'>
+): unknown[] {
   const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
   return [
     addTaskTool(agent.biz === 'ev'),
     ...TASK_TOOLS,
     ...(siteSpec ? [siteMailTool(siteSpec)] : []),
     ...(agent.kind === 'operator' && hands.pricingTable ? [PRICING_TOOL] : []),
+    ...MEMORY_TOOLS,
+    ...(hands.tellTeammate ? TEAM_TOOLS : []),
     ...(isLead(agent.kind) && hands.saveDirection ? LEAD_TOOLS : []),
     ...(agent.kind === 'strategy' ? [WEB_SEARCH] : []),
   ];
@@ -415,12 +494,13 @@ export async function agentReply(input: {
   agent: Agent;
   duties: AgentDuty[];
   tasks: AgentTask[];
-  history: AgentMessage[];
+  /** 이 담당과 나눈 말 전부(오래된 것부터 — store/agents agentThread). 최근 것은 그대로, 앞의 것은 [지난 대화]로 싣는다 */
+  thread: AgentMessage[];
   brief: string;
   today: string;
   /** 그 사업의 팀 — 팀장 · 실무자 · 팀 목표 · 방향(store/agent-team agentTeam) */
   team: AgentTeam;
-  /** 팀장만 — 실무자들의 최근 기록(lib/agents/team teamDigestOf). 마지막 지시 곁에 붙는다 */
+  /** 다른 팀원들의 최근 기록(lib/agents/team teamDigestOf). 마지막 지시 곁에 붙는다 */
   teamDigest?: string | null;
   hands: AgentHands;
 }): Promise<AgentTurn> {
@@ -436,12 +516,14 @@ export async function agentReply(input: {
   ];
   const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
   const tools = toolsOf(agent, hands);
-  const said = toMessages(input.history, await fileTextsOf(input.history));
+  if (!awaitsReply(input.thread)) throw new Error('답할 지시가 없습니다.');
+  const { older, recent } = splitThread(input.thread);
+  const said = toMessages(recent, await fileTextsOf(recent));
   if (said.length === 0 || said[said.length - 1].role !== 'user') {
     throw new Error('답할 지시가 없습니다.');
   }
   const messages = withContext(
-    said,
+    withRecall(said, recallBlock(older)),
     `[지금 — 이 지시를 받은 때의 콘솔 자료]\n오늘: ${input.today} (한국)\n\n${tasksBlock(input.tasks)}\n\n${input.brief}`
       + (input.teamDigest ? `\n\n${input.teamDigest}` : ''),
   );
@@ -453,6 +535,7 @@ export async function agentReply(input: {
   const done: string[] = [];
   const mails: string[] = [];
   const directions: string[] = [];
+  const told: string[] = [];
   let usd = 0;
   /* 바퀴마다의 토큰을 모은다 — 사용량 표가 캐시가 얼마나 먹었는지 보여 준다(store/agents agentUsage) */
   const tokens = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 };
@@ -528,11 +611,46 @@ export async function agentReply(input: {
         directions.push(await hands.deleteDirection(id));
         return { type: 'tool_result', tool_use_id: block.id, content: '지웠다 — 실무자들은 다음에 부를 때부터 읽지 않는다.' };
       }
-      if (block.name === 'team_history' && isLead(agent.kind) && hands.teamHistory) {
+      if (block.name === 'search_history') {
+        return {
+          type: 'tool_result', tool_use_id: block.id,
+          content: searchThread(input.thread, { query: str(args.query), from: str(args.from), to: str(args.to) }),
+        };
+      }
+      if (block.name === 'read_file') {
+        const f = fileIn(input.thread, str(args.file_id));
+        if (!f) return fail(`이 대화창에 넘긴 파일 중 id=${str(args.file_id) || '(비어 있음)'} 가 없다.`);
+        const read = agentFileRead(f.name);
+        /* PDF · 그림은 대화에 붙일 때와 같은 덩이로 돌려준다(도구 결과에도 문서 · 그림 덩이가 든다 — SDK 0.52 타입은 그림까지만 안다) */
+        if (read === 'pdf' || read === 'image') {
+          return { type: 'tool_result', tool_use_id: block.id, content: fileBlocks(f) as Anthropic.ToolResultBlockParam['content'] };
+        }
+        const t = await fileText(f);
+        const head = `[넘긴 파일 ${f.name} · id=${f.id}]`;
+        return {
+          type: 'tool_result', tool_use_id: block.id,
+          content: t ? `${head} — 글자만 뽑음\n${t}` : `${head} — 이 형식은 열지 못한다. 이름만 안다`,
+        };
+      }
+      if (block.name === 'team_history' && hands.teamHistory) {
         const member = str(args.member);
         if (!member) return fail('member 가 비었다.');
         const days = typeof args.days === 'number' && Number.isFinite(args.days) ? args.days : HISTORY_DAYS;
-        return { type: 'tool_result', tool_use_id: block.id, content: await hands.teamHistory(member, days) };
+        const query = str(args.query) || undefined;
+        return { type: 'tool_result', tool_use_id: block.id, content: await hands.teamHistory(member, days, query) };
+      }
+      if (block.name === 'tell_teammate' && hands.tellTeammate) {
+        if (told.length >= TELLS_PER_TURN) return fail(`한 답에 팀원에게 남기는 말은 ${TELLS_PER_TURN}번까지다.`);
+        const member = str(args.member);
+        const body = str(args.message);
+        if (!member) return fail('member 가 비었다.');
+        if (!body) return fail('message 가 비었다.');
+        const name = await hands.tellTeammate(member, body);
+        told.push(name);
+        return {
+          type: 'tool_result', tool_use_id: block.id,
+          content: `${name}의 대화창에 남겼다 — 다음에 불릴 때 읽는다(지금 답하지 않는다).`,
+        };
       }
       return fail(`모르는 도구: ${block.name}`);
     } catch (err) {
@@ -617,18 +735,20 @@ export async function agentReply(input: {
     ...(done.length ? { done } : {}),
     ...(mails.length ? { mails } : {}),
     ...(directions.length ? { directions } : {}),
+    ...(told.length ? { told } : {}),
     tokens,
     ...(searchCount ? { searches: searchCount } : {}),
   };
   if (!text) {
     // 할 일 · 메일 초안은 이미 남았을 수 있다 — 그 사실은 남긴다
-    if (added.length || done.length || mails.length || directions.length) {
+    if (added.length || done.length || mails.length || directions.length || told.length) {
       return {
         text: [
           added.length ? `할 일을 적었습니다: ${added.join(' · ')}` : '',
           done.length ? `끝냈습니다: ${done.join(' · ')}` : '',
           mails.length ? `메일 초안을 올렸습니다: ${mails.join(' · ')}` : '',
           directions.length ? `목표 · 방향을 고쳤습니다: ${directions.join(' · ')}` : '',
+          told.length ? `팀원에게 남겼습니다: ${told.join(' · ')}` : '',
         ].filter(Boolean).join('\n'),
         meta: { model: MODEL, ms: Date.now() - started, usd, ...acted },
       };

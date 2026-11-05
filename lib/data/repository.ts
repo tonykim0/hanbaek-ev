@@ -533,7 +533,13 @@ export interface ProjectRepository {
   ): Promise<{ id: string; title: string }>;
   deleteAgentDirection(input: { leadId: string; id: string; byAgent?: boolean }, actor: Actor): Promise<{ title: string }>;
   /** 실무자가 한백과 나눈 것 — 최근 days 일, 실무자마다 말 perMember 개까지. memberId 면 그 실무자 하나만 */
-  agentTeamLog(actor: Actor, biz: Biz, opts: { days: number; perMember: number; memberId?: string }): Promise<TeamMemberLog[]>;
+  agentTeamLog(
+    actor: Actor, biz: Biz, opts: { days: number; perMember: number; memberId?: string; exclude?: string }
+  ): Promise<TeamMemberLog[]>;
+  /** 팀원에게 말을 남긴다(tell_teammate) — 받은 담당의 대화에 「팀원」의 말로. 같은 사업만. 받은 담당을 돌려준다 */
+  tellAgent(input: { fromId: string; toId: string; body: string }, actor: Actor): Promise<{ id: string; name: string }>;
+  /** 담당 하나와 나눈 말 전부(오래된 것부터, 넘긴 파일 포함) — 에이전트를 부를 때 읽는다 */
+  agentThread(id: string, actor: Actor): Promise<AgentMessage[]>;
   /** 할 일 적기 — byAgent 면 적은 쪽에 에이전트 이름이 남는다(대화 중 에이전트의 도구) */
   addAgentTask(
     input: { agentId: string; title: string; note?: string | null; due?: string | null; projectId?: string | null; byAgent?: boolean },

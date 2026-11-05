@@ -33,6 +33,10 @@ const MAX = { title: 60, body: 4000 } as const;
 const MAX_DAYS = 90;
 /** 실무자 한 사람에게서 읽는 말의 상한 */
 const MAX_PER_MEMBER = 200;
+/** 팀원에게 남기는 말의 글 상한 — 한백의 지시와 같은 결이다 */
+const PEER_MAX = 4000;
+/** 팀원의 말 감사기록 — 받은 담당의 열쇠로 남는다 */
+export const PEER_ACTION = '에이전트 팀원 말';
 
 function directionOf(r: typeof agentDirections.$inferSelect, leadName: string): AgentDirection {
   return {
@@ -56,7 +60,7 @@ async function leadRow(id: string) {
 const dirAudit = (title: string, body: string) => `${title} — ${body}`.slice(0, 2000);
 
 export const agentTeamStore: Pick<
-  ProjectRepository, 'agentTeam' | 'saveAgentDirection' | 'deleteAgentDirection' | 'agentTeamLog'
+  ProjectRepository, 'agentTeam' | 'saveAgentDirection' | 'deleteAgentDirection' | 'agentTeamLog' | 'tellAgent'
 > = {
   /** 사업 하나의 팀 — 팀장 · 실무자(조직 순서) · 팀장이 세운 목표 · 방향 */
   async agentTeam(actor, biz: Biz): Promise<AgentTeam> {
@@ -132,8 +136,9 @@ export const agentTeamStore: Pick<
   },
 
   /**
-   * 실무자가 한백과 나눈 것 — 팀장이 읽는다. 최근 날수(오늘 포함, 한국 달력) 안의 말을 실무자마다 최근 것부터 상한만큼, 열린 할 일
-   * 전부와 그 안에 끝낸 할 일, 업무 정의. memberId 를 주면 그 실무자 하나만(team_history). 팀장 자신은 싣지 않는다.
+   * 팀원이 한백 · 다른 팀원과 나눈 것 — 같은 사업의 담당 모두가 서로 읽는다(한백 2026-11-05 「각 담당자들끼리 서로 정보 공유 필요해」 —
+   * 그전에는 팀장만 실무자를 읽었다). 최근 날수(오늘 포함, 한국 달력) 안의 말을 팀원마다 최근 것부터 상한만큼, 열린 할 일 전부와
+   * 그 안에 끝낸 할 일, 업무 정의. exclude 는 읽는 담당 자신(자기 대화는 따로 읽는다), memberId 를 주면 그 팀원 하나만(team_history).
    */
   async agentTeamLog(actor, biz: Biz, opts): Promise<TeamMemberLog[]> {
     assertAdmin(actor, '에이전트');
@@ -141,7 +146,11 @@ export const agentTeamStore: Pick<
     const perMember = Math.min(MAX_PER_MEMBER, Math.max(1, Math.round(opts.perMember)));
     const db = getDb();
     const rows = await db.select().from(agents)
-      .where(and(eq(agents.biz, biz), ne(agents.kind, 'strategy'), ...(opts.memberId ? [eq(agents.id, opts.memberId)] : [])))
+      .where(and(
+        eq(agents.biz, biz),
+        ...(opts.exclude ? [ne(agents.id, opts.exclude)] : []),
+        ...(opts.memberId ? [eq(agents.id, opts.memberId)] : []),
+      ))
       .orderBy(asc(agents.sort));
     const members = rows.map(agentOf);
     if (members.length === 0) return [];
@@ -180,5 +189,29 @@ export const agentTeamStore: Pick<
       messages: said[i].slice().reverse().map((m) => messageOf(m, filesOf.get(m.id) ?? [])),
       total: totalOf.get(agent.id) ?? 0,
     }));
+  },
+  /**
+   * 팀원에게 말을 남긴다(tell_teammate) — 같은 사업의 다른 담당의 대화에 「팀원」의 말(peer)로 선다. 받은 담당을 부르지 않는다 —
+   * 다음에 한백이 부를 때 읽는다(types/agents peer). 사업이 다르면 거절한다 — 전기차와 태양광은 나누는 것이 없다(0119).
+   */
+  async tellAgent(input, actor): Promise<{ id: string; name: string }> {
+    assertAdmin(actor, '에이전트');
+    const from = await agentRow(input.fromId);
+    const to = await agentRow(input.toId);
+    if (from.id === to.id) throw new Error('자기 자신에게는 남기지 않는다.');
+    if (from.biz !== to.biz) throw new Error(`「${to.name}」은(는) 다른 사업의 담당이다 — 같은 사업의 팀원에게만 남긴다.`);
+    const body = clip(input.body, PEER_MAX, '팀원에게 남기는 말');
+    if (!body) throw new Error('남길 말이 비었다.');
+    const id = crypto.randomUUID();
+    await getDb().transaction(async (tx) => {
+      await tx.insert(agentMessages).values({
+        id, agentId: to.id, role: 'peer', author: from.name, authorId: null, body, meta: { from: { id: from.id, name: from.name } },
+      });
+      await writeAudit(tx, {
+        projectId: null, actor, action: PEER_ACTION, field: agentAuditKey(to), oldValue: null,
+        newValue: `${from.name} → ${to.name} · ${body.slice(0, 200)}`,
+      });
+    });
+    return { id: to.id, name: to.name };
   },
 };
