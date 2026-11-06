@@ -42,6 +42,8 @@ const PICK_BY_TAG: Record<string, VisionPick> = {
   'consult-dup': HAIKU,
   'apply-facts': HAIKU,
   'contract-date': HAIKU,
+  // 현대엔지니어링 설치승인서 검증(lib/hec-approval-run) — PDF · 사진만 온다(pptx 는 코드가 읽는다). 표의 칸을 옮겨 적는 일이다
+  'hec-approval': HAIKU,
 };
 export const visionPickOf = (tag: string): VisionPick => PICK_BY_TAG[tag] ?? DEFAULT_PICK;
 /**

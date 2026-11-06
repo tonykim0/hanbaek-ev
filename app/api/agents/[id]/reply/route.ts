@@ -122,11 +122,11 @@ async function answer(
         bundleFile: (id: string) => bundleFileOf(agentId, id),
       } : {}),
       ...(siteSpec ? {
-        siteMail: async (projectId: string) => {
-          const { plan, mail } = await requestSiteMail(projectId, actor, siteSpec);
+        siteMail: async (projectId: string, force: boolean) => {
+          const { plan, mail } = await requestSiteMail(projectId, actor, siteSpec, { force });
           if (!mail) throw new Error('초안을 쓰지 못했습니다.');
           drafted.push(mail.id);
-          return { id: mail.id, subject: mail.subject, plan, to: mail.to };
+          return { id: mail.id, subject: mail.subject, plan, to: mail.to, checks: mail.checks };
         },
       } : {}),
       /* 업무 정의 — 한백이 대화에서 시킬 때 담당이 넣고 고치고 뺀다(감사기록에 「에이전트가 적음」) */

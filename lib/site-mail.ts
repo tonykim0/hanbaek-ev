@@ -87,12 +87,48 @@ export const missingNoteOf = (spec: SiteMailSpec) => `${spec.doc} 없음 — 채
 /** 붙일 서류가 없을 때 — 한백이 요청한 길(대화 · 단추)이 이 말로 멈춘다 */
 export const missingError = (spec: SiteMailSpec) => `${josa(spec.doc, '이', '가')} 없습니다 — 먼저 올려 주세요.`;
 
+/**
+ * 붙일 서류 한 장을 본 결과 — 지금은 현대엔지니어링 설치승인서만 본다(lib/hec-approval · 한백 2026-11-06 「파일이 설치승인서가
+ * 맞는지도 검증해주는 단계가 필요할듯」). block 이면 그 초안을 쓰지 않는다(planSiteDraft 'invalid') · warn 이면 쓰고 카드에 「확인 필요」.
+ */
+export interface DocCheck {
+  level: 'block' | 'warn';
+  why: string;
+}
+
+/** 붙일 서류 한 장 — 이름과 본 결과는 지금 서류로 쓴 것에만 있다 */
+export interface LetterDoc {
+  url: string;
+  name?: string;
+  checks?: readonly DocCheck[];
+}
+
 /** 메일 하나의 견줄 모양 — 초안이든 지금 서류로 쓴 것이든 */
 export interface LetterLike {
   subject: string;
   body: string;
-  docFiles: ReadonlyArray<{ url: string }>;
+  docFiles: ReadonlyArray<LetterDoc>;
 }
+
+/** 본 결과를 한 줄씩 — 「「승인서.pptx」 기수가 다릅니다 — …」. level 을 주면 그것만 */
+export function checkLines(docFiles: ReadonlyArray<LetterDoc>, level?: DocCheck['level']): string[] {
+  return docFiles.flatMap((f) => (f.checks ?? [])
+    .filter((c) => !level || c.level === level)
+    .map((c) => `「${f.name ?? '첨부'}」 ${c.why}`));
+}
+
+/** 그대로 보내면 사고인 까닭(block) — 있으면 초안을 쓰지 않는다 */
+export const blockedOf = (letter: LetterLike | null): string[] => (letter ? checkLines(letter.docFiles, 'block') : []);
+
+/** 붙일 서류가 맞지 않을 때 — 한백이 요청한 길(대화 · 단추)이 이 말로 멈춘다. 담당은 까닭을 전하고, 한백이 그래도 쓰라면 force 로 다시 */
+export const invalidError = (spec: SiteMailSpec, why: readonly string[]) =>
+  `${josa(spec.doc, '을', '를')} 붙일 수 없습니다 — ${why.join(' / ')}. 고쳐 올려 주세요.`;
+
+/** 붙일 서류가 맞지 않아 열어 둔 할 일의 덧붙임 — 고쳐져 초안을 쓰면 걷는다 */
+export const invalidNoteOf = (spec: SiteMailSpec) => `${spec.doc} 확인 필요 — 고쳐지면 다시 요청`;
+
+/** 할 일의 덧붙임 중 「서류가 채워지면 · 고쳐지면 걷는 것」 */
+export const waitingNotesOf = (spec: SiteMailSpec) => [missingNoteOf(spec), invalidNoteOf(spec)];
 
 const subjectKey = (s: string) => s.replace(/\s+/g, ' ').trim();
 const bodyKey = (s: string) => s.replace(/\r\n/g, '\n').trim();
@@ -110,19 +146,24 @@ export function sameLetter(a: LetterLike, b: LetterLike): boolean {
  *   keep     보내지 않은 초안이 지금 서류와 같다 — 그대로 둔다(두 번 눌러도 · 같은 접수가 두 번 불려도 하나)
  *   replace  보내지 않은 초안이 지금 서류와 다르다(다시 접수하며 서류 · 값이 바뀜) — 버리고 새로 쓴다(받는 사람은 이어받는다)
  *   sent     같은 서류로 이미 보냈다 — 아무것도 안 한다. ★저절로 돌 때만★ — 한백이 요청하면(requested) 다시 쓴다
+ *   invalid  붙일 서류가 맞지 않다(DocCheck block — 설치승인서가 아님 · 빈 양식 · 다른 현장) — 쓰지 못한다(missing 과 같이
+ *            보내지 않은 초안을 버린다). 한백이 까닭을 듣고도 쓰라고 하면(force) 쓴다 — 까닭은 카드에 「확인 필요」로 남는다
  *   create   새로 쓴다
+ * 이미 보낸 것(sent)은 서류를 보기 전에 가른다 — 보낸 뒤 콘솔 값이 바뀌어도 다시 접수될 때 「못 보냄」이 울리지 않게.
  * @param s.open 보내지 않은(승인 대기 · 보내지 못함) 가장 최근 초안 · s.sent 이 현장 · 양식으로 보낸 메일들의 붙인 파일 주소
  */
-export type DraftPlan = 'missing' | 'keep' | 'replace' | 'sent' | 'create';
+export type DraftPlan = 'missing' | 'invalid' | 'keep' | 'replace' | 'sent' | 'create';
 
 export function planSiteDraft(
   letter: LetterLike | null,
   s: { open: LetterLike | null; sent: ReadonlyArray<readonly string[]> },
   requested: boolean,
+  force = false,
 ): DraftPlan {
   if (!letter) return 'missing';
+  if (!s.open && !requested && s.sent.some((urls) => sameList(urls, urlsOf(letter)))) return 'sent';
+  if (!force && blockedOf(letter).length > 0) return 'invalid';
   if (s.open) return sameLetter(s.open, letter) ? 'keep' : 'replace';
-  if (!requested && s.sent.some((urls) => sameList(urls, urlsOf(letter)))) return 'sent';
   return 'create';
 }
 
@@ -141,8 +182,18 @@ export function emptyFieldsOf(spec: SiteMailSpec, p: SiteMailSite, qty: number):
  */
 export function intakeSay(spec: SiteMailSpec, site: string, o: {
   plan: Exclude<DraftPlan, 'sent'>; to: string[]; taskAdded: boolean; empty: string[];
+  /** 붙일 서류를 본 결과(checkLines) — invalid 면 막은 까닭, 아니면 「확인 필요」 */
+  checks?: string[];
 }): string {
   const head = `${site} — 계약서가 ${o.plan === 'replace' ? '다시 ' : ''}접수됐습니다.`;
+  const checks = o.checks ?? [];
+  if (o.plan === 'invalid') {
+    return [
+      head,
+      `${josa(spec.doc, '이', '가')} 맞지 않아 ${spec.label}을 보내지 못합니다 — ${checks.join(' / ')}.`,
+      `할 일로 남겨 두었습니다 — 고쳐 올리면 이 대화에서 다시 요청해 주세요. 그대로 보내야 하면 그렇게 말씀해 주세요.`,
+    ].join('\n');
+  }
   if (o.plan === 'missing') {
     return [
       head,
@@ -162,7 +213,16 @@ export function intakeSay(spec: SiteMailSpec, site: string, o: {
       ? `받는 사람 ${o.to.join(', ')} — 확인하고 「승인하고 보내기」를 눌러 주세요.`
       : '받는 사람이 미지정입니다 — 「고치기」로 받는 사람을 넣고 승인해 주세요.',
     o.empty.length ? `비어 있는 줄: ${o.empty.join(' · ')} — 「고치기」로 채워 주세요.` : '',
+    checks.length ? `확인 필요: ${checks.join(' / ')} — 열어 보고 승인해 주세요.` : '',
   ].filter(Boolean).join('\n');
+}
+
+/** 붙일 서류가 맞지 않을 때 한백 관리자에게 가는 알림 — 없을 때와 같은 자리(그 현장의 계약 탭) */
+export function invalidAlarm(spec: SiteMailSpec, agentName: string, why: readonly string[]): { title: string; body: string } {
+  return {
+    title: `${spec.doc} 확인 필요 — 메일 못 보냄`,
+    body: `${why.join(' / ')} — 고쳐 올린 뒤 ${agentName}에게 다시 요청해 주세요.`.slice(0, 1000),
+  };
 }
 
 /** 붙일 서류가 없을 때 한백 관리자에게 가는 알림 — 누르면 그 현장의 계약 탭(서류 칸이 거기 있다) */

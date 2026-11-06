@@ -26,6 +26,19 @@ vi.mock('@/lib/agents/smtp', async (orig) => ({
   sendSmtp: smtp.send,
 }));
 
+/*
+ * 설치승인서 검증(lib/hec-approval-run)은 흉내 낸다 — 진짜는 파일을 받아 pptx 를 열거나 PDF 를 판독에 보낸다(판정 규칙은
+ * test/hec-approval.test.ts 가 본다). 여기서는 파일 이름으로 결과를 정한다: 「빈양식」은 막고 「기수다름」은 확인 필요.
+ */
+const approval = vi.hoisted(() => ({
+  check: vi.fn(async (f: { name: string }): Promise<Array<{ level: 'block' | 'warn'; why: string }>> => {
+    if (f.name.includes('빈양식')) return [{ level: 'block', why: '빈 양식입니다(현장명 · 기수가 비어 있음)' }];
+    if (f.name.includes('기수다름')) return [{ level: 'warn', why: '기수가 다릅니다 — 승인서 3기 · 콘솔 4기' }];
+    return [];
+  }),
+}));
+vi.mock('@/lib/hec-approval-run', () => ({ checkApprovalFile: approval.check }));
+
 const repo = getRepository();
 const admin = actorOf(USERS.admin);
 const NICE = { cpo: '나이스인프라' as const, bizType: '환경부' as const };
@@ -159,6 +172,48 @@ describe('현대엔지니어링 설치승인서 메일', () => {
         const closed = await getDb().select().from(auditLog)
           .where(and(eq(auditLog.projectId, id), eq(auditLog.action, '에이전트 할 일 끝냄')));
         expect(closed).toHaveLength(1);
+      } finally {
+        await clean(id);
+      }
+    }, HEC);
+  });
+
+  it('설치승인서가 맞지 않으면 초안을 쓰지 않는다 — 까닭 · 할 일 · 알림, 그래도 쓰라면 force · 고쳐 올리면 「확인 필요」만 남는다', async () => {
+    await withProject(async (id) => {
+      try {
+        await submit(id);
+        await putDoc(id, 'approval', '설치승인서 빈양식.pptx');
+        const first = await runSiteMailIntake(id);
+        expect(first).toMatchObject({ plan: 'invalid', mail: null });
+        expect(first!.alarmed).toBeGreaterThan(0);
+        expect(approval.check).toHaveBeenCalledWith(
+          expect.objectContaining({ name: '설치승인서 빈양식.pptx' }), expect.objectContaining({ qty: expect.any(Number) }),
+        );
+        let t = await trail(id);
+        expect(t.mails).toHaveLength(0);
+        expect(t.tasks[0].note).toBe('설치승인서 확인 필요 — 고쳐지면 다시 요청');
+        expect(t.messages).toHaveLength(1);
+        expect(t.messages[0].body).toContain('설치승인서가 맞지 않아 설치승인서 메일을 보내지 못합니다 — 「설치승인서 빈양식.pptx」 빈 양식입니다');
+        expect(t.alarms.find((a) => a.userId === 'admin')).toMatchObject({ title: '설치승인서 확인 필요 — 메일 못 보냄', docKind: 'approval' });
+
+        // 같은 접수가 두 번 불려도 말 · 알림은 한 번
+        expect(await runSiteMailIntake(id)).toMatchObject({ plan: 'invalid', messageId: null, alarmed: 0 });
+
+        // 다시 요청해도 그 까닭으로 멈춘다 — 한백이 그래도 쓰라면(담당의 force) 쓰고, 까닭은 카드의 「확인 필요」로 남는다
+        await expect(requestSiteMail(id, admin)).rejects.toThrow('설치승인서를 붙일 수 없습니다 — 「설치승인서 빈양식.pptx」 빈 양식입니다');
+        const forced = await requestSiteMail(id, admin, undefined, { force: true });
+        expect(forced.plan).toBe('create');
+        expect(forced.mail!.checks).toEqual(['「설치승인서 빈양식.pptx」 빈 양식입니다(현장명 · 기수가 비어 있음)']);
+
+        // 고쳐 올리고 다시 요청 → 앞 초안을 버리고 새로 · 알림 · 할 일의 「확인 필요」 덧붙임을 거둔다 · 기수가 다르면 「확인 필요」만
+        await putDoc(id, 'approval', '설치승인서 기수다름.pptx');
+        const fixed = await requestSiteMail(id, admin);
+        expect(fixed.plan).toBe('replace');
+        expect(fixed.mail!.checks).toEqual(['「설치승인서 기수다름.pptx」 기수가 다릅니다 — 승인서 3기 · 콘솔 4기']);
+        t = await trail(id);
+        expect(t.alarms).toHaveLength(0);
+        expect(t.tasks[0].note).toBeNull();
+        expect(t.mails.filter((m) => m.status === 'draft')).toHaveLength(1);
       } finally {
         await clean(id);
       }

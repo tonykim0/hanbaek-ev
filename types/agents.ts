@@ -256,6 +256,11 @@ export interface AgentMail {
   body: string;
   /** 붙일 파일 — 그 담당에게 넘긴 파일 */
   files: AgentFile[];
+  /**
+   * 붙인 서류를 본 결과 중 사람이 열어 봐야 할 것 — 「「승인서.pptx」 기수가 다릅니다 — 승인서 4기 · 콘솔 3기」(lib/hec-approval ·
+   * 현대엔지니어링 설치승인서). 카드에 「확인 필요」로 선다. 없으면 빈 목록
+   */
+  checks: string[];
   /** 보내지 못한 까닭(failed) */
   error: string | null;
   /** 보낸 계정 */
