@@ -6,13 +6,16 @@
  *   · 한백이 그 담당에게 다시 요청할 때 — lib/agents/brain 의 site_mail 도구(app/api/agents/[id]/reply)
  *   · 나이스 제출 정보 밑 「계약서 초안 메일」 단추 — app/api/projects/[id]/nice-draft-mail
  * 나이스는 쓰기 전에 결과서 6번(제출 정보 7번)을 읽는다 — 이미 이 결과서로 읽었으면 다시 안 읽는다(ensureConsultDup).
+ * ★현대엔지니어링은 붙일 설치승인서를 먼저 본다★(lib/hec-approval-run · 한백 2026-11-06 「파일이 설치승인서가 맞는지도 검증해주는
+ * 단계가 필요할듯」) — 파일마다 본 결과(checks)가 초안의 붙일 서류에 실리고, 맞지 않으면(block) 저장소가 초안을 쓰지 않는다.
  */
 import { getRepository } from '@/lib/data';
 import { background } from '@/lib/background';
 import { AUTO } from '@/lib/check-kit';
 import { ensureConsultDup } from '@/lib/consult-dup-run';
 import { NICE_DRAFT_MAIL } from '@/lib/nice-submit';
-import { emptyFieldsOf, siteMailOfCpo, type SiteMailSpec } from '@/lib/site-mail';
+import { emptyFieldsOf, HEC_APPROVAL_MAIL, siteMailOfCpo, type SiteMailSpec } from '@/lib/site-mail';
+import { checkApprovalFile } from '@/lib/hec-approval-run';
 import type { Actor, SiteDocFile, SiteMailResult } from '@/lib/data/repository';
 import type { ProjectDetail } from '@/types/project';
 
@@ -44,6 +47,12 @@ async function headOf(url: string, name: string): Promise<{ size: number; conten
 
 const qtyOf = (detail: ProjectDetail) => detail.lines.reduce((n, l) => n + l.qty, 0);
 
+/** 붙이기 전에 본다 — 지금은 현대엔지니어링 설치승인서만(lib/hec-approval). 다른 양식은 보지 않는다 */
+async function checksOf(spec: SiteMailSpec, detail: ProjectDetail, file: { name: string; url: string }) {
+  if (spec.kind !== HEC_APPROVAL_MAIL) return [];
+  return checkApprovalFile(file, { name: detail.project.name, addr: detail.project.addr, qty: qtyOf(detail) });
+}
+
 /** 지금 서류로 쓴 초안 — 붙일 서류 칸이 비었으면 null */
 export async function siteLetterOf(
   spec: SiteMailSpec, detail: ProjectDetail,
@@ -51,7 +60,10 @@ export async function siteLetterOf(
   const files = (detail.documents.find((d) => d.kind === spec.slot)?.files ?? []).filter((f) => f.url);
   if (files.length === 0) return null;
   const docFiles: SiteDocFile[] = [];
-  for (const f of files) docFiles.push({ name: f.name, url: f.url, ...(await headOf(f.url, f.name)) });
+  for (const f of files) {
+    const checks = await checksOf(spec, detail, f);
+    docFiles.push({ name: f.name, url: f.url, ...(await headOf(f.url, f.name)), ...(checks.length ? { checks } : {}) });
+  }
   return { ...spec.letter(detail.project, qtyOf(detail)), docFiles };
 }
 
@@ -88,9 +100,12 @@ export function scheduleSiteMailIntake(projectId: string): Promise<void> {
 
 /**
  * 한백이 (다시) 요청할 때 — 지금 서류로 초안을 쓴다(같은 서류로 이미 보냈어도 다시 쓴다 · 보내지 않은 같은 초안이 있으면 그것).
- * 붙일 서류가 없으면 사람 말로 던진다(「설치승인서가 없습니다 — 먼저 올려 주세요.」). expect 를 주면 그 양식의 현장만 받는다.
+ * 붙일 서류가 없거나 맞지 않으면 사람 말로 던진다(「설치승인서가 없습니다 — 먼저 올려 주세요.」 · 「설치승인서를 붙일 수 없습니다 —
+ * …」). expect 를 주면 그 양식의 현장만 받는다. force — 맞지 않다는 까닭을 한백이 듣고도 그대로 쓰라고 했을 때(담당의 site_mail).
  */
-export async function requestSiteMail(projectId: string, actor: Actor, expect?: SiteMailSpec): Promise<SiteMailResult> {
+export async function requestSiteMail(
+  projectId: string, actor: Actor, expect?: SiteMailSpec, opts: { force?: boolean } = {},
+): Promise<SiteMailResult> {
   const viewer = { role: actor.role, org: actor.org };
   const found = await getRepository().getProject(projectId, viewer);
   if (!found) throw new Error('현장을 찾을 수 없습니다.');
@@ -100,5 +115,5 @@ export async function requestSiteMail(projectId: string, actor: Actor, expect?: 
   }
   const detail = await readyDetail(spec, found, viewer);
   const letter = await siteLetterOf(spec, detail);
-  return getRepository().siteMail({ kind: spec.kind, projectId, letter, intake: null }, actor);
+  return getRepository().siteMail({ kind: spec.kind, projectId, letter, intake: null, force: opts.force === true }, actor);
 }

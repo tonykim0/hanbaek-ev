@@ -98,7 +98,7 @@ describe('태양광 담당이 쥐는 도구', () => {
     return 'site' in add.input_schema.properties;
   };
   const read = async () => '';
-  const mail = async () => ({ id: 'm', subject: 's', plan: 'create', to: [] });
+  const mail = async () => ({ id: 'm', subject: 's', plan: 'create', to: [], checks: [] });
 
   it('사업자 담당 — 할 일 · 메일 초안. 양식 메일 · 단가표는 없다(손을 이어 줘도)', () => {
     const tools = toolsOf(HENERGY, { pricingTable: read, siteMail: mail });

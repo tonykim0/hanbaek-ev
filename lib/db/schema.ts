@@ -838,7 +838,11 @@ export const agentMails = pgTable('agent_mails', {
   /** 현장 메일이면 그 현장 · 양식 이름(nice-contract-draft) · 붙일 현장 서류(그때의 파일) — migrations/0112 */
   projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
   kind: text('kind'),
-  docFiles: jsonb('doc_files').$type<Array<{ name: string; url: string; size: number; contentType: string | null }>>().notNull().default([]),
+  docFiles: jsonb('doc_files').$type<Array<{
+    name: string; url: string; size: number; contentType: string | null;
+    /** 붙이기 전에 본 결과(lib/hec-approval) — 현장 양식 메일만 */
+    checks?: Array<{ level: 'block' | 'warn'; why: string }>;
+  }>>().notNull().default([]),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   sentAt: timestamp('sent_at', { withTimezone: true }),

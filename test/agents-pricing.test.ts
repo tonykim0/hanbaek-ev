@@ -72,7 +72,7 @@ describe('담당마다 쥐는 도구', () => {
   const PLAN: Agent = { id: 'strategy', kind: 'strategy', biz: 'ev', company: null, cpo: null, name: '전략·기획 담당' };
   const names = (tools: unknown[]) => tools.map((t) => (t as { name: string }).name);
   const read = async () => '';
-  const mail = async () => ({ id: 'm', subject: 's', plan: 'create', to: [] });
+  const mail = async () => ({ id: 'm', subject: 's', plan: 'create', to: [], checks: [] });
 
   it('운영사 담당은 단가표를 읽는다 — 라우트가 손을 이어 줄 때만', () => {
     expect(names(toolsOf(NICE, { pricingTable: read, siteMail: mail }))).toEqual(

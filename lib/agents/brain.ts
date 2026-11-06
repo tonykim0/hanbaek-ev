@@ -43,7 +43,7 @@ import { fileText, fileTextsOf } from './file-text';
 import { awaitsReply, pendingOf } from './memory';
 import { MEMO_MAX, memoBlock, memosToOpen, memoText } from './memos';
 import { attachable, bundleLinkLines, bundleText, type BundlePart, type BundleResult } from './bundle';
-import { josa, siteMailOfCpo, type SiteMailSpec } from '@/lib/site-mail';
+import { HEC_APPROVAL_MAIL, josa, siteMailOfCpo, type SiteMailSpec } from '@/lib/site-mail';
 import type {
   Agent, AgentDuty, AgentFile, AgentMemo, AgentMemos, AgentMessage, AgentMessageMeta, AgentSource, AgentTask, AgentTeam, MemoScope,
 } from '@/types/agents';
@@ -152,7 +152,12 @@ function siteMailRole(spec: SiteMailSpec): string {
   return `현장 양식 메일: 계약서가 접수된 ${spec.cpo} 현장마다 「${spec.label}」(${spec.doc} 첨부)을 보낸다. 접수되면 콘솔이 네 이름으로 `
     + `할 일을 적고 초안을 쓴다(「[자동 …]」). ${josa(spec.doc, '이', '가')} 없으면 못 보낸다고 남기고 할 일을 열어 둔다. `
     + `${josa(spec.doc, '이', '가')} 채워져 한백이 다시 요청하면 site_mail 로 초안을 올린다 — 이 메일은 draft_mail 로 쓰지 않는다. `
-    + `그 메일이 나가면 「${spec.label} 보내기」 할 일은 저절로 끝난다 — complete_task 로 끝내지 않아도 된다.`;
+    + `그 메일이 나가면 「${spec.label} 보내기」 할 일은 저절로 끝난다 — complete_task 로 끝내지 않아도 된다.`
+    + (spec.kind === HEC_APPROVAL_MAIL
+      ? ` 콘솔은 초안을 쓰기 전에 붙일 ${josa(spec.doc, '이', '가')} 이 현장의 것인지 본다(양식 · 빈 양식 · 주소 · 기수). 맞지 않으면 초안을 쓰지 않고 `
+        + '까닭을 남긴다 — 한백에게 그 까닭을 그대로 전한다. 한백이 까닭을 듣고도 그대로 쓰라고 하면 site_mail 의 force 를 켠다(스스로 켜지 않는다). '
+        + '초안에 「확인 필요」(기수가 다름 · 못 읽음)가 붙으면 그것도 전한다.'
+      : '');
 }
 
 const RULES = `일하는 법:
@@ -285,10 +290,11 @@ export interface AgentHands {
   /** 관리번호(또는 현장 id) → 현장 id. 모르면 null */
   siteOf(ref: string): string | null;
   /**
-   * 현장 양식 메일 초안 — 양식이 있는 운영사 담당만(lib/site-mail). 지금 서류로 쓰고, 붙일 서류가 없으면 사람 말로 던진다.
-   * plan: create 새로 · replace 앞의 보내지 않은 초안을 버리고 새로 · keep 같은 초안이 이미 있다
+   * 현장 양식 메일 초안 — 양식이 있는 운영사 담당만(lib/site-mail). 지금 서류로 쓰고, 붙일 서류가 없거나 맞지 않으면 사람 말로 던진다.
+   * plan: create 새로 · replace 앞의 보내지 않은 초안을 버리고 새로 · keep 같은 초안이 이미 있다. checks 는 카드의 「확인 필요」.
+   * force — 맞지 않다는 까닭을 한백이 듣고도 쓰라고 했을 때
    */
-  siteMail?(projectId: string): Promise<{ id: string; subject: string; plan: string; to: string[] }>;
+  siteMail?(projectId: string, force: boolean): Promise<{ id: string; subject: string; plan: string; to: string[]; checks: string[] }>;
   /** 그 운영사의 지금 단가표 글 — 운영사 담당만(lib/agents/pricing-table). 읽기만이다 */
   pricingTable?(): Promise<string>;
   /** 팀장만 — 팀 목표 · 방향 올리기(id 없이) · 고치기(id). 저장소가 틀리면 사람 말로 던진다 */
@@ -425,7 +431,15 @@ function siteMailTool(spec: SiteMailSpec) {
       + '한백이 그 현장의 메일을 (다시) 보내 달라고 할 때 쓴다. 너는 보내지 못한다 — 한백이 승인해야 나간다.',
     input_schema: {
       type: 'object',
-      properties: { site: { type: 'string', description: '현장의 관리번호, 예: HB-2026-123' } },
+      properties: {
+        site: { type: 'string', description: '현장의 관리번호, 예: HB-2026-123' },
+        ...(spec.kind === HEC_APPROVAL_MAIL ? {
+          force: {
+            type: 'boolean',
+            description: `${josa(spec.doc, '이', '가')} 맞지 않다고 막혔는데 한백이 그 까닭을 듣고도 그대로 쓰라고 했을 때만 true. 스스로 켜지 않는다`,
+          },
+        } : {}),
+      },
       required: ['site'],
     },
   };
@@ -793,15 +807,16 @@ export async function agentReply(input: {
         const ref = str(args.site);
         const projectId = ref ? hands.siteOf(ref) : null;
         if (!projectId) return fail(`현장 ${ref || '(비어 있음)'} 를 찾지 못했다 — 관리번호를 확인한다.`);
-        const made = await hands.siteMail(projectId);
+        const made = await hands.siteMail(projectId, args.force === true);
         mails.push(made.subject);
         const who = made.to.length ? `받는 사람 ${made.to.join(', ')}` : '받는 사람 미지정(한백이 카드에서 넣는다)';
+        const checks = made.checks.length ? ` 카드에 「확인 필요」: ${made.checks.join(' / ')} — 한백에게 전한다.` : '';
         return {
           type: 'tool_result', tool_use_id: block.id,
           content: made.plan === 'keep'
-            ? `같은 초안이 이미 올라와 있다 (id=${made.id}, ${who}) — 그대로 두었다. 한백이 승인하면 나간다.`
+            ? `같은 초안이 이미 올라와 있다 (id=${made.id}, ${who}) — 그대로 두었다. 한백이 승인하면 나간다.${checks}`
             : `초안을 올렸다 (id=${made.id}, ${who})${made.plan === 'replace' ? ' — 앞의 보내지 않은 초안은 서류가 달라 버렸다' : ''}. `
-              + '아직 보내지 않았다 — 한백이 승인하면 나간다.',
+              + '아직 보내지 않았다 — 한백이 승인하면 나간다.' + checks,
         };
       }
       if (block.name === 'pricing_table' && agent.kind === 'operator' && hands.pricingTable) {

@@ -144,6 +144,17 @@ export function MailCard({ agentId, mail, connected, onChange, indent = true }: 
           {mail.files.map((f) => <FileChip key={f.id} file={f} />)}
         </div>
       )}
+      {/* 붙인 서류를 본 결과(lib/hec-approval — 설치승인서의 기수 · 현장 · 못 읽음) — 나가기 전에만. 카드가 이미 띠라 띠를 겹치지 않는다 */}
+      {mail.checks.length > 0 && mail.status !== 'sent' && mail.status !== 'discarded' && (
+        <ul className="mt-2 flex flex-col gap-1">
+          {mail.checks.map((c) => (
+            <li key={c} className="flex items-baseline gap-1.5 break-keep text-small font-semibold text-amber-950">
+              <Tag tone="warn">확인 필요</Tag>
+              <span>{c}</span>
+            </li>
+          ))}
+        </ul>
+      )}
 
       {mail.status === 'sent' && (
         <p className={`mt-2 ${TEXT.meta} tabular-nums`}>

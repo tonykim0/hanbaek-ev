@@ -31,7 +31,10 @@ import { addressesOf, MAIL_LIMITS } from '@/lib/agents/mime';
 import { scheduledAtOf, scheduleError, scheduleLabel } from '@/lib/agents/mail-schedule';
 import { seal, unseal } from '@/lib/agents/secret-box';
 import { sizeLabel } from '@/lib/agents/files';
-import { intakeSay, missingAlarm, missingError, missingNoteOf, planSiteDraft, siteMailOfKind, taskTitleOf } from '@/lib/site-mail';
+import {
+  blockedOf, checkLines, intakeSay, invalidAlarm, invalidError, invalidNoteOf, missingAlarm, missingError, missingNoteOf, planSiteDraft,
+  siteMailOfKind, taskTitleOf, waitingNotesOf,
+} from '@/lib/site-mail';
 import type { AgentFile, AgentMail, AgentMailStatus, AgentMessageMeta, MailAccountInfo } from '@/types/agents';
 import { AGENT_MAIL_STATUSES, agentAuditKey } from '@/types/agents';
 import { asBiz, type Biz } from '@/lib/biz';
@@ -81,6 +84,7 @@ export function mailOf(r: MailRow, files: Map<string, AgentFile>): AgentMail {
       ...(r.fileIds ?? []).map((id) => files.get(id)).filter((f): f is AgentFile => Boolean(f)),
       ...(r.docFiles ?? []).map((f, i) => ({ id: `doc:${i}`, name: f.name, url: f.url, size: f.size, contentType: f.contentType })),
     ],
+    checks: checkLines(r.docFiles ?? []),
     error: r.error,
     from: r.from,
     createdAt: stampOf(r.createdAt),
@@ -180,20 +184,31 @@ export const agentMailStore: Pick<
           sent: rows.filter((r) => r.status === 'sent').map((r) => (r.docFiles ?? []).map((f) => f.url)),
         },
         !input.intake,
+        input.force === true,
       );
       if (plan === 'missing' && !input.intake) throw new Error(missingError(spec));
+      const blocked = blockedOf(letterIn);
+      if (plan === 'invalid' && !input.intake) throw new Error(invalidError(spec, blocked));
       const none = { plan, mailId: null as string | null, taskId: null as string | null, messageId: null as string | null, alarmed: 0 };
       if (plan === 'sent') return none;
 
-      /* 버린다 — 서류가 바뀌었거나(replace) 칸이 비었는데(missing) 보내지 않은 초안이 남았을 때. 그 초안의 파일은 이제 칸에 없다 */
-      const discarded = open !== null && (plan === 'replace' || plan === 'missing');
+      /*
+       * 버린다 — 서류가 바뀌었거나(replace) 칸이 비었거나(missing) 맞지 않는데(invalid) 보내지 않은 초안이 남았을 때. 그 초안의 파일은
+       * 이제 칸에 없거나 보낼 수 없는 것이다
+       */
+      const discarded = open !== null && (plan === 'replace' || plan === 'missing' || plan === 'invalid');
       if (open && discarded) {
         await tx.update(agentMails).set({ status: 'discarded', updatedAt: new Date() }).where(eq(agentMails.id, open.id));
         await writeAudit(tx, {
           projectId: site.id, actor, action: '에이전트 메일 버림', field: agentKey,
           oldValue: letterLine({ subject: open.subject, to: open.to ?? [], cc: open.cc ?? [] }),
-          newValue: plan === 'replace' ? '서류가 바뀌어 새로 씀' : `${spec.doc} 없음`,
+          newValue: plan === 'replace' ? '서류가 바뀌어 새로 씀'
+            : plan === 'invalid' ? `${spec.doc} 확인 필요 — ${blocked.join(' / ')}`.slice(0, 2000) : `${spec.doc} 없음`,
         });
+      }
+      /* 그대로 둔 초안 — 서류를 본 결과만 지금 것으로(같은 파일이라도 콘솔의 주소 · 기수가 바뀌었을 수 있다) */
+      if (plan === 'keep' && open && letterIn) {
+        await tx.update(agentMails).set({ docFiles, updatedAt: new Date() }).where(eq(agentMails.id, open.id));
       }
       let mailId: string | null = plan === 'keep' && open ? open.id : null;
       let to: string[] = plan === 'keep' && open ? open.to ?? [] : [];
@@ -214,24 +229,30 @@ export const agentMailStore: Pick<
           projectId: site.id, actor, action: '현장 메일 초안', field: agentKey, oldValue: null,
           newValue: `${letterLine(letter)} · 첨부 ${docFiles.map((f) => f.name).join(', ')}`.slice(0, 2000),
         });
-        // 서류가 채워져 메일을 쓰게 됐다 — 「없어서 못 보냄」 알림과 할 일의 「없음」 덧붙임은 이제 거짓말이다
+        // 서류가 채워지거나 고쳐져 메일을 쓰게 됐다 — 「못 보냄」 알림과 할 일의 「없음 · 확인 필요」 덧붙임은 이제 거짓말이다
         await retractAgentAlarm(tx, { projectId: site.id, docKind: spec.slot });
         await tx.update(agentTasks).set({ note: null }).where(and(
           eq(agentTasks.agentId, spec.agentId), eq(agentTasks.projectId, site.id), eq(agentTasks.kind, spec.kind),
-          isNull(agentTasks.doneAt), eq(agentTasks.note, missingNoteOf(spec)),
+          isNull(agentTasks.doneAt), inArray(agentTasks.note, waitingNotesOf(spec)),
         ));
       }
       if (!input.intake) return { ...none, mailId };
 
       /* 할 일 — 같은 현장 · 양식의 열린 것이 없을 때만. 그 양식의 메일이 나가면 finishAgentMail 이 닫는다 */
-      const [openTask] = await tx.select({ id: agentTasks.id }).from(agentTasks).where(and(
+      const [openTask] = await tx.select({ id: agentTasks.id, note: agentTasks.note }).from(agentTasks).where(and(
         eq(agentTasks.agentId, spec.agentId), eq(agentTasks.projectId, site.id), eq(agentTasks.kind, spec.kind), isNull(agentTasks.doneAt),
       )).limit(1);
       const title = taskTitleOf(spec);
+      const waitNote = plan === 'missing' ? missingNoteOf(spec) : plan === 'invalid' ? invalidNoteOf(spec) : null;
       let taskId: string | null = null;
+      const noteChanged = Boolean(openTask && waitNote && openTask.note !== waitNote);
+      if (openTask && waitNote && noteChanged) {
+        // 열린 할 일의 까닭을 지금 것으로 — 없던 서류가 들어왔는데 맞지 않으면 「없음」이 「확인 필요」로
+        await tx.update(agentTasks).set({ note: waitNote }).where(eq(agentTasks.id, openTask.id));
+      }
       if (!openTask) {
         taskId = crypto.randomUUID();
-        const note = plan === 'missing' ? missingNoteOf(spec) : null;
+        const note = waitNote;
         await tx.insert(agentTasks).values({
           id: taskId, agentId: spec.agentId, title, note, projectId: site.id, kind: spec.kind, author: agentName,
         });
@@ -243,8 +264,11 @@ export const agentMailStore: Pick<
 
       /* 새로 한 것이 없으면 말하지 않는다 — 같은 접수가 두 번 불려도(두 번 누름) 대화에 한 줄 */
       const wrote = plan === 'create' || plan === 'replace';
-      if (!wrote && taskId === null && !discarded) return { ...none, mailId };
-      const body = intakeSay(spec, site.name, { plan, to, taskAdded: taskId !== null, empty: input.intake.empty });
+      if (!wrote && taskId === null && !discarded && !noteChanged) return { ...none, mailId };
+      const body = intakeSay(spec, site.name, {
+        plan, to, taskAdded: taskId !== null, empty: input.intake.empty,
+        checks: plan === 'invalid' ? blocked : checkLines(docFiles),
+      });
       const messageId = crypto.randomUUID();
       const meta: AgentMessageMeta = {
         site: { id: site.id, name: site.name },
@@ -259,10 +283,17 @@ export const agentMailStore: Pick<
       if (mailId && (wrote || (open !== null && open.messageId === null))) {
         await tx.update(agentMails).set({ messageId }).where(eq(agentMails.id, mailId));
       }
-      /* 서류가 없어 못 쓴 것은 한백 관리자에게 알린다(한백 「없어서 못보낸다고 알람을 줘야하고」) */
-      const alarmed = plan === 'missing'
-        ? await notifyAgentAlarm(tx, { projectId: site.id, docKind: spec.slot, ...missingAlarm(spec, agentName) })
-        : 0;
+      /*
+       * 서류가 없거나 맞지 않아 못 쓴 것은 한백 관리자에게 알린다(한백 「없어서 못보낸다고 알람을 줘야하고」). 안 읽은 앞 알림은 거두고 —
+       * 같은 현장 · 칸의 알림은 지금의 까닭 하나만 선다(「없음」 뒤에 맞지 않는 파일이 들어오면 「확인 필요」로 바뀐다)
+       */
+      const alarm = plan === 'missing' ? missingAlarm(spec, agentName)
+        : plan === 'invalid' ? invalidAlarm(spec, agentName, blocked) : null;
+      let alarmed = 0;
+      if (alarm) {
+        await retractAgentAlarm(tx, { projectId: site.id, docKind: spec.slot });
+        alarmed = await notifyAgentAlarm(tx, { projectId: site.id, docKind: spec.slot, ...alarm });
+      }
       return { plan, mailId, taskId, messageId, alarmed };
     });
     const mail = out.mailId ? (await mailsOf([await mailRow(spec.agentId, out.mailId)]))[0] : null;

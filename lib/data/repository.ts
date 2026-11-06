@@ -12,7 +12,7 @@
  *     전부 보내놓고 화면에서 가리면 안 된다.
  */
 import type { Biz } from '@/lib/biz';
-import type { DraftPlan } from '@/lib/site-mail';
+import type { DocCheck, DraftPlan } from '@/lib/site-mail';
 import type { RetouchLog } from '@/lib/retouch/types';
 import type { ConsultDup } from '@/lib/consult-dup';
 import type {
@@ -41,6 +41,8 @@ export interface SiteDocFile {
   url: string;
   size: number;
   contentType: string | null;
+  /** 붙이기 전에 본 결과(lib/hec-approval — 현대엔지니어링 설치승인서) · 맞으면 없다 */
+  checks?: DocCheck[];
 }
 
 /** 현장 양식 메일을 둔 결과 (siteMail · lib/site-mail planSiteDraft) — 쓰거나 그대로 둔 초안 · 적은 할 일 · 남긴 말 · 보낸 알림 수 */
@@ -650,6 +652,8 @@ export interface ProjectRepository {
       kind: string; projectId: string;
       letter: { subject: string; body: string; docFiles: SiteDocFile[] } | null;
       intake: { empty: string[] } | null;
+      /** 붙일 서류가 맞지 않아도(DocCheck block) 쓴다 — 한백이 까닭을 듣고 그대로 쓰라고 했을 때만(lib/site-mail planSiteDraft) */
+      force?: boolean;
     },
     actor: Actor
   ): Promise<SiteMailResult>;

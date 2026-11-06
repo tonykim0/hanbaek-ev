@@ -4,8 +4,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  emptyFieldsOf, HEC_APPROVAL_MAIL, intakeSay, josa, missingAlarm, missingError, planSiteDraft, sameLetter, siteMailOfCpo,
-  siteMailOfKind, taskTitleOf,
+  blockedOf, checkLines, emptyFieldsOf, HEC_APPROVAL_MAIL, intakeSay, invalidAlarm, invalidError, invalidNoteOf, josa, missingAlarm,
+  missingError, planSiteDraft, sameLetter, siteMailOfCpo, siteMailOfKind, taskTitleOf,
 } from '@/lib/site-mail';
 import { NICE_DRAFT_MAIL } from '@/lib/nice-submit';
 
@@ -95,6 +95,47 @@ describe('말과 알림', () => {
     expect(missingAlarm(HEC, '현대엔지니어링 담당')).toEqual({
       title: '설치승인서 없음 — 메일 못 보냄',
       body: '설치승인서가 없어 설치승인서 메일을 보내지 못했습니다 — 채워지면 현대엔지니어링 담당에게 다시 요청해 주세요.',
+    });
+  });
+});
+
+describe('붙일 서류가 맞지 않을 때 (DocCheck — lib/hec-approval · 2026-11-06)', () => {
+  const none = { open: null, sent: [] };
+  const checked = (level: 'block' | 'warn', why: string) => ({
+    subject: '[한백] 설치승인서 1개 국소 (현장)', body: '본문', docFiles: [{ url: 'a', name: '승인서.pptx', checks: [{ level, why }] }],
+  });
+
+  it('block 이면 invalid — 보내지 않은 초안이 있어도 · 한백이 그래도 쓰라면(force) 쓴다', () => {
+    expect(planSiteDraft(checked('block', '빈 양식입니다'), none, false)).toBe('invalid');
+    expect(planSiteDraft(checked('block', '빈 양식입니다'), { open: letter(['a']), sent: [] }, true)).toBe('invalid');
+    expect(planSiteDraft(checked('block', '빈 양식입니다'), none, true, true)).toBe('create');
+    expect(planSiteDraft(checked('warn', '기수가 다릅니다'), none, false)).toBe('create');
+  });
+
+  it('같은 서류로 이미 보냈으면 서류를 보기 전에 sent — 보낸 뒤 콘솔 값이 바뀌어도 「못 보냄」이 울리지 않게', () => {
+    expect(planSiteDraft(checked('block', '다른 현장'), { open: null, sent: [['a']] }, false)).toBe('sent');
+  });
+
+  it('까닭은 파일 이름을 붙여 한 줄씩', () => {
+    const l = checked('block', '빈 양식입니다');
+    expect(blockedOf(l)).toEqual(['「승인서.pptx」 빈 양식입니다']);
+    expect(blockedOf(checked('warn', 'x'))).toEqual([]);
+    expect(checkLines(checked('warn', '기수가 다릅니다').docFiles)).toEqual(['「승인서.pptx」 기수가 다릅니다']);
+    expect(invalidError(HEC, blockedOf(l))).toBe('설치승인서를 붙일 수 없습니다 — 「승인서.pptx」 빈 양식입니다. 고쳐 올려 주세요.');
+    expect(invalidNoteOf(HEC)).toBe('설치승인서 확인 필요 — 고쳐지면 다시 요청');
+  });
+
+  it('접수 때 맞지 않으면 — 까닭 · 할 일로 남김 · 그대로 보낼 길을 말한다 / 확인 필요는 초안 말 끝에', () => {
+    expect(intakeSay(HEC, 'HB 현장', { plan: 'invalid', to: [], taskAdded: true, empty: [], checks: ['「승인서.pptx」 빈 양식입니다'] })).toBe([
+      'HB 현장 — 계약서가 접수됐습니다.',
+      '설치승인서가 맞지 않아 설치승인서 메일을 보내지 못합니다 — 「승인서.pptx」 빈 양식입니다.',
+      '할 일로 남겨 두었습니다 — 고쳐 올리면 이 대화에서 다시 요청해 주세요. 그대로 보내야 하면 그렇게 말씀해 주세요.',
+    ].join('\n'));
+    expect(intakeSay(HEC, 'HB 현장', { plan: 'create', to: ['a@b.kr'], taskAdded: false, empty: [], checks: ['「승인서.pptx」 기수가 다릅니다'] })
+      .split('\n').at(-1)).toBe('확인 필요: 「승인서.pptx」 기수가 다릅니다 — 열어 보고 승인해 주세요.');
+    expect(invalidAlarm(HEC, '현대엔지니어링 담당', ['「승인서.pptx」 빈 양식입니다'])).toEqual({
+      title: '설치승인서 확인 필요 — 메일 못 보냄',
+      body: '「승인서.pptx」 빈 양식입니다 — 고쳐 올린 뒤 현대엔지니어링 담당에게 다시 요청해 주세요.',
     });
   });
 });
