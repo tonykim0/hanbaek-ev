@@ -64,7 +64,12 @@ export const ATTRS: Attr[] = [
   },
   { key: 'biz', label: '사업유형', valuesOf: (p) => one(p.bizType) },
   { key: 'bldg', label: '건축물', valuesOf: (p) => one(p.bldgType) },
-  { key: 'power', label: '수전방식', valuesOf: (p) => one(p.powerType) },
+  /*
+   * 전력인입 = 현장의 수전방식 칸(한백은 결과서의 「전력인입」으로 부른다 — 2026-11-06 보드 · 필터 · 표에서 그 이름으로).
+   * 겸용(한전불입+모자분리)은 ★제 값 하나★다 — 한전불입 · 모자분리 양쪽에 세우면 대시보드의 수전방식 막대가 그 현장의
+   * 대수를 두 번 센다(같은 축을 대수로 묶는다). 한전불입이 든 현장을 다 보려면 두 값을 같이 고른다.
+   */
+  { key: 'power', label: '전력인입', valuesOf: (p) => one(p.powerType) },
   /*
    * 영업사와 시공사는 ★따로 묻는다★ (한백 지시 2026-08-26).
    *
@@ -92,7 +97,8 @@ export const ATTRS: Attr[] = [
 export const ATTR_BY_KEY = new Map(ATTRS.map((a) => [a.key, a]));
 
 /**
- * 필터 판에 펴 두는 축 — 넷이다(한백 지시 2026-08-26). 적은 순서대로 나온다.
+ * 필터 판에 펴 두는 축 — 다섯이다(한백 지시 2026-08-26 넷 · 2026-11-06 전력인입을 더했다 「보드랑 필터표에 전력인입도」).
+ * 적은 순서대로 나온다.
  *
  * 어떤 사업이고, 누구 운영사이고, ★누가 영업했고 누가 짓는가★. 업체는 계약관리·시공관리
  * 양쪽에서 묻는다 — 계약은 영업사가 서류를 모으고 시공은 시공사가 도는데, 어느 쪽이든
@@ -101,13 +107,13 @@ export const ATTR_BY_KEY = new Map(ATTRS.map((a) => [a.key, a]));
  *
  * ★ATTRS 를 줄이지 않는다.★ 표의 열 머리글에서도 같은 축을 거는데(ProjectTable),
  * 거기서 걸 수 있는 것은 열이 있는 만큼이다 — 축을 지우면 그쪽에서도 사라진다.
- * 나머지 축(단계·계약연수·건축물·수전방식·대기번호)은 열 머리글에 남는다.
+ * 나머지 축(단계·계약연수·건축물·대기번호)은 열 머리글에 남는다.
  * 거기서 걸어 둔 것은 판에도 나온다 — 걸려 있는데 보이지 않는 조건을 두지 않는다
  * (푸는 자리가 없으면 왜 이것만 나오는지 알 수 없다).
  */
-export const PANEL_ATTR_KEYS: AttrKey[] = ['biz', 'cpo', 'sales', 'gc'];
+export const PANEL_ATTR_KEYS: AttrKey[] = ['biz', 'cpo', 'power', 'sales', 'gc'];
 
-/** 판에 그릴 축 — 정해 둔 넷 + 지금 걸려 있는 나머지 */
+/** 판에 그릴 축 — 정해 둔 다섯 + 지금 걸려 있는 나머지 */
 export function panelAttrKeys(filters: AttrFilters): AttrKey[] {
   const extra = ATTRS
     .map((a) => a.key)

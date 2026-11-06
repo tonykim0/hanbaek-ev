@@ -307,6 +307,11 @@ function Card({
           조사가 다 갈리는데, 카드에서는 열어 보기 전까지 어느 쪽인지 알 수 없었다.
         */}
         {' · '}<span className="font-bold text-slate-700">{p.bizType ?? '사업구분 미지정'}</span>
+        {/*
+          전력인입(수전방식)도 카드마다 (한백 지시 2026-11-06 「보드랑 필터표에 전력인입도 넣어줘. 모자분리랑 한전불입」) —
+          한전불입이면 시공 뒤 외선공사 · 계량기 부설까지 가는 현장이라 열기 전에 갈라 보인다. 빈 값도 자리를 지킨다(규칙 6).
+        */}
+        {' · '}{p.powerType ?? '전력인입 미지정'}
         {' · '}{qty}대{terms.length ? ` · ${terms.join('·')}년` : ''}
       </p>
       {org && <p className="text-tiny leading-snug text-slate-400">{org}</p>}

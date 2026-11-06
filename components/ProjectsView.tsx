@@ -164,7 +164,7 @@ export default function ProjectsView({
     restored.current = true;
   }, [band, urlHadFilters]);
   /*
-   * 판에 펼 축 — 정해 둔 넷(사업유형·운영사·영업사·시공사)에, 표의 열 머리글에서 걸어 둔
+   * 판에 펼 축 — 정해 둔 다섯(사업유형·운영사·전력인입·영업사·시공사)에, 표의 열 머리글에서 걸어 둔
    * 나머지 축이 있으면 그것도 같이 편다. 걸려 있는데 판에 없으면 푸는 자리가 없다.
    */
   const panelKeys = useMemo(() => panelAttrKeys(attrs), [attrs]);
@@ -459,7 +459,7 @@ export default function ProjectsView({
             );
           })}
           {/*
-            * 「문제」(반려·단가 미지정·14일 멈춤)는 판에서 뺐다 — 판은 넷만 편다
+            * 「문제」(반려·단가 미지정·14일 멈춤)는 판에서 뺐다 — 판은 정해 둔 축만 편다
             * (한백 지시 2026-08-26). 걸려 있을 때만 나온다: 주소로 들어온 조건을
             * 푸는 자리가 없으면 왜 이것만 나오는지 알 수 없다.
             */}

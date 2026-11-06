@@ -217,7 +217,7 @@ export default function ProjectTable({
               {show('queue') && head('환경부 대기번호', { attr: 'queue' })}
               {show('biz') && head('사업유형', { attr: 'biz' })}
               {show('bldg') && head('건축물', { attr: 'bldg' })}
-              {show('power') && head('수전방식', { attr: 'power' })}
+              {show('powerIn') && head('전력인입', { attr: 'power' })}
               {show('sales') && head('영업사', { attr: 'sales' })}
               {show('gc') && head('시공사', { attr: 'gc' })}
               {/* 날짜 열 — 정의(무슨 값 · 어디에 저장 · 언제 해당없음)는 lib/project-table DATE_COLS 한 곳이다 */}
@@ -285,7 +285,7 @@ export default function ProjectTable({
                   )}
                   {show('biz') && <Cell value={p.bizType} />}
                   {show('bldg') && <Cell value={p.bldgType} />}
-                  {show('power') && <Cell value={p.powerType} />}
+                  {show('powerIn') && <Cell value={p.powerType} />}
                   {show('sales') && <Cell value={p.salesOrg} />}
                   {show('gc') && <Cell value={p.gcOrg} />}
                   {DATE_KEYS.filter(show).map((k) => {

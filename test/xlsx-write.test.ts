@@ -93,7 +93,7 @@ describe('tableSheet — 화면에서 보는 그대로', () => {
   it('현장은 이름·번호·주소 셋으로 가르고, 켜 둔 열만 표의 차례로', () => {
     const { columns } = tableSheet([site()], hidden, 'construction');
     expect(columns.map((c) => c.header)).toEqual([
-      '현장명', '관리번호', '주소', '단계', '대수', '계약연수', '운영사', '영업사', '시공사',
+      '현장명', '관리번호', '주소', '단계', '대수', '계약연수', '운영사', '전력인입', '영업사', '시공사',
       '환경부 승인일', '행위신고 신청일', '행위신고 완료일', '충전기 발주일', '충전기 수령일',
       '착공서류 제출일', '착공일', '기초 및 배관/배선일', '충전기 및 캐노피 설치일', '설치완료일',
       '전기사용신청일', '사용전점검/검사일', '한전 외선공사일', '계량기 부설일', '지자체 사용검사 신청일',
@@ -104,7 +104,7 @@ describe('tableSheet — 화면에서 보는 그대로', () => {
   it('값은 화면의 칸과 같은 판정 — 해당없음 · 날짜 · 날짜 없는 완료 · 빈 칸', () => {
     const { rows } = tableSheet([site()], hidden, 'construction');
     expect(rows[0]).toEqual([
-      '속초 ES아뜨리움', 'HB-2026-041', '강원 속초시', '착공', 9, '7년', '플러그링크', '에코일렉', '에코일렉',
+      '속초 ES아뜨리움', 'HB-2026-041', '강원 속초시', '착공', 9, '7년', '플러그링크', null, '에코일렉', '에코일렉',
       { date: '2026-02-18' }, '해당없음', '해당없음', { date: '2026-03-11' }, { date: '2026-03-25' },
       { date: '2026-04-01' }, null, null, null, '완료',
       { date: '2026-05-02' }, null, null, null, null,
@@ -136,6 +136,17 @@ describe('tableSheet — 화면에서 보는 그대로', () => {
     expect(cellAt(site({ powerType: null }), '계량기 부설일')).toBeNull();
   });
 
+  it('전력인입은 현장의 수전방식 값 그대로 — 겸용은 겸용', () => {
+    const none = new Set<ColKey>();
+    const cellAt = (p: ProjectSummary) => {
+      const t = tableSheet([p], none, 'construction');
+      return t.rows[0][t.columns.findIndex((c) => c.header === '전력인입')];
+    };
+    expect(cellAt(site({ powerType: '모자분리' }))).toBe('모자분리');
+    expect(cellAt(site({ powerType: '한전불입+모자분리' }))).toBe('한전불입+모자분리');
+    expect(cellAt(site({ powerType: null }))).toBeNull();
+  });
+
   it('시공관리에서는 맞물리는 칸을 보드와 같은 이름으로', () => {
     const p = site({ status: '운영사 계약서 제출' });
     const stage = (tab: 'intake' | 'construction') => tableSheet([p], hidden, tab).rows[0][3];
@@ -161,6 +172,17 @@ describe('restoreHidden — 저장한 뒤에 생긴 열은 페이지 기본을 �
     const seen = [...LEGACY_KEYS, ...NEW];
     const hidden = restoreHidden({ hidden: ['queue'], seen }, DEFAULT_HIDDEN.intake);
     expect([...hidden]).toEqual(['queue']);
+  });
+
+  it('★전력인입★ — 시공관리에서 숨김이 기본이던 때의 저장(옛 열 이름 power)이 있어도 이제 선다', () => {
+    const v2 = restoreHidden({ hidden: ['queue', 'biz', 'bldg', 'power', 'created'], seen: [...LEGACY_KEYS, ...NEW] }, DEFAULT_HIDDEN.construction);
+    expect(v2.has('powerIn')).toBe(false);
+    expect([...v2].sort()).toEqual(['bldg', 'biz', 'created', 'queue'].sort());
+    const old = restoreHidden(['queue', 'power'], DEFAULT_HIDDEN.construction);
+    expect(old.has('powerIn')).toBe(false);
+    // 그 뒤에 사람이 다시 끈 것은 그대로 꺼져 있다
+    const after = restoreHidden({ hidden: ['powerIn'], seen: [...LEGACY_KEYS, ...NEW, 'powerIn'] }, DEFAULT_HIDDEN.construction);
+    expect(after.has('powerIn')).toBe(true);
   });
 
   it('모르는 열 이름 · 깨진 값은 버린다', () => {

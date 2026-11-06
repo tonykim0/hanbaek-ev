@@ -22,6 +22,13 @@ export const PICKABLE = [
   { key: 'qty', label: '대수', group: '기본' },
   { key: 'term', label: '계약연수', attr: 'term', group: '기본' },
   { key: 'cpo', label: '운영사', attr: 'cpo', group: '기본' },
+  /*
+   * 전력인입(= 현장의 수전방식 칸) — 시공관리에도 기본으로 선다(한백 2026-11-06 「보드랑 필터표에 전력인입도 넣어줘.
+   * 모자분리랑 한전불입」). 한전불입이면 외선공사 · 계량기 부설까지 가는 현장이라 시공에서 먼저 갈라 본다.
+   * ★열 이름(key)을 'power' 에서 바꿨다★ — 시공관리에서 숨김이 기본이던 때 「열」을 저장한 브라우저에는 'power' 가
+   * 숨긴 열로 남아 있다. 새 이름은 그 저장의 seen 에 없으니 페이지 기본(켜짐)을 따른다(restoreHidden).
+   */
+  { key: 'powerIn', label: '전력인입', attr: 'power', group: '기본' },
   { key: 'sales', label: '영업사', attr: 'sales', group: '기본' },
   { key: 'gc', label: '시공사', attr: 'gc', group: '기본' },
   { key: 'created', label: '접수일', attr: 'month', group: '기본' },
@@ -29,7 +36,6 @@ export const PICKABLE = [
   { key: 'queue', label: '환경부 대기번호', attr: 'queue', group: '영업' },
   { key: 'biz', label: '사업유형', attr: 'biz', group: '영업' },
   { key: 'bldg', label: '건축물', attr: 'bldg', group: '영업' },
-  { key: 'power', label: '수전방식', attr: 'power', group: '영업' },
   // 시공 마일스톤 — 날짜의 유무가 곧 그 일의 여부다. 완료 체크는 ✓ 로 얹는다.
   // 한 칸 — 환경부 승인과 운영사 시공승인을 같은 날로 본다 (한백 2026-08-27)
   // ★일이 일어나는 차례다★ — 시공 탭의 구간 · 상자 차례와 같다(2026-11-05 기록 날짜를 더하며 맞췄다)
@@ -67,7 +73,7 @@ export const PICK_GROUPS = ['기본', '영업', '시공', '전기·개통'] as c
  * 사람의 표에 시공 날짜 열 아홉이 갑자기 서는 것이 그것이다. 그래서 이 목록에 없는 열은 그 페이지의 기본을 따른다
  * (components/ProjectTable useTableColumns). 새 저장은 그때 있던 열(seen)을 같이 남겨 다음에도 같은 판정을 한다.
  */
-export const LEGACY_KEYS: readonly ColKey[] = [
+export const LEGACY_KEYS: readonly string[] = [
   'stage', 'qty', 'term', 'cpo', 'sales', 'gc', 'created', 'queue', 'biz', 'bldg', 'power',
   'envApproval', 'notify', 'chargerOrder', 'chargerRecv', 'start', 'install', 'comm', 'completion',
 ];
@@ -79,7 +85,7 @@ export type TableTab = 'intake' | 'construction';
  * 고르기는 기본·영업·시공으로 묶어 보이고, 표는 운영사 옆에 영업 속성을, 끝에 접수일을 둔다.
  */
 export const TABLE_ORDER: readonly ColKey[] = [
-  'stage', 'qty', 'term', 'cpo', 'queue', 'biz', 'bldg', 'power', 'sales', 'gc',
+  'stage', 'qty', 'term', 'cpo', 'queue', 'biz', 'bldg', 'powerIn', 'sales', 'gc',
   'envApproval', 'notify', 'notifyCert', 'chargerOrder', 'chargerRecv', 'preStart', 'start', 'foundation',
   'chargerInstall', 'install', 'elecApply', 'safetyCheck', 'kepcoLine', 'meter', 'useInspectApply', 'comm', 'completion',
   'created',
@@ -95,7 +101,7 @@ export const MILESTONE_KEYS: readonly ColKey[] = [
 ];
 export const DEFAULT_HIDDEN: Record<TableTab, readonly ColKey[]> = {
   intake: MILESTONE_KEYS,
-  construction: ['queue', 'biz', 'bldg', 'power', 'created'],
+  construction: ['queue', 'biz', 'bldg', 'created'],
 };
 
 /**
@@ -248,7 +254,7 @@ function cellOf(p: ProjectSummary, key: ColKey, tab: TableTab): XlsxCell {
     case 'queue': return subsidized(p.bizType) ? (p.envQueueNo ?? null) : NA;
     case 'biz': return p.bizType ?? null;
     case 'bldg': return p.bldgType ?? null;
-    case 'power': return p.powerType ?? null;
+    case 'powerIn': return p.powerType ?? null;
     case 'sales': return p.salesOrg ?? null;
     case 'gc': return p.gcOrg ?? null;
     case 'created': return p.createdAt ? { date: p.createdAt } : null;
