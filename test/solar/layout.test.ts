@@ -41,6 +41,14 @@ describe('그림자 간격', () => {
     expect(rowPitch('tilted', 37.1)).toBeCloseTo(3.33, 2);
     expect(rowPitch('tilted', 37.1, { ...SPEC, shadeHours: 3 })).toBeCloseTo(3.6, 1);
   });
+  it('태양 고도로 정하면(사업자 설계 기준) 위도와 상관없이 L·cos(경사) + L·sin(경사) / tan(고도)', () => {
+    const spec = { ...SPEC, tiltDeg: 18, shadeAngleDeg: 21 };
+    const L = MODULE.lengthM;
+    const want = L * Math.cos((18 * Math.PI) / 180) + (L * Math.sin((18 * Math.PI) / 180)) / Math.tan((21 * Math.PI) / 180);
+    expect(rowPitch('tilted', 37.1, spec)).toBeCloseTo(want, 6);
+    expect(rowPitch('tilted', 33.5, spec)).toBeCloseTo(want, 6);
+    expect(want).toBeGreaterThan(rowPitch('tilted', 37.1));
+  });
 });
 
 describe('mainAxis', () => {

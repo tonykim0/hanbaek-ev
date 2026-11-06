@@ -16,7 +16,15 @@ export type TemplateKey = 'tyrant-solar15' | 'henergy-solarshare2' | 'lumora-ren
 export type ProductKey = 'tyrant-solar15-basic' | 'tyrant-solar15-prepay' | 'henergy-solarshare2' | 'lumora-rent';
 
 /** 조건 칸 하나 — 값은 DB(한백이 넣는다). min · max 는 잘못 친 값을 막는 넓은 울타리다 */
-export type TermField = { key: string; label: string; unit: string; min: number; max: number };
+export type TermField = {
+  key: string;
+  label: string;
+  unit: string;
+  min: number;
+  max: number;
+  /** 0 이 「콘솔 기본을 쓴다」인 칸 — 그때 화면에 보일 말 */
+  zeroText?: string;
+};
 
 export type TemplateDef = {
   key: TemplateKey;
@@ -31,6 +39,12 @@ export type TemplateDef = {
 };
 
 const W: TermField = { key: 'moduleWatt', label: '모듈 출력', unit: 'W', min: 300, max: 900 };
+/**
+ * 배치 기준 — 패널을 까는 설계 기준이 사업자마다 다르다(한백 2026-11-06 「각 사업자 기준맞춰서 AI지붕깔기 해줘」 — lib/solar/proposal/layout-rule).
+ * 경사각과 줄 간격을 정하는 태양 고도. 고도가 0 이면 콘솔 기본(동지 10~14시 그림자 — 위도마다 약 25~30°)이다.
+ */
+const TILT: TermField = { key: 'tiltDeg', label: '모듈 경사각', unit: '°', min: 0, max: 45 };
+const SHADE: TermField = { key: 'shadeAngleDeg', label: '줄 간격 기준 태양 고도', unit: '°', min: 0, max: 60, zeroText: '동지 10~14시 그림자' };
 
 export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
   'tyrant-solar15': {
@@ -41,6 +55,8 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
     hint: '「[타이런트] 솔라15(Solar15)_템플릿.pptx」',
     terms: [
       W,
+      TILT,
+      SHADE,
       { key: 'rentPerKw', label: '기본형 임대료(1~15년)', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
       { key: 'prepayPerKw', label: '5년 선납형 선지급(1년차 일시)', unit: '원/kW', min: 1_000, max: 5_000_000 },
       { key: 'prepayRentPerKw', label: '5년 선납형 임대료(6~15년)', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
@@ -59,6 +75,8 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
     hint: '「01. 솔라쉐어 제안서_SAMPLE_….pptx」',
     terms: [
       W,
+      TILT,
+      SHADE,
       { key: 'rentPerKw', label: '기본 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
       { key: 'prepayBasePerKw', label: '5년치 선지급 — 기본', unit: '원/kW·년', min: 0, max: 1_000_000 },
       { key: 'prepayEventPerKw', label: '5년치 선지급 — 이벤트', unit: '원/kW·년', min: 0, max: 1_000_000 },
@@ -73,6 +91,8 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
     hint: '「[루모라] 임대형 태양광 사업 제안서.pdf」',
     terms: [
       W,
+      TILT,
+      SHADE,
       { key: 'price1', label: '1년 선납 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
       { key: 'price5', label: '5년 선납 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
       { key: 'price10', label: '10년 선납 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },

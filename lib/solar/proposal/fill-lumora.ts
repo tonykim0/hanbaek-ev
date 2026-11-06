@@ -278,7 +278,8 @@ function plans(r: Lumora, input: ProposalInput, w: number): Record<number, PageP
     ],
     [
       { text: input.mount.style === 'flush' ? '지붕면' : deg(input.mount.tiltDeg), fill: WHITE },
-      { text: deg(input.shadeDeg), fill: WHITE },
+      // 지붕면 부착형은 줄을 띄우지 않는다 — 음영각이 없다
+      { text: input.mount.style === 'flush' ? '-' : deg(input.shadeDeg), fill: WHITE },
       { text: `${w}W`, fill: WHITE },
       { text: `${input.panels.toLocaleString('ko-KR')}ea`, fill: WHITE },
       { text: `${kw}kW`, fill: WHITE },

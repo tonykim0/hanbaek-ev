@@ -12,6 +12,9 @@ import { mountText, proposalFileName, splitAddress } from '@/lib/solar/proposal/
 import { cleanTerms, missingTerms, PRODUCTS, TEMPLATES } from '@/lib/solar/proposal/products';
 import { paraXml, tableXml, textBoxXml } from '@/lib/pptx/xml';
 import { orphansOf, sha256Hex } from '@/lib/pptx/deck';
+import { unprojector, type LngLat } from '@/lib/solar/geo';
+import { layoutRoof } from '@/lib/solar/layout';
+import { layoutRuleOf, proposalLayout } from '@/lib/solar/proposal/layout-rule';
 
 describe('용량 · 숫자 표기', () => {
   it('패널 장수 × 모듈 출력 → kW 소수 둘째', () => {
@@ -141,6 +144,43 @@ describe('파워포인트 글 짓기', () => {
     const o = { font: 'F', size: 10, border: { color: '000000', w: 6350 } };
     expect(tableXml(1, 't', { x: 0, y: 0, w: 30, h: 10 }, [10, 10, 10], [10], [[{ text: 'a', span: 2 }, { text: 'b' }]], o)).toContain('hMerge="1"');
     expect(() => tableXml(1, 't', { x: 0, y: 0, w: 30, h: 10 }, [10, 10, 10], [10], [[{ text: 'a' }]], o)).toThrow('칸 수');
+  });
+});
+
+describe('사업자 기준으로 다시 깔기', () => {
+  // 60m × 40m 평지붕(위도 37°) — 미터 고리를 경위도로
+  const ORIGIN: LngLat = [127.9, 37.08];
+  const toLL = unprojector(ORIGIN);
+  const ring = [
+    [-30, -20],
+    [30, -20],
+    [30, 20],
+    [-30, 20],
+    [-30, -20],
+  ].map(([x, y]) => toLL([x, y]));
+  const roofs = [{ polygons: [[ring]] }];
+  const terms = (tiltDeg: number, shadeAngleDeg: number) => ({ moduleWatt: 600, tiltDeg, shadeAngleDeg });
+
+  // 사업자의 실제 기준 값은 쓰지 않는다(조건과 같이 DB 에만) — 꾸민 각도로 모양만 본다
+  it('고도 0 이면 콘솔 기본(동지 10~14시) — 경사각만 바뀐다', () => {
+    expect(layoutRuleOf(terms(8, 0))).toEqual({ tiltDeg: 8 });
+    expect(layoutRuleOf(terms(18, 21))).toEqual({ tiltDeg: 18, shadeAngleDeg: 21 });
+  });
+  it('콘솔 기준(12° · 0)이면 부지 검토 지도와 같은 장수 · 음영각은 위도의 동지 10~14시 값', () => {
+    const l = proposalLayout(roofs, [], 'tilted', 37.08, terms(12, 0));
+    expect(l.count).toBe(layoutRoof([[ring]], 'tilted', 37.08).count);
+    expect(l.shadeDeg).toBe(26);
+    expect(l.tiltDeg).toBe(12);
+  });
+  it('기울기가 크고 고도가 낮으면 줄이 벌어져 장수가 준다 — 제안서에는 그 사업자의 각도를 적는다', () => {
+    const base = proposalLayout(roofs, [], 'tilted', 37.08, terms(12, 0)).count;
+    const steep = proposalLayout(roofs, [], 'tilted', 37.08, terms(18, 21));
+    expect(steep.count).toBeLessThan(base);
+    expect(steep).toMatchObject({ tiltDeg: 18, shadeDeg: 21 });
+    expect(proposalLayout(roofs, [], 'tilted', 37.08, terms(8, 0)).count).toBeGreaterThanOrEqual(base);
+  });
+  it('지붕면 부착형은 기준을 쓰지 않는다', () => {
+    expect(proposalLayout(roofs, [], 'flush', 37.08, terms(18, 21)).count).toBe(layoutRoof([[ring]], 'flush', 37.08).count);
   });
 });
 

@@ -29,6 +29,11 @@ export type LayoutSpec = {
   aisleM: number;
   /** 동지 정오 앞뒤 몇 시간 동안 앞줄 그림자가 뒷줄에 닿지 않게 띄우나 (2 → 오전 10시~오후 2시) */
   shadeHours: number;
+  /**
+   * 줄 간격을 이 태양 고도(°)의 그림자로 정한다 — 있으면 shadeHours 대신. 사업자 설계 기준이 고도 하나로 정해 둔 것
+   * (구조설계 가이드라인의 「입사각 기준 이격거리」 · 설계 개요의 「음영각」 — lib/solar/proposal/layout-rule) — 위도와 상관없다.
+   */
+  shadeAngleDeg?: number;
 };
 export const SPEC: LayoutSpec = {
   module: MODULE,
@@ -60,7 +65,12 @@ export function rowPitch(style: LayoutStyle, latDeg: number, spec: LayoutSpec = 
   const L = spec.module.lengthM;
   if (style === 'flush') return L + spec.gapM;
   const t = rad(spec.tiltDeg);
-  return L * Math.cos(t) + L * Math.sin(t) * winterShadowPerHeight(latDeg, spec.shadeHours);
+  return L * Math.cos(t) + L * Math.sin(t) * shadowPerHeightOf(latDeg, spec);
+}
+
+/** 줄 간격을 정하는 그림자 길이(높이 1 당 남북) — 정한 태양 고도가 있으면 그것, 없으면 동지 shadeHours */
+export function shadowPerHeightOf(latDeg: number, spec: Pick<LayoutSpec, 'shadeHours' | 'shadeAngleDeg'> = SPEC): number {
+  return spec.shadeAngleDeg ? 1 / Math.tan(rad(spec.shadeAngleDeg)) : winterShadowPerHeight(latDeg, spec.shadeHours);
 }
 
 /* ---------------------------------------------------------- 기하 */
