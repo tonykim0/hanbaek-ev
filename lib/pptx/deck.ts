@@ -97,7 +97,7 @@ export class Slide {
    * 그 모양의 글을 바꾼다 — 첫 덩이의 덩이 모양(pPr)과 첫 토막의 글자 모양(rPr)을 그대로 두고 글만. 줄바꿈(\n)마다 덩이를 나눈다.
    * 틀의 견본 글(「000 kW」)이 지닌 글꼴 · 크기 · 색이 그대로 남는다.
    */
-  setText(name: string, text: string): void {
+  setText(name: string, text: string, opts: { size?: number } = {}): void {
     const sp = this.shape(name);
     const body = sp.getElementsByTagNameNS(P_NS, 'txBody')[0];
     if (!body) throw new Error(`${this.label}의 「${name}」은 글을 받는 칸이 아닙니다.`);
@@ -110,10 +110,12 @@ export class Slide {
       const p = this.doc.createElementNS(A_NS, 'a:p');
       if (pPr) p.appendChild(pPr.cloneNode(true));
       const r = this.doc.createElementNS(A_NS, 'a:r');
-      if (rPr) {
+      if (rPr || opts.size) {
         const rp = this.doc.createElementNS(A_NS, 'a:rPr');
-        for (const a of Array.from(rPr.attributes)) rp.setAttribute(a.name, a.value);
-        for (const c of Array.from(rPr.childNodes)) rp.appendChild(c.cloneNode(true));
+        for (const a of Array.from(rPr?.attributes ?? [])) rp.setAttribute(a.name, a.value);
+        for (const c of Array.from(rPr?.childNodes ?? [])) rp.appendChild(c.cloneNode(true));
+        // 글이 칸보다 길면 글자를 줄여 넣는다(받는 쪽이 정한 크기 — 1/100 pt)
+        if (opts.size) rp.setAttribute('sz', String(Math.round(opts.size * 100)));
         r.appendChild(rp);
       }
       const t = this.doc.createElementNS(A_NS, 'a:t');
@@ -170,6 +172,17 @@ export class Slide {
     el.parentNode!.removeChild(el);
     this.dirty = true;
     return el;
+  }
+
+  /** 그 모양 글의 크기(pt) — 첫 토막(없으면 덩이 끝)의 sz. 적힌 것이 없으면 null(물려받는 크기) */
+  fontSizeOf(name: string): number | null {
+    const sp = this.shape(name);
+    for (const tag of ['rPr', 'endParaRPr']) {
+      const el = sp.getElementsByTagNameNS(A_NS, tag)[0];
+      const sz = el?.getAttribute('sz');
+      if (sz) return Number(sz) / 100;
+    }
+    return null;
   }
 
   /** 모양의 자리(EMU) — 그 자리에 새 것을 얹을 때 */

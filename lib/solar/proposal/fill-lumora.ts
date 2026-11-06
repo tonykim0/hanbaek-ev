@@ -15,7 +15,7 @@ import { buildPptx, type BuildSlide } from '@/lib/pptx/build';
 import { Deck } from '@/lib/pptx/deck';
 import { EMU_PER_PT, paras, pictureXml, rectXml, tableXml, textBoxXml, type Align, type Cell, type Para, type Run } from '@/lib/pptx/xml';
 import { capacityKw, eokManText, kwText, LUMORA_PREPAYS, lumoraRent, millionText, monthAfter, type Lumora } from './calc';
-import { sellerLine, type FillArgs, type ProposalInput } from './fill-common';
+import { fitText, sellerCover, type FillArgs, type ProposalInput } from './fill-common';
 
 const PT = EMU_PER_PT;
 const PAGES = 23;
@@ -68,17 +68,25 @@ function plans(r: Lumora, input: ProposalInput, w: number): Record<number, PageP
       : `연계가능 잔여용량 : ${input.gridSpareKw >= 1000 ? `${(input.gridSpareKw / 1000).toLocaleString('ko-KR', { maximumFractionDigits: 1 })}MW` : `${Math.round(input.gridSpareKw).toLocaleString('ko-KR')}kW`} (${String(yy).slice(2)}년 ${String(mm).padStart(2, '0')}월 조회)`;
   const won = (n: number) => n.toLocaleString('ko-KR');
   const body = (text: string, o: Omit<Run, 'text'> = {}) => run(text, { font: BODY, size: 11, color: '161616', ...o });
+  const cover = sellerCover(input.seller, { font: HEAD, size: 13, label: C.navy, name: C.navy, contact: '133751' }, 424);
+  // 머리 문장 — 쪽 폭을 거의 다 쓰는 긴 줄이라 칸의 90% 에 들게(fitText) 글자를 줄인다
+  const head4 = [`${kw}kW 규모 발전소를 SPC가 투자 · 운영하고, 임대인은 `, `20년간 최대 ${eokManText(o1.total)}의 임대료 수령`];
+  const head4Size = fitText(head4.join(''), 16, 764, 12);
+  const head8 = ['위성 지도 기준 가배치 용량은 ', `${kw}kW 내외`, '이며, 공장도면 확보 후 구조 안정성 검토 및 실시설계로 최종 용량 확정'];
+  const head8Size = fitText(head8.join(''), 16, 776, 12);
 
   const p: Record<number, PagePlan> = {
     // 1 표지 — 고객명 · 주소를 더한다(틀에 자리가 없다), 날짜는 오늘 달
     1: {
       masks: [[720, 508, 812, 533]],
       overlays: [
-        { name: '고객명', rect: [46, 322, 640, 352], paras: [line([run(`${input.customer} 귀중`, { size: 22, bold: true, color: C.navy })])] },
+        { name: '고객명', rect: [46, 322, 640, 352], paras: [line([run(`${input.customer} 귀중`, { size: fitText(`${input.customer} 귀중`, 22, 594, 14), bold: true, color: C.navy })])] },
         { name: '고객 주소', rect: [46, 354, 640, 374], paras: [line([run(input.address, { size: 13, color: C.navy })])] },
         { name: '날짜', rect: [720, 508, 810, 533], paras: [line([run(`${yy}. ${String(mm).padStart(2, '0')}.`, { size: 17, bold: false, color: '133751' })], 'r')] },
-        // 제안하는 영업사 — 밑줄 왼쪽의 빈자리(오른쪽 「STRICTLY CONFIDENTIAL」은 약 490pt 부터)
-        { name: '영업사', rect: [46, 508, 470, 533], paras: [sellerLine(input.seller, { font: HEAD, size: 13, label: C.navy, name: C.navy, contact: '133751' })] },
+        // 제안하는 영업사 — 밑줄 왼쪽의 빈자리(오른쪽 「STRICTLY CONFIDENTIAL」은 약 490pt 부터). 두 줄이면 위로 늘려 둘째 줄이 날짜 줄에 선다
+        cover.length > 1
+          ? { name: '영업사', rect: [46, 494, 470, 529], anchor: 'b', paras: cover }
+          : { name: '영업사', rect: [46, 508, 470, 533], paras: cover },
       ],
     },
     // 3 제안배경 — 머리 문장의 빨간 쪽 · 카드 넷 줄 · 각주
@@ -86,7 +94,11 @@ function plans(r: Lumora, input: ProposalInput, w: number): Record<number, PageP
       // 큰 금액은 위 줄(「20년간 최대」 199.8~215.7)을 건드리지 않게 216.5 부터
       masks: [[214, 86, 482, 111], [504, 182, 724, 199], [504, 216.5, 724, 256], [504, 258, 724, 279], [504, 280, 726, 297], [34, 553, 700, 569]],
       overlays: [
-        { name: '머리 금액', rect: [216.6, 86.9, 700, 110.1], paras: [line([run(`빌려주면 20년간 최대 ${eokManText(o1.total)}`, { size: 16, bold: true, color: C.red })])] },
+        {
+          name: '머리 금액',
+          rect: [216.6, 86.9, 700, 110.1],
+          paras: [line([run(`빌려주면 20년간 최대 ${eokManText(o1.total)}`, { size: fitText(`빌려주면 20년간 최대 ${eokManText(o1.total)}`, 16, 483, 12), bold: true, color: C.red })])],
+        },
         { name: '카드 기준', rect: [506.1, 183, 724, 198], paras: [line([run(`수익 · 귀사 지붕 ${kw}kW 기준`, { size: 9, bold: true, color: C.amberDim })])] },
         { name: '카드 금액', rect: [506.1, 216.5, 724, 254], paras: [line([run(eokManText(o1.total), { size: 30, bold: true, color: C.amber })])] },
         { name: '카드 매달', rect: [506.1, 259.7, 724, 277.1], paras: [line([run(`매달 약 ${eokManText(r.monthly)}`, { size: 12, color: C.cardLight })])] },
@@ -113,7 +125,7 @@ function plans(r: Lumora, input: ProposalInput, w: number): Record<number, PageP
         {
           name: '머리 문장',
           rect: [36.1, 86.9, 800, 110.1],
-          paras: [line([run(`${kw}kW 규모 발전소를 SPC가 투자 · 운영하고, 임대인은 `, { size: 16, bold: true, color: C.navy }), run(`20년간 최대 ${eokManText(o1.total)}의 임대료 수령`, { size: 16, bold: true, color: C.red })])],
+          paras: [line([run(head4[0], { size: head4Size, bold: true, color: C.navy }), run(head4[1], { size: head4Size, bold: true, color: C.red })])],
         },
         { name: '사업지', rect: [146.7, 166, 414, 186], paras: [line([body(input.address)])] },
         { name: '설치규모', rect: [146.7, 197, 414, 217], paras: [line([body(`${kw}kW (*건축도면 수령 후 실시설계시 확정)`)])] },
@@ -210,16 +222,16 @@ function plans(r: Lumora, input: ProposalInput, w: number): Record<number, PageP
       overlays: [
         {
           name: '머리 문장',
-          // 원본은 「1,000」(5자)로 쪽 폭을 거의 다 썼다 — 용량 글이 길면 한 단계 줄이고, 그래도 넘치면(글꼴이 없는 컴퓨터) 사진 위
-          // 빈자리(110~133)로 접히게 칸을 키운다
+          // 원본은 「1,000」(5자)로 쪽 폭을 거의 다 썼다 — 칸의 90% 에 들게 글자를 줄인다(글꼴이 없는 컴퓨터에서 「확 / 정」으로 접혔다).
+          // 그래도 넘치면 사진 위 빈자리(110~133)로 접히게 칸은 그대로 키워 둔다
           rect: [36.1, 86.9, 812, 132],
           anchor: 't',
           wrap: true,
           paras: [
             line([
-              run('위성 지도 기준 가배치 용량은 ', { size: kw.length > 5 ? 15 : 16, bold: true, color: C.navy }),
-              run(`${kw}kW 내외`, { size: kw.length > 5 ? 15 : 16, bold: true, color: C.red }),
-              run('이며, 공장도면 확보 후 구조 안정성 검토 및 실시설계로 최종 용량 확정', { size: kw.length > 5 ? 15 : 16, bold: true, color: C.navy }),
+              run(head8[0], { size: head8Size, bold: true, color: C.navy }),
+              run(head8[1], { size: head8Size, bold: true, color: C.red }),
+              run(head8[2], { size: head8Size, bold: true, color: C.navy }),
             ]),
           ],
         },
@@ -303,8 +315,19 @@ function plans(r: Lumora, input: ProposalInput, w: number): Record<number, PageP
   p[23] = {
     masks: [],
     overlays: [
-      { name: '영업사', rect: [518, 416, 830, 436], anchor: 'b', paras: [line([run(input.seller.name, { size: 13.5, bold: true, color: 'C9CED2' })])] },
-      { name: '영업사 연락처', rect: [518, 446, 830, 464], anchor: 't', paras: [line([run(input.seller.contact, { size: 11, color: 'A9B6BF' })])] },
+      // 칸(312pt)에 들게 글자를 줄인다 — 한 줄 칸이라 접지 않는다
+      {
+        name: '영업사',
+        rect: [518, 416, 830, 436],
+        anchor: 'b',
+        paras: [line([run(input.seller.name, { size: fitText(input.seller.name, 13.5, 312), bold: true, color: 'C9CED2' })])],
+      },
+      {
+        name: '영업사 연락처',
+        rect: [518, 446, 830, 464],
+        anchor: 't',
+        paras: [line([run(input.seller.contact, { size: fitText(input.seller.contact, 11, 312), color: 'A9B6BF' })])],
+      },
     ],
     extra: rectXml(0, '영업사 선', emu([518, 440, 818, 441]), '919FA7'),
   };

@@ -10,7 +10,7 @@
 import { Deck } from '@/lib/pptx/deck';
 import { EMU_PER_PT, textBoxXml } from '@/lib/pptx/xml';
 import { capacityKw, kwText, manwonText, solarShare } from './calc';
-import { sellerBlock, sellerLine, type FillArgs } from './fill-common';
+import { fitText, sellerBlock, sellerCover, type FillArgs } from './fill-common';
 
 const S = (n: number) => `Google Shape;${n};p21`;
 const PT = EMU_PER_PT;
@@ -24,7 +24,10 @@ export async function fillHenergy({ template, terms, input }: FillArgs): Promise
   const kw = capacityKw(input.panels, terms.moduleWatt);
   const r = solarShare(kw, terms);
   const s = await deck.slide(7);
-  s.setText(S(90), input.customer);
+  // 고객명 — 길면 틀의 크기에서 줄인다(칸 너비 = 모양 폭 − 좌우 기본 여백 7.2pt)
+  const nameSize = s.fontSizeOf(S(90));
+  const fitted = nameSize ? fitText(input.customer, nameSize, s.boxOf(S(90)).w / PT - 14.4) : null;
+  s.setText(S(90), input.customer, fitted && nameSize && fitted < nameSize ? { size: fitted } : {});
   /*
    * 「임대 제안서」(91)는 틀 그대로지만 칸이 글에 꼭 맞아(103pt) 글꼴(Noto Sans KR)이 없는 컴퓨터에서는 「임대 제안 / 서」로 접혔다 —
    * 칸만 넓힌다(오른쪽은 빈 자리다).
@@ -53,15 +56,12 @@ export async function fillHenergy({ template, terms, input }: FillArgs): Promise
 
   // 영업사 — 표지(그림 한 장)의 부제 밑 한 줄 · 마지막 장 「감사합니다」 밑 두 줄. 오른쪽 큰 「S」 무늬(약 432pt~)에 닿지 않게
   const cover = await deck.slide(1);
-  cover.append(
-    textBoxXml(cover.nextId(), '영업사', { x: 38 * PT, y: 262 * PT, w: 390 * PT, h: 20 * PT }, [sellerLine(input.seller, { font: FONT, size: 12, label: NAVY, name: NAVY, contact: GREY })], {
-      anchor: 'ctr',
-      wrap: false,
-    }),
-  );
+  const line = sellerCover(input.seller, { font: FONT, size: 12, label: NAVY, name: NAVY, contact: GREY }, 390);
+  // 두 줄이면 밑으로 늘린다 — 부제 밑에서 저작권 줄(약 376pt)까지 비어 있다
+  cover.append(textBoxXml(cover.nextId(), '영업사', { x: 38 * PT, y: 262 * PT, w: 390 * PT, h: (line.length > 1 ? 34 : 20) * PT }, line, { anchor: 't', wrap: false }));
   const end = await deck.slide(deck.slides.length);
   end.append(
-    textBoxXml(end.nextId(), '영업사 연락처', { x: 160 * PT, y: 238 * PT, w: 400 * PT, h: 48 * PT }, sellerBlock(input.seller, { font: FONT, size: 14, contactSize: 12, name: NAVY, contact: GREY }, 'ctr'), {
+    textBoxXml(end.nextId(), '영업사 연락처', { x: 160 * PT, y: 238 * PT, w: 400 * PT, h: 48 * PT }, sellerBlock(input.seller, { font: FONT, size: 14, contactSize: 12, name: NAVY, contact: GREY }, 400, 'ctr'), {
       anchor: 't',
     }),
   );

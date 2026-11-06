@@ -12,7 +12,7 @@
 import { Deck } from '@/lib/pptx/deck';
 import { EMU_PER_PT, paras, pictureXml, tableXml, tagXml, textBoxXml, type Cell } from '@/lib/pptx/xml';
 import { capacityKw, eok2, kwText, solar15, SOLAR15_RENT_YEARS, type Solar15Variant } from './calc';
-import { mountText, sellerBlock, sellerLine, splitAddress, type FillArgs } from './fill-common';
+import { fitText, mountText, sellerBlock, sellerCover, splitAddress, type FillArgs } from './fill-common';
 
 const FONT = 'Pretendard';
 const PT = EMU_PER_PT;
@@ -61,13 +61,19 @@ export async function fillTyrant({ template, terms, input }: FillArgs, variant: 
   // ── 2장 Project 요약 ───────────────────────────────────────────
   const s2 = await deck.slide(2);
   const [line1, line2] = splitAddress(input.address);
-  s2.setText(S2.project, input.customer);
+  /** 고객 글을 칸에 맞춰 넣는다 — 길면 틀의 크기에서 줄인다(칸 너비 = 모양 폭 − 좌우 기본 여백 7.2pt) */
+  const fitIn = (name: string, text: string) => {
+    const size = s2.fontSizeOf(name);
+    const z = size ? fitText(text, size, s2.boxOf(name).w / PT - 14.4) : null;
+    s2.setText(name, text, z && size && z < size ? { size: z } : {});
+  };
+  fitIn(S2.project, input.customer);
   s2.setText(S2.kw, `${kwText(kw)} kW`);
   s2.setText(S2.sum20, `${eok2(cf.sum1to20)} 억원`);
   s2.setText(S2.sum35, `${eok2(cf.sum35)} 억원`);
-  s2.setText(S2.where1, line1);
+  fitIn(S2.where1, line1);
   // 둘째 줄은 도로명 쪽만 — 고객명까지 붙이면 칸(212pt)을 넘어 두 줄로 접혀 밑의 선을 덮었다(고객명은 제목에 있다)
-  s2.setText(S2.where2, line2 || input.customer);
+  fitIn(S2.where2, line2 || input.customer);
   s2.setText(S2.mount, mountText(input.mount));
   s2.setText(S2.module, `${terms.moduleWatt} Wp`);
   /*
@@ -180,15 +186,13 @@ export async function fillTyrant({ template, terms, input }: FillArgs, variant: 
 
   // ── 영업사 — 표지의 부제 밑 한 줄 · 마지막 장(「The end of Document」) 밑 두 줄. 어두운 사진 위라 흰 글자 ────────
   const s1 = await deck.slide(1);
-  s1.append(
-    textBoxXml(s1.nextId(), '영업사', { x: 50 * PT, y: 474 * PT, w: 620 * PT, h: 24 * PT }, [sellerLine(input.seller, { font: FONT, size: 13, label: C.brand, name: 'FFFFFF', contact: 'FFFFFF' })], {
-      anchor: 'ctr',
-      wrap: false,
-    }),
-  );
+  const cover = sellerCover(input.seller, { font: FONT, size: 13, label: C.brand, name: 'FFFFFF', contact: 'FFFFFF' }, 620);
+  // 두 줄이면 부제(약 463pt 까지)와 밑의 고지 문구(506.7pt 부터) 사이에 둘 다 들게
+  const coverBox = cover.length > 1 ? { x: 50 * PT, y: 467 * PT, w: 620 * PT, h: 37 * PT } : { x: 50 * PT, y: 474 * PT, w: 620 * PT, h: 24 * PT };
+  s1.append(textBoxXml(s1.nextId(), '영업사', coverBox, cover, { anchor: 'ctr', wrap: false }));
   const end = await deck.slide(deck.slides.length);
   end.append(
-    textBoxXml(end.nextId(), '영업사 연락처', { x: 180 * PT, y: 300 * PT, w: 600 * PT, h: 60 * PT }, sellerBlock(input.seller, { font: FONT, size: 18, contactSize: 14, name: 'FFFFFF', contact: 'FFFFFF' }, 'ctr'), {
+    textBoxXml(end.nextId(), '영업사 연락처', { x: 180 * PT, y: 300 * PT, w: 600 * PT, h: 60 * PT }, sellerBlock(input.seller, { font: FONT, size: 18, contactSize: 14, name: 'FFFFFF', contact: 'FFFFFF' }, 600, 'ctr'), {
       anchor: 't',
     }),
   );

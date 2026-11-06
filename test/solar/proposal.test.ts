@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import {
   capacityKw, eok2, eokManText, kwText, lumoraRent, manwonText, millionText, monthAfter, profileAngleDeg, solar15, solarShare,
 } from '@/lib/solar/proposal/calc';
-import { mountText, proposalFileName, sellerBlock, sellerLine, splitAddress } from '@/lib/solar/proposal/fill-common';
+import { estWidthPt, fitSizePt, fitText, mountText, proposalFileName, sellerBlock, sellerCover, splitAddress } from '@/lib/solar/proposal/fill-common';
 import { cleanTerms, missingTerms, PRODUCTS, TEMPLATES, UPCOMING } from '@/lib/solar/proposal/products';
 import { paraXml, rectXml, tableXml, textBoxXml } from '@/lib/pptx/xml';
 import { orphansOf, sha256Hex } from '@/lib/pptx/deck';
@@ -127,14 +127,41 @@ describe('현장 글', () => {
     expect(mountText({ style: 'flush', tiltDeg: 12 })).toBe('지붕면 부착형');
     expect(proposalFileName('(주)가/나', '루모라 지붕임대', '2026-11-06')).toBe('(주)가 나_루모라 지붕임대_제안서_261106.pptx');
   });
-  it('영업사 — 표지 한 줄은 「제안」만 강조색, 마지막 쪽은 이름 · 연락처 두 줄', () => {
-    const seller = { name: '(주)가나에너지', contact: '홍길동 010-0000-0000' };
-    const p = sellerLine(seller, { font: 'F', size: 12, label: 'AA0000', name: '000000', contact: '333333' });
+  const style = { font: 'F', size: 12, label: 'AA0000', name: '000000', contact: '333333' };
+  const width = (p: { runs: { text: string; size?: number }[] }) => p.runs.reduce((s, r) => s + estWidthPt(r.text, r.size ?? 0), 0);
+  it('영업사 표지 — 짧으면 한 줄 · 「제안」만 강조색 · 원래 크기', () => {
+    const [p, ...rest] = sellerCover({ name: '(주)가나에너지', contact: '홍길동 010-0000-0000' }, style, 390);
+    expect(rest).toEqual([]);
     expect(p.runs.map((r) => r.text.trim())).toEqual(['제안', '(주)가나에너지', '홍길동 010-0000-0000']);
     expect(p.runs.map((r) => r.color)).toEqual(['AA0000', '000000', '333333']);
-    const b = sellerBlock(seller, { font: 'F', size: 14, contactSize: 11, name: 'FFFFFF', contact: 'CCCCCC' }, 'ctr');
+    expect(p.runs.every((r) => r.size === 12)).toBe(true);
+  });
+  it('영업사 표지 — 길면 두 줄(영업사 / 연락처)로 나누고 줄마다 칸 너비 안', () => {
+    const long = { name: '(주)가나다라신재생에너지솔루션', contact: '홍길동 부장 010-1234-5678 hong@ganada-energy.co.kr' };
+    const ps = sellerCover(long, style, 390);
+    expect(ps).toHaveLength(2);
+    expect(ps[1].runs[0].text).toBe(long.contact);
+    for (const p of ps) expect(width(p)).toBeLessThanOrEqual(390);
+  });
+  it('마지막 쪽 — 이름 · 연락처 두 줄, 칸보다 길면 글자를 줄인다', () => {
+    const b = sellerBlock({ name: '(주)가나에너지', contact: '홍길동 010-0000-0000' }, { font: 'F', size: 14, contactSize: 11, name: 'FFFFFF', contact: 'CCCCCC' }, 400, 'ctr');
     expect(b.map((x) => x.runs[0].text)).toEqual(['(주)가나에너지', '홍길동 010-0000-0000']);
-    expect(b.every((x) => x.align === 'ctr')).toBe(true);
+    expect(b.map((x) => x.runs[0].size)).toEqual([14, 11]);
+    const tight = sellerBlock({ name: '(주)가나다라신재생에너지솔루션', contact: '홍길동 010-0000-0000' }, { font: 'F', size: 18, contactSize: 14, name: 'F', contact: 'C' }, 200);
+    expect(tight[0].runs[0].size).toBeLessThan(18);
+    expect(width(tight[0])).toBeLessThanOrEqual(200);
+  });
+  it('글 너비 어림 — 한글 0.95em · 숫자 0.66em · 빈칸 0.3em', () => {
+    expect(estWidthPt('가나', 10)).toBeCloseTo(19, 6);
+    expect(estWidthPt('01 ', 10)).toBeCloseTo(16.2, 6);
+    expect(fitSizePt((z) => estWidthPt('가나다라', z), 12, 30)).toBe(8);
+  });
+  it('채워 넣는 글은 칸의 90% 안 — 짧으면 원래 크기, 길면 줄이되 원래보다 크지 않다', () => {
+    expect(fitText('(주)한백시험 충주공장', 32, 595)).toBe(32);
+    const long = '(주)한국신재생에너지솔루션 충주 제2공장 물류센터';
+    const z = fitText(long, 32, 595);
+    expect(z).toBeLessThan(32);
+    expect(estWidthPt(long, z)).toBeLessThanOrEqual(595 * 0.9);
   });
   it('사업 일정의 달 넘김 · 음영각', () => {
     expect(monthAfter(2026, 11, 3)).toEqual({ year: 2027, month: 2 });
