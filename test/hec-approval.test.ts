@@ -99,15 +99,34 @@ describe('그 현장과 견주기 (judgeApproval)', () => {
       { name: '경기 용인 한백에이치엠(스윙쉐프)', addr: '경기도 용인시 기흥구 한백로 134-24', qty: 4 })).toEqual([]);
   });
 
-  it('③ 둘 다 도로명이고 다르며 이름도 다르면 다른 현장 — 막는다(번호 앞머리가 같아도 다르다)', () => {
+  it('③ 둘 다 도로명이고 길도 이름도 다르면 다른 현장 — 막는다(길 이름 앞머리가 같아도 다른 길이다)', () => {
     const other = judgeApproval(read({ name: '한백타운', addr: '부산광역시 영도구 한백로 700번길 19' }), SITE);
     expect(other).toEqual([expect.objectContaining({ level: 'block', why: expect.stringContaining('다른 현장') })]);
     expect(other[0].why).toContain('콘솔 주소 「광주광역시 남구 제중로 77」');
-    expect(judgeApproval(read({ name: '한백타운', addr: '광주광역시 남구 제중로 771' }), SITE)[0]?.level).toBe('block');
+    expect(judgeApproval(read({ name: '한백타운', addr: '광주광역시 남구 제중로길 5' }), SITE)[0]?.level).toBe('block');
   });
 
   it('③ 주소가 달라도 이름이 같으면 이 현장 — 콘솔 이름 앞의 지역은 붙어 있다', () => {
-    expect(judgeApproval(read({ addr: '광주광역시 남구 제중로 79' }), SITE)).toEqual([]);
+    expect(judgeApproval(read({ addr: '광주광역시 남구 다른로 79' }), SITE)).toEqual([]);
+  });
+
+  /* 운영 2026-11-06 — 첫 판이 같은 현장 셋을 「다른 현장」으로 막았다(이름 · 주소는 바꿔 적었다, 모양은 그대로) */
+  it('③ 아파트 단지는 동마다 건물번호가 다르다 — 같은 길이면 이 현장(「한백로88번길 10」 ↔ 「한백로 88번길 8」)', () => {
+    const site = { name: '경북 포항 한백아파트', addr: '경상북도 포항시 북구 한백로88번길 10(장성동)', qty: 3 };
+    expect(judgeApproval(read({ name: '포항 시영한백아파트', addr: '경상북도 포항시 북구 한백로 88번길 8(장성동)', qty: 3 }), site)).toEqual([]);
+    const site2 = { name: '인천 미추홀 태한아파트', addr: '인천광역시 미추홀구 한백길 90', qty: 3 };
+    expect(judgeApproval(read({ name: '주안 태한아파트', addr: '인천광역시 미추홀구 한백길 88', qty: 3 }), site2)).toEqual([]);
+  });
+
+  it('③ 두 길에 걸친 단지 — 길이 달라도 이름 낱말이 같으면 이 현장(「경북 영천 한백아파트」 ↔ 「한백아파트」)', () => {
+    const site = { name: '경북 영천 한백아파트', addr: '경상북도 영천시 영천고2길 42(야사동)', qty: 5 };
+    expect(judgeApproval(read({ name: '한백아파트', addr: '경상북도 영천시 한백새길 39', qty: 5 }), site)).toEqual([]);
+  });
+
+  it('③ 콘솔 이름 앞의 지역 · 「아파트」 같은 흔한 말로는 같다고 보지 않는다', () => {
+    const site = { name: '경북 포항 한백아파트', addr: '경상북도 포항시 북구 한백로 10', qty: 3 };
+    // 「포항」은 지역 · 「아파트」는 흔한 말 — 남은 「한백」 ↔ 「다른」이 다르고 길도 다르다
+    expect(judgeApproval(read({ name: '포항 다른아파트', addr: '경상북도 포항시 남구 다른로 5', qty: 3 }), site)[0]?.level).toBe('block');
   });
 
   it('③ 한쪽이 지번이면 가리지 못한다 — 확인 필요(지번끼리 같으면 이 현장)', () => {

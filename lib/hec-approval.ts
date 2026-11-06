@@ -10,13 +10,16 @@
  * 판정 둘 (lib/site-mail 이 받는다):
  *   block  그대로 보내면 사고다 — 초안을 쓰지 않는다: ① 양식이 아니다(설치승낙서 · 계약서 …) ② 빈 양식 ③ 다른 현장의 것
  *   warn   초안은 쓰고 카드에 「확인 필요」: ④ 기수가 콘솔과 다르다 · 글자를 못 읽었다 · 이 현장의 것인지 가리지 못했다
- * ★③ 은 주소로 본다★ — 승인서의 현장명은 콘솔과 다르게 적는 일이 흔하다(콘솔 「경기 용인 라미드에이치엠(스윙쉐프동백)」 ↔
- * 승인서 「라온705」 · 「경북 포항 장미아파트」 ↔ 「포항 시영장미아파트」). 콘솔 주소의 도로명 열쇠(lib/parking-check roadKeyOf —
- * 「제중로 77」)가 승인서에 있으면 이 현장이다. 없으면 현장명으로 한 번 더 보고, ★둘 다 다르고 승인서에도 도로명 주소가 있을
- * 때만★ 다른 현장이라 막는다 — 한쪽이 지번이거나 비었으면 가리지 못한 것이다(warn).
+ * ★③ 은 길과 이름 둘 다 다를 때만이다★ — 승인서의 현장명은 콘솔과 다르게 적는 일이 흔하고(콘솔 「경기 용인 라미드에이치엠
+ * (스윙쉐프동백)」 ↔ 승인서 「라온705」), ★아파트 단지는 동마다 건물번호가 달라★ 번호로 가르면 같은 현장을 막는다 — 첫 판이 운영의
+ * 승인서 54장 중 3장을 그렇게 막았다(2026-11-06 「삼흥로88번길 10」 ↔ 「삼흥로 88번길 8」 · 「승학길 90」 ↔ 「승학길 88」 · 두 길에
+ * 걸친 단지 「영천고2길 42」 ↔ 「문화새길 39」 — 이름은 둘 다 「문화아파트」). 그래서 같은 길(번호 빼고 · lib/parking-check
+ * roadKeyOf) · 같은 지번 · 이름 낱말 하나가 같으면 이 현장이다. ★길도 이름도 다르고 둘 다 도로명 주소일 때만★ 다른 현장이라
+ * 막는다 — 한쪽이 지번이거나 비었으면 가리지 못한 것이다(warn).
  * ④ 를 막지 않는 것은 승인서와 콘솔 중 어느 쪽이 틀렸는지 모르기 때문이다 — 메일 제목의 기수는 콘솔 값이다(lib/site-mail hecLetter).
  */
 import { roadKeyOf } from './parking-check';
+import { regionPartsOf } from './region';
 import type { DocCheck } from './site-mail';
 
 /** 승인서 한 장에서 읽은 것 — pptx 는 코드가(readApprovalSlides), PDF · 사진은 판독이(approvalReadOf) 읽는다 */
@@ -170,15 +173,55 @@ function jibunKeyOf(addr: string | null | undefined): string | null {
   return m ? `${m[1]}${m[2]}` : null;
 }
 
-/** 이름에서 걷는 말 — 어느 현장에나 붙어 이름을 가르지 못한다 */
-const GENERIC = /아파트|입주자대표회의|입대의|관리사무소|관리단|자치운영회|주식회사|\(주\)|㈜/g;
-const coreName = (s: string) => squash(s).replace(/\([^)]*\)/g, '').replace(GENERIC, '');
+/** 도로 이름 — 도로명 열쇠의 번호 앞(「삼흥로88번길 10」 → 「삼흥로88번길」) */
+const roadOf = (addr: string | null | undefined): string | null => {
+  const key = roadKeyOf(addr);
+  return key ? squash(key.slice(0, key.lastIndexOf(' '))) : null;
+};
 
-/** 승인서의 현장명이 콘솔 현장명 안에 있는가(콘솔 이름은 앞에 지역이 붙는다 — 「광주 남구 호남신학대학교」) · 세 글자부터 */
-function sameName(site: string, approval: string | null): boolean {
+/**
+ * 같은 길인가 — 번호는 안 본다. ★아파트 단지는 동마다 건물번호가 다르다★(운영 2026-11-06: 콘솔 「삼흥로88번길 10」 ↔ 승인서
+ * 「삼흥로 88번길 8」 · 「승학길 90」 ↔ 「승학길 88」 — 같은 현장이었다). 「삼흥로 88번길」을 띄어 쓰면 열쇠가 「88번길」만 잡혀
+ * 끝이 같으면 같은 길로 본다(세 글자부터).
+ */
+function sameRoad(a: string | null, b: string | null): boolean {
+  if (!a || !b) return false;
+  const [short, long] = a.length <= b.length ? [a, b] : [b, a];
+  return short === long || (short.length >= 3 && long.endsWith(short));
+}
+
+/** 이름 낱말에서 걷는 말 — 어느 현장에나 붙어 이름을 가르지 못한다 */
+const GENERIC = /아파트|입주자대표회의|입대의|관리사무소|관리단|자치운영회|주식회사|\(주\)|㈜|^상가$|^apt$/gi;
+
+/**
+ * 이름의 낱말 — 지역(콘솔이 이름 앞에 붙인 「경북 포항」 · lib/region regionPartsOf) · 괄호 · 흔한 말을 걷고 두 글자부터.
+ * 「경북 영천 문화아파트」 → 「문화」 · 「주안 태평아파트」 → 「주안」 「태평」
+ */
+function nameWords(name: string, region: ReadonlySet<string>): string[] {
+  return name.normalize('NFC').replace(/\([^)]*\)/g, ' ').split(/[\s,·]+/)
+    .filter((t) => t && !region.has(t))
+    .map((t) => t.replace(GENERIC, ''))
+    .filter((t) => t.length >= 2);
+}
+
+/**
+ * 승인서의 현장명이 콘솔 현장명과 같은 곳을 가리키는가 — 낱말 하나가 같거나(두 글자부터), 한쪽이 다른 쪽을 품으면(세 글자부터).
+ * 승인서는 이름을 다르게 적는 일이 흔하다(콘솔 「경북 영천 문화아파트」 ↔ 승인서 「문화아파트」 — 운영에서 길도 달랐다(단지가 두
+ * 길에 걸쳤다)).
+ */
+function sameName(site: ApprovalSite, approval: string | null): boolean {
   if (!approval) return false;
-  const a = coreName(approval);
-  return a.length >= 3 && coreName(site).includes(a);
+  const region = new Set(regionPartsOf(site.addr));
+  const a = nameWords(approval, region);
+  const c = nameWords(site.name, region);
+  return a.some((x) => c.some((y) => x === y || (Math.min(x.length, y.length) >= 3 && (x.includes(y) || y.includes(x)))));
+}
+
+/** 승인서의 현장명을 못 읽었을 때(판독이 칸을 못 찾음 등) — 콘솔 이름의 낱말(세 글자부터)이 그 쪽 글자에 있는가 */
+function nameInText(site: ApprovalSite, text: string | null): boolean {
+  if (!text) return false;
+  const t = squash(text);
+  return nameWords(site.name, new Set(regionPartsOf(site.addr))).some((w) => w.length >= 3 && t.includes(w));
 }
 
 /** 보이는 이름 — 「승인서 「라온705 · 경기도 용인시 …」」 */
@@ -196,10 +239,12 @@ export function judgeApproval(read: ApprovalRead, site: ApprovalSite): DocCheck[
   const siteKey = roadKeyOf(site.addr);
   const hay = [read.addr, read.text].filter(Boolean).join('\n');
   const jibun = jibunKeyOf(site.addr);
-  const addrHit = (siteKey !== null && hasRoadKey(hay, siteKey)) || (jibun !== null && jibun === jibunKeyOf(read.addr));
-  const nameHit = sameName(site.name, read.name) || (read.name === null && read.text !== null && coreName(site.name).length >= 3
-    && squash(read.text).includes(coreName(site.name)));
+  const addrHit = (siteKey !== null && hasRoadKey(hay, siteKey))
+    || sameRoad(roadOf(site.addr), roadOf(read.addr))
+    || (jibun !== null && jibun === jibunKeyOf(read.addr));
+  const nameHit = sameName(site, read.name) || (read.name === null && nameInText(site, read.text));
   if (!addrHit && !nameHit) {
+    // ★길도 이름도 다르고 둘 다 도로명일 때만★ 다른 현장이다 — 한쪽이 지번이거나 비었으면 가리지 못한 것이다
     if (siteKey !== null && roadKeyOf(read.addr) !== null) {
       return [{ level: 'block', why: `다른 현장의 승인서로 보입니다 — 승인서 「${shown(read)}」 · 콘솔 주소 「${site.addr}」` }];
     }

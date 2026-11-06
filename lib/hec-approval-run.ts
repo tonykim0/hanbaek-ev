@@ -11,7 +11,8 @@
  * 읽다 실패해도 던지지 않는다 — 검증 때문에 메일이 막히면 안 된다. 실패는 「확인 필요 — 파일을 읽지 못했습니다」로 남는다.
  */
 import JSZip from 'jszip';
-import { askPdfJson, preparePdfs } from '@/lib/vision-ask';
+import { askPdfJson } from '@/lib/vision-ask';
+import { imageFileToPdf, type NormalizedFile } from '@/lib/files';
 import { splitPdf } from '@/lib/pdf-split';
 import { docxText, hwpxText, xlsxText } from '@/lib/agents/file-text';
 import {
@@ -24,6 +25,8 @@ const TAG = 'hec-approval';
 const MAX_PAGES = 20;
 /** 받는 파일 크기 상한 — 넘으면 읽지 않는다(설치승인서는 사진이 들어 수 MB 다) */
 const FETCH_CAP = 40 * 1024 * 1024;
+/** 판독에 한 번에 보내는 PDF 상한 — 요청 한도(32MB)에 base64 팽창을 감안한 값(lib/vision-ask 와 같다) */
+const SEND_CAP = 18 * 1024 * 1024;
 
 const UNREAD: ApprovalRead = { form: null, name: null, addr: null, qty: null, blank: false, text: null };
 
@@ -44,12 +47,15 @@ export async function readApprovalFile(file: { name: string; buffer: Buffer }): 
   if (ext === 'hwpx') return readApprovalText(await hwpxText(file.buffer));
   if (ext === 'xlsx') return readApprovalText(await xlsxText(file.buffer));
   if (!['pdf', 'jpg', 'jpeg', 'png', 'heic', 'heif', 'webp'].includes(ext)) return UNREAD;
-  const head = ext === 'pdf'
-    ? { ...file, buffer: await splitPdf(file.buffer, Array.from({ length: MAX_PAGES }, (_, i) => i + 1)) }
-    : file;
-  const { batches } = await preparePdfs([head], TAG);
-  if (batches.length === 0) return UNREAD;
-  return approvalReadOf(await askPdfJson(batches[0], APPROVAL_PROMPT, TAG));
+  /*
+   * 방향 바로잡기(lib/pdf-orient — 쪽마다 판독에 묻는다)는 하지 않는다 — 승인서 PDF 는 pptx 를 내보낸 것이라 바로 서 있고, 한 장을
+   * 보는 데 쪽 수만큼 판독을 더 부를 까닭이 없다. 판독은 눕힌 쪽의 표도 읽는다.
+   */
+  const pdf: NormalizedFile | null = ext === 'pdf'
+    ? { name: file.name, buffer: await splitPdf(file.buffer, Array.from({ length: MAX_PAGES }, (_, i) => i + 1)), hash: '', mimeType: 'application/pdf' }
+    : await imageFileToPdf(file.name, file.buffer).catch(() => null);
+  if (!pdf || pdf.buffer.length > SEND_CAP) return UNREAD;
+  return approvalReadOf(await askPdfJson([pdf], APPROVAL_PROMPT, TAG));
 }
 
 /** 칸의 파일 한 장을 받아 읽고 그 현장과 견준다 — 맞으면 빈 목록 */
