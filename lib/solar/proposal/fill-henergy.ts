@@ -1,6 +1,6 @@
 /**
  * 에이치에너지 솔라쉐어 2.0 제안서 — 사업자가 준 고객용 틀(「01. 솔라쉐어 제안서_SAMPLE_….pptx」, 구글 프레젠테이션에서 내보낸 12장)에
- * 7장 「솔라쉐어2.0 맞춤 제안」만 채운다. [브라우저]
+ * 7장 「솔라쉐어2.0 맞춤 제안」을 채우고, 표지 · 마지막 장에 제안하는 영업사 · 연락처를 얹는다. [브라우저]
  *
  * 그 장의 글상자 열한 개(Google Shape 90~100 — 고객명 · 두 지급 방식의 금액 · 용량)와 오른쪽 사진(101)이 자리다. 나머지 장은 한 장짜리
  * 그림이다. 「= (기본 + 이벤트) x … x 5년치」 같은 식과 각주는 바탕 그림에 박혀 있다 — 조건이 바뀌면 에이치에너지가 새 틀을 내고
@@ -8,10 +8,16 @@
  * 금액 표기는 그 틀의 것 — 만원 소수 한 자리(아래 버림) · 억 묶음(lib/solar/proposal/calc manwonText).
  */
 import { Deck } from '@/lib/pptx/deck';
+import { EMU_PER_PT, textBoxXml } from '@/lib/pptx/xml';
 import { capacityKw, kwText, manwonText, solarShare } from './calc';
-import type { FillArgs } from './fill-common';
+import { sellerBlock, sellerLine, type FillArgs } from './fill-common';
 
 const S = (n: number) => `Google Shape;${n};p21`;
+const PT = EMU_PER_PT;
+/** 틀의 글꼴(파일에 박혀 있다)과 남색(표지 「solar share」 · 「감사합니다」) */
+const FONT = 'Noto Sans KR';
+const NAVY = '070C42';
+const GREY = '303030';
 
 export async function fillHenergy({ template, terms, input }: FillArgs): Promise<Blob | Uint8Array> {
   const deck = await Deck.open(template);
@@ -44,5 +50,20 @@ export async function fillHenergy({ template, terms, input }: FillArgs): Promise
   s.setBox(S(101), slot);
   const pic = await input.image(slot.w / slot.h, true);
   s.setPicture(S(101), pic.bytes, 'jpeg');
+
+  // 영업사 — 표지(그림 한 장)의 부제 밑 한 줄 · 마지막 장 「감사합니다」 밑 두 줄. 오른쪽 큰 「S」 무늬(약 432pt~)에 닿지 않게
+  const cover = await deck.slide(1);
+  cover.append(
+    textBoxXml(cover.nextId(), '영업사', { x: 38 * PT, y: 262 * PT, w: 390 * PT, h: 20 * PT }, [sellerLine(input.seller, { font: FONT, size: 12, label: NAVY, name: NAVY, contact: GREY })], {
+      anchor: 'ctr',
+      wrap: false,
+    }),
+  );
+  const end = await deck.slide(deck.slides.length);
+  end.append(
+    textBoxXml(end.nextId(), '영업사 연락처', { x: 160 * PT, y: 238 * PT, w: 400 * PT, h: 48 * PT }, sellerBlock(input.seller, { font: FONT, size: 14, contactSize: 12, name: NAVY, contact: GREY }, 'ctr'), {
+      anchor: 't',
+    }),
+  );
   return deck.save();
 }

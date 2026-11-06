@@ -82,7 +82,8 @@ export type GroundUse = 'carport' | 'land';
 
 /** 주차장 캐노피 — 네모를 캐노피 지붕으로 보고 모듈을 빈틈없이 깐다(근거는 assumptions CARPORT) */
 export function carportPanels(b: Box, lat: number): Layout {
-  return layoutRoof(boxPolygons(b), 'flush', lat, { setbackM: CARPORT.setbackM, aisleEvery: 0 });
+  // 캐노피는 한 판 구조물이라 짧은 줄도 깐다(지붕의 토막 빼기 minRun 은 지붕에만)
+  return layoutRoof(boxPolygons(b), 'flush', lat, { setbackM: CARPORT.setbackM, aisleEvery: 0, minRun: 1 });
 }
 
 /** 땅에 세움 — 넓이 → 예상 용량(kW, 소수 첫째) · 지상형 기준 그대로(땅 AREA_PER_KW.ground ㎡ 당 1kW) */

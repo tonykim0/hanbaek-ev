@@ -8,9 +8,9 @@ import { describe, expect, it } from 'vitest';
 import {
   capacityKw, eok2, eokManText, kwText, lumoraRent, manwonText, millionText, monthAfter, profileAngleDeg, solar15, solarShare,
 } from '@/lib/solar/proposal/calc';
-import { mountText, proposalFileName, splitAddress } from '@/lib/solar/proposal/fill-common';
+import { mountText, proposalFileName, sellerBlock, sellerLine, splitAddress } from '@/lib/solar/proposal/fill-common';
 import { cleanTerms, missingTerms, PRODUCTS, TEMPLATES } from '@/lib/solar/proposal/products';
-import { paraXml, tableXml, textBoxXml } from '@/lib/pptx/xml';
+import { paraXml, rectXml, tableXml, textBoxXml } from '@/lib/pptx/xml';
 import { orphansOf, sha256Hex } from '@/lib/pptx/deck';
 import { unprojector, type LngLat } from '@/lib/solar/geo';
 import { layoutRoof } from '@/lib/solar/layout';
@@ -124,6 +124,15 @@ describe('현장 글', () => {
     expect(mountText({ style: 'flush', tiltDeg: 12 })).toBe('지붕면 부착형');
     expect(proposalFileName('(주)가/나', '루모라 지붕임대', '2026-11-06')).toBe('(주)가 나_루모라 지붕임대_제안서_261106.pptx');
   });
+  it('영업사 — 표지 한 줄은 「제안」만 강조색, 마지막 쪽은 이름 · 연락처 두 줄', () => {
+    const seller = { name: '(주)가나에너지', contact: '홍길동 010-0000-0000' };
+    const p = sellerLine(seller, { font: 'F', size: 12, label: 'AA0000', name: '000000', contact: '333333' });
+    expect(p.runs.map((r) => r.text.trim())).toEqual(['제안', '(주)가나에너지', '홍길동 010-0000-0000']);
+    expect(p.runs.map((r) => r.color)).toEqual(['AA0000', '000000', '333333']);
+    const b = sellerBlock(seller, { font: 'F', size: 14, contactSize: 11, name: 'FFFFFF', contact: 'CCCCCC' }, 'ctr');
+    expect(b.map((x) => x.runs[0].text)).toEqual(['(주)가나에너지', '홍길동 010-0000-0000']);
+    expect(b.every((x) => x.align === 'ctr')).toBe(true);
+  });
   it('사업 일정의 달 넘김 · 음영각', () => {
     expect(monthAfter(2026, 11, 3)).toEqual({ year: 2027, month: 2 });
     expect(monthAfter(2026, 12, 1)).toEqual({ year: 2027, month: 1 });
@@ -139,6 +148,15 @@ describe('파워포인트 글 짓기', () => {
     expect(p).toContain('<a:spcPts val="1590"/>');
     expect(p).toContain('pitchFamily="34"');
     expect(textBoxXml(3, '이름', { x: 0, y: 0, w: 10, h: 10 }, [], { wrap: true })).toContain('wrap="square"');
+  });
+  it('글 없는 글상자도 덩이 하나는 둔다 — 없으면 파워포인트가 「복구」를 묻는다', () => {
+    expect(textBoxXml(4, '빈칸', { x: 0, y: 0, w: 10, h: 10 }, [])).toContain('<a:lstStyle/><a:p/></p:txBody>');
+  });
+  it('가는 선은 글 몸통 없는 채운 네모 — 테두리 없음', () => {
+    const x = rectXml(5, '선', { x: 0, y: 0, w: 100, h: 12_700 }, '919FA7');
+    expect(x).toContain('<a:srgbClr val="919FA7"/>');
+    expect(x).toContain('<a:ln><a:noFill/></a:ln>');
+    expect(x).not.toContain('txBody');
   });
   it('표 — 줄의 칸 수가 열 수와 다르면 던진다(합친 칸은 그만큼 센다)', () => {
     const o = { font: 'F', size: 10, border: { color: '000000', w: 6350 } };
@@ -165,6 +183,7 @@ describe('사업자 기준으로 다시 깔기', () => {
   it('고도 0 이면 콘솔 기본(동지 10~14시) — 경사각만 바뀐다', () => {
     expect(layoutRuleOf(terms(8, 0))).toEqual({ tiltDeg: 8 });
     expect(layoutRuleOf(terms(18, 21))).toEqual({ tiltDeg: 18, shadeAngleDeg: 21 });
+    expect(layoutRuleOf({ ...terms(18, 0), azimuthLimitDeg: 30 })).toEqual({ tiltDeg: 18, azimuthLimitDeg: 30 });
   });
   it('콘솔 기준(12° · 0)이면 부지 검토 지도와 같은 장수 · 음영각은 위도의 동지 10~14시 값', () => {
     const l = proposalLayout(roofs, [], 'tilted', 37.08, terms(12, 0));

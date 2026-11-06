@@ -1,5 +1,6 @@
 /**
- * 타이런트아이 솔라15 제안서 — 사업자가 준 「솔라15 템플릿.pptx」(30장)에 현장 칸 두 장을 채우고 「시공사」 한 장을 뺀다. [브라우저]
+ * 타이런트아이 솔라15 제안서 — 사업자가 준 「솔라15 템플릿.pptx」(30장)에 현장 칸 두 장을 채우고 「시공사」 한 장을 뺀다.
+ * 표지와 마지막 장에 제안하는 영업사 · 연락처를 얹는다. [브라우저]
  *
  * 틀에서 바뀌는 자리는 둘뿐이다(2026-11-06 틀을 열어 쟀다 — 나머지 28장은 한 장짜리 그림이다):
  *   2장 「Project 요약」 — 이름 붙은 글상자 여덟(고객명 · 설치용량 · 20년 누적 · 35년 총 누적 · 설치위치 두 줄 · 설치형식 · 모듈)과
@@ -11,7 +12,7 @@
 import { Deck } from '@/lib/pptx/deck';
 import { EMU_PER_PT, paras, pictureXml, tableXml, tagXml, textBoxXml, type Cell } from '@/lib/pptx/xml';
 import { capacityKw, eok2, kwText, solar15, SOLAR15_RENT_YEARS, type Solar15Variant } from './calc';
-import { mountText, splitAddress, type FillArgs } from './fill-common';
+import { mountText, sellerBlock, sellerLine, splitAddress, type FillArgs } from './fill-common';
 
 const FONT = 'Pretendard';
 const PT = EMU_PER_PT;
@@ -28,6 +29,8 @@ const C = {
   tag: 'FFC000',
   text: '2B2B2B',
   line: 'A6A6A6',
+  /** 틀 표지의 「SOLAR15」 · 「솔라15」 주황(사업자 색) */
+  brand: 'FF5F3E',
 };
 
 /** 틀의 칸 이름(2026-05-21 판) — 사업자가 틀을 바꾸면 Deck 이 「칸이 없습니다」로 멈춘다 */
@@ -174,6 +177,21 @@ export async function fillTyrant({ template, terms, input }: FillArgs, variant: 
     }),
   );
   s3.append(xml.join(''));
+
+  // ── 영업사 — 표지의 부제 밑 한 줄 · 마지막 장(「The end of Document」) 밑 두 줄. 어두운 사진 위라 흰 글자 ────────
+  const s1 = await deck.slide(1);
+  s1.append(
+    textBoxXml(s1.nextId(), '영업사', { x: 50 * PT, y: 474 * PT, w: 620 * PT, h: 24 * PT }, [sellerLine(input.seller, { font: FONT, size: 13, label: C.brand, name: 'FFFFFF', contact: 'FFFFFF' })], {
+      anchor: 'ctr',
+      wrap: false,
+    }),
+  );
+  const end = await deck.slide(deck.slides.length);
+  end.append(
+    textBoxXml(end.nextId(), '영업사 연락처', { x: 180 * PT, y: 300 * PT, w: 600 * PT, h: 60 * PT }, sellerBlock(input.seller, { font: FONT, size: 18, contactSize: 14, name: 'FFFFFF', contact: 'FFFFFF' }, 'ctr'), {
+      anchor: 't',
+    }),
+  );
 
   // ── 뺄 장 — 뒤에서부터(앞을 빼면 뒤의 차례가 당겨진다) ──────────────────
   for (const sha of DROP_PICTURES) for (const n of (await deck.slidesUsing(sha)).reverse()) await deck.dropSlide(n);

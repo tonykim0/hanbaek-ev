@@ -97,7 +97,19 @@ export function textBoxXml(id: number, name: string, box: Box, ps: Para[], o: Te
     `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${esc(name)}"/><p:cNvSpPr txBox="1"/><p:nvPr/></p:nvSpPr>` +
     `<p:spPr><a:xfrm><a:off x="${Math.round(box.x)}" y="${Math.round(box.y)}"/><a:ext cx="${Math.round(box.w)}" cy="${Math.round(box.h)}"/></a:xfrm>` +
     `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${o.fillColor ? fill(o.fillColor) : '<a:noFill/>'}</p:spPr>` +
-    `<p:txBody>${body}<a:lstStyle/>${ps.map(paraXml).join('')}</p:txBody></p:sp>`
+    // 글 몸통에는 덩이가 하나는 있어야 한다(스키마) — 글 없는 칸(가는 선 · 바탕)은 빈 덩이 하나. 없으면 파워포인트가 「복구」를 묻는다
+    `<p:txBody>${body}<a:lstStyle/>${ps.length ? ps.map(paraXml).join('') : '<a:p/>'}</p:txBody></p:sp>`
+  );
+}
+
+/**
+ * 채운 네모(글 없음) — 가는 선 · 띠. 글상자로 그리면 맥 미리보기가 1pt 안팎의 채움을 안 그렸다(2026-11-07) — 글 몸통 없는 모양으로.
+ */
+export function rectXml(id: number, name: string, box: Box, fillColor: string): string {
+  return (
+    `<p:sp><p:nvSpPr><p:cNvPr id="${id}" name="${esc(name)}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>` +
+    `<p:spPr><a:xfrm><a:off x="${Math.round(box.x)}" y="${Math.round(box.y)}"/><a:ext cx="${Math.round(box.w)}" cy="${Math.round(box.h)}"/></a:xfrm>` +
+    `<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>${fill(fillColor)}<a:ln><a:noFill/></a:ln></p:spPr></p:sp>`
   );
 }
 

@@ -13,9 +13,9 @@
  */
 import { buildPptx, type BuildSlide } from '@/lib/pptx/build';
 import { Deck } from '@/lib/pptx/deck';
-import { EMU_PER_PT, paras, pictureXml, tableXml, textBoxXml, type Align, type Cell, type Para, type Run } from '@/lib/pptx/xml';
+import { EMU_PER_PT, paras, pictureXml, rectXml, tableXml, textBoxXml, type Align, type Cell, type Para, type Run } from '@/lib/pptx/xml';
 import { capacityKw, eokManText, kwText, LUMORA_PREPAYS, lumoraRent, millionText, monthAfter, type Lumora } from './calc';
-import type { FillArgs, ProposalInput } from './fill-common';
+import { sellerLine, type FillArgs, type ProposalInput } from './fill-common';
 
 const PT = EMU_PER_PT;
 const PAGES = 23;
@@ -77,6 +77,8 @@ function plans(r: Lumora, input: ProposalInput, w: number): Record<number, PageP
         { name: '고객명', rect: [46, 322, 640, 352], paras: [line([run(`${input.customer} 귀중`, { size: 22, bold: true, color: C.navy })])] },
         { name: '고객 주소', rect: [46, 354, 640, 374], paras: [line([run(input.address, { size: 13, color: C.navy })])] },
         { name: '날짜', rect: [720, 508, 810, 533], paras: [line([run(`${yy}. ${String(mm).padStart(2, '0')}.`, { size: 17, bold: false, color: '133751' })], 'r')] },
+        // 제안하는 영업사 — 밑줄 왼쪽의 빈자리(오른쪽 「STRICTLY CONFIDENTIAL」은 약 490pt 부터)
+        { name: '영업사', rect: [46, 508, 470, 533], paras: [sellerLine(input.seller, { font: HEAD, size: 13, label: C.navy, name: C.navy, contact: '133751' })] },
       ],
     },
     // 3 제안배경 — 머리 문장의 빨간 쪽 · 카드 넷 줄 · 각주
@@ -296,6 +298,16 @@ function plans(r: Lumora, input: ProposalInput, w: number): Record<number, PageP
     textBoxXml(0, '설계 개요 각주', emu([52.4, 538, 571.6, 549]), paras('* 배치도면은 위성사진을 기준으로 작성된 가배치입니다. 실시설계 후 배치가 바뀔 수 있습니다.', { size: 7.5, color: '404040', font: BODY }), {
       anchor: 'ctr',
     });
+
+  // 23 마지막 쪽 — 루모라 연락처 묶음(오른쪽 아래 · 이름 491pt 부터) 위에 같은 모양으로 영업사 묶음: 이름 · 가는 선 · 연락처
+  p[23] = {
+    masks: [],
+    overlays: [
+      { name: '영업사', rect: [518, 416, 830, 436], anchor: 'b', paras: [line([run(input.seller.name, { size: 13.5, bold: true, color: 'C9CED2' })])] },
+      { name: '영업사 연락처', rect: [518, 446, 830, 464], anchor: 't', paras: [line([run(input.seller.contact, { size: 11, color: 'A9B6BF' })])] },
+    ],
+    extra: rectXml(0, '영업사 선', emu([518, 440, 818, 441]), '919FA7'),
+  };
   return p;
 }
 

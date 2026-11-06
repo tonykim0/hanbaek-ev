@@ -54,7 +54,7 @@ describe('태양광 제안서 — 틀 · 조건의 문', () => {
     const [row] = await getDb().select().from(solarProposalTemplates).where(eq(solarProposalTemplates.key, 'lumora-rent'));
     before = row ? { terms: row.terms, termsAt: row.termsAt, termsBy: row.termsBy } : { terms: {}, termsAt: null, termsBy: null };
     expect((await PATCH(json('PATCH', { key: 'lumora-rent', terms: { moduleWatt: 600 } }))).status).toBe(400);
-    const terms = { moduleWatt: 600, tiltDeg: 20, shadeAngleDeg: 0, price1: 11_000, price5: 10_000, price10: 9_000 };
+    const terms = { moduleWatt: 600, tiltDeg: 20, shadeAngleDeg: 0, azimuthLimitDeg: 0, price1: 11_000, price5: 10_000, price10: 9_000 };
     expect((await PATCH(json('PATCH', { key: 'lumora-rent', terms: { ...terms, price1: 1 } }))).status).toBe(400);
     const res = await PATCH(json('PATCH', { key: 'lumora-rent', terms: { ...terms, price1: '11,000' } }));
     expect(res.status).toBe(200);

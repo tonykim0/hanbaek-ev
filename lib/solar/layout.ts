@@ -27,6 +27,8 @@ export type LayoutSpec = {
   /** 줄을 이 장수마다 끊고 통로를 둔다(0 이면 안 끊는다) */
   aisleEvery: number;
   aisleM: number;
+  /** 한 줄에서 이어 붙은 토막(통로 · 빈칸에서 끊긴다)이 이보다 짧으면 안 깐다(1 이면 다 깐다) */
+  minRun: number;
   /** 동지 정오 앞뒤 몇 시간 동안 앞줄 그림자가 뒷줄에 닿지 않게 띄우나 (2 → 오전 10시~오후 2시) */
   shadeHours: number;
   /**
@@ -34,6 +36,11 @@ export type LayoutSpec = {
    * (구조설계 가이드라인의 「입사각 기준 이격거리」 · 설계 개요의 「음영각」 — lib/solar/proposal/layout-rule) — 위도와 상관없다.
    */
   shadeAngleDeg?: number;
+  /**
+   * 경사고정형 모듈 방위각의 한도 — 정남에서 동 · 서로 이 각(°)까지만 돌린다. 줄은 건물 변을 따라 정남에서 45° 까지 돌아가는데, 그보다 좁게
+   * 정한 사업자 설계 기준이 있다(구조설계 가이드라인의 「모듈 방위각 정남 ±」). 넘는 건물은 줄을 한도까지만 돌려 깐다(변과 조금 어긋난다).
+   */
+  azimuthLimitDeg?: number;
 };
 export const SPEC: LayoutSpec = {
   module: MODULE,
@@ -42,6 +49,7 @@ export const SPEC: LayoutSpec = {
   gapM: LAYOUT.gapM,
   aisleEvery: LAYOUT.aisleEvery,
   aisleM: LAYOUT.aisleM,
+  minRun: LAYOUT.minRun,
   shadeHours: LAYOUT.shadeHours,
 };
 
@@ -166,7 +174,28 @@ function segRect(e: Edge, r: Rect): number {
  * 한 지붕(바깥 고리 + 구멍)을 채운다 — 좌표는 회전된 미터 평면.
  * 모든 줄이 같은 격자를 쓴다 — 통로가 줄마다 같은 자리에 서서 지붕을 가로지르는 길이 된다.
  */
-function fill(rings: Pt[][], w: number, d: number, stepX: number, stepY: number, margin: number, aisleEvery: number, aisleM: number): Rect[] {
+/**
+ * 한 줄에서 이어 붙은 장들의 토막(통로 · 못 까는 칸에서 끊긴다) 중 minRun 장보다 짧은 것을 뺀다. 칸은 줄(같은 y) · 왼쪽부터 차례로 온다.
+ * 이어 붙은 두 장의 틈은 모듈 사이 틈(몇 cm)이고, 통로 · 빈칸은 모듈 폭의 절반을 넘는다.
+ */
+function dropShortRuns(rects: Rect[], w: number, minRun: number): Rect[] {
+  if (minRun <= 1) return rects;
+  const out: Rect[] = [];
+  let run: Rect[] = [];
+  const close = () => {
+    if (run.length >= minRun) out.push(...run);
+    run = [];
+  };
+  for (const r of rects) {
+    const prev = run[run.length - 1];
+    if (prev && (r.y0 !== prev.y0 || r.x0 - prev.x1 > w / 2)) close();
+    run.push(r);
+  }
+  close();
+  return out;
+}
+
+function fill(rings: Pt[][], w: number, d: number, stepX: number, stepY: number, margin: number, aisleEvery: number, aisleM: number, minRun = 1): Rect[] {
   const [outer, ...holes] = rings;
   const edges: Edge[] = rings.flatMap((ring) =>
     ring.map((a, i) => {
@@ -209,7 +238,9 @@ function fill(rings: Pt[][], w: number, d: number, stepX: number, stepY: number,
           x += stepX + (aisleEvery && i % aisleEvery === 0 ? aisleM : 0);
         }
       }
-      if (got.length > best.length) best = got;
+      // 토막을 뺀 뒤의 장수로 고른다 — 남는 장이 많은 격자가 이긴다
+      const kept = dropShortRuns(got, w, minRun);
+      if (kept.length > best.length) best = kept;
     }
   }
   return best;
@@ -235,6 +266,11 @@ export function layoutRoof(polys: PolygonCoords[], style: LayoutStyle, latDeg: n
     if (axis.along < axis.across) angle += Math.PI / 2;
   } else {
     angle = ((((angle + Math.PI / 4) % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2)) - Math.PI / 4;
+    // 줄의 기울기 = 모듈 방위각이 정남에서 돌아간 각 — 한도가 있으면 거기까지만
+    if (spec.azimuthLimitDeg && spec.azimuthLimitDeg > 0) {
+      const lim = rad(spec.azimuthLimitDeg);
+      angle = Math.max(-lim, Math.min(lim, angle));
+    }
   }
   const c = Math.cos(angle);
   const s = Math.sin(angle);
@@ -249,7 +285,7 @@ export function layoutRoof(polys: PolygonCoords[], style: LayoutStyle, latDeg: n
   const quads: LngLat[][] = [];
   for (const p of rings) {
     const r = p.map((ring) => ring.map(rot));
-    for (const m of fill(r, w, d, stepX, stepY, spec.setbackM, spec.aisleEvery, spec.aisleM)) {
+    for (const m of fill(r, w, d, stepX, stepY, spec.setbackM, spec.aisleEvery, spec.aisleM, spec.minRun)) {
       quads.push(
         (
           [

@@ -45,6 +45,8 @@ const W: TermField = { key: 'moduleWatt', label: '모듈 출력', unit: 'W', min
  */
 const TILT: TermField = { key: 'tiltDeg', label: '모듈 경사각', unit: '°', min: 0, max: 45 };
 const SHADE: TermField = { key: 'shadeAngleDeg', label: '줄 간격 기준 태양 고도', unit: '°', min: 0, max: 60, zeroText: '동지 10~14시 그림자' };
+/** 모듈 방위각 한도 — 정남에서 동 · 서로 몇 도까지(0 이면 건물 변을 따라 45° 까지) */
+const AZIMUTH: TermField = { key: 'azimuthLimitDeg', label: '모듈 방위각 한도(정남 ±)', unit: '°', min: 0, max: 45, zeroText: '제한 없음' };
 
 export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
   'tyrant-solar15': {
@@ -57,6 +59,7 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
       W,
       TILT,
       SHADE,
+      AZIMUTH,
       { key: 'rentPerKw', label: '기본형 임대료(1~15년)', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
       { key: 'prepayPerKw', label: '5년 선납형 선지급(1년차 일시)', unit: '원/kW', min: 1_000, max: 5_000_000 },
       { key: 'prepayRentPerKw', label: '5년 선납형 임대료(6~15년)', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
@@ -77,6 +80,7 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
       W,
       TILT,
       SHADE,
+      AZIMUTH,
       { key: 'rentPerKw', label: '기본 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
       { key: 'prepayBasePerKw', label: '5년치 선지급 — 기본', unit: '원/kW·년', min: 0, max: 1_000_000 },
       { key: 'prepayEventPerKw', label: '5년치 선지급 — 이벤트', unit: '원/kW·년', min: 0, max: 1_000_000 },
@@ -93,6 +97,7 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
       W,
       TILT,
       SHADE,
+      AZIMUTH,
       { key: 'price1', label: '1년 선납 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
       { key: 'price5', label: '5년 선납 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
       { key: 'price10', label: '10년 선납 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },

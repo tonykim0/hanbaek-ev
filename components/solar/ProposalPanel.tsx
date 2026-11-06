@@ -17,6 +17,23 @@ import { fetchRoofTrace, type RoofPlan } from './useRoofPlan';
 
 const COMPANIES = Array.from(new Set(PRODUCTS.map((p) => p.company)));
 type Phase = null | 'roofs' | 'build';
+/** 마지막으로 쓴 영업사 · 연락처 — 이 브라우저에만(같은 사람이 제안서를 여러 장 짓는다). 못 읽으면 빈칸으로 시작한다 */
+const SELLER_KEY = 'hb-proposal-seller';
+function loadSeller(): { name: string; contact: string } {
+  try {
+    const v = JSON.parse(localStorage.getItem(SELLER_KEY) ?? 'null') as { name?: unknown; contact?: unknown } | null;
+    return { name: typeof v?.name === 'string' ? v.name : '', contact: typeof v?.contact === 'string' ? v.contact : '' };
+  } catch {
+    return { name: '', contact: '' };
+  }
+}
+function saveSeller(s: { name: string; contact: string }): void {
+  try {
+    localStorage.setItem(SELLER_KEY, JSON.stringify(s));
+  } catch {
+    // 저장소를 못 쓰는 브라우저 — 다음에 다시 적으면 된다
+  }
+}
 
 /**
  * 제안서 — 부지 검토 결과(지붕형)에서 고객명 · 주소를 넣고 사업자 · 상품을 고르면 그 사업자의 틀에 현장 칸을 채운 PPTX 를 받는다
@@ -31,6 +48,13 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
   const { place } = report;
   const [customer, setCustomer] = useState(place.buildingName ?? '');
   const [address, setAddress] = useState(place.roadAddress ?? place.jibunAddress ?? place.query);
+  const [sellerName, setSellerName] = useState('');
+  const [sellerContact, setSellerContact] = useState('');
+  useEffect(() => {
+    const s = loadSeller();
+    setSellerName(s.name);
+    setSellerContact(s.contact);
+  }, []);
   const [product, setProduct] = useState<ProductKey | null>(null);
   const [templates, setTemplates] = useState<ProposalTemplate[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -77,15 +101,18 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
     [plan.roofs, plan.selected, plan.cuts, plan.style, lat],
   );
   const preview = useMemo(() => (termsReady && plan.roofs.length ? layoutFor(chosenTerms!) : null), [termsReady, chosenTerms, plan.roofs.length, layoutFor]);
-  const blocker = !templates
-    ? '틀 읽는 중'
-    : !customer.trim()
-      ? '고객명 없음'
-      : !address.trim()
-        ? '주소 없음'
-        : !chosen
-          ? '상품 미선택'
-          : stateOf(chosen.template) ?? (!place.pnu ? '필지 없음' : null);
+  // 못 짓는 까닭 — 위에서부터 처음 걸리는 것 하나를 단추에 적는다
+  const blocker =
+    ([
+      [!templates, '틀 읽는 중'],
+      [!customer.trim(), '고객명 없음'],
+      [!address.trim(), '주소 없음'],
+      [!sellerName.trim(), '영업사 없음'],
+      [!sellerContact.trim(), '연락처 없음'],
+      [!chosen, '상품 미선택'],
+    ] as const).find(([hit]) => hit)?.[1] ??
+    (chosen ? stateOf(chosen.template) : null) ??
+    (!place.pnu ? '필지 없음' : null);
 
   // ── 짓기 — 지붕이 없으면 먼저 AI 로 찾고(그 뒤 배치가 다시 그려진 다음에) 짓는다 ───────
   const start = async () => {
@@ -99,7 +126,9 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
         plan.applyTrace(await fetchRoofTrace(place.pnu!));
       } catch (err) {
         setPhase(null);
-        setError(`지붕을 찾지 못했습니다 — ${err instanceof Error ? err.message : String(err)}`);
+        // 라우트의 실패 문구가 이미 「지붕을 찾지 못했습니다 — …」로 온다 — 두 번 붙이지 않는다
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg.startsWith('지붕을 찾지 못했습니다') ? msg : `지붕을 찾지 못했습니다 — ${msg}`);
         return;
       }
     }
@@ -126,6 +155,7 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
         shadeDeg: lay.shadeDeg,
         gridSpareKw: best?.spareKw ?? null,
         today: today(),
+        seller: { name: sellerName.trim(), contact: sellerContact.trim() },
         image,
       };
       setStep(chosen.template === 'lumora-rent' ? '쪽 굽는 중…' : '제안서 짓는 중…');
@@ -139,6 +169,7 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
       a.click();
       a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      saveSeller(input.seller);
       const kw = capacityKw(lay.count, (template.terms.moduleWatt as number) ?? 0);
       setDone(`받았습니다 — ${name} · 패널 ${lay.count.toLocaleString()}장 · ${kwText(kw)} kW`);
     } catch (err) {
@@ -149,7 +180,7 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
       setStep('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 그때의 값으로 한 번
-  }, [chosen, templates, plan, customer, address, report, layoutFor]);
+  }, [chosen, templates, plan, customer, address, sellerName, sellerContact, report, layoutFor]);
 
   // AI 로 지붕을 찾은 뒤 배치가 다시 그려지면(plan 이 바뀐다) 그 배치로 짓는다
   useEffect(() => {
@@ -168,6 +199,20 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
           <label className="block">
             <span className={TEXT.label}>고객 주소</span>
             <input value={address} onChange={(e) => setAddress(e.target.value)} maxLength={200} className={`mt-1 ${FIELD}`} />
+          </label>
+          <label className="block">
+            <span className={TEXT.label}>영업사</span>
+            <input value={sellerName} onChange={(e) => setSellerName(e.target.value)} maxLength={40} placeholder="(주)OO에너지" className={`mt-1 ${FIELD}`} />
+          </label>
+          <label className="block">
+            <span className={TEXT.label}>연락처</span>
+            <input
+              value={sellerContact}
+              onChange={(e) => setSellerContact(e.target.value)}
+              maxLength={60}
+              placeholder="홍길동 010-0000-0000"
+              className={`mt-1 ${FIELD}`}
+            />
           </label>
         </div>
 

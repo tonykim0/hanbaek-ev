@@ -51,6 +51,32 @@ describe('그림자 간격', () => {
   });
 });
 
+describe('토막 빼기 · 방위각 한도', () => {
+  // 쓸 수 있는 길이 26.4m(가장자리 1m 씩) — 20장 · 통로 1m 뒤에 2장이 더 들어가는 폭
+  const tail = () => [poly(rect(28.4, 10))];
+  it('통로 뒤 1~3장 토막은 안 깐다 — 한 줄 22장이 20장으로', () => {
+    const all = layoutRoof(tail(), 'flush', 36.8, { minRun: 1 });
+    const cut = layoutRoof(tail(), 'flush', 36.8);
+    expect(all.count % 22).toBe(0);
+    expect(cut.count).toBe((all.count / 22) * 20);
+  });
+  const angleOf = (q: LngLat[]) => {
+    const [a, b] = [toM(q[0]), toM(q[1])];
+    return (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+  };
+  it('건물이 정남에서 42° 돌았으면 줄도 42° — 한도 35° 면 35° 까지만 돌린다', () => {
+    const roof = () => [poly(rect(60, 30, 42))];
+    expect(Math.abs(angleOf(layoutRoof(roof(), 'tilted', 36.8).quads[0]))).toBeCloseTo(42, 1);
+    const limited = layoutRoof(roof(), 'tilted', 36.8, { azimuthLimitDeg: 35 });
+    expect(Math.abs(angleOf(limited.quads[0]))).toBeCloseTo(35, 1);
+    expect(limited.count).toBeGreaterThan(0);
+  });
+  it('한도 안의 건물은 그대로', () => {
+    const roof = () => [poly(rect(60, 30, 20))];
+    expect(layoutRoof(roof(), 'tilted', 36.8, { azimuthLimitDeg: 35 }).count).toBe(layoutRoof(roof(), 'tilted', 36.8).count);
+  });
+});
+
 describe('mainAxis', () => {
   it('돌린 직사각형의 방향과 변 길이', () => {
     const a = mainAxis(rect(50, 20, 30));

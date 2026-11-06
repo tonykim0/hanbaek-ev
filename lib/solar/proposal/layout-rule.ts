@@ -22,9 +22,13 @@ export type ProposalLayout = {
   shadeDeg: number;
 };
 
-/** 조건의 배치 기준 → 배치 숫자. 줄 간격 기준 고도가 0 이면 콘솔 기본(동지 10~14시)을 쓴다 */
+/** 조건의 배치 기준 → 배치 숫자. 줄 간격 기준 고도 · 방위각 한도가 0 이면 콘솔 기본(동지 10~14시 · 건물 변을 따라)을 쓴다 */
 export function layoutRuleOf(terms: Terms): Partial<LayoutSpec> {
-  return { tiltDeg: terms.tiltDeg, ...(terms.shadeAngleDeg > 0 ? { shadeAngleDeg: terms.shadeAngleDeg } : {}) };
+  return {
+    tiltDeg: terms.tiltDeg,
+    ...(terms.shadeAngleDeg > 0 ? { shadeAngleDeg: terms.shadeAngleDeg } : {}),
+    ...(terms.azimuthLimitDeg > 0 ? { azimuthLimitDeg: terms.azimuthLimitDeg } : {}),
+  };
 }
 
 /**

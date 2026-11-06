@@ -1,6 +1,7 @@
 /**
  * 제안서 채우기의 공통 — 생성기 셋(fill-tyrant · fill-henergy · fill-lumora)이 받는 현장 값과 작은 도구들.
  */
+import type { Align, Para } from '@/lib/pptx/xml';
 import type { Terms } from './products';
 
 /** 현장 사진 한 장 — 자리 비율(가로/세로)에 맞춰 이미 자른 JPEG */
@@ -22,6 +23,11 @@ export type ProposalInput = {
   /** 오늘(한국 날짜 'YYYY-MM-DD') — 사업 일정 · 파일 날짜 */
   today: string;
   /**
+   * 제안하는 영업사 — 이름 · 연락처(한 칸, 「홍길동 010-…」처럼). 표지와 마지막 쪽에 적는다. 한백 이름은 넣지 않는다
+   * (한백 2026-11-06 「한백이름말고, 영업사 이름과 연락처를 넣을거야」 · 「웹앱에서 넣게해줘」).
+   */
+  seller: { name: string; contact: string };
+  /**
    * 현장 사진을 자리 비율로 — withPanels 면 패널을 그린 것(가배치), 아니면 항공사진 그대로(사업지 사진).
    * 사진은 한 번 받아 두고 자리마다 잘라 쓴다(components/solar/proposal-image).
    */
@@ -29,6 +35,28 @@ export type ProposalInput = {
 };
 
 export type FillArgs = { template: ArrayBuffer; terms: Terms; input: ProposalInput };
+
+type SellerStyle = { font: string; size: number; label: string; name: string; contact: string };
+
+/** 표지의 한 줄 — 「제안  (주)OO에너지   홍길동 010-…」. 「제안」만 그 틀의 강조색 */
+export function sellerLine(seller: ProposalInput['seller'], s: SellerStyle, align?: Align): Para {
+  return {
+    runs: [
+      { text: '제안', size: s.size, bold: true, color: s.label, font: s.font },
+      { text: `  ${seller.name}`, size: s.size, bold: true, color: s.name, font: s.font },
+      { text: `   ${seller.contact}`, size: s.size, color: s.contact, font: s.font },
+    ],
+    align,
+  };
+}
+
+/** 마지막 쪽의 두 줄 — 영업사(굵게) · 연락처 */
+export function sellerBlock(seller: ProposalInput['seller'], s: Omit<SellerStyle, 'label'> & { contactSize: number }, align?: Align): Para[] {
+  return [
+    { runs: [{ text: seller.name, size: s.size, bold: true, color: s.name, font: s.font }], align },
+    { runs: [{ text: seller.contact, size: s.contactSize, color: s.contact, font: s.font }], align, spaceBeforePt: 4 },
+  ];
+}
 
 /**
  * 주소를 두 줄로 — 시·도 · 시·군·구 · 읍·면·동까지가 앞줄, 나머지가 뒷줄(타이런트 틀의 「설치위치」가 두 줄이다).

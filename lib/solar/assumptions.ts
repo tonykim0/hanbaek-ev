@@ -21,10 +21,12 @@ export const MODULE = { lengthM: 2.382, widthM: 1.134, watt: 645 } as const;
  * - setbackM: 지붕 가장자리에서 띄우는 거리(점검·바람)
  * - gapM: 모듈 사이 틈(고정 클램프)
  * - aisleEvery · aisleM: 줄을 20장(약 23m)마다 끊는 통로 — 실제 설계는 용마루·구조선에서 줄을 끊는다(정연코퍼레이션: 한 줄 38장을 가운데서 둘로)
+ * - minRun: 한 줄에서 이어 붙은 토막이 이보다 짧으면 안 깐다 — 통로 뒤 · 좁은 끝에 1~3장짜리 토막이 따로 남아 가배치 그림이 삐뚤어 보였고
+ *   (한백 2026-11-06 「좀 삐뚤삐뚤하네」), 실제 설계도 그런 토막은 두지 않는다. 장수는 1% 안쪽으로 준다
  * - shadeHours: 경사고정형의 줄 간격 — 동지 오전 10시~오후 2시에 앞줄 그림자가 뒷줄에 닿지 않게.
  *   실제 설계의 줄 간격(정연코퍼레이션 12° · 북위 37.1° 에서 약 3.4m)이 이것(3.3m)과 맞고, 9~15시 기준(3.6m)보다 촘촘하다
  */
-export const LAYOUT = { setbackM: 1.0, gapM: 0.02, aisleEvery: 20, aisleM: 1.0, shadeHours: 2 } as const;
+export const LAYOUT = { setbackM: 1.0, gapM: 0.02, aisleEvery: 20, aisleM: 1.0, shadeHours: 2, minRun: 4 } as const;
 
 /**
  * 주차장 캐노피(지상형에서 그린 네모의 기본) — 공식 「주차면당 kW」는 없어서 근거를 세워 가정했다(2026-11-03, 한백 「너가 논리적인
