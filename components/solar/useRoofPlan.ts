@@ -30,6 +30,19 @@ export type TraceResult = {
 /** AI 가 따도 처음부터 깔지 않는 지붕 — 막구조 천막(충주)·슬레이트. 누르면 깔린다 */
 export const SKIP_KINDS = new Set(['기타', '슬레이트']);
 
+export type TraceReply = TraceResult & { cached?: boolean; meta?: { ms?: number } };
+
+/**
+ * AI 지붕 찾기 — /api/solar/roofs. 지도 위 「AI로 지붕 찾기」와 제안서 만들기(아직 안 찾았으면 먼저 찾는다)가 같이 부른다.
+ * 실패하면 그 까닭(한글)을 던진다.
+ */
+export async function fetchRoofTrace(pnu: string): Promise<TraceReply> {
+  const res = await fetch(`/api/solar/roofs?pnu=${pnu}`);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((body as { error?: string }).error ?? `실패 (${res.status})`);
+  return body as TraceReply;
+}
+
 export type RoofPlan = {
   /** AI 가 딴 지붕 */
   roofs: Roof[];

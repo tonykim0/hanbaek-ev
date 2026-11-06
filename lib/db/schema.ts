@@ -58,6 +58,23 @@ export const solarSites = pgTable('solar_sites', {
 }));
 
 /**
+ * 태양광 제안서의 틀과 조건 (migrations/0124, 2026-11-06) — 틀(lib/solar/proposal/products TemplateKey)마다 한 줄.
+ * 파일은 Blob 의 solar-proposals/<틀>/ 아래(사업자가 준 원본 그대로), 조건은 숫자들(terms). 둘 다 한백 관리자가 화면에서 넣는다 —
+ * 저장소가 공개라 값을 코드 · 마이그레이션에 두지 않는다.
+ */
+export const solarProposalTemplates = pgTable('solar_proposal_templates', {
+  key: text('key').primaryKey(),
+  fileUrl: text('file_url'),
+  fileName: text('file_name'),
+  fileSize: integer('file_size'),
+  fileAt: timestamp('file_at', { withTimezone: true }),
+  fileBy: text('file_by'),
+  terms: jsonb('terms').$type<Record<string, number>>().notNull().default({}),
+  termsAt: timestamp('terms_at', { withTimezone: true }),
+  termsBy: text('terms_by'),
+});
+
+/**
  * 공지 — 한백이 협력사 전체에 알리는 글 (migrations/0051).
  *
  * 정적 HTML(public/notices/)로 한 장씩 만들던 것을 표로 받는다 — 파일은 쓸 때마다

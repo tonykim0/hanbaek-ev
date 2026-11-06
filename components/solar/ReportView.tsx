@@ -8,6 +8,7 @@ import { areaLabel, estimateCapacity } from '@/lib/solar/estimate';
 import type { Check, CheckStatus, Estimate, GridView, Level, Report, Verdict } from '@/lib/solar/types';
 import { LEVEL_LABEL } from '@/lib/solar/verdict';
 import GridDetail from './GridDetail';
+import ProposalPanel from './ProposalPanel';
 import SiteMap from './SiteMap';
 import { LEVEL_TONE, PANEL, StatusPill, TEXT } from './ui';
 import { useGroundBoxes } from './useGroundBoxes';
@@ -29,7 +30,21 @@ const BECAUSE: Record<Level, string> = {
  * 답(판정과 용량)이 맨 위에 한 판으로 서고, 그 근거가 밑으로 간다. 같은 값은 한 자리에만 둔다 —
  * 용량은 결과 판, 계통 사정 문장은 검토 항목(판정 밑에는 항목 이름만).
  */
-export default function ReportView({ report, mapKey, canRegister = false }: { report: Report; mapKey: string | null; canRegister?: boolean }) {
+export default function ReportView({
+  report,
+  mapKey,
+  canRegister = false,
+  canPropose = false,
+  canManage = false,
+}: {
+  report: Report;
+  mapKey: string | null;
+  canRegister?: boolean;
+  /** 제안서를 짓는가 — 한백의 눈(관리자 · 열람 전용). 사업자 자료라 협력사에게는 없다 */
+  canPropose?: boolean;
+  /** 제안서 틀 · 조건을 고치는가 — 한백 관리자 */
+  canManage?: boolean;
+}) {
   // 지붕형은 지도에서 고른 지붕의 패널 장수가 용량이다 — 고를 때마다 용량·발전량·계통·허가·종합 판정을 다시 센다
   const plan = useRoofPlan(report.mode === 'roof' ? report.map : null);
   // 지상형은 지도에 그려 확정한 네모의 넓이가 용량이다 — 네모가 없으면 필지 면적으로 센다
@@ -117,6 +132,9 @@ export default function ReportView({ report, mapKey, canRegister = false }: { re
           pnu={report.mode === 'roof' ? report.place.pnu : null}
         />
       )}
+
+      {/* 제안서 — 지붕형에서 고른 지붕의 배치로 사업자 틀을 채운다(한백 2026-11-06). 지상형은 사업자 상품이 지붕 임대라 없다 */}
+      {canPropose && plan && <ProposalPanel report={report} plan={plan} canManage={canManage} />}
 
       <div className={PANEL}>
         <h2 className={`border-b border-slate-100 px-5 py-3 ${TEXT.head}`}>검토 항목 {checks.length}개</h2>

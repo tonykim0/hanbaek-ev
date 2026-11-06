@@ -1,5 +1,6 @@
-import type { LngLat, PolygonCoords } from '../geo';
+import type { PolygonCoords } from '../geo';
 import { expandBbox } from '../geo';
+import { metersPerPx, TILE, toWorldPx } from '../mercator';
 import { SourceError } from './http';
 import { blank, decodeJpeg, encodeJpeg, paste, strokeRing } from './raster';
 
@@ -7,25 +8,10 @@ import { blank, decodeJpeg, encodeJpeg, paste, strokeRing } from './raster';
  * VWorld 항공영상(WMTS Satellite) — 필지 둘레를 한 장으로 이어 붙인다. 지붕을 AI 로 따는 데 쓴다(lib/roof-trace).
  * 타일은 웹 메르카토르 XYZ, 256px. 가장 크게는 19단계(위도 37°에서 약 0.24m/px) — 20단계부터는 XML 오류가 온다(실측).
  * 지도 모양 자료보다 새것이다: 충주 동충주산단4길 17 의 2024-11 준공 공장이 찍혀 있다.
+ * 경위도 ↔ 픽셀 셈은 lib/solar/mercator 다(제안서의 가배치 그림이 브라우저에서 같은 셈을 쓴다) — 예전 자리에서도 부르게 다시 내보낸다.
  */
-const TILE = 256;
+export { fromWorldPx, metersPerPx, toWorldPx } from '../mercator';
 const MAX_ZOOM = 19;
-
-/** 경위도 → 그 확대 단계의 전체 픽셀 좌표 */
-export function toWorldPx([lng, lat]: LngLat, z: number): [number, number] {
-  const n = 2 ** z * TILE;
-  const r = (lat * Math.PI) / 180;
-  return [((lng + 180) / 360) * n, ((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * n];
-}
-
-/** 전체 픽셀 좌표 → 경위도 */
-export function fromWorldPx([x, y]: [number, number], z: number): LngLat {
-  const n = 2 ** z * TILE;
-  return [(x / n) * 360 - 180, (Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / n))) * 180) / Math.PI];
-}
-
-/** 픽셀 하나가 땅에서 몇 m 인가 */
-export const metersPerPx = (lat: number, z: number) => (156_543.03 * Math.cos((lat * Math.PI) / 180)) / 2 ** z;
 
 export type Aerial = {
   jpeg: Buffer;

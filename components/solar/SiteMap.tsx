@@ -10,7 +10,7 @@ import { createBoxEditor, removeEl, type BoxEditor, type EditorState } from './b
 import { loadKakao, type KakaoMaps, type KMap, type Listener, type PolygonShape, type Shape } from './kakao';
 import { PANEL, Segmented, TEXT } from './ui';
 import type { GroundPlan, SizedBox } from './useGroundBoxes';
-import { SKIP_KINDS, type RoofPlan, type TraceResult } from './useRoofPlan';
+import { fetchRoofTrace, SKIP_KINDS, type RoofPlan, type TraceResult } from './useRoofPlan';
 
 const STYLE = {
   parcel: { strokeColor: '#f59e0b', strokeWeight: 3, strokeOpacity: 1, fillColor: '#f59e0b', fillOpacity: 0.08, zIndex: 1 },
@@ -313,12 +313,10 @@ export default function SiteMap({
     if (!pnu || !plan || ai.busy) return;
     setAi({ busy: true, msg: null, error: false });
     try {
-      const res = await fetch(`/api/solar/roofs?pnu=${pnu}`);
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? `실패 (${res.status})`);
+      const body = await fetchRoofTrace(pnu);
       plan.applyTrace(body);
       const sec = Math.round((body.meta?.ms ?? 0) / 1000);
-      const trace = body as TraceResult;
+      const trace: TraceResult = body;
       const skipped = trace.roofs.filter((r) => SKIP_KINDS.has(r.kind)).length;
       setAi({
         busy: false,

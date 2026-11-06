@@ -9,6 +9,7 @@
  */
 import Checker from '@/components/solar/Checker';
 import { getSessionUser } from '@/lib/auth/session';
+import { isHanbaek } from '@/lib/roles';
 import { canRegisterSite } from '@/lib/solar/sites';
 import type { Mode } from '@/lib/solar/types';
 
@@ -30,6 +31,9 @@ export default async function SolarCheckPage({ searchParams }: { searchParams: R
         initial={q.length >= 2 ? { q, mode } : null}
         // 상담 접수는 한백 관리자와 태양광 참여 협력사 — 열람 전용에게는 결과의 접수 단추가 없다
         canRegister={!!session && canRegisterSite(session)}
+        // 제안서는 사업자 자료(틀)로 짓는다 — 한백만(타이런트 업무협약서 3조). 틀 · 조건 고치기는 한백 관리자
+        canPropose={!!session && isHanbaek(session.role)}
+        canManage={session?.role === 'admin'}
       />
     </div>
   );

@@ -30,12 +30,18 @@ export default function Checker({
   mapKey,
   initial = null,
   canRegister = false,
+  canPropose = false,
+  canManage = false,
 }: {
   mapKey: string | null;
   /** 들고 온 주소 — 그 갈래의 검색창에 넣고 한 번 돈다(현장 상세의 「부지 검토」) */
   initial?: { q: string; mode: Mode } | null;
   /** 결과에서 상담 접수로 가는 길을 세우는가 — 쓰는 계정만(열람 전용은 아니다) */
   canRegister?: boolean;
+  /** 결과에 제안서 구역을 세우는가 — 한백의 눈 */
+  canPropose?: boolean;
+  /** 제안서 틀 · 조건을 고치는가 — 한백 관리자 */
+  canManage?: boolean;
 }) {
   /** 도는 검토의 갈래 — 결과 자리가 하나라 한 번에 하나만 돈다 */
   const [busy, setBusy] = useState<Mode | null>(null);
@@ -94,7 +100,9 @@ export default function Checker({
       </div>
 
       {/* 검토마다 새로 — 앞 결과에서 고른 지붕이 남지 않게 */}
-      {report && <ReportView key={report.checkedAt} report={report} mapKey={mapKey} canRegister={canRegister} />}
+      {report && (
+        <ReportView key={report.checkedAt} report={report} mapKey={mapKey} canRegister={canRegister} canPropose={canPropose} canManage={canManage} />
+      )}
     </div>
   );
 }
