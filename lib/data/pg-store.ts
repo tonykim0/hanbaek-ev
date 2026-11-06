@@ -59,6 +59,7 @@ import { agentStore } from './store/agents';
 import { agentTeamStore } from './store/agent-team';
 import { agentMemoryStore } from './store/agent-memory';
 import { agentMailStore } from './store/agent-mail';
+import { agitStore } from './store/agit';
 import { consultDupStore } from './store/consult-dup';
 import { surveyDraftStore } from './store/survey-drafts';
 import { noticeStore } from './store/notices';
@@ -232,6 +233,8 @@ export const pgRepository: ProjectRepository = {
   ...agentMemoryStore,
   // 에이전트 메일(초안 · 승인 · 보냄 · 현장 메일)과 보내는 메일 계정은 store/agent-mail.ts 에 있다
   ...agentMailStore,
+  // 아지트 열린구매 글(웹훅 연결 · 올린 글)은 store/agit.ts 에 있다
+  ...agitStore,
   // 사전현장컨설팅 결과서 「6. 중복설치」를 읽은 것은 store/consult-dup.ts 에 있다
   ...consultDupStore,
 

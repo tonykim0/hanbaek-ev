@@ -6,17 +6,15 @@
  */
 import { getRepository } from '@/lib/data';
 import { solarSiteStore } from '@/lib/data/solar-sites';
-import { listPartnerDetails } from '@/lib/auth/partner-details';
-import { userStore } from '@/lib/auth/users';
+import { loadPartnerLines } from '@/lib/partner-lines';
 import { batchesOf, batchKey } from '@/lib/payout-board';
 import { receivableTodos } from '@/lib/todo-receivables';
-import { normalizeOrg } from '@/lib/roles';
 import { today } from '@/lib/date';
 import { OVERDUE_DAYS } from '@/lib/todo-types';
 import type { Biz } from '@/lib/biz';
 import type { Actor } from '@/lib/auth/types';
 import type { Agent, AgentHeadline } from '@/types/agents';
-import { briefOf, headlineOf, siteLinesOf, type BatchLine, type PartnerLine, type ScopeData } from './brief';
+import { briefOf, headlineOf, siteLinesOf, type BatchLine, type ScopeData } from './brief';
 import { solarBriefOf, solarHeadlineOf, type SolarScopeData } from './solar-brief';
 
 /** 조직도 · 담당 화면이 읽는 셈 — 사업마다 재료가 달라(전기차 현장 · 지급 · 기성 / 태양광 상담 현장) 한 모양으로 감싼다 */
@@ -108,18 +106,8 @@ export async function loadScope(actor: Actor, withPayees = false): Promise<Scope
   };
   if (!withPayees) return data;
 
-  const [details, accounts] = await Promise.all([listPartnerDetails(), userStore.list()]);
-  /* 계정은 회사당 하나다 — 같은 소속에 여럿이면 정보를 적은 첫 계정 */
-  const partners = new Map<string, PartnerLine>();
-  for (const a of accounts) {
-    const org = normalizeOrg(a.org);
-    const d = details[a.id];
-    if (!org || !d || partners.has(org)) continue;
-    partners.set(org, {
-      bizRegNo: d.bizRegNo, ceo: d.ceo, bankName: d.bankName, bankAccountNo: d.bankAccountNo, bankHolder: d.bankHolder,
-      hasBizCert: Boolean(d.bizCertUrl), hasBankbook: Boolean(d.bankbookUrl),
-    });
-  }
+  /* 지급처의 사업자 · 계좌 — 아지트 열린구매 글(lib/agit)과 같은 읽기 */
+  const partners = await loadPartnerLines();
   const noOf = new Map(projects.map((p) => [p.id, p.mgmtNo ?? p.id]));
   const lines = new Map<string, BatchLine[]>();
   for (const r of history) {

@@ -15,6 +15,7 @@ import type { Biz } from '@/lib/biz';
 import type { DraftPlan } from '@/lib/site-mail';
 import type { RetouchLog } from '@/lib/retouch/types';
 import type { ConsultDup } from '@/lib/consult-dup';
+import type { AgitHookInfo, AgitPostRecord } from '@/lib/agit/post';
 import type {
   AgentDetail, AgentFile, AgentMail, AgentMemos, AgentMessage, AgentMessageMeta, AgentMessageRole, AgentSummary, AgentTeam, AgentUsage, MailAccountInfo, MemoScope, TeamMemberLog,
 } from '@/types/agents';
@@ -614,6 +615,30 @@ export interface ProjectRepository {
   saveMailAccount(input: { email: string; secret: string; server: string; biz?: Biz }, actor: Actor): Promise<MailAccountInfo>;
   /** 연결 끊기 — 없었으면 null */
   deleteMailAccount(actor: Actor, biz?: Biz): Promise<{ email: string } | null>;
+  /*
+   * 아지트 열린구매 글 (store/agit · migrations/0124) — 결제일마다 한 글을 거래명세서로 짓고(lib/agit/post) 한백이 눌러 올린다.
+   * 웹훅 주소는 잠가 두고 올릴 때만 agitHookUrl 이 푼다. 연결 · 올리기는 관리자, 보기는 한백의 눈.
+   */
+  /** 아지트 연결 — 없으면 null. 주소는 싣지 않는다 */
+  getAgitHook(actor: Actor): Promise<AgitHookInfo | null>;
+  /** 연결 — 웹훅 주소를 잠가 둔다(한 줄 — 다시 연결하면 갈아 끼운다) */
+  saveAgitHook(input: { url: string }, actor: Actor): Promise<AgitHookInfo>;
+  /** 끊기 — 없었으면 false */
+  deleteAgitHook(actor: Actor): Promise<boolean>;
+  /** 올릴 때만 — 풀어 둔 웹훅 주소. 연결이 없거나 풀 수 없으면 사람 말로 던진다 */
+  agitHookUrl(actor: Actor): Promise<string>;
+  /** 그 결제일들에 올린 글 — 최근이 앞 */
+  listAgitPosts(actor: Actor, payDates: string[]): Promise<AgitPostRecord[]>;
+  /** 올리기 첫 걸음 — 결제일 잠금 안에서 「올리는 중」을 세운다. 올리는 중이면 · 이미 올렸는데 again 이 아니면 던진다 */
+  claimAgitPost(
+    input: { payDate: string; body: string; total: number; batches: number; again: boolean },
+    actor: Actor
+  ): Promise<{ id: string }>;
+  /** 올리기 끝 — 결과를 적는다. 올렸으면 정산 담당의 그 결제일 상신 할 일을 끝내고 대화에 한 줄 */
+  finishAgitPost(
+    input: { id: string; result: { ok: true } | { ok: false; error: string } },
+    actor: Actor
+  ): Promise<AgitPostRecord>;
   /** 보낼 때만 — 풀어 둔 앱 비밀번호와 주소. 연결이 없거나 풀 수 없으면 사람 말로 던진다 */
   /** 그 담당의 사업의 보내는 메일 */
   mailCredential(actor: Actor, agentId: string): Promise<{ email: string; secret: string }>;
