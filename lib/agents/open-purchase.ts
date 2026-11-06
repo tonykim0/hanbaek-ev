@@ -10,7 +10,8 @@
  *   한백의 규칙이 다르면 payDayOf 한 곳을 고친다. 예: 2026-12-25(성탄절) → 12-24(목)에 나감 → 12-21(월)까지 상신.
  * ★기한 날 아침에 한 번★ — 그날을 놓쳤으면(크론이 못 돌았으면) 나가는 날 전까지는 늦게라도 한 번, 「기한이 지났습니다」로.
  *   나가는 날이 되면 말하지 않는다 — 그때의 상신 알림은 소음이다.
- * 그날 나갈 배치(지급처 × 구분)와 합계를 같이 적는다 — 상신할 것이 그것이다. 열린구매 글(아지트 지출 글)은 정산 담당에게 따로 시킨다.
+ * 그날 나갈 배치(지급처 × 구분)와 합계를 같이 적는다 — 상신할 것이 그것이다. 아지트 열린구매 글은 거래명세서 화면이 결제일마다 짓고
+ * 한백이 눌러 올린다(lib/agit · 2026-11-07) — 올리면 이 할 일이 저절로 끝난다(store/agit finishAgitPost 가 이 열쇠로 찾는다).
  */
 import { REGULAR_PAY_DAYS, type Batch } from '@/lib/payout-board';
 import {
@@ -108,7 +109,7 @@ export function openPurchasePlan(due: OpenPurchaseDue, today: string, batches: r
     years.length ? `${years.join(' · ')}년 공휴일 표가 없어 주말만 빼고 셌습니다.` : '',
     batches.length ? `그날 ${sum}` : '그날 지급할 배치가 0건입니다 — 가확정한 지급이 없습니다.',
     ...rows,
-    `상신하면 할 일을 끝내 주세요. 열린구매 글이 필요하면 「${monthDay(due.payDate)} 열린구매 글 써줘」라고 하세요.`,
+    '아지트 열린구매 글은 거래명세서 화면 맨 아래에서 보고 올립니다 — 올리면 이 할 일이 저절로 끝납니다.',
   ].filter(Boolean).join('\n');
 
   return {

@@ -9,7 +9,7 @@
  *  3. 협력사 직접입력이라 audit_log 를 남긴다. 노션엔 없던 것.
  */
 import {
-  boolean, index, integer, jsonb, pgTable, primaryKey,
+  bigint, boolean, index, integer, jsonb, pgTable, primaryKey,
   smallint, text, timestamp, uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import type { NoticeFile } from '@/types/project';
@@ -849,4 +849,35 @@ export const agentMails = pgTable('agent_mails', {
 }, (t) => ({
   byAgent: index('agent_mails_agent_idx').on(t.agentId, t.createdAt),
   byMessage: index('agent_mails_message_idx').on(t.messageId),
+}));
+
+// ── 아지트 ─────────────────────────────────────────────────────
+/**
+ * 아지트 그룹 웹훅 — 한 줄(id 'agit', migrations/0124). 주소가 곧 열쇠라 잠가 둔다(lib/agents/secret-box) — 화면 · 응답으로 나가지
+ * 않는다(store/agit). DB 마다 따로라 개발 · 프리뷰는 따로 연결하지 않는 한 운영 그룹에 글을 못 쓴다.
+ */
+export const agitHooks = pgTable('agit_hooks', {
+  id: text('id').primaryKey(),
+  token: text('token').notNull(),
+  connectedBy: text('connected_by').notNull(),
+  connectedAt: timestamp('connected_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * 아지트에 올린 열린구매 글 — 결제일 하나에 한 글(lib/agit/post). status: sending(올리는 중 — 두 번 누름을 막는다) · posted · failed.
+ * 한 결제일에 여러 줄일 수 있다 — 금액이 바뀌어 다시 올리는 일. body 는 실제로 보낸 글 그대로다.
+ */
+export const agitPosts = pgTable('agit_posts', {
+  id: text('id').primaryKey(),
+  payDate: text('pay_date').notNull(),
+  status: text('status').notNull(),
+  body: text('body').notNull(),
+  total: bigint('total', { mode: 'number' }).notNull(),
+  batches: integer('batches').notNull(),
+  error: text('error'),
+  postedBy: text('posted_by').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  postedAt: timestamp('posted_at', { withTimezone: true }),
+}, (t) => ({
+  byPayDate: index('agit_posts_pay_date_idx').on(t.payDate, t.createdAt),
 }));
