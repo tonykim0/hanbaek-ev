@@ -281,6 +281,8 @@ const SOLAR_GROUPS: Group[] = [
     label: '진행',
     items: [
       { href: '/solar/check', label: '부지 검토', short: '부지' },
+      // 사업자 틀로 짓는 제안서 — 한백의 눈만(사업자 자료 · 타이런트 업무협약서 3조). 한백 2026-11-07 「사이드바에 제안서 생성 이라는 기능으로」
+      { href: '/solar/proposals', label: '제안서 생성', short: '제안', hanbaekOnly: true },
       { href: '/solar/sites', label: '현장관리', short: '현장' },
     ],
   },

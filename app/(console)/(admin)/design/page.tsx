@@ -110,6 +110,9 @@ export default function DesignPage() {
                 <Btn kind="quiet">고치기</Btn>
                 <Choice on>고른 칩</Choice>
                 <Choice on={false}>안 고른 칩</Choice>
+                <Choice on={false} disabled>
+                  못 고르는 칩 <span className="font-normal">· 까닭</span>
+                </Choice>
                 <input placeholder="입력칸 — 초점이 사업 색" className={`${FIELD} max-w-[200px]`} />
               </div>
             </div>

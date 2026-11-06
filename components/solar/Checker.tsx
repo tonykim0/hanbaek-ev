@@ -32,6 +32,8 @@ export default function Checker({
   canRegister = false,
   canPropose = false,
   canManage = false,
+  modes = ['roof', 'ground'],
+  focus,
 }: {
   mapKey: string | null;
   /** 들고 온 주소 — 그 갈래의 검색창에 넣고 한 번 돈다(현장 상세의 「부지 검토」) */
@@ -42,6 +44,10 @@ export default function Checker({
   canPropose?: boolean;
   /** 제안서 틀 · 조건을 고치는가 — 한백 관리자 */
   canManage?: boolean;
+  /** 세울 검색창 — 제안서 생성은 지붕형 하나(사업자 상품이 지붕 임대다) */
+  modes?: Mode[];
+  /** 'proposal' — 결과에 요약 · 지도 · 제안서만(검토 항목은 부지 검토에) */
+  focus?: 'proposal';
 }) {
   /** 도는 검토의 갈래 — 결과 자리가 하나라 한 번에 하나만 돈다 */
   const [busy, setBusy] = useState<Mode | null>(null);
@@ -87,7 +93,7 @@ export default function Checker({
     <div>
       {/* 위에서 아래로(한백 지시) — 주소 칸이 넓어야 긴 주소·후보 목록이 잘리지 않는다 */}
       <div className="grid gap-3">
-        {BOXES.map((b) => (
+        {BOXES.filter((b) => modes.includes(b.mode)).map((b) => (
           <SearchBox
             key={b.mode}
             {...b}
@@ -101,7 +107,15 @@ export default function Checker({
 
       {/* 검토마다 새로 — 앞 결과에서 고른 지붕이 남지 않게 */}
       {report && (
-        <ReportView key={report.checkedAt} report={report} mapKey={mapKey} canRegister={canRegister} canPropose={canPropose} canManage={canManage} />
+        <ReportView
+          key={report.checkedAt}
+          report={report}
+          mapKey={mapKey}
+          canRegister={canRegister}
+          canPropose={canPropose}
+          canManage={canManage}
+          focus={focus}
+        />
       )}
     </div>
   );

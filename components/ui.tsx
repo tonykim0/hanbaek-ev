@@ -311,17 +311,21 @@ export function Note({
  * 각지다: 누르는 것이다(규칙 11).
  */
 export function Choice({
-  on, children, ...rest
+  on, children, disabled, ...rest
 }: ButtonHTMLAttributes<HTMLButtonElement> & { on: boolean }) {
   return (
     <button
       type="button"
       {...rest}
+      disabled={disabled}
       aria-pressed={on}
       className={`rounded-ctl border px-2.5 py-1.5 text-small font-bold transition ${
-        on
-          ? 'border-brand-500 bg-brand-fill text-brand-on-fill'
-          : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700'
+        // 못 고르는 칩 — 점선 · 옅은 바탕(글자는 가장 옅은 글자색 slate-500). 왜 못 고르는지는 칩 글에 적는다(화면 규칙 3)
+        disabled
+          ? 'cursor-not-allowed border-dashed border-slate-200 bg-slate-50 text-slate-500'
+          : on
+            ? 'border-brand-500 bg-brand-fill text-brand-on-fill'
+            : 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700'
       }`}
     >
       {children}

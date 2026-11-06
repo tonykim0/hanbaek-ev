@@ -9,7 +9,7 @@ import {
   capacityKw, eok2, eokManText, kwText, lumoraRent, manwonText, millionText, monthAfter, profileAngleDeg, solar15, solarShare,
 } from '@/lib/solar/proposal/calc';
 import { mountText, proposalFileName, sellerBlock, sellerLine, splitAddress } from '@/lib/solar/proposal/fill-common';
-import { cleanTerms, missingTerms, PRODUCTS, TEMPLATES } from '@/lib/solar/proposal/products';
+import { cleanTerms, missingTerms, PRODUCTS, TEMPLATES, UPCOMING } from '@/lib/solar/proposal/products';
 import { paraXml, rectXml, tableXml, textBoxXml } from '@/lib/pptx/xml';
 import { orphansOf, sha256Hex } from '@/lib/pptx/deck';
 import { unprojector, type LngLat } from '@/lib/solar/geo';
@@ -109,6 +109,9 @@ describe('조건 다듬기', () => {
   });
   it('상품마다 틀이 있다', () => {
     for (const p of PRODUCTS) expect(TEMPLATES[p.template].company).toBe(p.company);
+  });
+  it('틀 받기 전 상품(모햇)은 고르는 상품에 없다 — 이름이 겹치지 않는다', () => {
+    for (const u of UPCOMING) expect(PRODUCTS.some((p) => p.company === u.company && p.label === u.label)).toBe(false);
   });
 });
 

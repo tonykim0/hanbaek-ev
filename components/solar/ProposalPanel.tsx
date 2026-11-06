@@ -9,13 +9,13 @@ import { capacityKw, kwText } from '@/lib/solar/proposal/calc';
 import { buildProposal, saveProposalTerms, uploadProposalTemplate } from '@/lib/solar/proposal/client';
 import { proposalFileName, type ProposalInput } from '@/lib/solar/proposal/fill-common';
 import { proposalLayout, type ProposalLayout } from '@/lib/solar/proposal/layout-rule';
-import { missingTerms, PRODUCTS, productOf, TEMPLATES, TEMPLATE_KEYS, type ProductKey, type TemplateKey, type TermField, type Terms } from '@/lib/solar/proposal/products';
+import { missingTerms, PRODUCTS, productOf, TEMPLATES, TEMPLATE_KEYS, UPCOMING, type ProductKey, type TemplateKey, type TermField, type Terms } from '@/lib/solar/proposal/products';
 import type { Report } from '@/lib/solar/types';
 import { siteImager } from './proposal-image';
 import { PANEL, TEXT } from './ui';
 import { fetchRoofTrace, type RoofPlan } from './useRoofPlan';
 
-const COMPANIES = Array.from(new Set(PRODUCTS.map((p) => p.company)));
+const COMPANIES = Array.from(new Set([...PRODUCTS, ...UPCOMING].map((p) => p.company)));
 type Phase = null | 'roofs' | 'build';
 /** 마지막으로 쓴 영업사 · 연락처 — 이 브라우저에만(같은 사람이 제안서를 여러 장 짓는다). 못 읽으면 빈칸으로 시작한다 */
 const SELLER_KEY = 'hb-proposal-seller';
@@ -229,6 +229,13 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
                   </Choice>
                 );
               })}
+              {/* 틀을 아직 못 받은 상품 — 못 고르는 칩(lib/solar/proposal/products UPCOMING) */}
+              {UPCOMING.filter((u) => u.company === company).map((u) => (
+                <Choice key={u.label} on={false} disabled>
+                  {u.label}
+                  <span className="ml-1.5 font-normal">· {u.why}</span>
+                </Choice>
+              ))}
             </div>
           ))}
         </div>

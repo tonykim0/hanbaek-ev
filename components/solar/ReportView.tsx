@@ -36,10 +36,13 @@ export default function ReportView({
   canRegister = false,
   canPropose = false,
   canManage = false,
+  focus,
 }: {
   report: Report;
   mapKey: string | null;
   canRegister?: boolean;
+  /** 'proposal' — 제안서 생성 화면: 요약 · 지도 · 제안서만 세우고 검토 항목은 뺀다(부지 검토에 있다) */
+  focus?: 'proposal';
   /** 제안서를 짓는가 — 한백의 눈(관리자 · 열람 전용). 사업자 자료라 협력사에게는 없다 */
   canPropose?: boolean;
   /** 제안서 틀 · 조건을 고치는가 — 한백 관리자 */
@@ -119,6 +122,7 @@ export default function ReportView({
         basis={basis}
         register={register}
         canRegister={canRegister}
+        jump={focus !== 'proposal'}
       />
 
       {/* 검토마다 새로 그린다 — 앞 결과의 도형이 남지 않게 */}
@@ -136,14 +140,16 @@ export default function ReportView({
       {/* 제안서 — 지붕형에서 고른 지붕의 배치로 사업자 틀을 채운다(한백 2026-11-06). 지상형은 사업자 상품이 지붕 임대라 없다 */}
       {canPropose && plan && <ProposalPanel report={report} plan={plan} canManage={canManage} />}
 
-      <div className={PANEL}>
-        <h2 className={`border-b border-slate-100 px-5 py-3 ${TEXT.head}`}>검토 항목 {checks.length}개</h2>
-        <ul className="divide-y divide-slate-100">
-          {checks.map((c) => (
-            <CheckRow key={c.key} check={c} grid={c.key === 'grid' ? grid : null} />
-          ))}
-        </ul>
-      </div>
+      {focus !== 'proposal' && (
+        <div className={PANEL}>
+          <h2 className={`border-b border-slate-100 px-5 py-3 ${TEXT.head}`}>검토 항목 {checks.length}개</h2>
+          <ul className="divide-y divide-slate-100">
+            {checks.map((c) => (
+              <CheckRow key={c.key} check={c} grid={c.key === 'grid' ? grid : null} />
+            ))}
+          </ul>
+        </div>
+      )}
     </section>
   );
 }
@@ -157,12 +163,15 @@ function Summary({
   basis,
   register,
   canRegister,
+  jump = true,
 }: {
   report: Report;
   verdict: Verdict;
   checks: Check[];
   estimate: Estimate | null;
   basis: string;
+  /** 판정을 정한 항목 이름이 밑의 검토 항목으로 가는 고리인가 — 검토 항목을 안 세우는 제안서 생성 화면에서는 글자만 */
+  jump?: boolean;
   /** AI 지붕 배치로 용량을 정했을 때만 — 건축물대장 면적으로 센 용량(견줘 보는 값) */
   register: Estimate | null;
   canRegister: boolean;
@@ -211,9 +220,13 @@ function Summary({
                 {verdict.because.map((c, i) => (
                   <span key={c.key}>
                     {i > 0 && ' · '}
-                    <a href={`#check-${c.key}`} className="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900">
-                      {c.title}
-                    </a>
+                    {jump ? (
+                      <a href={`#check-${c.key}`} className="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900">
+                        {c.title}
+                      </a>
+                    ) : (
+                      <span className="font-semibold text-slate-900">{c.title}</span>
+                    )}
                   </span>
                 ))}
               </>
