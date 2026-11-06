@@ -1,5 +1,5 @@
 /**
- * 타이런트아이 솔라15 제안서 — 사업자가 준 「솔라15 템플릿.pptx」(30장)에 현장 칸 두 장을 채운다. [브라우저]
+ * 타이런트아이 솔라15 제안서 — 사업자가 준 「솔라15 템플릿.pptx」(30장)에 현장 칸 두 장을 채우고 「시공사」 한 장을 뺀다. [브라우저]
  *
  * 틀에서 바뀌는 자리는 둘뿐이다(2026-11-06 틀을 열어 쟀다 — 나머지 28장은 한 장짜리 그림이다):
  *   2장 「Project 요약」 — 이름 붙은 글상자 여덟(고객명 · 설치용량 · 20년 누적 · 35년 총 누적 · 설치위치 두 줄 · 설치형식 · 모듈)과
@@ -43,6 +43,12 @@ const S2 = {
   image: '사각형: 둥근 모서리 11',
 } as const;
 const S3 = { table: '그림 2', frame1: '직사각형 1', frame2: '직사각형 3' } as const;
+/**
+ * 뺄 장 — 26장 「시공사」(타이런트와 일하는 시공 협력사 로고 판, 그림 한 장). 한백이 고객에게 내는 제안서라 뺀다
+ * (한백 2026-11-06 「페이지 26 삭제해도돼」). 차례(26)가 아니라 그 그림의 내용(SHA-256)으로 찾는다 — 사업자가 장을 더하거나 빼
+ * 차례가 밀려도 엉뚱한 장을 빼지 않게. 사업자가 그 그림을 바꾼 새 틀이면 못 찾아 그 장이 남는다 — 그때 새 틀의 그림 값으로 바꾼다.
+ */
+const DROP_PICTURES = ['bebb8ec6862a529b5c038582d89a29d71aa6f1869258c7c04445df051926e828'];
 
 export async function fillTyrant({ template, terms, input }: FillArgs, variant: Solar15Variant): Promise<Blob | Uint8Array> {
   const deck = await Deck.open(template);
@@ -168,6 +174,9 @@ export async function fillTyrant({ template, terms, input }: FillArgs, variant: 
     }),
   );
   s3.append(xml.join(''));
+
+  // ── 뺄 장 — 뒤에서부터(앞을 빼면 뒤의 차례가 당겨진다) ──────────────────
+  for (const sha of DROP_PICTURES) for (const n of (await deck.slidesUsing(sha)).reverse()) await deck.dropSlide(n);
 
   return deck.save();
 }

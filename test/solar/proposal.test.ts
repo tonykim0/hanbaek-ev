@@ -11,6 +11,7 @@ import {
 import { mountText, proposalFileName, splitAddress } from '@/lib/solar/proposal/fill-common';
 import { cleanTerms, missingTerms, PRODUCTS, TEMPLATES } from '@/lib/solar/proposal/products';
 import { paraXml, tableXml, textBoxXml } from '@/lib/pptx/xml';
+import { orphansOf, sha256Hex } from '@/lib/pptx/deck';
 
 describe('용량 · 숫자 표기', () => {
   it('패널 장수 × 모듈 출력 → kW 소수 둘째', () => {
@@ -140,5 +141,35 @@ describe('파워포인트 글 짓기', () => {
     const o = { font: 'F', size: 10, border: { color: '000000', w: 6350 } };
     expect(tableXml(1, 't', { x: 0, y: 0, w: 30, h: 10 }, [10, 10, 10], [10], [[{ text: 'a', span: 2 }, { text: 'b' }]], o)).toContain('hMerge="1"');
     expect(() => tableXml(1, 't', { x: 0, y: 0, w: 30, h: 10 }, [10, 10, 10], [10], [[{ text: 'a' }]], o)).toThrow('칸 수');
+  });
+});
+
+describe('파워포인트 장 빼기', () => {
+  // 2장을 차례에서 걷은 뒤의 묶음 — 프레젠테이션은 1 · 3장만 가리킨다
+  const pkg = () =>
+    new Map<string, string[]>([
+      ['_rels/.rels', ['ppt/presentation.xml']],
+      ['ppt/_rels/presentation.xml.rels', ['ppt/slideMasters/slideMaster1.xml', 'ppt/slides/slide1.xml', 'ppt/slides/slide3.xml']],
+      ['ppt/slides/_rels/slide1.xml.rels', ['ppt/slideLayouts/slideLayout1.xml', 'ppt/media/a.png', 'ppt/media/shared.png']],
+      ['ppt/slides/_rels/slide2.xml.rels', ['ppt/slideLayouts/slideLayout1.xml', 'ppt/media/b.png', 'ppt/media/shared.png', 'ppt/notesSlides/notesSlide2.xml']],
+      ['ppt/notesSlides/_rels/notesSlide2.xml.rels', ['ppt/notesMasters/notesMaster1.xml', 'ppt/slides/slide2.xml']],
+      ['ppt/slides/_rels/slide3.xml.rels', ['ppt/slideLayouts/slideLayout1.xml']],
+    ]);
+  it('그 장 · 메모 장 · 둘의 관계 · 그 장만 쓰던 그림을 지운다 — 레이아웃 · 같이 쓰는 그림은 남긴다', () => {
+    expect(orphansOf('ppt/slides/slide2.xml', pkg()).sort()).toEqual([
+      'ppt/media/b.png',
+      'ppt/notesSlides/_rels/notesSlide2.xml.rels',
+      'ppt/notesSlides/notesSlide2.xml',
+      'ppt/slides/_rels/slide2.xml.rels',
+      'ppt/slides/slide2.xml',
+    ]);
+  });
+  it('다른 장이 그 장을 가리키면(하이퍼링크) 아무것도 지우지 않는다', () => {
+    const t = pkg();
+    t.set('ppt/slides/_rels/slide3.xml.rels', ['ppt/slideLayouts/slideLayout1.xml', 'ppt/slides/slide2.xml']);
+    expect(orphansOf('ppt/slides/slide2.xml', t)).toEqual([]);
+  });
+  it('그림은 내용의 SHA-256 으로 알아본다', async () => {
+    expect(await sha256Hex(new TextEncoder().encode('abc'))).toBe('ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
   });
 });

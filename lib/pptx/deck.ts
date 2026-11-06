@@ -14,7 +14,14 @@ const CT_NS = 'http://schemas.openxmlformats.org/package/2006/content-types';
 const IMAGE_REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image';
 export const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 
+const P14_NS = 'http://schemas.microsoft.com/office/powerpoint/2010/main';
+
 const ser = (d: Document) => new XMLSerializer().serializeToString(d);
+/** 내용의 SHA-256(16진) — 브라우저 · node 둘 다의 Web Crypto */
+export async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const d = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes));
+  return Array.from(new Uint8Array(d), (b) => b.toString(16).padStart(2, '0')).join('');
+}
 /** 'ppt/slides/slide2.xml' 기준 상대 경로 '../media/image3.png' → 'ppt/media/image3.png' */
 function resolve(base: string, target: string): string {
   if (target.startsWith('/')) return target.slice(1);
@@ -26,6 +33,21 @@ function resolve(base: string, target: string): string {
   return parts.join('/');
 }
 const relsPathOf = (part: string) => part.replace(/([^/]+)$/, '_rels/$1.rels');
+
+/**
+ * 차례에서 걷은 슬라이드를 묶음에서 지울 때 같이 지울 자리 — 그 장과 (있으면) 그 메모 장, 둘의 관계 파일, 둘만 쓰던 그림. [순수]
+ * 레이아웃 · 마스터 · 다른 장도 쓰는 그림은 남긴다. 다른 부품이 그 장을 가리키면(다른 장의 하이퍼링크 등) 아무것도 지우지 않는다 —
+ * 가리키는 곳이 사라지면 그쪽이 깨진다.
+ * targets: 관계 파일 자리 → 그 대상 부품 자리들(차례에서 걷은 뒤의 묶음 — 프레젠테이션은 그 장을 더 가리키지 않는다).
+ */
+export function orphansOf(part: string, targets: ReadonlyMap<string, readonly string[]>): string[] {
+  const own = [part, ...(targets.get(relsPathOf(part)) ?? []).filter((t) => /\/notesSlides\/[^/]+\.xml$/.test(t))];
+  const ownRels = own.map(relsPathOf);
+  const usedElsewhere = (path: string) => Array.from(targets).some(([relFile, ts]) => !ownRels.includes(relFile) && ts.includes(path));
+  if (usedElsewhere(part)) return [];
+  const media = new Set(own.flatMap((p) => targets.get(relsPathOf(p)) ?? []).filter((t) => t.startsWith('ppt/media/')));
+  return [...own, ...ownRels.filter((r) => targets.has(r)), ...Array.from(media).filter((m) => !usedElsewhere(m))];
+}
 
 export class Slide {
   private dirty = false;
@@ -254,21 +276,99 @@ export class Deck {
   }
   private readonly needsType = new Set<string>();
 
-  /** 슬라이드를 뺀다(1부터) — 목록과 관계에서만 걷는다(파일은 남아도 파워포인트가 안 읽는다) */
+  /** 열어서 고친 슬라이드를 묶음에 적어 둔다 — 묶음 전체의 관계를 읽기 전에(고친 관계가 아직 메모리에만 있으면 안 보인다) */
+  private sync(): void {
+    for (const s of this.opened.values()) s.flush(this.zip);
+  }
+
+  /** 묶음 안 모든 관계(.rels)의 대상 — 관계 파일 자리 → 대상 부품 자리들 */
+  private async allTargets(): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>();
+    for (const f of this.zip.file(/\.rels$/)) {
+      // 'ppt/slides/_rels/slide2.xml.rels' 의 주인은 'ppt/slides/slide2.xml' · 묶음 뿌리의 '_rels/.rels' 는 뿌리 기준
+      const owner = f.name === '_rels/.rels' ? '' : f.name.replace(/_rels\/([^/]+)\.rels$/, '$1');
+      const doc = parseXml(await f.async('string'));
+      out.set(
+        f.name,
+        Array.from(doc.getElementsByTagNameNS(PKG_REL_NS, 'Relationship'))
+          .filter((r) => r.getAttribute('TargetMode') !== 'External')
+          .map((r) => resolve(owner, r.getAttribute('Target') ?? '')),
+      );
+    }
+    return out;
+  }
+
+  /**
+   * 그 그림(내용의 SHA-256, 16진)을 쓰는 슬라이드의 차례들(1부터) — 그림 한 장으로 된 틀의 장을 차례가 아니라 내용으로 찾는다
+   * (사업자가 장을 더하거나 빼 차례가 밀려도 엉뚱한 장을 짚지 않게).
+   */
+  async slidesUsing(sha256: string): Promise<number[]> {
+    this.sync();
+    const memo = new Map<string, string>();
+    const hits: number[] = [];
+    for (let i = 0; i < this.slides.length; i++) {
+      const part = this.slides[i];
+      const relXml = await this.zip.file(relsPathOf(part))?.async('string');
+      if (!relXml) continue;
+      for (const r of Array.from(parseXml(relXml).getElementsByTagNameNS(PKG_REL_NS, 'Relationship'))) {
+        if (r.getAttribute('Type') !== IMAGE_REL || r.getAttribute('TargetMode') === 'External') continue;
+        const path = resolve(part, r.getAttribute('Target') ?? '');
+        let h = memo.get(path);
+        if (h === undefined) {
+          const bytes = await this.zip.file(path)?.async('uint8array');
+          h = bytes ? await sha256Hex(bytes) : '';
+          memo.set(path, h);
+        }
+        if (h === sha256) {
+          hits.push(i + 1);
+          break;
+        }
+      }
+    }
+    return hits;
+  }
+
+  /**
+   * 슬라이드를 뺀다(1부터) — 차례 목록 · 관계 · 구역 · 맞춤 쇼에서 걷고, 그 장의 파일 · 메모 장 · 이제 아무 장도 안 쓰는 그림까지
+   * 묶음에서 지운다(남겨 두면 파일이 그만큼 무겁고, 주인 없는 부품을 「복구」로 묻는 프로그램이 있다). 다른 부품이 그 장을
+   * 가리키면(다른 장의 하이퍼링크 등) 파일은 남긴다 — 가리키는 곳이 사라지면 그쪽이 깨진다.
+   */
   async dropSlide(n: number): Promise<void> {
     const part = this.slides[n - 1];
+    if (!part) throw new Error(`${n}번째 슬라이드가 없습니다(지금 ${this.slides.length}장).`);
+    this.sync();
     const pres = parseXml(await this.zip.file('ppt/presentation.xml')!.async('string'));
-    const rels = parseXml(await this.zip.file('ppt/_rels/presentation.xml.rels')!.async('string'));
-    const rel = Array.from(rels.getElementsByTagNameNS(PKG_REL_NS, 'Relationship')).find((r) => resolve('ppt/presentation.xml', r.getAttribute('Target') ?? '') === part);
-    if (!rel) return;
+    const presRels = parseXml(await this.zip.file('ppt/_rels/presentation.xml.rels')!.async('string'));
+    const rel = Array.from(presRels.getElementsByTagNameNS(PKG_REL_NS, 'Relationship')).find((r) => resolve('ppt/presentation.xml', r.getAttribute('Target') ?? '') === part);
+    if (!rel) throw new Error(`${n}번째 슬라이드의 관계가 없습니다.`);
     const rid = rel.getAttribute('Id');
+    const ridOf = (el: Element) => el.getAttributeNS(R_NS, 'id') || el.getAttribute('r:id');
+    let numId: string | null = null;
     for (const s of Array.from(pres.getElementsByTagNameNS(P_NS, 'sldId'))) {
-      if ((s.getAttributeNS(R_NS, 'id') ?? s.getAttribute('r:id')) === rid) s.parentNode!.removeChild(s);
+      if (ridOf(s) !== rid) continue;
+      numId = s.getAttribute('id');
+      s.parentNode!.removeChild(s);
     }
+    // 구역(p14:sectionLst)은 슬라이드 번호로, 맞춤 쇼(p:custShowLst)는 관계로 그 장을 가리킨다 — 남으면 파워포인트가 「복구」를 묻는다
+    for (const s of Array.from(pres.getElementsByTagNameNS(P14_NS, 'sldId'))) if (numId && s.getAttribute('id') === numId) s.parentNode!.removeChild(s);
+    for (const s of Array.from(pres.getElementsByTagNameNS(P_NS, 'sld'))) if (ridOf(s) === rid) s.parentNode!.removeChild(s);
     rel.parentNode!.removeChild(rel);
     this.zip.file('ppt/presentation.xml', ser(pres));
-    this.zip.file('ppt/_rels/presentation.xml.rels', ser(rels));
+    this.zip.file('ppt/_rels/presentation.xml.rels', ser(presRels));
     this.slides.splice(n - 1, 1);
+    this.opened.delete(part);
+    // 파일 속성의 장 수 — 파워포인트는 저장할 때 다시 쓰지만, 파인더 · 미리보기가 이 값을 보인다
+    const app = await this.zip.file('docProps/app.xml')?.async('string');
+    if (app) this.zip.file('docProps/app.xml', app.replace(/<Slides>\d+<\/Slides>/, `<Slides>${this.slides.length}</Slides>`));
+
+    const gone = new Set(orphansOf(part, await this.allTargets()));
+    if (!gone.size) return;
+    for (const p of gone) this.zip.remove(p);
+    const ct = parseXml(await this.zip.file('[Content_Types].xml')!.async('string'));
+    for (const o of Array.from(ct.getElementsByTagNameNS(CT_NS, 'Override'))) {
+      if (gone.has((o.getAttribute('PartName') ?? '').replace(/^\//, ''))) o.parentNode!.removeChild(o);
+    }
+    this.zip.file('[Content_Types].xml', ser(ct));
   }
 
   /** 고친 것을 묶어 파일로 — 브라우저는 Blob, 시험(node)은 Uint8Array */
