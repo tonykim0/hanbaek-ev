@@ -121,6 +121,7 @@ export type TableSort = ReturnType<typeof useTableSort>;
 const PIN_EDGE = 'shadow-[inset_-1px_0_0_theme(colors.slate.200)]';
 const PIN_HEAD = `sticky left-0 z-20 bg-slate-50 ${PIN_EDGE}`;
 const PIN_CELL = `sticky left-0 z-[1] bg-white group-hover:bg-brand-50 ${PIN_EDGE}`;
+const PIN_FOOT = `sticky left-0 z-[1] bg-slate-50 ${PIN_EDGE}`;
 
 export default function ProjectTable({
   projects, canMove, onMove, busyId, filters, options, onFilter, tab, columns, sort: sorting, viewer,
@@ -148,6 +149,9 @@ export default function ProjectTable({
   const show = (k: ColKey) => !hidden.has(k);
 
   const rows = useMemo(() => sortProjects(projects, sort, desc), [projects, sort, desc]);
+  /* 합계 줄 — 지금 걸러 둔 줄의 대수를 더한다(아래 tfoot) */
+  const units = useMemo(() => rows.reduce((n, p) => n + qtyOf(p), 0), [rows]);
+  const shown = PICKABLE.filter((c) => show(c.key)).length;
 
   /** 정렬 단추. 필터가 함께 붙는 열은 attr 를 준다. */
   function head(
@@ -312,6 +316,31 @@ export default function ProjectTable({
               );
             })}
           </tbody>
+          {/*
+            * 합계 줄 — 지금 걸러 둔 줄의 건수와 대수 합(한백 지시 2026-11-06 「필터링 하면 현재 필터에서 총 대수 합계를
+            * 볼 수 있게」). 대수는 대수 열 밑에 선다 — 그 열을 꺼 두면 건수 곁에 붙인다. 위 건수 줄(필터 줄 오른쪽 끝)과
+            * 같은 줄 목록에서 세니 둘이 갈리지 않는다. 엑셀에는 넣지 않는다 — 합계 줄이 섞이면 엑셀의 필터 · 정렬이 그 줄까지 옮긴다.
+            */}
+          <tfoot className="border-t border-slate-200 bg-slate-50">
+            <tr>
+              <td className={`px-3 py-2.5 text-left font-bold text-slate-700 ${PIN_FOOT}`}>
+                합계 <span className="tabular-nums">{rows.length.toLocaleString('ko-KR')}</span>건
+                {!show('qty') && (
+                  <> · <span className="tabular-nums">{units.toLocaleString('ko-KR')}</span>대</>
+                )}
+              </td>
+              {show('stage') && <td />}
+              {show('qty') && (
+                <td className="px-3 py-2.5 font-bold tabular-nums text-slate-900">
+                  {units.toLocaleString('ko-KR')}
+                  <span className="ml-1 text-tiny font-normal text-slate-500">대</span>
+                </td>
+              )}
+              {shown - (show('stage') ? 1 : 0) - (show('qty') ? 1 : 0) > 0 && (
+                <td colSpan={shown - (show('stage') ? 1 : 0) - (show('qty') ? 1 : 0)} />
+              )}
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>
