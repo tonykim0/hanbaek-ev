@@ -48,7 +48,6 @@ export type Estimate = {
   /** 설치 가능 면적(㎡) — 지붕 면적·땅 면적에 이용률을 곱한 값 */
   usableArea: number;
   capacityKw: number;
-  yearlyKwh: number;
   assumptions: Fact[];
 };
 
@@ -147,7 +146,6 @@ export type Report = {
   /** 화면이 고른 지붕으로 다시 셈할 때 쓰는 값 */
   inputs: {
     sido: string | null;
-    kwhPerKwYear: number | null;
     /** 필지에 걸린 용도지역·지구 이름(접함 뺌) — 지상형 개발 인허가를 그린 네모 넓이로 다시 셀 때 */
     zones: string[];
   };

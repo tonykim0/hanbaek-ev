@@ -43,11 +43,6 @@ export const LAYOUT = { setbackM: 1.0, gapM: 0.02, aisleEvery: 20, aisleM: 1.0, 
  */
 export const CARPORT = { setbackM: 0.05 } as const;
 
-/** 하루 발전시간 — PVGIS 를 못 받았을 때만 쓰는 업계 어림값 */
-export const FALLBACK_HOURS_PER_DAY = 3.6;
-
-/** 손실률(%) — PVGIS 기본 권장값. 천안 100kW·10° 로 3.54h/일, 업계 3.6h 와 맞는다 */
-export const PV_LOSS_PCT = 14;
 
 /** 경사각 — 지붕형은 실제 설계의 경사고정형 각도(12° 79곳 · 15° 87곳 — 금속 지붕은 대부분 12°), 지상형은 최적각 근처 */
 export const TILT_DEG = { roof: 12, ground: 30 } as const;

@@ -24,7 +24,7 @@ export const TEXT = {
   /** 사실 이름 · 주소 · 검색 후보의 둘째 줄 */
   label: 'text-base text-slate-500',
   meta: CONSOLE.meta,
-  /** 큰 숫자 — 설치 가능 용량 · 연 발전량 */
+  /** 큰 숫자 — 설치 가능 용량 · 건축물대장 면적 기준 */
   num: 'text-h1 font-black tabular-nums text-slate-900',
   numLabel: CONSOLE.label,
 } as const;

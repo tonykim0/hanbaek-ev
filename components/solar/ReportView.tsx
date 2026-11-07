@@ -69,7 +69,6 @@ export default function ReportView({
         ? estimateCapacity({
             capacityKw: capacityKw ?? 0,
             mode: 'roof',
-            kwhPerKwYear: report.inputs.kwhPerKwYear,
             capacityNote: `지도 배치 — ${MODULE.watt}W 모듈(${MODULE.lengthM} × ${MODULE.widthM}m) ${plan.count.toLocaleString()}장, ${
               plan.style === 'flush'
                 ? '지붕면 부착형'
@@ -81,7 +80,6 @@ export default function ReportView({
           ? estimateCapacity({
               capacityKw: capacityKw ?? 0,
               mode: 'ground',
-              kwhPerKwYear: report.inputs.kwhPerKwYear,
               capacityNote: carport
                 ? `주차장 캐노피 — 설치면적 ${boxCount}곳(${Math.round(boxesArea).toLocaleString()}㎡)을 캐노피 지붕으로 보고 ${MODULE.watt}W 모듈 ${boxPanels.toLocaleString()}장을 빈틈없이(낮은 경사 한 면이라 줄 간격 없음) · 주차면 1면(2.5 × 5m)에 약 ${(((capacityKw ?? 0) / Math.max(boxesArea, 1)) * 12.5).toFixed(1)}kW`
                 : `땅에 세움 — 설치면적 ${boxCount}곳 · 넓이 합 ${Math.round(boxesArea).toLocaleString()}㎡ · 땅 ${AREA_PER_KW.ground}㎡ 당 1kW`,
@@ -247,8 +245,7 @@ function Summary({
             roofArea={report.mode === 'roof' && estimate ? estimate.usableArea : undefined}
             sub={estimate ? basis : undefined}
           />
-          <Num label="연 발전량" value={estimate ? `${Math.round(estimate.yearlyKwh / 1000).toLocaleString()} MWh` : '—'} />
-          {/* 연 발전량은 설치 가능 용량의 것이라 그 곁에 두고, 견줘 보는 값은 끝에 둔다(좁으면 다음 줄로 접힌다) */}
+          {/* 연 발전량은 걷었다(한백 2026-11-08 「부지검토랑 제안서 생성결과에 연 발전량은 필요없어」) — 견줘 보는 값이 곁에 선다 */}
           {register && (
             <Num
               label="건축물대장 면적 기준"

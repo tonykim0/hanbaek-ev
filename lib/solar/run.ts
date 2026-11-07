@@ -17,7 +17,6 @@ import {
   landCategoryOf,
 } from './rules';
 import { registerTitles } from './sources/bldg';
-import { kwhPerKwYear } from './sources/pvgis';
 import { addressBuildingsIn, buildingsIn, landTraits, parcelAt, zonesOf, type Feature, type LandTraits, type Zone } from './sources/vworld';
 import { pointOfParcel, resolveTyped } from './suggest';
 import type { Check, Fact, Level, Mode, Place, Report, SiteMap, Suggestion } from './types';
@@ -98,12 +97,11 @@ export async function runCheck(query: string, mode: Mode, picked?: Suggestion | 
   const parcelPolys = parcel?.polygons ?? [];
   const bbox = bboxOf(parcelPolys);
 
-  const [zones, buildings, pv, grid, register, addressBuildings, traits] = await Promise.all([
+  const [zones, buildings, grid, register, addressBuildings, traits] = await Promise.all([
     pnu ? settle(zonesOf(pnu)) : Promise.resolve<Settled<Zone[]>>({ ok: false, error: '필지번호 없음' }),
     bbox
       ? settle(buildingsIn(mode === 'ground' ? expandBbox(bbox, SETBACK.radiusM) : bbox))
       : Promise.resolve<Settled<Feature[]>>({ ok: false, error: '필지 도형 없음' }),
-    settle(kwhPerKwYear(hit.lat, hit.lng, mode)),
     pnu
       ? settle(gridNear(pnu, jibunAddress, parcelPolys))
       : Promise.resolve<Settled<GridResult>>({ ok: false, error: '필지번호 없음' }),
@@ -134,7 +132,7 @@ export async function runCheck(query: string, mode: Mode, picked?: Suggestion | 
     area = c.area;
   }
 
-  const est = area ? estimate({ area, mode, kwhPerKwYear: pv.ok ? pv.value : null }) : null;
+  const est = area ? estimate({ area, mode }) : null;
 
   checks.push(zoneCheck(zones, mode));
   const zoneNames = zones.ok ? zones.value.filter((z) => !/접함/.test(z.relation)).map((z) => z.name) : [];
@@ -175,7 +173,7 @@ export async function runCheck(query: string, mode: Mode, picked?: Suggestion | 
     estimate: est,
     grid: gridView,
     map,
-    inputs: { sido, kwhPerKwYear: pv.ok ? pv.value : null, zones: zoneNames },
+    inputs: { sido, zones: zoneNames },
     checkedAt: new Date().toISOString(),
   };
 }

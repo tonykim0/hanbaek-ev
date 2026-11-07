@@ -54,7 +54,7 @@ describe('withCapacity — 그린 네모의 넓이로 개발 인허가를 다시
   const report = {
     checks: [{ key: 'dev', title: '개발 인허가', status: 'ok', summary: '개발행위허가(시·군) — 규모 안' }],
     grid: null,
-    inputs: { sido: '44', kwhPerKwYear: 1400, zones: ['계획관리지역'] },
+    inputs: { sido: '44', zones: ['계획관리지역'] },
   } as unknown as Report;
   it('네모가 1만㎡를 넘으면 소규모 환경영향평가로 바뀐다', () => {
     const r = withCapacity(report, 800, { m2: 12_000, basis: '그린 네모 1개' });

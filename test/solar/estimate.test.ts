@@ -8,14 +8,11 @@ describe('capacityOf', () => {
 });
 
 describe('estimate', () => {
-  it('PVGIS 값이 있으면 그것으로 발전량', () => {
-    const e = estimate({ area: 1000, mode: 'roof', kwhPerKwYear: 1290 })!;
+  it('용량과 그 근거 — 연 발전량은 걷었다(2026-11-08)', () => {
+    const e = estimate({ area: 1000, mode: 'roof' })!;
     expect(e.capacityKw).toBe(100);
-    expect(e.yearlyKwh).toBe(129_000);
-    expect(e.assumptions.map((a) => a.label)).toEqual(['용량', '발전량']);
-  });
-  it('PVGIS 가 없으면 하루 3.6시간', () => {
-    expect(estimate({ area: 1000, mode: 'roof' })!.yearlyKwh).toBe(Math.round(100 * 3.6 * 365));
+    expect(e.assumptions.map((a) => a.label)).toEqual(['용량']);
+    expect('yearlyKwh' in e).toBe(false);
   });
   it('용량이 0 이면 추정 없음', () => expect(estimate({ area: 10, mode: 'roof' })).toBeNull());
 });
