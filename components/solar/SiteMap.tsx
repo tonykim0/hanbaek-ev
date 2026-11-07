@@ -45,6 +45,8 @@ export default function SiteMap({
   heading,
   panels,
   note,
+  autoRun = false,
+  onAiBusy,
 }: {
   data: SiteMapData;
   appKey: string | null;
@@ -62,6 +64,13 @@ export default function SiteMap({
   panels?: LngLat[][] | null;
   /** 단추 옆 한 줄 — 그 배치의 장수 · 용량 */
   note?: ReactNode;
+  /**
+   * 처음 그릴 때 AI 패널배치를 저절로 한 번 — 제안서 생성(배치 없이는 제안서를 못 짓는다, 한백 2026-11-08 「제안서생성에서 AI로
+   * 패널배치기하기 클릭하지않으면 pptx에도 안나타나네」). 부지 검토는 단추로만(배치는 고를 일이다)
+   */
+  autoRun?: boolean;
+  /** AI 가 도는 동안 — 제안서 생성의 만들기 단추가 기다린다 */
+  onAiBusy?: (busy: boolean) => void;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const live = useRef<Live | null>(null);
@@ -313,14 +322,7 @@ export default function SiteMap({
     };
   }, [ready, quads]);
 
-  if (!appKey) {
-    return (
-      <div className={`${PANEL} flex h-24 items-center justify-center px-4 text-center ${TEXT.label}`}>
-        지도 — 카카오 JavaScript 키(KAKAO_JS_KEY)가 아직 없습니다
-      </div>
-    );
-  }
-
+  /* ---------------- AI 패널배치 — 단추 · 저절로(autoRun) 같은 길 하나. 지도가 안 떠도 돈다(지붕을 받아 오는 일이다) */
   const findRoofs = async () => {
     if (!pnu || !plan || ai.busy) return;
     setAi({ busy: true, msg: null, error: false });
@@ -342,6 +344,24 @@ export default function SiteMap({
       setAi({ busy: false, error: true, msg: err instanceof Error ? err.message : String(err) });
     }
   };
+  // 저절로는 한 번만 — 이미 배치가 있으면(앞서 돌렸으면) 안 돈다. 개발 모드의 두 번 도는 효과에도 한 번(ref)
+  const autoRan = useRef(false);
+  useEffect(() => {
+    if (!autoRun || autoRan.current || !plan || !pnu || plan.roofs.length) return;
+    autoRan.current = true;
+    void findRoofs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 처음 한 번
+  }, [autoRun, pnu, !!plan]);
+  useEffect(() => onAiBusy?.(ai.busy), [ai.busy, onAiBusy]);
+
+  if (!appKey) {
+    return (
+      <div className={`${PANEL} flex h-24 items-center justify-center px-4 text-center ${TEXT.label}`}>
+        지도 — 카카오 JavaScript 키(KAKAO_JS_KEY)가 아직 없습니다
+      </div>
+    );
+  }
+
   const aiButton = plan && (
     <Btn kind={plan.roofs.length ? 'side' : 'do'} onClick={findRoofs} busy={ai.busy} busyLabel="AI가 패널 배치하는 중…">
       AI로 패널배치하기

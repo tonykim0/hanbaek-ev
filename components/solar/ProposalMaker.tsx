@@ -17,10 +17,9 @@ import { siteImager } from './proposal-image';
 import ProposalTemplates from './ProposalTemplates';
 import SiteMap from './SiteMap';
 import { PANEL, TEXT } from './ui';
-import { fetchRoofTrace, useRoofPlan } from './useRoofPlan';
+import { useRoofPlan } from './useRoofPlan';
 
 const COMPANIES = Array.from(new Set([...PRODUCTS, ...UPCOMING].map((p) => p.company)));
-type Phase = null | 'roofs' | 'build';
 
 /** 마지막으로 쓴 영업사 · 담당자명 · 연락처 — 이 브라우저에만(같은 사람이 제안서를 여러 장 짓는다). 못 읽으면 빈칸으로 시작한다 */
 const SELLER_KEY = 'hb-proposal-seller';
@@ -190,7 +189,9 @@ function WaitingStep({ step, title }: { step: number; title: string }) {
 
 /**
  * 불러온 현장 하나의 3 · 4 걸음 — 현장마다 새로 그린다(앞 현장에서 고른 지붕 · 고객명이 남지 않게, key = 검토 시각).
- * 짓기: 지붕이 없으면 먼저 AI 로 배치하고(그 뒤 배치가 다시 그려진 다음에) 고른 상품의 사업자 기준으로 다시 깐 배치로 짓는다.
+ * 현장을 불러오면 지도의 AI 패널배치가 저절로 한 번 돈다(SiteMap autoRun — 한백 2026-11-08 「AI로 패널배치기하기 클릭하지않으면 pptx에도
+ * 안나타나네」). AI 를 부르는 길은 그것 하나다 — 만들기 단추가 따로 부르던 길은 걷었다(지도 단추가 「배치 중」으로 안 바뀌어 두 번 불렀다).
+ * 짓기: 고른 상품의 사업자 기준으로 다시 깐 배치(지도에 그린 그것)로 짓는다.
  */
 function ProposalSite({
   report,
@@ -213,7 +214,8 @@ function ProposalSite({
   const { place } = report;
   const [customer, setCustomer] = useState(place.buildingName ?? '');
   const [address, setAddress] = useState(place.roadAddress ?? place.jibunAddress ?? place.query);
-  const [phase, setPhase] = useState<Phase>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [step, setStep] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -254,6 +256,9 @@ function ProposalSite({
     ([
       [!place.pnu, '필지 없음'],
       [!plan, '지도 자료 없음'],
+      [aiBusy, 'AI 패널 배치 중'],
+      [!plan?.roofs.length, '패널 배치 전'],
+      [!plan?.selected.size, '고른 지붕 없음'],
       [!customer.trim(), '고객명 없음'],
       [!address.trim(), '주소 없음'],
       [!seller.company.trim(), '영업사 없음'],
@@ -263,30 +268,13 @@ function ProposalSite({
     ] as const).find(([hit]) => hit)?.[1] ??
     null;
 
-  const start = async () => {
-    if (blocker || phase || !plan) return;
+  const building = useRef(false);
+  const build = async () => {
+    if (blocker || !chosen || !template || !plan || building.current) return;
+    building.current = true;
+    setBusy(true);
     setError(null);
     setDone(null);
-    if (!plan.roofs.length) {
-      setPhase('roofs');
-      setStep('AI가 패널 배치하는 중…');
-      try {
-        plan.applyTrace(await fetchRoofTrace(place.pnu!));
-      } catch (err) {
-        setPhase(null);
-        // 라우트의 실패 문구가 이미 「지붕을 찾지 못했습니다 — …」로 온다 — 두 번 붙이지 않는다
-        const msg = err instanceof Error ? err.message : String(err);
-        setError(msg.startsWith('지붕을 찾지 못했습니다') ? msg : `지붕을 찾지 못했습니다 — ${msg}`);
-        return;
-      }
-    }
-    setPhase('build');
-  };
-
-  const building = useRef(false);
-  const build = useCallback(async () => {
-    if (!chosen || !template || !plan || building.current) return;
-    building.current = true;
     try {
       const lay = layoutFor(template.terms as Terms);
       if (!lay.count) throw new Error('고른 지붕에 패널이 없습니다 — 지도에서 지붕을 고르세요.');
@@ -323,16 +311,10 @@ function ProposalSite({
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       building.current = false;
-      setPhase(null);
+      setBusy(false);
       setStep('');
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 그때의 값으로 한 번
-  }, [chosen, template, plan, customer, address, seller, report, layoutFor]);
-
-  // AI 로 배치한 뒤 지붕이 다시 그려지면(plan 이 바뀐다) 그 배치로 짓는다
-  useEffect(() => {
-    if (phase === 'build') void build();
-  }, [phase, build]);
+  };
 
   return (
     <>
@@ -346,6 +328,8 @@ function ProposalSite({
           heading={{ step: 3, title: '패널 배치' }}
           panels={preview?.quads ?? null}
           note={previewLine}
+          autoRun
+          onAiBusy={setAiBusy}
         />
       ) : (
         <section className={`${PANEL} px-5 py-3`} aria-label="패널 배치">
@@ -388,7 +372,7 @@ function ProposalSite({
           </label>
         </div>
         <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
-          <Btn onClick={() => void start()} disabled={!!blocker} busy={phase !== null} busyLabel={step || '짓는 중…'}>
+          <Btn onClick={() => void build()} disabled={!!blocker} busy={busy} busyLabel={step || '짓는 중…'}>
             {blocker ? `${blocker} — 제안서 불가` : '제안서 만들기 (PPTX)'}
           </Btn>
           <Err>{error}</Err>

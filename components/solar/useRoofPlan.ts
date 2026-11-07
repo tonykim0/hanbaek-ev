@@ -33,7 +33,7 @@ export const SKIP_KINDS = new Set(['기타', '슬레이트']);
 export type TraceReply = TraceResult & { cached?: boolean; meta?: { ms?: number } };
 
 /**
- * AI 지붕 찾기 — /api/solar/roofs. 지도 위 「AI로 패널배치하기」와 제안서 만들기(아직 안 찾았으면 먼저 찾는다)가 같이 부른다.
+ * AI 지붕 찾기 — /api/solar/roofs. 지도의 「AI로 패널배치하기」(제안서 생성에서는 현장을 불러오면 저절로 한 번)가 부른다.
  * 실패하면 그 까닭(한글)을 던진다.
  */
 export async function fetchRoofTrace(pnu: string): Promise<TraceReply> {
