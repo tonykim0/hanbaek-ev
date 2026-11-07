@@ -96,6 +96,12 @@ export function searchText(
 }
 
 /**
+ * 답하는 중 표지의 수명(초) — /reply 의 maxDuration(300초)에 30초를 더했다. 함수가 시한에 끊겨 표지를 못 놓아도 이만큼 지나면 다음
+ * 요청이 가져간다. 그 전에 다시 부르면 「이미 답하는 중」으로 거절한다(store/agents claimAgentReply)
+ */
+export const REPLY_CLAIM_SECONDS = 330;
+
+/**
  * 답할 지시가 있는가 — 마지막 지시 뒤에 답이 없으면. 그 뒤에 팀원의 말 · 자동의 말이 끼어도(다른 담당이 대화 중에 남겼거나
  * 계약서가 접수됐거나) 지시는 그대로 기다린다.
  */

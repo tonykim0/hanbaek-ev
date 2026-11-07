@@ -722,6 +722,11 @@ export const agents = pgTable('agents', {
   biz: text('biz').notNull().default('ev'),
   /** 사업자 담당(kind 'owner', 태양광)이 맡은 사업자 이름 — 운영사 담당의 cpo 와 같은 몫. 나머지는 null */
   company: text('company'),
+  /**
+   * 지금 답하는 중이라는 표지(migrations/0125) — /reply 가 모델을 부르기 전에 잡고 끝나면 놓는다. 같은 담당에게 답이 동시에 두 번
+   * 돌지 않게(store/agents claimAgentReply). 못 놓은 표지는 REPLY_CLAIM_SECONDS 가 지나면 다음 요청이 가져간다
+   */
+  replyingAt: timestamp('replying_at', { withTimezone: true }),
 });
 
 /** 업무 정의 — 한백이 담당마다 적는다. 에이전트는 이것을 지시로 읽는다 */

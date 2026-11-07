@@ -8,10 +8,10 @@
 import { and, asc, desc, eq, gte, ilike, inArray, isNull, lt, or, sql, type SQL } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
-import { agentFiles, agentMemos, agentMessages } from '@/lib/db/schema';
+import { agentFiles, agentMemos, agentMessages, agents } from '@/lib/db/schema';
 import { stampOf } from '@/lib/date';
 import { shiftDay } from '@/lib/agents/weeks';
-import { recentStart } from '@/lib/agents/memory';
+import { recentStart, REPLY_CLAIM_SECONDS } from '@/lib/agents/memory';
 import { MEMO_MAX, MEMOS_PER_OWNER } from '@/lib/agents/memos';
 import type { Agent, AgentFile, AgentMemo, AgentMemos, AgentMessage, MemoScope } from '@/types/agents';
 import { agentAuditKey } from '@/types/agents';
@@ -58,8 +58,31 @@ const memoAudit = (scope: MemoScope, title: string, body: string) =>
 
 export const agentMemoryStore: Pick<
   ProjectRepository,
-  'agentRecent' | 'searchAgentMessages' | 'agentFileOf' | 'agentMemos' | 'saveAgentMemo' | 'deleteAgentMemo'
+  | 'agentRecent' | 'searchAgentMessages' | 'agentFileOf' | 'agentMemos' | 'saveAgentMemo' | 'deleteAgentMemo'
+  | 'claimAgentReply' | 'releaseAgentReply'
 > = {
+  /**
+   * 답 차례 잡기 — 표지가 비었거나 오래된 줄만 한 문장으로 바꾼다(동시에 둘이 와도 하나만 잡는다). 감사기록은 남기지 않는다 —
+   * 잠깐 쥐는 자물쇠고, 남는 일(답)은 addAgentMessage 가 남긴다.
+   */
+  async claimAgentReply(agentId, actor): Promise<string | null> {
+    assertAdmin(actor, '에이전트');
+    const stamp = new Date();
+    const got = await getDb().update(agents).set({ replyingAt: stamp })
+      .where(and(
+        eq(agents.id, agentId),
+        or(isNull(agents.replyingAt), lt(agents.replyingAt, sql`now() - make_interval(secs => ${REPLY_CLAIM_SECONDS})`)),
+      ))
+      .returning({ id: agents.id });
+    return got.length ? stamp.toISOString() : null;
+  },
+
+  async releaseAgentReply(agentId, claim, actor): Promise<void> {
+    assertAdmin(actor, '에이전트');
+    await getDb().update(agents).set({ replyingAt: null })
+      .where(and(eq(agents.id, agentId), eq(agents.replyingAt, new Date(claim))));
+  },
+
   /**
    * 최근 대화 — 시작이 20개씩 움직이는 20~39개(lib/agents/memory recentStart), 오래된 것부터. 맨 앞에 걸린 답은 뺀다(모델 대화의
    * 맨 앞은 사람 쪽 말이어야 한다 — 뺀 답도 원문 찾기로 찾는다).

@@ -544,6 +544,13 @@ export interface ProjectRepository {
    */
   /** 최근 대화 — 시작이 20개씩 움직이는 20~39개, 오래된 것부터(넘긴 파일 포함) */
   agentRecent(id: string, actor: Actor): Promise<AgentMessage[]>;
+  /**
+   * 답 차례를 잡는다 — 이 담당에게 도는 답이 없을 때만(표지가 비었거나 REPLY_CLAIM_SECONDS 보다 오래됨). 잡으면 놓을 때 쓸 표지,
+   * 이미 답하는 중이면 null. 같은 지시에 답이 동시에 두 번 돌면 모델 값이 두 번 들고 답이 둘 선다(2026-11-05 루모라 · migrations/0125)
+   */
+  claimAgentReply(agentId: string, actor: Actor): Promise<string | null>;
+  /** 잡은 표지를 놓는다 — 그 표지 그대로일 때만(오래돼 남이 가져간 표지는 건드리지 않는다) */
+  releaseAgentReply(agentId: string, claim: string, actor: Actor): Promise<void>;
   /** 대화 원문 찾기 — 낱말 모두(글 · 쓴 사람 · 파일 이름) · 날짜. 최근 것부터 limit 개와 맞은 전체 수 */
   searchAgentMessages(
     id: string, actor: Actor, q: { terms: string[]; from: string | null; to: string | null }, limit?: number

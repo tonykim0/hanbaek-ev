@@ -34,6 +34,7 @@ import {
   HISTORY_PER_MEMBER, memberOf, TEAM_DAYS, TEAM_PER_MEMBER, teamBriefOf, teamHistoryOf, teammatesOf,
 } from '@/lib/agents/team';
 import { isLead } from '@/types/agents';
+import type { Actor } from '@/lib/data/repository';
 
 /** team_history 가 읽는 날수의 상한 — 저장소(store/agent-team)와 같다 */
 const MAX_HISTORY_DAYS = 90;
@@ -46,110 +47,131 @@ export const POST = adminWrite<{ id: string }, undefined>(
     const repo = getRepository();
     const detail = await repo.getAgent(params.id, actor);
     const agentId = detail.agent.id;
-    const recent = await repo.agentRecent(agentId, actor);
-    if (!awaitsReply(recent)) throw new Error('답할 지시가 없습니다 — 먼저 말을 남겨 주세요.');
-
     /*
-     * 사업마다의 자료 — 전기차 정산 담당은 열린구매 글에 쓸 지급처 사업자·계좌까지 읽는다. 팀(목표 · 방향)과 다른 팀원들의
-     * 최근 기록은 모두가 읽는다
+     * 담당마다 답은 한 번에 하나 — 답이 도는 50초쯤 사이에 다른 탭 · 새로 고친 화면의 「다시 묻기」가 또 부르면 같은 지시에 모델을
+     * 두 번 부르고 답이 둘 선다(2026-11-05 루모라: 한 답에 $1.49, 반은 버린 돈). 대화는 표지를 잡은 뒤에 읽는다 — 앞 답이 막 끝난
+     * 뒤에 잡으면 그 답이 보여 「답할 지시가 없습니다」로 끝난다.
      */
-    const { biz } = detail.agent;
-    const lead = isLead(detail.agent.kind);
-    const [{ today, brief, siteOf }, team, logs, memos] = await Promise.all([
-      loadAgentBrief(detail.agent, actor),
-      repo.agentTeam(actor, biz),
-      repo.agentTeamLog(actor, biz, { days: TEAM_DAYS, perMember: TEAM_PER_MEMBER, exclude: agentId }),
-      repo.agentMemos(actor, agentId),
-    ]);
-    const mates = teammatesOf(detail.agent, team);
-    const drafted: string[] = [];
-    const siteSpec = detail.agent.kind === 'operator' ? siteMailOfCpo(detail.agent.cpo) : null;
-    /* 운영사 담당은 그 운영사의 단가표를 읽는다(읽기만 — 부를 때만 저장소에서) */
-    const operatorCpo = detail.agent.kind === 'operator' ? detail.agent.cpo : null;
-    const turn = await agentReply({
-      agent: detail.agent,
-      duties: detail.duties,
-      tasks: detail.tasks,
-      recent,
-      memos,
-      brief,
-      today,
-      team,
-      teamBrief: mates.length ? teamBriefOf(logs) : null,
-      hands: {
-        addTask: async (t) => (await repo.addAgentTask({ agentId, ...t, byAgent: true }, actor)).id,
-        completeTask: async (id) => (await repo.setAgentTaskDone({ agentId, id, done: true, byAgent: true }, actor)).title,
-        draftMail: async (m) => {
-          const made = await repo.addAgentMail({ agentId, ...m }, actor);
-          drafted.push(made.id);
-          return made.id;
-        },
-        siteOf,
-        /* 여러 현장의 같은 서류를 zip 하나로 — 전기차 담당만(태양광 현장의 파일은 아직 · lib/agents/bundle-run) */
-        ...(biz === 'ev' ? {
-          bundleSiteDocs: (q: { sites: string[]; doc: string; maxMb: number | null }) =>
-            bundleSiteDocs({ agent: detail.agent, refs: q.sites, doc: q.doc, maxMb: q.maxMb, siteOf, actor }),
-          bundleFile: (id: string) => bundleFileOf(agentId, id),
-        } : {}),
-        ...(siteSpec ? {
-          siteMail: async (projectId: string) => {
-            const { plan, mail } = await requestSiteMail(projectId, actor, siteSpec);
-            if (!mail) throw new Error('초안을 쓰지 못했습니다.');
-            drafted.push(mail.id);
-            return { id: mail.id, subject: mail.subject, plan, to: mail.to };
-          },
-        } : {}),
-        /* 업무 정의 — 한백이 대화에서 시킬 때 담당이 넣고 고치고 뺀다(감사기록에 「에이전트가 적음」) */
-        saveDuty: (d) => repo.saveAgentDuty({ agentId, id: d.id ?? undefined, title: d.title, body: d.body, byAgent: true }, actor),
-        deleteDuty: async (id) => (await repo.deleteAgentDuty({ agentId, id, byAgent: true }, actor)).title,
-        /* 기억의 손 — 메모장(적은 쪽에 담당 이름) · 대화 원문 찾기 · 지난 파일 */
-        saveMemo: (m) => repo.saveAgentMemo({ agentId, ...m, byAgent: true }, actor),
-        deleteMemo: async (m) => (await repo.deleteAgentMemo({ agentId, ...m, byAgent: true }, actor)).title,
-        searchHistory: async (q) => {
-          const query = queryOf(q);
-          if (!query) return '찾을 낱말(query)이나 날짜(from · to)를 준다.';
-          const { hits, total } = await repo.searchAgentMessages(agentId, actor, query);
-          return searchText(hits, total, query);
-        },
-        readFile: (id) => repo.agentFileOf(agentId, id, actor),
-        ...(operatorCpo ? {
-          pricingTable: async () => pricingTableText(await repo.listPricingRules(actor), operatorCpo),
-        } : {}),
-        /* 팀의 손 — 같은 사업의 다른 담당만(자기 자신 · 다른 사업은 memberOf 가 못 찾는다) */
-        ...(mates.length ? {
-          teamHistory: async (ref: string, days: number, query?: string) => {
-            const member = memberOf(mates, ref);
-            if (!member) throw new Error(`팀원 「${ref}」를 찾지 못했다 — [팀 현황]의 id 를 쓴다.`);
-            /* 낱말을 주면 그 팀원의 대화 전부에서 — 날수 상한이 없다(한백의 말을 팀이 다 나눠 알게) */
-            const q = query ? queryOf({ query }) : null;
-            if (q) {
-              const { hits, total } = await repo.searchAgentMessages(member.id, actor, q);
-              return searchText(hits, total, q, member.name);
-            }
-            const span = Math.min(MAX_HISTORY_DAYS, Math.max(1, Math.round(days)));
-            const [log] = await repo.agentTeamLog(actor, biz, { days: span, perMember: HISTORY_PER_MEMBER, memberId: member.id });
-            if (!log) throw new Error(`팀원 「${ref}」의 기록을 읽지 못했다.`);
-            return teamHistoryOf(log, span);
-          },
-          tellTeammate: async (ref: string, body: string) => {
-            const member = memberOf(mates, ref);
-            if (!member) throw new Error(`팀원 「${ref}」를 찾지 못했다 — [팀 현황]의 id 를 쓴다.`);
-            return (await repo.tellAgent({ fromId: agentId, toId: member.id, body }, actor)).name;
-          },
-        } : {}),
-        /* 팀장의 손 — 목표 · 방향은 적은 쪽에 팀장 이름이 남는다 */
-        ...(lead ? {
-          saveDirection: (d: { id: string | null; title: string; body: string }) =>
-            repo.saveAgentDirection({ leadId: agentId, ...d, byAgent: true }, actor),
-          deleteDirection: async (id: string) =>
-            (await repo.deleteAgentDirection({ leadId: agentId, id, byAgent: true }, actor)).title,
-        } : {}),
-      },
-    });
-    const message = await repo.addAgentMessage({ agentId, role: 'agent', body: turn.text, meta: turn.meta }, actor);
-    if (drafted.length === 0) return { message, mails: [] };
-    await repo.linkAgentMails({ agentId, ids: drafted, messageId: message.id }, actor);
-    const mails = (await repo.getAgent(agentId, actor)).mails.filter((m) => drafted.includes(m.id));
-    return { message, mails };
+    const claim = await repo.claimAgentReply(agentId, actor);
+    if (!claim) throw new Error('이 담당이 이미 답하는 중입니다 — 답이 오면 대화에 섭니다. 잠시 뒤 새로 고쳐 보세요.');
+    try {
+      return await answer(repo, detail, actor);
+    } finally {
+      await repo.releaseAgentReply(agentId, claim, actor);
+    }
   }
 );
+
+/** 표지를 잡은 뒤의 한 답 — 대화를 읽고, 부르고, 남긴다 */
+async function answer(
+  repo: ReturnType<typeof getRepository>,
+  detail: Awaited<ReturnType<ReturnType<typeof getRepository>['getAgent']>>,
+  actor: Actor,
+) {
+  const agentId = detail.agent.id;
+  const recent = await repo.agentRecent(agentId, actor);
+  if (!awaitsReply(recent)) throw new Error('답할 지시가 없습니다 — 먼저 말을 남겨 주세요.');
+
+  /*
+   * 사업마다의 자료 — 전기차 정산 담당은 열린구매 글에 쓸 지급처 사업자·계좌까지 읽는다. 팀(목표 · 방향)과 다른 팀원들의
+   * 최근 기록은 모두가 읽는다
+   */
+  const { biz } = detail.agent;
+  const lead = isLead(detail.agent.kind);
+  const [{ today, brief, siteOf }, team, logs, memos] = await Promise.all([
+    loadAgentBrief(detail.agent, actor),
+    repo.agentTeam(actor, biz),
+    repo.agentTeamLog(actor, biz, { days: TEAM_DAYS, perMember: TEAM_PER_MEMBER, exclude: agentId }),
+    repo.agentMemos(actor, agentId),
+  ]);
+  const mates = teammatesOf(detail.agent, team);
+  const drafted: string[] = [];
+  const siteSpec = detail.agent.kind === 'operator' ? siteMailOfCpo(detail.agent.cpo) : null;
+  /* 운영사 담당은 그 운영사의 단가표를 읽는다(읽기만 — 부를 때만 저장소에서) */
+  const operatorCpo = detail.agent.kind === 'operator' ? detail.agent.cpo : null;
+  const turn = await agentReply({
+    agent: detail.agent,
+    duties: detail.duties,
+    tasks: detail.tasks,
+    recent,
+    memos,
+    brief,
+    today,
+    team,
+    teamBrief: mates.length ? teamBriefOf(logs) : null,
+    hands: {
+      addTask: async (t) => (await repo.addAgentTask({ agentId, ...t, byAgent: true }, actor)).id,
+      completeTask: async (id) => (await repo.setAgentTaskDone({ agentId, id, done: true, byAgent: true }, actor)).title,
+      draftMail: async (m) => {
+        const made = await repo.addAgentMail({ agentId, ...m }, actor);
+        drafted.push(made.id);
+        return made.id;
+      },
+      siteOf,
+      /* 여러 현장의 같은 서류를 zip 하나로 — 전기차 담당만(태양광 현장의 파일은 아직 · lib/agents/bundle-run) */
+      ...(biz === 'ev' ? {
+        bundleSiteDocs: (q: { sites: string[]; doc: string; maxMb: number | null }) =>
+          bundleSiteDocs({ agent: detail.agent, refs: q.sites, doc: q.doc, maxMb: q.maxMb, siteOf, actor }),
+        bundleFile: (id: string) => bundleFileOf(agentId, id),
+      } : {}),
+      ...(siteSpec ? {
+        siteMail: async (projectId: string) => {
+          const { plan, mail } = await requestSiteMail(projectId, actor, siteSpec);
+          if (!mail) throw new Error('초안을 쓰지 못했습니다.');
+          drafted.push(mail.id);
+          return { id: mail.id, subject: mail.subject, plan, to: mail.to };
+        },
+      } : {}),
+      /* 업무 정의 — 한백이 대화에서 시킬 때 담당이 넣고 고치고 뺀다(감사기록에 「에이전트가 적음」) */
+      saveDuty: (d) => repo.saveAgentDuty({ agentId, id: d.id ?? undefined, title: d.title, body: d.body, byAgent: true }, actor),
+      deleteDuty: async (id) => (await repo.deleteAgentDuty({ agentId, id, byAgent: true }, actor)).title,
+      /* 기억의 손 — 메모장(적은 쪽에 담당 이름) · 대화 원문 찾기 · 지난 파일 */
+      saveMemo: (m) => repo.saveAgentMemo({ agentId, ...m, byAgent: true }, actor),
+      deleteMemo: async (m) => (await repo.deleteAgentMemo({ agentId, ...m, byAgent: true }, actor)).title,
+      searchHistory: async (q) => {
+        const query = queryOf(q);
+        if (!query) return '찾을 낱말(query)이나 날짜(from · to)를 준다.';
+        const { hits, total } = await repo.searchAgentMessages(agentId, actor, query);
+        return searchText(hits, total, query);
+      },
+      readFile: (id) => repo.agentFileOf(agentId, id, actor),
+      ...(operatorCpo ? {
+        pricingTable: async () => pricingTableText(await repo.listPricingRules(actor), operatorCpo),
+      } : {}),
+      /* 팀의 손 — 같은 사업의 다른 담당만(자기 자신 · 다른 사업은 memberOf 가 못 찾는다) */
+      ...(mates.length ? {
+        teamHistory: async (ref: string, days: number, query?: string) => {
+          const member = memberOf(mates, ref);
+          if (!member) throw new Error(`팀원 「${ref}」를 찾지 못했다 — [팀 현황]의 id 를 쓴다.`);
+          /* 낱말을 주면 그 팀원의 대화 전부에서 — 날수 상한이 없다(한백의 말을 팀이 다 나눠 알게) */
+          const q = query ? queryOf({ query }) : null;
+          if (q) {
+            const { hits, total } = await repo.searchAgentMessages(member.id, actor, q);
+            return searchText(hits, total, q, member.name);
+          }
+          const span = Math.min(MAX_HISTORY_DAYS, Math.max(1, Math.round(days)));
+          const [log] = await repo.agentTeamLog(actor, biz, { days: span, perMember: HISTORY_PER_MEMBER, memberId: member.id });
+          if (!log) throw new Error(`팀원 「${ref}」의 기록을 읽지 못했다.`);
+          return teamHistoryOf(log, span);
+        },
+        tellTeammate: async (ref: string, body: string) => {
+          const member = memberOf(mates, ref);
+          if (!member) throw new Error(`팀원 「${ref}」를 찾지 못했다 — [팀 현황]의 id 를 쓴다.`);
+          return (await repo.tellAgent({ fromId: agentId, toId: member.id, body }, actor)).name;
+        },
+      } : {}),
+      /* 팀장의 손 — 목표 · 방향은 적은 쪽에 팀장 이름이 남는다 */
+      ...(lead ? {
+        saveDirection: (d: { id: string | null; title: string; body: string }) =>
+          repo.saveAgentDirection({ leadId: agentId, ...d, byAgent: true }, actor),
+        deleteDirection: async (id: string) =>
+          (await repo.deleteAgentDirection({ leadId: agentId, id, byAgent: true }, actor)).title,
+      } : {}),
+    },
+  });
+  const message = await repo.addAgentMessage({ agentId, role: 'agent', body: turn.text, meta: turn.meta }, actor);
+  if (drafted.length === 0) return { message, mails: [] };
+  await repo.linkAgentMails({ agentId, ids: drafted, messageId: message.id }, actor);
+  const mails = (await repo.getAgent(agentId, actor)).mails.filter((m) => drafted.includes(m.id));
+  return { message, mails };
+}
