@@ -32,7 +32,7 @@ type Live = { map: KMap; maps: KakaoMaps };
 /**
  * 필지 지도 — 위성 사진(지명 얹음, 일반 지도로는 안 바꾼다 — 한백 지시) 위에 필지(주황) · 지붕(고르면 패널) ·
  * 한전 기록을 빌려 온 둘레 필지(보라 점선) · 지상형이면 200m 안 주택(빨강)과 그려 확정한 설치 영역(파랑).
- * 지붕형의 지붕은 「AI로 지붕 찾기」가 항공사진에서 딴 것뿐이다 — 지도 모양(VWorld 건물)은 그리지 않는다(한백 지시).
+ * 지붕형의 지붕은 「AI로 패널배치하기」가 항공사진에서 딴 것뿐이다 — 지도 모양(VWorld 건물)은 그리지 않는다(한백 지시).
  * 지붕을 누르면 패널을 넣고 빼고, AI 가 본 못 까는 곳(빨간 점선)은 패널을 비우고 누르면 지운다.
  * 패널은 장수가 수만 장이라(이랜드 물류센터 1만여 장) 도형 대신 캔버스 한 장에 그린다.
  */
@@ -350,6 +350,18 @@ export default function SiteMap({
 
   return (
     <div className={`${PANEL} overflow-hidden`}>
+      {/*
+       * 지붕형의 주 단추 — 지도 밖 위 왼쪽, 보통 크기(한백 2026-11-08 「AI로 지붕찾기 버튼을 지도에서 빼서 지도 왼쪽 위에 올려줘.
+       * 사람들이 잘 못보는듯」 — 지도 안 왼쪽 위의 작은 단추였다). 이름은 「AI로 패널배치하기」(같은 날). 패널은 AI 가 딴 지붕에만 깔린다.
+       * 지도가 안 떠도 누를 수 있다 — 지붕을 받아 오는 일이라 지도와 상관없다(용량 · 제안서는 그대로 바뀐다).
+       */}
+      {plan && pnu && (
+        <div className="flex flex-wrap items-center gap-2 px-5 py-3">
+          <Btn kind={plan.roofs.length ? 'side' : 'do'} onClick={findRoofs} busy={ai.busy} busyLabel="AI가 패널 배치하는 중…">
+            AI로 패널배치하기
+          </Btn>
+        </div>
+      )}
       <div className="relative bg-slate-200">
         <div ref={el} className="h-80 w-full sm:h-[28rem]" role="region" aria-label="필지 지도" />
         {/* 카카오 지도 상자가 제 z-index 를 갖고 있어 그 위로 올린다 — 위의 단추(z-10)보다는 아래 */}
@@ -359,32 +371,27 @@ export default function SiteMap({
             {error}
           </p>
         ) : (
-          ready && (
+          ready &&
+          ground && (
             <div className="absolute left-2 top-2 z-10 flex flex-wrap gap-1">
-              {/* 지붕형의 주 단추 — 패널은 AI 가 딴 지붕에만 깔린다(「패널 깔기」는 걷었다) */}
-              {plan && pnu && (
-                <Btn size="sm" kind={plan.roofs.length ? 'side' : 'do'} onClick={findRoofs} busy={ai.busy} busyLabel="AI가 지붕 찾는 중…">
-                  AI로 지붕 찾기
+              {/* 지상형 — 설치면적은 지도에 그리는 일이라 지도 위에 둔다 */}
+              {editing ? (
+                <>
+                  <Btn size="sm" kind="side" onClick={addBox}>
+                    면적 추가
+                  </Btn>
+                  <Btn size="sm" onClick={confirmBoxes} className="tabular-nums">
+                    확정 · {draft.boxes.length}곳 {Math.round(draftArea).toLocaleString()}㎡
+                  </Btn>
+                  <Btn size="sm" kind="side" onClick={ground.cancel}>
+                    취소
+                  </Btn>
+                </>
+              ) : (
+                <Btn size="sm" kind={ground.boxes.length ? 'side' : 'do'} onClick={ground.startEdit}>
+                  {ground.boxes.length ? '설치면적 수정' : '설치면적 설정'}
                 </Btn>
               )}
-              {ground &&
-                (editing ? (
-                  <>
-                    <Btn size="sm" kind="side" onClick={addBox}>
-                      면적 추가
-                    </Btn>
-                    <Btn size="sm" onClick={confirmBoxes} className="tabular-nums">
-                      확정 · {draft.boxes.length}곳 {Math.round(draftArea).toLocaleString()}㎡
-                    </Btn>
-                    <Btn size="sm" kind="side" onClick={ground.cancel}>
-                      취소
-                    </Btn>
-                  </>
-                ) : (
-                  <Btn size="sm" kind={ground.boxes.length ? 'side' : 'do'} onClick={ground.startEdit}>
-                    {ground.boxes.length ? '설치면적 수정' : '설치면적 설정'}
-                  </Btn>
-                ))}
             </div>
           )
         )}

@@ -33,7 +33,7 @@ export async function GET(req: Request) {
   const day = new Date().toISOString().slice(0, 10);
   const used = calls.get(who);
   const n = used?.day === day ? used.n : 0;
-  if (n >= PER_IP_PER_DAY) return NextResponse.json({ error: `오늘 AI 지붕 찾기를 ${PER_IP_PER_DAY}번 다 썼습니다.` }, { status: 429 });
+  if (n >= PER_IP_PER_DAY) return NextResponse.json({ error: `오늘 AI로 패널배치하기를 ${PER_IP_PER_DAY}번 다 썼습니다.` }, { status: 429 });
 
   try {
     const parcel = await parcelByPnu(pnu);
