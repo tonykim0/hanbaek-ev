@@ -8,11 +8,14 @@
  * Blob 주소)에 있고 한백 관리자가 화면에서 올리고 고친다. 여기는 칸의 이름과 모양(무엇을 받는가)만 적는다.
  * 숫자의 구조(몇 년 · 몇 안)는 상품의 이름이나 틀 쪽 차례에 박힌 것이라 여기 둔다.
  *
- * 자가소비형 둘(에이치에너지 솔라쉐어바로 · 루모라 구독형 리스)은 고객의 한전 파워플래너 사용량이 있어야 숫자가 나와 아직 없다.
+ * 자가소비형 둘(에이치에너지 솔라쉐어바로 · 루모라 구독형 리스)은 고객의 한전 파워플래너 15분 사용량 파일을 올렸을 때만 짓는다(한백
+ * 2026-11-07 「파일 올렸을 때만」). 그 파일의 견본이 아직 없어 고르는 자리에는 못 고르는 칩으로 서고(UPCOMING), 템플릿 · 조건은 지금
+ * 넣을 수 있다(「자가소비형도 추가해줘. 입력해야할 조건들이랑」). 고객의 한전 단가 · 요금제 이름은 영업사가 넣는다(같은 날 「단가·요금제
+ * 직접 입력」) — 셈은 calc.ts 의 solarShareBaro · lumoraLease.
  */
 
 /** 틀 하나 — 사업자가 준 파일 한 벌. 상품 여럿이 같은 틀을 쓸 수 있다(솔라15 기본형 · 5년 선납형) */
-export type TemplateKey = 'tyrant-solar15' | 'henergy-solarshare2' | 'lumora-rent';
+export type TemplateKey = 'tyrant-solar15' | 'henergy-solarshare2' | 'henergy-solarsharebaro' | 'lumora-rent' | 'lumora-lease';
 export type ProductKey = 'tyrant-solar15-basic' | 'tyrant-solar15-prepay' | 'henergy-solarshare2' | 'lumora-rent';
 
 /** 조건 칸 하나 — 값은 DB(한백이 넣는다). min · max 는 잘못 친 값을 막는 넓은 울타리다 */
@@ -87,6 +90,25 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
       { key: 'annualEventPerKw', label: '매년 지급 — 1년차 이벤트', unit: '원/kW', min: 0, max: 5_000_000 },
     ],
   },
+  /** 자가소비형 — 고객이 발전량 전부를 kWh 단가로 사고(20년 고정), 자가소비분만큼 한전 요금이 준다 · 남는 전기는 판다(요금상계거래) */
+  'henergy-solarsharebaro': {
+    key: 'henergy-solarsharebaro',
+    company: '에이치에너지',
+    title: '솔라쉐어바로',
+    file: 'pptx',
+    hint: '「02. 솔라쉐어바로 제안서_SAMPLE_….pptx」',
+    terms: [
+      W,
+      TILT,
+      SHADE,
+      AZIMUTH,
+      { key: 'ppaPrice', label: '설비임대단가', unit: '원/kWh', min: 1, max: 1_000 },
+      { key: 'hoursPerDay', label: '발전시간', unit: '시간/일', min: 1, max: 6 },
+      { key: 'degradationPct', label: '설비효율 감소율', unit: '%/년', min: 0, max: 5 },
+      { key: 'tariffIncreasePct', label: '전기요금 인상률', unit: '%/년', min: 0, max: 20 },
+      { key: 'smp', label: '초과발전 판매 단가(SMP)', unit: '원/kWh', min: 0, max: 1_000 },
+    ],
+  },
   'lumora-rent': {
     key: 'lumora-rent',
     company: '루모라',
@@ -101,6 +123,29 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
       { key: 'price1', label: '1년 선납 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
       { key: 'price5', label: '5년 선납 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
       { key: 'price10', label: '10년 선납 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
+    ],
+  },
+  /** 자가소비형 — 구독료(원/kWh)로 발전량을 사고 한전 요금을 대체한다. 요금 시나리오 셋(동결 · 기본 · 인상 확대)과 RE100(REC 구매 대비) */
+  'lumora-lease': {
+    key: 'lumora-lease',
+    company: '루모라',
+    title: '구독형 리스',
+    file: 'pdf',
+    hint: '「[루모라]구독형 리스 사업 제안서.pdf」',
+    terms: [
+      W,
+      TILT,
+      SHADE,
+      AZIMUTH,
+      { key: 'subscriptionPrice', label: '구독료', unit: '원/kWh', min: 1, max: 1_000 },
+      { key: 'hoursPerDay', label: '발전시간', unit: '시간/일', min: 1, max: 6 },
+      { key: 'degradationPct', label: '발전효율 감소율', unit: '%/년', min: 0, max: 5 },
+      { key: 'tariffIncreasePct', label: '전기요금 인상률 — 기본', unit: '%/년', min: 0, max: 20 },
+      { key: 'tariffIncreaseHighPct', label: '전기요금 인상률 — 인상 확대', unit: '%/년', min: 0, max: 20 },
+      { key: 'excessPrice', label: '초과발전 판매 단가(SMP+REC)', unit: '원/kWh', min: 0, max: 1_000 },
+      { key: 'recPrice', label: 'REC 구매 단가', unit: '원/kWh', min: 0, max: 1_000 },
+      { key: 'regoPrice', label: 'REGO 판매 단가', unit: '원/kWh', min: 0, max: 1_000 },
+      { key: 'emissionFactor', label: '배출계수', unit: 'tCO₂/MWh', min: 0, max: 2 },
     ],
   },
 };
@@ -118,8 +163,13 @@ export const PRODUCTS: ProductDef[] = [
 /**
  * 틀을 아직 못 받은 상품 — 고르는 자리에 못 고르는 칩으로 세운다(한백 2026-11-07 「모햇 이라는 사업제안서 유형도 있는데 이건 아직 내가
  * 템플릿을 못받았어. 선택지로 해놓고 비활성화」). 모햇은 에이치에너지 2026 하반기 영업정책의 상품 이름이다. 틀이 오면 TEMPLATES · PRODUCTS 로 옮긴다.
+ * 자가소비형 둘은 템플릿 · 조건은 있고(TEMPLATES) 고객의 파워플래너 파일을 읽는 자리가 없다 — 그 파일의 견본이 오면 PRODUCTS 로 옮긴다.
  */
-export const UPCOMING: { company: string; label: string; why: string }[] = [{ company: '에이치에너지', label: '모햇', why: '템플릿 받기 전' }];
+export const UPCOMING: { company: string; label: string; why: string }[] = [
+  { company: '에이치에너지', label: '솔라쉐어바로', why: '파워플래너 견본 받기 전' },
+  { company: '에이치에너지', label: '모햇', why: '템플릿 받기 전' },
+  { company: '루모라', label: '구독형 리스', why: '파워플래너 견본 받기 전' },
+];
 
 export const TEMPLATE_KEYS = Object.keys(TEMPLATES) as TemplateKey[];
 export const isTemplateKey = (v: unknown): v is TemplateKey => typeof v === 'string' && (TEMPLATE_KEYS as string[]).includes(v);

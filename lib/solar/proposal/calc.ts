@@ -174,6 +174,137 @@ export function eokManText(won: number): string {
 export const millionText = (won: number | null): string =>
   won === null ? '-' : (Math.round(won / 1e5) / 10).toLocaleString('ko-KR', { maximumFractionDigits: 1 });
 
+/* ------------------------------------------- 자가소비형 — 솔라쉐어바로 · 구독형 리스 */
+
+/**
+ * 자가소비형 — 고객이 발전량 전부를 사업자 단가(원/kWh, 20년 고정)로 사고, 자가소비한 만큼 한전 요금을 덜 내고, 남는 전기는 판다.
+ * 고객 값 셋: 1년차 자가소비량(파워플래너 15분 사용량과 발전 모양을 맞대어 센다) · 한전 단가(태양광이 대체하는 시간대의 평균
+ * 전력량요금 — 영업사가 요금제 이름과 함께 넣는다, 한백 2026-11-07) · 연간 사용량(파워플래너 — RE100 비율).
+ * 셈의 모양은 사업자 견본 그대로다(2026-11-07 — 견본 숫자를 이 셈으로 다시 내 맞췄다):
+ *   솔라쉐어바로  자가소비량은 해마다 1년차 값(발전량이 그보다 줄면 발전량) — 견본 연차표가 그렇다.
+ *   구독형 리스   자가소비는 발전량 × 1년차 자가소비율 · 요금 시나리오 셋(동결 · 기본 · 인상 확대) · RE100(같은 물량의 REC 구매 대비).
+ */
+export const SELF_USE_YEARS = 20;
+
+export type SelfUseSite = {
+  /** 1년차 자가소비량(kWh) */
+  selfKwh: number;
+  /** 한전 단가(원/kWh) */
+  tariff: number;
+  /** 연간 사용량(kWh) */
+  usageKwh: number;
+};
+
+/** 해마다 발전량(kWh) = kW × 발전시간 × 365 × (1 − 감소율)^(n−1) */
+const genOf = (kw: number, t: Terms, n: number) => kw * t.hoursPerDay * 365 * (1 - t.degradationPct / 100) ** (n - 1);
+const grow = (pct: number, n: number) => (1 + pct / 100) ** (n - 1);
+
+function sumOf<T extends Record<string, number>>(rows: T[]): T {
+  const out: Record<string, number> = {};
+  for (const r of rows) for (const [k, v] of Object.entries(r)) out[k] = (out[k] ?? 0) + v;
+  return out as T;
+}
+
+export type BaroYear = {
+  /** 발전량(kWh) */
+  gen: number;
+  /** 자가소비량(kWh) */
+  self: number;
+  /** 초과발전량(kWh) */
+  excess: number;
+  /** 전력구매비용(원) = 발전량 × 설비임대단가 */
+  cost: number;
+  /** 기존 전력량요금(원) = 자가소비량 × 한전 단가 × (1 + 인상률)^(n−1) */
+  bill: number;
+  /** 초과발전량 전기판매수익(원) = 초과발전량 × SMP */
+  sale: number;
+  /** 전기요금 연 이득(원) = 기존 전력량요금 + 판매수익 − 전력구매비용 */
+  gain: number;
+};
+export type Baro = { kw: number; years: BaroYear[]; total: BaroYear; /** 1년차 초과발전 비율(%) */ excessPct: number };
+
+export function solarShareBaro(kw: number, t: Terms, site: Pick<SelfUseSite, 'selfKwh' | 'tariff'>): Baro {
+  const years: BaroYear[] = [];
+  for (let n = 1; n <= SELF_USE_YEARS; n++) {
+    const gen = genOf(kw, t, n);
+    const self = Math.min(site.selfKwh, gen);
+    const excess = gen - self;
+    const cost = gen * t.ppaPrice;
+    const bill = self * site.tariff * grow(t.tariffIncreasePct, n);
+    const sale = excess * t.smp;
+    years.push({ gen, self, excess, cost, bill, sale, gain: bill + sale - cost });
+  }
+  return { kw, years, total: sumOf(years), excessPct: (years[0].excess / years[0].gen) * 100 };
+}
+
+export type LeaseYear = {
+  gen: number;
+  self: number;
+  excess: number;
+  /** 한전요금(태양광 공급분, 원) = 자가소비 × 한전 단가 × (1 + 인상률)^(n−1) */
+  bill: number;
+  /** 구독료(원) = 발전량 × 구독료 */
+  fee: number;
+  /** 초과발전 판매수익(원) = 초과 × (SMP + REC) */
+  sale: number;
+  /** 전기요금 절감액(원) = 한전요금 − 구독료 + 판매수익 */
+  saving: number;
+  /** (선택) REGO 판매 수익(원) = 발전량 × REGO 단가 — 판 물량은 RE100 실적으로 안 친다 */
+  rego: number;
+  /** 같은 물량을 REC 로 살 때의 값(원) = 발전량 × REC 단가 */
+  rec: number;
+};
+export type LeaseScenario = { pct: number; savings: number[]; total: number };
+export type Lease = {
+  kw: number;
+  /** 기본 인상률의 연차 */
+  years: LeaseYear[];
+  total: LeaseYear;
+  /** 자가소비율(%) = 1년차 자가소비량 / 1년차 발전량(100 이 넘으면 100) */
+  selfPct: number;
+  /** 요금 시나리오 — 동결(0%) · 기본 · 인상 확대 */
+  scenarios: { freeze: LeaseScenario; base: LeaseScenario; high: LeaseScenario };
+  /** 사용량 대비 1년차 발전량(%) — RE100 이행 비율 */
+  re100Pct: number;
+  /** 탄소 감축(tCO₂) = 발전량(MWh) × 배출계수 — 1년차 · 20년 */
+  carbonT: number;
+  carbonT20: number;
+};
+
+export function lumoraLease(kw: number, t: Terms, site: SelfUseSite): Lease {
+  const gen1 = genOf(kw, t, 1);
+  const ratio = Math.min(1, site.selfKwh / gen1);
+  const yearsAt = (pct: number): LeaseYear[] => {
+    const rows: LeaseYear[] = [];
+    for (let n = 1; n <= SELF_USE_YEARS; n++) {
+      const gen = genOf(kw, t, n);
+      const self = gen * ratio;
+      const excess = gen - self;
+      const bill = self * site.tariff * grow(pct, n);
+      const fee = gen * t.subscriptionPrice;
+      const sale = excess * t.excessPrice;
+      rows.push({ gen, self, excess, bill, fee, sale, saving: bill - fee + sale, rego: gen * t.regoPrice, rec: gen * t.recPrice });
+    }
+    return rows;
+  };
+  const scenario = (pct: number): LeaseScenario => {
+    const savings = yearsAt(pct).map((y) => y.saving);
+    return { pct, savings, total: savings.reduce((s, v) => s + v, 0) };
+  };
+  const years = yearsAt(t.tariffIncreasePct);
+  const total = sumOf(years);
+  return {
+    kw,
+    years,
+    total,
+    selfPct: ratio * 100,
+    scenarios: { freeze: scenario(0), base: scenario(t.tariffIncreasePct), high: scenario(t.tariffIncreaseHighPct) },
+    re100Pct: site.usageKwh > 0 ? (gen1 / site.usageKwh) * 100 : 0,
+    carbonT: (gen1 / 1000) * t.emissionFactor,
+    carbonT20: (total.gen / 1000) * t.emissionFactor,
+  };
+}
+
 /* ------------------------------------------------------------------- 공통 */
 
 /**

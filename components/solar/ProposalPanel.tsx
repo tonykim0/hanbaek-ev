@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Btn, Choice, Err, FIELD, Tag } from '@/components/ui';
 import type { ProposalTemplate } from '@/lib/data/solar-proposals';
-import { today } from '@/lib/date';
+import { dayOf, today } from '@/lib/date';
 import type { LngLat } from '@/lib/solar/geo';
 import { capacityKw, kwText } from '@/lib/solar/proposal/calc';
 import { buildProposal, saveProposalTerms, uploadProposalTemplate } from '@/lib/solar/proposal/client';
@@ -262,7 +262,7 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
 
 /** 조건 한 칸의 글 — 없으면 「—」, 0 이 콘솔 기본인 칸은 그 말 */
 const termText = (f: TermField, v: unknown): string =>
-  typeof v !== 'number' ? '—' : v === 0 && f.zeroText ? f.zeroText : `${v.toLocaleString('ko-KR')}${f.unit}`;
+  typeof v !== 'number' ? '—' : v === 0 && f.zeroText ? f.zeroText : `${v.toLocaleString('ko-KR', { maximumFractionDigits: 4 })}${f.unit}`;
 
 /** 틀 · 조건 — 한백 관리자. 틀마다 한 줄: 파일(올리기 · 바꾸기) · 조건(고치기) */
 function TemplateAdmin({ templates, onChange }: { templates: ProposalTemplate[]; onChange: (t: ProposalTemplate) => void }) {
@@ -325,7 +325,7 @@ function TemplateRow({ template, onChange }: { template: ProposalTemplate; onCha
         </span>
         {template.file ? (
           <span className={TEXT.label}>
-            {template.file.name} · {template.file.at.slice(0, 10)}
+            {template.file.name} · {dayOf(new Date(template.file.at))}
           </span>
         ) : (
           <Tag tone="warn">템플릿 없음</Tag>

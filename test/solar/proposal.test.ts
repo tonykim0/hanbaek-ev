@@ -6,10 +6,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  capacityKw, eok2, eokManText, kwText, lumoraRent, manwonText, millionText, monthAfter, profileAngleDeg, solar15, solarShare,
+  capacityKw, eok2, eokManText, kwText, lumoraLease, lumoraRent, manwonText, millionText, monthAfter, profileAngleDeg, solar15, solarShare,
+  solarShareBaro,
 } from '@/lib/solar/proposal/calc';
 import { estWidthPt, fitSizePt, fitText, mountText, proposalFileName, sellerBlock, sellerCover, splitAddress } from '@/lib/solar/proposal/fill-common';
-import { cleanTerms, missingTerms, PRODUCTS, TEMPLATES, UPCOMING } from '@/lib/solar/proposal/products';
+import { cleanTerms, missingTerms, PRODUCTS, TEMPLATE_KEYS, TEMPLATES, UPCOMING } from '@/lib/solar/proposal/products';
 import { paraXml, rectXml, tableXml, textBoxXml } from '@/lib/pptx/xml';
 import { orphansOf, sha256Hex } from '@/lib/pptx/deck';
 import { unprojector, type LngLat } from '@/lib/solar/geo';
@@ -93,6 +94,48 @@ describe('루모라 임대 — 세 선납 안', () => {
   it('끝내 못 앞서면 null', () => expect(lumoraRent(100, { moduleWatt: 600, price1: 1_000, price5: 9_000, price10: 9_000 }).crossover).toBeNull());
 });
 
+describe('자가소비형 — 솔라쉐어바로 · 구독형 리스', () => {
+  it('솔라쉐어바로 — 발전량 전부를 사고, 자가소비분만큼 한전 요금이 줄고, 초과분은 판다(자가소비량은 해마다 1년차 값)', () => {
+    const b = solarShareBaro(100, { hoursPerDay: 4, degradationPct: 1, ppaPrice: 100, tariffIncreasePct: 10, smp: 50 }, { selfKwh: 100_000, tariff: 200 });
+    expect(b.years).toHaveLength(20);
+    expect(b.years[0]).toEqual({ gen: 146_000, self: 100_000, excess: 46_000, cost: 14_600_000, bill: 20_000_000, sale: 2_300_000, gain: 7_700_000 });
+    expect(b.years[1].gen).toBeCloseTo(144_540);
+    expect(b.years[1].self).toBe(100_000);
+    expect(b.years[1].bill).toBeCloseTo(22_000_000);
+    expect(b.total.gain).toBeCloseTo(b.years.reduce((s, y) => s + y.gain, 0));
+    expect(b.excessPct).toBeCloseTo((46_000 / 146_000) * 100);
+  });
+  it('솔라쉐어바로 — 자가소비량이 발전량보다 많으면 발전량이 다 자가소비(초과 0)', () => {
+    const b = solarShareBaro(100, { hoursPerDay: 4, degradationPct: 1, ppaPrice: 100, tariffIncreasePct: 0, smp: 50 }, { selfKwh: 1e9, tariff: 200 });
+    for (const y of b.years) {
+      expect(y.self).toBeCloseTo(y.gen);
+      expect(y.excess).toBeCloseTo(0);
+    }
+  });
+  const leaseTerms = { hoursPerDay: 4, degradationPct: 0, subscriptionPrice: 100, tariffIncreasePct: 2, tariffIncreaseHighPct: 4, excessPrice: 50, recPrice: 30, regoPrice: 10, emissionFactor: 0.5 };
+  it('구독형 리스 — 자가소비는 발전량 × 1년차 자가소비율 · 절감 = 한전요금 − 구독료 + 초과 판매', () => {
+    const l = lumoraLease(100, leaseTerms, { selfKwh: 73_000, tariff: 200, usageKwh: 730_000 });
+    expect(l.selfPct).toBeCloseTo(50);
+    expect(l.years[0]).toEqual({ gen: 146_000, self: 73_000, excess: 73_000, bill: 14_600_000, fee: 14_600_000, sale: 3_650_000, saving: 3_650_000, rego: 1_460_000, rec: 4_380_000 });
+    expect(l.re100Pct).toBeCloseTo(20);
+    expect(l.carbonT).toBeCloseTo(73);
+    expect(l.carbonT20).toBeCloseTo(73 * 20);
+  });
+  it('구독형 리스 — 요금 시나리오 셋(동결 · 기본 · 인상 확대)은 인상률만 바꾼다', () => {
+    const l = lumoraLease(100, leaseTerms, { selfKwh: 73_000, tariff: 200, usageKwh: 730_000 });
+    expect(l.scenarios.freeze.total).toBeCloseTo(3_650_000 * 20);
+    expect(l.scenarios.base.pct).toBe(2);
+    expect(l.scenarios.base.total).toBeCloseTo(l.total.saving);
+    expect(l.scenarios.high.savings[1]).toBeCloseTo(14_600_000 * 1.04 - 14_600_000 + 3_650_000);
+  });
+  it('구독형 리스 — 자가소비량이 발전량보다 많으면 자가소비율 100%', () => {
+    const l = lumoraLease(100, leaseTerms, { selfKwh: 1e9, tariff: 200, usageKwh: 0 });
+    expect(l.selfPct).toBe(100);
+    expect(l.total.excess).toBeCloseTo(0);
+    expect(l.re100Pct).toBe(0);
+  });
+});
+
 describe('조건 다듬기', () => {
   it('그 틀의 칸 전부를 숫자로 — 쉼표 붙은 글도 받는다', () => {
     const raw = Object.fromEntries(TEMPLATES['lumora-rent'].terms.map((f) => [f.key, String(f.min).replace(/\B(?=(\d{3})+(?!\d))/g, ',')]));
@@ -112,6 +155,13 @@ describe('조건 다듬기', () => {
   });
   it('틀 받기 전 상품(모햇)은 고르는 상품에 없다 — 이름이 겹치지 않는다', () => {
     for (const u of UPCOMING) expect(PRODUCTS.some((p) => p.company === u.company && p.label === u.label)).toBe(false);
+  });
+  it('자가소비형 — 템플릿 · 조건은 넣을 수 있고, 고르는 상품에는 아직 없다(파워플래너 견본 받기 전)', () => {
+    for (const key of ['henergy-solarsharebaro', 'lumora-lease'] as const) {
+      expect(TEMPLATE_KEYS).toContain(key);
+      expect(PRODUCTS.some((p) => p.template === key)).toBe(false);
+    }
+    expect(UPCOMING.filter((u) => u.why.includes('파워플래너')).map((u) => u.label)).toEqual(['솔라쉐어바로', '구독형 리스']);
   });
 });
 

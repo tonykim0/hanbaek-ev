@@ -45,7 +45,7 @@ export async function listProposalTemplates(): Promise<ProposalTemplate[]> {
 
 const who = (a: Actor) => `${a.name}(${a.id})`;
 const termsText = (key: TemplateKey, t: Partial<Terms>) =>
-  TEMPLATES[key].terms.map((f) => `${f.label} ${typeof t[f.key] === 'number' ? t[f.key]!.toLocaleString('ko-KR') : '—'}${f.unit}`).join(' · ');
+  TEMPLATES[key].terms.map((f) => `${f.label} ${typeof t[f.key] === 'number' ? t[f.key]!.toLocaleString('ko-KR', { maximumFractionDigits: 4 }) : '—'}${f.unit}`).join(' · ');
 
 /** 틀 파일을 그 자리로 바꾼다 — url 은 라우트가 우리 Blob 에서 다시 찾은 것만 넘긴다 */
 export async function setProposalTemplateFile(key: TemplateKey, file: { url: string; name: string; size: number }, actor: Actor): Promise<ProposalTemplate> {
