@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Btn, Choice, Err, FIELD, Tag } from '@/components/ui';
 import type { ProposalTemplate } from '@/lib/data/solar-proposals';
+import { formatKoreanPhone } from '@/lib/contract-form';
 import { dayOf, today } from '@/lib/date';
 import type { LngLat } from '@/lib/solar/geo';
 import { capacityKw, kwText } from '@/lib/solar/proposal/calc';
 import { buildProposal, saveProposalTerms, uploadProposalTemplate } from '@/lib/solar/proposal/client';
-import { proposalFileName, type ProposalInput } from '@/lib/solar/proposal/fill-common';
+import { PHONE_DIGITS, phoneDigitsOf, proposalFileName, storedSeller, type ProposalInput, type Seller } from '@/lib/solar/proposal/fill-common';
 import { proposalLayout, type ProposalLayout } from '@/lib/solar/proposal/layout-rule';
 import { missingTerms, PRODUCTS, productOf, TEMPLATES, TEMPLATE_KEYS, UPCOMING, type ProductKey, type TemplateKey, type TermField, type Terms } from '@/lib/solar/proposal/products';
 import type { Report } from '@/lib/solar/types';
@@ -17,17 +18,16 @@ import { fetchRoofTrace, type RoofPlan } from './useRoofPlan';
 
 const COMPANIES = Array.from(new Set([...PRODUCTS, ...UPCOMING].map((p) => p.company)));
 type Phase = null | 'roofs' | 'build';
-/** 마지막으로 쓴 영업사 · 연락처 — 이 브라우저에만(같은 사람이 제안서를 여러 장 짓는다). 못 읽으면 빈칸으로 시작한다 */
+/** 마지막으로 쓴 영업사 · 담당자명 · 연락처 — 이 브라우저에만(같은 사람이 제안서를 여러 장 짓는다). 못 읽으면 빈칸으로 시작한다 */
 const SELLER_KEY = 'hb-proposal-seller';
-function loadSeller(): { name: string; contact: string } {
+function loadSeller(): Seller {
   try {
-    const v = JSON.parse(localStorage.getItem(SELLER_KEY) ?? 'null') as { name?: unknown; contact?: unknown } | null;
-    return { name: typeof v?.name === 'string' ? v.name : '', contact: typeof v?.contact === 'string' ? v.contact : '' };
+    return storedSeller(JSON.parse(localStorage.getItem(SELLER_KEY) ?? 'null'));
   } catch {
-    return { name: '', contact: '' };
+    return storedSeller(null);
   }
 }
-function saveSeller(s: { name: string; contact: string }): void {
+function saveSeller(s: Seller): void {
   try {
     localStorage.setItem(SELLER_KEY, JSON.stringify(s));
   } catch {
@@ -48,13 +48,9 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
   const { place } = report;
   const [customer, setCustomer] = useState(place.buildingName ?? '');
   const [address, setAddress] = useState(place.roadAddress ?? place.jibunAddress ?? place.query);
-  const [sellerName, setSellerName] = useState('');
-  const [sellerContact, setSellerContact] = useState('');
-  useEffect(() => {
-    const s = loadSeller();
-    setSellerName(s.name);
-    setSellerContact(s.contact);
-  }, []);
+  const [seller, setSeller] = useState<Seller>({ company: '', person: '', phone: '' });
+  useEffect(() => setSeller(loadSeller()), []);
+  const setSellerField = (k: keyof Seller, v: string) => setSeller((s) => ({ ...s, [k]: v }));
   const [product, setProduct] = useState<ProductKey | null>(null);
   const [templates, setTemplates] = useState<ProposalTemplate[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -107,8 +103,10 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
       [!templates, '템플릿 읽는 중'],
       [!customer.trim(), '고객명 없음'],
       [!address.trim(), '주소 없음'],
-      [!sellerName.trim(), '영업사 없음'],
-      [!sellerContact.trim(), '연락처 없음'],
+      [!seller.company.trim(), '영업사 없음'],
+      [!seller.person.trim(), '담당자명 없음'],
+      [!seller.phone, '연락처 없음'],
+      [phoneDigitsOf(seller.phone).length !== PHONE_DIGITS, `연락처 ${PHONE_DIGITS}자리 아님`],
       [!chosen, '상품 미선택'],
     ] as const).find(([hit]) => hit)?.[1] ??
     (chosen ? stateOf(chosen.template) : null) ??
@@ -121,7 +119,7 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
     setDone(null);
     if (!plan.roofs.length) {
       setPhase('roofs');
-      setStep('AI가 지붕 찾는 중…');
+      setStep('AI가 패널 배치하는 중…');
       try {
         plan.applyTrace(await fetchRoofTrace(place.pnu!));
       } catch (err) {
@@ -155,7 +153,7 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
         shadeDeg: lay.shadeDeg,
         gridSpareKw: best?.spareKw ?? null,
         today: today(),
-        seller: { name: sellerName.trim(), contact: sellerContact.trim() },
+        seller: { company: seller.company.trim(), person: seller.person.trim(), phone: seller.phone },
         image,
       };
       setStep(chosen.template === 'lumora-rent' ? '쪽 굽는 중…' : '제안서 짓는 중…');
@@ -180,7 +178,7 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
       setStep('');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 그때의 값으로 한 번
-  }, [chosen, templates, plan, customer, address, sellerName, sellerContact, report, layoutFor]);
+  }, [chosen, templates, plan, customer, address, seller, report, layoutFor]);
 
   // AI 로 지붕을 찾은 뒤 배치가 다시 그려지면(plan 이 바뀐다) 그 배치로 짓는다
   useEffect(() => {
@@ -200,18 +198,26 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
             <span className={TEXT.label}>고객 주소</span>
             <input value={address} onChange={(e) => setAddress(e.target.value)} maxLength={200} className={`mt-1 ${FIELD}`} />
           </label>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
           <label className="block">
             <span className={TEXT.label}>영업사</span>
-            <input value={sellerName} onChange={(e) => setSellerName(e.target.value)} maxLength={40} placeholder="(주)OO에너지" className={`mt-1 ${FIELD}`} />
+            <input value={seller.company} onChange={(e) => setSellerField('company', e.target.value)} maxLength={40} placeholder="(주)OO에너지" className={`mt-1 ${FIELD}`} />
+          </label>
+          <label className="block">
+            <span className={TEXT.label}>담당자명</span>
+            <input value={seller.person} onChange={(e) => setSellerField('person', e.target.value)} maxLength={20} placeholder="홍길동" className={`mt-1 ${FIELD}`} />
           </label>
           <label className="block">
             <span className={TEXT.label}>연락처</span>
+            {/* 숫자만 넣으면 하이픈이 저절로 — 계약서 작성과 같은 formatKoreanPhone(010 은 3-4-4) */}
             <input
-              value={sellerContact}
-              onChange={(e) => setSellerContact(e.target.value)}
-              maxLength={60}
-              placeholder="홍길동 010-0000-0000"
-              className={`mt-1 ${FIELD}`}
+              value={seller.phone}
+              onChange={(e) => setSellerField('phone', formatKoreanPhone(e.target.value))}
+              inputMode="numeric"
+              maxLength={13}
+              placeholder="010-0000-0000"
+              className={`mt-1 tabular-nums ${FIELD}`}
             />
           </label>
         </div>

@@ -9,7 +9,10 @@ import {
   capacityKw, eok2, eokManText, kwText, lumoraLease, lumoraRent, manwonText, millionText, monthAfter, profileAngleDeg, solar15, solarShare,
   solarShareBaro,
 } from '@/lib/solar/proposal/calc';
-import { estWidthPt, fitSizePt, fitText, mountText, proposalFileName, sellerBlock, sellerCover, splitAddress } from '@/lib/solar/proposal/fill-common';
+import {
+  estWidthPt, fitSizePt, fitText, mountText, PHONE_DIGITS, phoneDigitsOf, proposalFileName, sellerBlock, sellerContact, sellerCover, splitAddress, storedSeller,
+} from '@/lib/solar/proposal/fill-common';
+import { formatKoreanPhone } from '@/lib/contract-form';
 import { cleanTerms, missingTerms, PRODUCTS, TEMPLATE_KEYS, TEMPLATES, UPCOMING } from '@/lib/solar/proposal/products';
 import { paraXml, rectXml, tableXml, textBoxXml } from '@/lib/pptx/xml';
 import { orphansOf, sha256Hex } from '@/lib/pptx/deck';
@@ -180,26 +183,41 @@ describe('현장 글', () => {
   const style = { font: 'F', size: 12, label: 'AA0000', name: '000000', contact: '333333' };
   const width = (p: { runs: { text: string; size?: number }[] }) => p.runs.reduce((s, r) => s + estWidthPt(r.text, r.size ?? 0), 0);
   it('영업사 표지 — 짧으면 한 줄 · 「제안」만 강조색 · 원래 크기', () => {
-    const [p, ...rest] = sellerCover({ name: '(주)가나에너지', contact: '홍길동 010-0000-0000' }, style, 390);
+    const [p, ...rest] = sellerCover({ company: '(주)가나에너지', person: '홍길동', phone: '010-0000-0000' }, style, 390);
     expect(rest).toEqual([]);
     expect(p.runs.map((r) => r.text.trim())).toEqual(['제안', '(주)가나에너지', '홍길동 010-0000-0000']);
     expect(p.runs.map((r) => r.color)).toEqual(['AA0000', '000000', '333333']);
     expect(p.runs.every((r) => r.size === 12)).toBe(true);
   });
-  it('영업사 표지 — 길면 두 줄(영업사 / 연락처)로 나누고 줄마다 칸 너비 안', () => {
-    const long = { name: '(주)가나다라신재생에너지솔루션', contact: '홍길동 부장 010-1234-5678 hong@ganada-energy.co.kr' };
+  it('영업사 표지 — 길면 두 줄(영업사 / 담당자명 연락처)로 나누고 줄마다 칸 너비 안', () => {
+    const long = { company: '(주)가나다라신재생에너지솔루션', person: '홍길동 영업본부 수석부장', phone: '010-1234-5678' };
     const ps = sellerCover(long, style, 390);
     expect(ps).toHaveLength(2);
-    expect(ps[1].runs[0].text).toBe(long.contact);
+    expect(ps[1].runs[0].text).toBe('홍길동 영업본부 수석부장 010-1234-5678');
     for (const p of ps) expect(width(p)).toBeLessThanOrEqual(390);
   });
-  it('마지막 쪽 — 이름 · 연락처 두 줄, 칸보다 길면 글자를 줄인다', () => {
-    const b = sellerBlock({ name: '(주)가나에너지', contact: '홍길동 010-0000-0000' }, { font: 'F', size: 14, contactSize: 11, name: 'FFFFFF', contact: 'CCCCCC' }, 400, 'ctr');
+  it('마지막 쪽 — 영업사 · 담당자명 연락처 두 줄, 칸보다 길면 글자를 줄인다', () => {
+    const b = sellerBlock({ company: '(주)가나에너지', person: '홍길동', phone: '010-0000-0000' }, { font: 'F', size: 14, contactSize: 11, name: 'FFFFFF', contact: 'CCCCCC' }, 400, 'ctr');
     expect(b.map((x) => x.runs[0].text)).toEqual(['(주)가나에너지', '홍길동 010-0000-0000']);
     expect(b.map((x) => x.runs[0].size)).toEqual([14, 11]);
-    const tight = sellerBlock({ name: '(주)가나다라신재생에너지솔루션', contact: '홍길동 010-0000-0000' }, { font: 'F', size: 18, contactSize: 14, name: 'F', contact: 'C' }, 200);
+    const tight = sellerBlock({ company: '(주)가나다라신재생에너지솔루션', person: '홍길동', phone: '010-0000-0000' }, { font: 'F', size: 18, contactSize: 14, name: 'F', contact: 'C' }, 200);
     expect(tight[0].runs[0].size).toBeLessThan(18);
     expect(width(tight[0])).toBeLessThanOrEqual(200);
+  });
+  it('연락처 — 숫자만 넣어도 하이픈이 저절로(010 은 3-4-4), 11자리만 받는다', () => {
+    expect(formatKoreanPhone('01012345678')).toBe('010-1234-5678');
+    expect(formatKoreanPhone('0101')).toBe('010-1');
+    expect(formatKoreanPhone('010-1234-56789')).toBe('010-1234-5678');
+    expect(phoneDigitsOf('010-1234-5678')).toHaveLength(PHONE_DIGITS);
+    expect(phoneDigitsOf('010-123-4567')).toHaveLength(10);
+    expect(sellerContact({ company: '(주)가', person: ' 홍길동 ', phone: '010-1234-5678' })).toBe('홍길동 010-1234-5678');
+    expect(sellerContact({ company: '(주)가', person: '', phone: '010-1234-5678' })).toBe('010-1234-5678');
+  });
+  it('이 브라우저가 기억한 영업사 — 지금 모양과 옛 모양(연락처 한 칸에 이름 · 번호)을 다 읽는다', () => {
+    expect(storedSeller({ company: '(주)가', person: '홍길동', phone: '01012345678' })).toEqual({ company: '(주)가', person: '홍길동', phone: '010-1234-5678' });
+    expect(storedSeller({ name: '(주)가', contact: '홍길동 010-1234-5678' })).toEqual({ company: '(주)가', person: '홍길동', phone: '010-1234-5678' });
+    expect(storedSeller({ name: '(주)가', contact: '홍길동 과장' })).toEqual({ company: '(주)가', person: '홍길동 과장', phone: '' });
+    expect(storedSeller(null)).toEqual({ company: '', person: '', phone: '' });
   });
   it('글 너비 어림 — 한글 0.95em · 숫자 0.66em · 빈칸 0.3em', () => {
     expect(estWidthPt('가나', 10)).toBeCloseTo(19, 6);

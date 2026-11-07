@@ -15,7 +15,7 @@ import { buildPptx, type BuildSlide } from '@/lib/pptx/build';
 import { Deck } from '@/lib/pptx/deck';
 import { EMU_PER_PT, paras, pictureXml, rectXml, tableXml, textBoxXml, type Align, type Cell, type Para, type Run } from '@/lib/pptx/xml';
 import { capacityKw, eokManText, kwText, LUMORA_PREPAYS, lumoraRent, millionText, monthAfter, type Lumora } from './calc';
-import { fitText, sellerCover, type FillArgs, type ProposalInput } from './fill-common';
+import { fitText, sellerContact, sellerCover, type FillArgs, type ProposalInput } from './fill-common';
 
 const PT = EMU_PER_PT;
 const PAGES = 23;
@@ -320,13 +320,13 @@ function plans(r: Lumora, input: ProposalInput, w: number): Record<number, PageP
         name: '영업사',
         rect: [518, 416, 830, 436],
         anchor: 'b',
-        paras: [line([run(input.seller.name, { size: fitText(input.seller.name, 13.5, 312), bold: true, color: 'C9CED2' })])],
+        paras: [line([run(input.seller.company, { size: fitText(input.seller.company, 13.5, 312), bold: true, color: 'C9CED2' })])],
       },
       {
         name: '영업사 연락처',
         rect: [518, 446, 830, 464],
         anchor: 't',
-        paras: [line([run(input.seller.contact, { size: fitText(input.seller.contact, 11, 312), color: 'A9B6BF' })])],
+        paras: [line([run(sellerContact(input.seller), { size: fitText(sellerContact(input.seller), 11, 312), color: 'A9B6BF' })])],
       },
     ],
     extra: rectXml(0, '영업사 선', emu([518, 440, 818, 441]), '919FA7'),

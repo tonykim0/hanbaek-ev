@@ -1,6 +1,7 @@
 /**
  * 제안서 채우기의 공통 — 생성기 셋(fill-tyrant · fill-henergy · fill-lumora)이 받는 현장 값과 작은 도구들.
  */
+import { formatKoreanPhone } from '@/lib/contract-form';
 import type { Align, Para } from '@/lib/pptx/xml';
 import type { Terms } from './products';
 
@@ -23,10 +24,11 @@ export type ProposalInput = {
   /** 오늘(한국 날짜 'YYYY-MM-DD') — 사업 일정 · 파일 날짜 */
   today: string;
   /**
-   * 제안하는 영업사 — 이름 · 연락처(한 칸, 「홍길동 010-…」처럼). 표지와 마지막 쪽에 적는다. 한백 이름은 넣지 않는다
-   * (한백 2026-11-06 「한백이름말고, 영업사 이름과 연락처를 넣을거야」 · 「웹앱에서 넣게해줘」).
+   * 제안하는 영업사 — 표지와 마지막 쪽에 적는다. 한백 이름은 넣지 않는다(한백 2026-11-06 「한백이름말고, 영업사 이름과 연락처를
+   * 넣을거야」 · 「웹앱에서 넣게해줘」). 영업사 · 담당자명 · 연락처 세 칸이다(2026-11-08 「제안서에 영업사, 담당자명, 연락처 다
+   * 들어가야해」 — 그전에는 연락처 한 칸에 이름까지 적었다).
    */
-  seller: { name: string; contact: string };
+  seller: Seller;
   /**
    * 현장 사진을 자리 비율로 — withPanels 면 패널을 그린 것(가배치), 아니면 항공사진 그대로(사업지 사진).
    * 사진은 한 번 받아 두고 자리마다 잘라 쓴다(components/solar/proposal-image).
@@ -35,6 +37,30 @@ export type ProposalInput = {
 };
 
 export type FillArgs = { template: ArrayBuffer; terms: Terms; input: ProposalInput };
+
+/** 제안하는 영업사 — 회사 · 담당자명 · 연락처(휴대폰 숫자 11자리를 「010-1234-5678」로) */
+export type Seller = { company: string; person: string; phone: string };
+
+/** 연락처는 숫자 11자리(한백 2026-11-08 「연락처는 자동으로 하이픈 들어가게 해줘 11자리 숫자로」) — 하이픈은 계약서 작성과 같은 formatKoreanPhone */
+export const PHONE_DIGITS = 11;
+export const phoneDigitsOf = (v: string): string => v.replace(/\D/g, '');
+
+/** 제안서의 둘째 줄 — 「홍길동 010-1234-5678」 */
+export const sellerContact = (s: Seller): string => [s.person, s.phone].map((x) => x.trim()).filter(Boolean).join(' ');
+
+/**
+ * 이 브라우저가 기억한 영업사 — 지금 모양 { company, person, phone } 과 2026-11-08 전의 { name, contact: '홍길동 010-…' } 를 다 읽는다
+ * (옛 연락처는 첫 숫자 앞이 담당자명, 숫자 · 하이픈 덩이가 번호). 못 읽으면 빈칸이다.
+ */
+export function storedSeller(raw: unknown): Seller {
+  const v = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const str = (x: unknown) => (typeof x === 'string' ? x : '');
+  if ('company' in v || 'person' in v || 'phone' in v) return { company: str(v.company), person: str(v.person), phone: formatKoreanPhone(str(v.phone)) };
+  const contact = str(v.contact);
+  const at = contact.search(/\d/);
+  const number = at < 0 ? '' : (contact.slice(at).match(/^[\d\s-]+/)?.[0] ?? '');
+  return { company: str(v.name), person: (at < 0 ? contact : contact.slice(0, at)).trim(), phone: formatKoreanPhone(number) };
+}
 
 type SellerStyle = { font: string; size: number; label: string; name: string; contact: string };
 
@@ -82,27 +108,29 @@ export function fitText(text: string, size: number, widthPt: number, min = 8): n
  * 85% 아래로 줄여야 들면 두 줄(「제안  영업사」 / 「연락처」)로 나눈다 — 긴 영업사 이름 · 연락처(직함 · 메일까지)가 칸을 넘어 옆 글을 덮었다
  * (2026-11-07 검수: 루모라 541.8/424pt · 에이치에너지 500.2/390pt). 몇 줄인지에 따라 칸 높이는 각 틀이 정한다.
  */
-export function sellerCover(seller: ProposalInput['seller'], s: SellerStyle, widthPt: number, align?: Align): Para[] {
+export function sellerCover(seller: Seller, s: SellerStyle, widthPt: number, align?: Align): Para[] {
   const label = '제안';
-  const name = `  ${seller.name}`;
-  const contact = `   ${seller.contact}`;
+  const contactText = sellerContact(seller);
+  const name = `  ${seller.company}`;
+  const contact = `   ${contactText}`;
   const one = fitText(label + name + contact, s.size, widthPt);
   const run = (text: string, size: number, bold: boolean, color: string) => ({ text, size, bold, color, font: s.font });
   if (one >= s.size * 0.85) return [{ runs: [run(label, one, true, s.label), run(name, one, true, s.name), run(contact, one, false, s.contact)], align }];
-  const two = Math.min(fitText(label + name, s.size, widthPt), fitText(seller.contact, s.size, widthPt));
+  const two = Math.min(fitText(label + name, s.size, widthPt), fitText(contactText, s.size, widthPt));
   return [
     { runs: [run(label, two, true, s.label), run(name, two, true, s.name)], align },
-    { runs: [run(seller.contact, two, false, s.contact)], align },
+    { runs: [run(contactText, two, false, s.contact)], align },
   ];
 }
 
-/** 마지막 쪽의 두 줄 — 영업사(굵게) · 연락처. 줄마다 칸 너비(widthPt)에 들게 글자를 줄인다 */
-export function sellerBlock(seller: ProposalInput['seller'], s: Omit<SellerStyle, 'label'> & { contactSize: number }, widthPt: number, align?: Align): Para[] {
-  const nameSize = fitText(seller.name, s.size, widthPt);
-  const contactSize = fitText(seller.contact, s.contactSize, widthPt);
+/** 마지막 쪽의 두 줄 — 영업사(굵게) · 담당자명 연락처. 줄마다 칸 너비(widthPt)에 들게 글자를 줄인다 */
+export function sellerBlock(seller: Seller, s: Omit<SellerStyle, 'label'> & { contactSize: number }, widthPt: number, align?: Align): Para[] {
+  const contactText = sellerContact(seller);
+  const nameSize = fitText(seller.company, s.size, widthPt);
+  const contactSize = fitText(contactText, s.contactSize, widthPt);
   return [
-    { runs: [{ text: seller.name, size: nameSize, bold: true, color: s.name, font: s.font }], align },
-    { runs: [{ text: seller.contact, size: contactSize, color: s.contact, font: s.font }], align, spaceBeforePt: 4 },
+    { runs: [{ text: seller.company, size: nameSize, bold: true, color: s.name, font: s.font }], align },
+    { runs: [{ text: contactText, size: contactSize, color: s.contact, font: s.font }], align, spaceBeforePt: 4 },
   ];
 }
 
