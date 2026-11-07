@@ -1,0 +1,400 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Btn, Choice, Err, FIELD, SectionHead } from '@/components/ui';
+import { formatKoreanPhone } from '@/lib/contract-form';
+import type { ProposalTemplate } from '@/lib/data/solar-proposals';
+import { today } from '@/lib/date';
+import type { LngLat } from '@/lib/solar/geo';
+import { capacityKw, kwText } from '@/lib/solar/proposal/calc';
+import { buildProposal } from '@/lib/solar/proposal/client';
+import { PHONE_DIGITS, phoneDigitsOf, proposalFileName, storedSeller, type ProposalInput, type Seller } from '@/lib/solar/proposal/fill-common';
+import { proposalLayout, type ProposalLayout } from '@/lib/solar/proposal/layout-rule';
+import { missingTerms, PRODUCTS, productOf, UPCOMING, type ProductKey, type TemplateKey, type Terms } from '@/lib/solar/proposal/products';
+import type { Mode, Report, Suggestion } from '@/lib/solar/types';
+import { fetchSiteReport, SearchBox } from './Checker';
+import { siteImager } from './proposal-image';
+import ProposalTemplates from './ProposalTemplates';
+import SiteMap from './SiteMap';
+import { PANEL, TEXT } from './ui';
+import { fetchRoofTrace, useRoofPlan } from './useRoofPlan';
+
+const COMPANIES = Array.from(new Set([...PRODUCTS, ...UPCOMING].map((p) => p.company)));
+type Phase = null | 'roofs' | 'build';
+
+/** 마지막으로 쓴 영업사 · 담당자명 · 연락처 — 이 브라우저에만(같은 사람이 제안서를 여러 장 짓는다). 못 읽으면 빈칸으로 시작한다 */
+const SELLER_KEY = 'hb-proposal-seller';
+function loadSeller(): Seller {
+  try {
+    return storedSeller(JSON.parse(localStorage.getItem(SELLER_KEY) ?? 'null'));
+  } catch {
+    return storedSeller(null);
+  }
+}
+function saveSeller(s: Seller): void {
+  try {
+    localStorage.setItem(SELLER_KEY, JSON.stringify(s));
+  } catch {
+    // 저장소를 못 쓰는 브라우저 — 다음에 다시 적으면 된다
+  }
+}
+
+/**
+ * 태양광 제안서 생성 — 제안서만 짓는 화면이다(한백 2026-11-08 「부지검토와 제안서 생성기능이 너무 겹치는데 따로따로 구분해줘. 부지검토는
+ * 부지검토용으로만 제안서생성은 제안서 생성용으로만, 그리고 UXUI도 best practice인지 검토해봐. 너무 순서가 뒤죽박죽이야」).
+ * 판정 · 검토 항목 · 상담 접수는 부지 검토에만 있다 — 그전에는 두 화면이 같은 결과 판(판정 · 콘솔 기준 용량)을 세웠고, 그 용량이
+ * 제안서에 들어가는 용량(사업자 기준)과 달랐다.
+ *
+ * 위에서 아래로 짓는 차례 그대로다: 1 현장(주소로 불러온다) → 2 상품 → 3 패널 배치(지도 — 고른 상품의 사업자 기준으로 다시 깐 것을
+ * 그린다, 지도의 장수가 제안서의 장수다) → 4 고객 · 영업사 → 만들기. 아직 못 하는 걸음은 머리만 서고 까닭을 곁글로 단다.
+ * 템플릿 · 조건(한백 관리자)은 흐름 밖, 맨 아래 접힌 판. 상품 · 영업사는 현장을 바꿔도 남는다(같은 사람이 여러 현장을 짓는다).
+ * 짓는 일은 브라우저가 한다 — 서버에 남는 것이 없다.
+ */
+export default function ProposalMaker({ mapKey, initialQ, canManage }: { mapKey: string | null; initialQ: string; canManage: boolean }) {
+  const [report, setReport] = useState<Report | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadFail, setLoadFail] = useState<string | null>(null);
+  const [templates, setTemplates] = useState<ProposalTemplate[] | null>(null);
+  const [templatesFail, setTemplatesFail] = useState<string | null>(null);
+  const [product, setProduct] = useState<ProductKey | null>(null);
+  const [seller, setSeller] = useState<Seller>({ company: '', person: '', phone: '' });
+  useEffect(() => setSeller(loadSeller()), []);
+
+  useEffect(() => {
+    let live = true;
+    fetch('/api/solar/proposals')
+      .then(async (r) => {
+        const b = (await r.json().catch(() => ({}))) as { templates?: ProposalTemplate[]; error?: string };
+        if (!r.ok || !b.templates) throw new Error(b.error ?? `템플릿을 읽지 못했습니다 (${r.status})`);
+        if (live) setTemplates(b.templates);
+      })
+      .catch((err) => live && setTemplatesFail(err instanceof Error ? err.message : String(err)));
+    return () => {
+      live = false;
+    };
+  }, []);
+
+  async function load(mode: Mode, q: string, picked?: Suggestion) {
+    if (!q.trim() || loading) return;
+    setLoading(true);
+    setLoadFail(null);
+    try {
+      setReport(await fetchSiteReport(mode, q, picked));
+    } catch (err) {
+      setReport(null);
+      setLoadFail(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }
+  // 들고 온 주소(부지 검토의 「이 부지로 제안서 만들기」)는 처음 한 번만 — 다시 그려질 때마다 돌면 바깥 자료의 하루 한도를 깎는다
+  const started = useRef(false);
+  useEffect(() => {
+    if (initialQ.length < 2 || started.current) return;
+    started.current = true;
+    void load('roof', initialQ);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 처음 한 번
+  }, []);
+
+  /** 그 템플릿으로 못 짓는 까닭 — 칩 꼬리와 만들기 단추가 같이 쓴다 */
+  const stateOf = (key: TemplateKey): string | null => {
+    const t = templates?.find((x) => x.key === key);
+    if (!t) return null;
+    if (!t.file) return '템플릿 없음';
+    return missingTerms(key, t.terms).length ? '조건 미지정' : null;
+  };
+  const place = report?.place;
+
+  return (
+    <div className="space-y-4">
+      <SearchBox
+        step={1}
+        mode="roof"
+        title="현장"
+        sub="제안할 건물"
+        placeholder="도로명·지번 주소 또는 건물명"
+        initialQuery={initialQ}
+        busy={loading ? 'roof' : null}
+        error={loadFail}
+        onRun={load}
+        action="불러오기"
+        busyAction="불러오는 중…"
+      >
+        {place && (
+          <p className={`mt-3 border-t border-slate-100 pt-3 ${TEXT.body}`}>
+            <span className="font-bold text-slate-900">{place.buildingName ?? place.roadAddress ?? place.query}</span>
+            <span className={`ml-2 ${TEXT.label}`}>{[place.roadAddress, place.jibunAddress].filter(Boolean).join(' · ')}</span>
+          </p>
+        )}
+      </SearchBox>
+
+      <section className={`${PANEL} space-y-3 p-5`} aria-label="상품">
+        <SectionHead step={2} title="상품" />
+        <div className="space-y-2">
+          {COMPANIES.map((company) => (
+            <div key={company} className="flex flex-wrap items-center gap-2">
+              <span className={`w-24 shrink-0 ${TEXT.item}`}>{company}</span>
+              {PRODUCTS.filter((p) => p.company === company).map((p) => {
+                const s = stateOf(p.template);
+                return (
+                  <Choice key={p.key} on={product === p.key} onClick={() => setProduct(p.key)}>
+                    {p.label}
+                    {s && <span className="ml-1.5 font-normal text-amber-700">· {s}</span>}
+                  </Choice>
+                );
+              })}
+              {/* 템플릿을 아직 못 받은 상품 · 파워플래너 견본 받기 전 — 못 고르는 칩(lib/solar/proposal/products UPCOMING) */}
+              {UPCOMING.filter((u) => u.company === company).map((u) => (
+                <Choice key={u.label} on={false} disabled>
+                  {u.label}
+                  <span className="ml-1.5 font-normal">· {u.why}</span>
+                </Choice>
+              ))}
+            </div>
+          ))}
+        </div>
+        <Err className="block">{templatesFail}</Err>
+      </section>
+
+      {report ? (
+        <ProposalSite
+          key={report.checkedAt}
+          report={report}
+          mapKey={mapKey}
+          product={product}
+          templates={templates}
+          stateOf={stateOf}
+          seller={seller}
+          setSeller={setSeller}
+        />
+      ) : (
+        <>
+          <WaitingStep step={3} title="패널 배치" />
+          <WaitingStep step={4} title="고객 · 영업사" />
+        </>
+      )}
+
+      {canManage && templates && <ProposalTemplates templates={templates} onChange={(t) => setTemplates((all) => all?.map((x) => (x.key === t.key ? t : x)) ?? null)} />}
+    </div>
+  );
+}
+
+/** 현장을 불러오기 전의 걸음 — 머리만 서고 까닭을 곁글로(화면 규칙 3 · 6) */
+function WaitingStep({ step, title }: { step: number; title: string }) {
+  return (
+    <section className={`${PANEL} px-5 py-3`} aria-label={title}>
+      <SectionHead step={step} title={<span className="text-slate-500">{title}</span>} meta="현장 불러오기 전" />
+    </section>
+  );
+}
+
+/**
+ * 불러온 현장 하나의 3 · 4 걸음 — 현장마다 새로 그린다(앞 현장에서 고른 지붕 · 고객명이 남지 않게, key = 검토 시각).
+ * 짓기: 지붕이 없으면 먼저 AI 로 배치하고(그 뒤 배치가 다시 그려진 다음에) 고른 상품의 사업자 기준으로 다시 깐 배치로 짓는다.
+ */
+function ProposalSite({
+  report,
+  mapKey,
+  product,
+  templates,
+  stateOf,
+  seller,
+  setSeller,
+}: {
+  report: Report;
+  mapKey: string | null;
+  product: ProductKey | null;
+  templates: ProposalTemplate[] | null;
+  stateOf: (key: TemplateKey) => string | null;
+  seller: Seller;
+  setSeller: (f: (s: Seller) => Seller) => void;
+}) {
+  const plan = useRoofPlan(report.map);
+  const { place } = report;
+  const [customer, setCustomer] = useState(place.buildingName ?? '');
+  const [address, setAddress] = useState(place.roadAddress ?? place.jibunAddress ?? place.query);
+  const [phase, setPhase] = useState<Phase>(null);
+  const [step, setStep] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<string | null>(null);
+  const setSellerField = (k: keyof Seller, v: string) => setSeller((s) => ({ ...s, [k]: v }));
+
+  const chosen = product ? productOf(product) : null;
+  const template = chosen ? (templates?.find((t) => t.key === chosen.template) ?? null) : null;
+  const chosenTerms = template?.terms as Terms | undefined;
+  const termsReady = !!chosen && !!chosenTerms && !missingTerms(chosen.template, chosenTerms).length;
+  const lat = report.map?.point.lat ?? 36.5;
+  // 고른 상품의 사업자 기준으로 다시 깐 배치 — 지도에 그리고(3 패널 배치), 지을 때도 같은 셈을 한다
+  const layoutFor = useCallback(
+    (terms: Terms): ProposalLayout =>
+      proposalLayout(
+        (plan?.roofs ?? []).filter((r) => plan?.selected.has(r.id)),
+        (plan?.cuts ?? []).map((c) => c.polygons),
+        plan?.style ?? 'tilted',
+        lat,
+        terms,
+      ),
+    [plan?.roofs, plan?.selected, plan?.cuts, plan?.style, lat],
+  );
+  const preview = useMemo(() => (termsReady && plan?.roofs.length ? layoutFor(chosenTerms!) : null), [termsReady, chosenTerms, plan?.roofs.length, layoutFor]);
+  const previewLine =
+    chosen && preview && preview.count > 0 && chosenTerms
+      ? `${chosen.company} ${chosen.label} 기준 · 패널 ${preview.count.toLocaleString()}장 · ${kwText(capacityKw(preview.count, chosenTerms.moduleWatt))} kW · ${
+          plan?.style === 'flush' ? '지붕면 부착형' : `경사 ${preview.tiltDeg}° · 음영각 ${preview.shadeDeg}°`
+        }`
+      : null;
+
+  // 못 짓는 까닭 — 화면 위에서부터(2 상품 → 3 배치 → 4 고객 · 영업사) 처음 걸리는 것 하나를 단추에 적는다
+  const blocker =
+    ([
+      [!templates, '템플릿 읽는 중'],
+      [!chosen, '상품 미선택'],
+    ] as const).find(([hit]) => hit)?.[1] ??
+    (chosen ? stateOf(chosen.template) : null) ??
+    ([
+      [!place.pnu, '필지 없음'],
+      [!plan, '지도 자료 없음'],
+      [!customer.trim(), '고객명 없음'],
+      [!address.trim(), '주소 없음'],
+      [!seller.company.trim(), '영업사 없음'],
+      [!seller.person.trim(), '담당자명 없음'],
+      [!seller.phone, '연락처 없음'],
+      [phoneDigitsOf(seller.phone).length !== PHONE_DIGITS, `연락처 ${PHONE_DIGITS}자리 아님`],
+    ] as const).find(([hit]) => hit)?.[1] ??
+    null;
+
+  const start = async () => {
+    if (blocker || phase || !plan) return;
+    setError(null);
+    setDone(null);
+    if (!plan.roofs.length) {
+      setPhase('roofs');
+      setStep('AI가 패널 배치하는 중…');
+      try {
+        plan.applyTrace(await fetchRoofTrace(place.pnu!));
+      } catch (err) {
+        setPhase(null);
+        // 라우트의 실패 문구가 이미 「지붕을 찾지 못했습니다 — …」로 온다 — 두 번 붙이지 않는다
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg.startsWith('지붕을 찾지 못했습니다') ? msg : `지붕을 찾지 못했습니다 — ${msg}`);
+        return;
+      }
+    }
+    setPhase('build');
+  };
+
+  const building = useRef(false);
+  const build = useCallback(async () => {
+    if (!chosen || !template || !plan || building.current) return;
+    building.current = true;
+    try {
+      const lay = layoutFor(template.terms as Terms);
+      if (!lay.count) throw new Error('고른 지붕에 패널이 없습니다 — 지도에서 지붕을 고르세요.');
+      setStep('항공사진 받는 중…');
+      const extent: LngLat[] = plan.roofs.filter((r) => plan.selected.has(r.id)).flatMap((r) => r.polygons.flatMap((poly) => poly[0] ?? []));
+      const image = await siteImager(lay.quads, extent);
+      const best = report.grid && report.grid.best !== null ? report.grid.rows[report.grid.best] : null;
+      const input: ProposalInput = {
+        customer: customer.trim(),
+        address: address.trim(),
+        panels: lay.count,
+        mount: { style: plan.style, tiltDeg: lay.tiltDeg },
+        shadeDeg: lay.shadeDeg,
+        gridSpareKw: best?.spareKw ?? null,
+        today: today(),
+        seller: { company: seller.company.trim(), person: seller.person.trim(), phone: seller.phone },
+        image,
+      };
+      setStep(chosen.template === 'lumora-rent' ? '쪽 굽는 중…' : '제안서 짓는 중…');
+      const blob = await buildProposal(chosen.key, template, input);
+      const name = proposalFileName(input.customer, `${chosen.company} ${chosen.label}`, input.today);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      saveSeller(input.seller);
+      const kw = capacityKw(lay.count, (template.terms.moduleWatt as number) ?? 0);
+      setDone(`받았습니다 — ${name} · 패널 ${lay.count.toLocaleString()}장 · ${kwText(kw)} kW`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      building.current = false;
+      setPhase(null);
+      setStep('');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 그때의 값으로 한 번
+  }, [chosen, template, plan, customer, address, seller, report, layoutFor]);
+
+  // AI 로 배치한 뒤 지붕이 다시 그려지면(plan 이 바뀐다) 그 배치로 짓는다
+  useEffect(() => {
+    if (phase === 'build') void build();
+  }, [phase, build]);
+
+  return (
+    <>
+      {report.map ? (
+        <SiteMap
+          data={report.map}
+          appKey={mapKey}
+          plan={plan}
+          ground={null}
+          pnu={place.pnu}
+          heading={{ step: 3, title: '패널 배치' }}
+          panels={preview?.quads ?? null}
+          note={previewLine}
+        />
+      ) : (
+        <section className={`${PANEL} px-5 py-3`} aria-label="패널 배치">
+          <SectionHead step={3} title="패널 배치" meta="지도 자료 없음" />
+        </section>
+      )}
+
+      <section className={`${PANEL} space-y-4 p-5`} aria-label="제안서">
+        <SectionHead step={4} title="고객 · 영업사" />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className={TEXT.label}>고객명</span>
+            <input value={customer} onChange={(e) => setCustomer(e.target.value)} maxLength={60} placeholder="(주)OO" className={`mt-1 ${FIELD}`} />
+          </label>
+          <label className="block">
+            <span className={TEXT.label}>고객 주소</span>
+            <input value={address} onChange={(e) => setAddress(e.target.value)} maxLength={200} className={`mt-1 ${FIELD}`} />
+          </label>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="block">
+            <span className={TEXT.label}>영업사</span>
+            <input value={seller.company} onChange={(e) => setSellerField('company', e.target.value)} maxLength={40} placeholder="(주)OO에너지" className={`mt-1 ${FIELD}`} />
+          </label>
+          <label className="block">
+            <span className={TEXT.label}>담당자명</span>
+            <input value={seller.person} onChange={(e) => setSellerField('person', e.target.value)} maxLength={20} placeholder="홍길동" className={`mt-1 ${FIELD}`} />
+          </label>
+          <label className="block">
+            <span className={TEXT.label}>연락처</span>
+            {/* 숫자만 넣으면 하이픈이 저절로 — 계약서 작성과 같은 formatKoreanPhone(010 은 3-4-4) */}
+            <input
+              value={seller.phone}
+              onChange={(e) => setSellerField('phone', formatKoreanPhone(e.target.value))}
+              inputMode="numeric"
+              maxLength={13}
+              placeholder="010-0000-0000"
+              className={`mt-1 tabular-nums ${FIELD}`}
+            />
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
+          <Btn onClick={() => void start()} disabled={!!blocker} busy={phase !== null} busyLabel={step || '짓는 중…'}>
+            {blocker ? `${blocker} — 제안서 불가` : '제안서 만들기 (PPTX)'}
+          </Btn>
+          <Err>{error}</Err>
+          {done && <span className={TEXT.body}>{done}</span>}
+        </div>
+      </section>
+    </>
+  );
+}

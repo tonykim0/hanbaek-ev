@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Btn, Err, Note } from '@/components/ui';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Btn, Err, Note, SectionHead } from '@/components/ui';
 import { MODULE, TILT_DEG } from '@/lib/solar/assumptions';
 import { boxArea, boxCorners, type GroundUse } from '@/lib/solar/boxes';
 import type { LngLat, PolygonCoords } from '@/lib/solar/geo';
@@ -42,6 +42,9 @@ export default function SiteMap({
   plan,
   ground,
   pnu,
+  heading,
+  panels,
+  note,
 }: {
   data: SiteMapData;
   appKey: string | null;
@@ -50,6 +53,15 @@ export default function SiteMap({
   ground: GroundPlan | null;
   /** AI 지붕 따기에 보낼 필지번호 */
   pnu: string | null;
+  /** 판 머리의 걸음 — 제안서 생성의 「3 패널 배치」. 없으면 단추만 */
+  heading?: { step: number; title: string };
+  /**
+   * 대신 그릴 패널 — 제안서 생성에서 고른 상품의 사업자 기준(경사각 · 줄 간격)으로 다시 깐 배치. 지도에 보이는 장수가 제안서에
+   * 들어가는 장수와 같게 한다(한백 2026-11-08 UX 검토). 지붕을 빼고 넣는 것은 그대로 밑의 지붕이 받는다(캔버스는 눌림을 안 받는다)
+   */
+  panels?: LngLat[][] | null;
+  /** 단추 옆 한 줄 — 그 배치의 장수 · 용량 */
+  note?: ReactNode;
 }) {
   const el = useRef<HTMLDivElement>(null);
   const live = useRef<Live | null>(null);
@@ -231,7 +243,7 @@ export default function SiteMap({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // 지붕형의 고른 지붕 배치만 — 지상형 네모에는 패널을 그리지 않는다: 캔버스가 지도 표시 위에 깔려 네모 가운데의
   // 넓이·용량과 × 를 덮었다. 캐노피 장수는 결과 판에 있다
-  const quads = useMemo(() => [...(layouts?.values() ?? [])].flatMap((l) => l.quads), [layouts]);
+  const quads = useMemo(() => panels ?? [...(layouts?.values() ?? [])].flatMap((l) => l.quads), [panels, layouts]);
   useEffect(() => {
     const m = live.current;
     const canvas = canvasRef.current;
@@ -330,6 +342,11 @@ export default function SiteMap({
       setAi({ busy: false, error: true, msg: err instanceof Error ? err.message : String(err) });
     }
   };
+  const aiButton = plan && (
+    <Btn kind={plan.roofs.length ? 'side' : 'do'} onClick={findRoofs} busy={ai.busy} busyLabel="AI가 패널 배치하는 중…">
+      AI로 패널배치하기
+    </Btn>
+  );
   const addBox = () => editorRef.current?.startDraw();
   const confirmBoxes = () => {
     const editor = editorRef.current;
@@ -356,10 +373,15 @@ export default function SiteMap({
        * 지도가 안 떠도 누를 수 있다 — 지붕을 받아 오는 일이라 지도와 상관없다(용량 · 제안서는 그대로 바뀐다).
        */}
       {plan && pnu && (
-        <div className="flex flex-wrap items-center gap-2 px-5 py-3">
-          <Btn kind={plan.roofs.length ? 'side' : 'do'} onClick={findRoofs} busy={ai.busy} busyLabel="AI가 패널 배치하는 중…">
-            AI로 패널배치하기
-          </Btn>
+        <div className="px-5 py-3">
+          {heading ? (
+            <SectionHead step={heading.step} title={heading.title} action={aiButton} meta={note} />
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              {aiButton}
+              {note && <span className={`${TEXT.meta} tabular-nums`}>{note}</span>}
+            </div>
+          )}
         </div>
       )}
       <div className="relative bg-slate-200">

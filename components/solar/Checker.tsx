@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { Btn, Err, FIELD, Tag } from '@/components/ui';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Btn, Err, FIELD, SectionHead, Tag } from '@/components/ui';
 import type { Mode, Report, Suggestion } from '@/lib/solar/types';
 import ReportView from './ReportView';
 import { PANEL, TEXT } from './ui';
@@ -11,6 +11,25 @@ const BOXES: { mode: Mode; title: string; sub: string; placeholder: string }[] =
   { mode: 'roof', title: '지붕형', sub: '건물 지붕에 설치', placeholder: '도로명·지번 주소 또는 건물명' },
   { mode: 'ground', title: '지상형', sub: '땅에 설치', placeholder: '도로명·지번 주소 또는 장소명' },
 ];
+
+/**
+ * 주소(또는 고른 후보)로 부지를 불러온다 — /api/solar/check. 부지 검토와 제안서 생성(「1 현장」)이 같이 쓴다. 실패하면 그 까닭(한글)을 던진다.
+ */
+export async function fetchSiteReport(mode: Mode, q: string, picked?: Suggestion): Promise<Report> {
+  const params = new URLSearchParams({ q: q.trim(), mode });
+  if (picked) {
+    params.set('lat', String(picked.lat));
+    params.set('lng', String(picked.lng));
+    if (picked.road) params.set('road', picked.road);
+    if (picked.parcel) params.set('parcel', picked.parcel);
+    if (picked.name) params.set('name', picked.name);
+    params.set('kind', picked.kind);
+  }
+  const res = await fetch(`/api/solar/check?${params}`);
+  const body = await res.json();
+  if (!res.ok) throw new Error(body.error ?? `검토 실패 (${res.status})`);
+  return body as Report;
+}
 
 /** 후보 한 줄의 굵은 글자와 밑의 작은 글자 */
 function linesOf(s: Suggestion): { main: string; sub: string | null } {
@@ -31,23 +50,17 @@ export default function Checker({
   initial = null,
   canRegister = false,
   canPropose = false,
-  canManage = false,
-  modes = ['roof', 'ground'],
-  focus,
 }: {
   mapKey: string | null;
   /** 들고 온 주소 — 그 갈래의 검색창에 넣고 한 번 돈다(현장 상세의 「부지 검토」) */
   initial?: { q: string; mode: Mode } | null;
   /** 결과에서 상담 접수로 가는 길을 세우는가 — 쓰는 계정만(열람 전용은 아니다) */
   canRegister?: boolean;
-  /** 결과에 제안서 구역을 세우는가 — 한백의 눈 */
+  /**
+   * 지붕형 결과에 「이 부지로 제안서 만들기」(제안서 생성으로 가는 고리)를 세우는가 — 한백의 눈. 제안서는 그 화면에서만 짓는다
+   * (한백 2026-11-08 「부지검토와 제안서 생성기능이 너무 겹치는데 따로따로 구분해줘」 — 그전에는 결과 밑에 제안서 칸이 통째로 섰다)
+   */
   canPropose?: boolean;
-  /** 제안서 틀 · 조건을 고치는가 — 한백 관리자 */
-  canManage?: boolean;
-  /** 세울 검색창 — 제안서 생성은 지붕형 하나(사업자 상품이 지붕 임대다) */
-  modes?: Mode[];
-  /** 'proposal' — 결과에 요약 · 지도 · 제안서만(검토 항목은 부지 검토에) */
-  focus?: 'proposal';
 }) {
   /** 도는 검토의 갈래 — 결과 자리가 하나라 한 번에 하나만 돈다 */
   const [busy, setBusy] = useState<Mode | null>(null);
@@ -58,20 +71,8 @@ export default function Checker({
     if (!q.trim() || busy) return;
     setBusy(mode);
     setError(null);
-    const params = new URLSearchParams({ q: q.trim(), mode });
-    if (picked) {
-      params.set('lat', String(picked.lat));
-      params.set('lng', String(picked.lng));
-      if (picked.road) params.set('road', picked.road);
-      if (picked.parcel) params.set('parcel', picked.parcel);
-      if (picked.name) params.set('name', picked.name);
-      params.set('kind', picked.kind);
-    }
     try {
-      const res = await fetch(`/api/solar/check?${params}`);
-      const body = await res.json();
-      if (!res.ok) throw new Error(body.error ?? `검토 실패 (${res.status})`);
-      setReport(body as Report);
+      setReport(await fetchSiteReport(mode, q, picked));
     } catch (err) {
       setReport(null);
       setError({ mode, text: err instanceof Error ? err.message : String(err) });
@@ -93,7 +94,7 @@ export default function Checker({
     <div>
       {/* 위에서 아래로(한백 지시) — 주소 칸이 넓어야 긴 주소·후보 목록이 잘리지 않는다 */}
       <div className="grid gap-3">
-        {BOXES.filter((b) => modes.includes(b.mode)).map((b) => (
+        {BOXES.map((b) => (
           <SearchBox
             key={b.mode}
             {...b}
@@ -113,16 +114,17 @@ export default function Checker({
           mapKey={mapKey}
           canRegister={canRegister}
           canPropose={canPropose}
-          canManage={canManage}
-          focus={focus}
         />
       )}
     </div>
   );
 }
 
-/** 검색창 하나 — 입력 · 후보 목록 · 검토 단추. 실패 문구는 이 창 밑에 뜬다(누른 자리) */
-function SearchBox({
+/**
+ * 검색창 하나 — 입력 · 후보 목록 · 단추. 실패 문구는 이 창 밑에 뜬다(누른 자리). 부지 검토의 두 창과 제안서 생성의 「1 현장」이 같이 쓴다
+ * (제안서 생성은 걸음 번호 · 「불러오기」 · 창 밑에 불러온 현장 한 줄).
+ */
+export function SearchBox({
   mode,
   title,
   sub,
@@ -131,6 +133,10 @@ function SearchBox({
   busy,
   error,
   onRun,
+  step,
+  action = '검토하기',
+  busyAction = '검토 중…',
+  children,
 }: {
   mode: Mode;
   title: string;
@@ -140,6 +146,12 @@ function SearchBox({
   busy: Mode | null;
   error: string | null;
   onRun: (mode: Mode, q: string, picked?: Suggestion) => void;
+  /** 걸음 번호 — 있으면 머리를 SectionHead 로(제안서 생성의 차례) */
+  step?: number;
+  action?: string;
+  busyAction?: string;
+  /** 창 밑 — 불러온 현장 한 줄 */
+  children?: ReactNode;
 }) {
   const [query, setQuery] = useState(initialQuery);
   const [items, setItems] = useState<Suggestion[]>([]);
@@ -231,10 +243,14 @@ function SearchBox({
       className={`${PANEL} p-4 sm:p-5`}
       aria-label={`${title} 검토`}
     >
-      <p className="flex items-baseline gap-2">
-        <span className={TEXT.item}>{title}</span>
-        <span className={TEXT.label}>{sub}</span>
-      </p>
+      {step !== undefined ? (
+        <SectionHead step={step} title={title} meta={sub} />
+      ) : (
+        <p className="flex items-baseline gap-2">
+          <span className={TEXT.item}>{title}</span>
+          <span className={TEXT.label}>{sub}</span>
+        </p>
+      )}
       <div className="mt-3 flex items-start gap-2">
         <div ref={boxRef} className="relative min-w-0 flex-1">
           <input
@@ -288,11 +304,12 @@ function SearchBox({
             </ul>
           )}
         </div>
-        <Btn type="submit" disabled={busy !== null || !query.trim()} busy={busy === mode} busyLabel="검토 중…" className="shrink-0 whitespace-nowrap">
-          검토하기
+        <Btn type="submit" disabled={busy !== null || !query.trim()} busy={busy === mode} busyLabel={busyAction} className="shrink-0 whitespace-nowrap">
+          {action}
         </Btn>
       </div>
       <Err className="mt-2 block">{error}</Err>
+      {children}
     </form>
   );
 }

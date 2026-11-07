@@ -31,9 +31,8 @@ export default async function SolarCheckPage({ searchParams }: { searchParams: R
         initial={q.length >= 2 ? { q, mode } : null}
         // 상담 접수는 한백 관리자와 태양광 참여 협력사 — 열람 전용에게는 결과의 접수 단추가 없다
         canRegister={!!session && canRegisterSite(session)}
-        // 제안서는 사업자 자료(틀)로 짓는다 — 한백만(타이런트 업무협약서 3조). 틀 · 조건 고치기는 한백 관리자
+        // 제안서는 「제안서 생성」에서만 짓는다 — 여기는 그리로 가는 고리뿐. 사업자 자료(템플릿)라 한백만(타이런트 업무협약서 3조)
         canPropose={!!session && isHanbaek(session.role)}
-        canManage={session?.role === 'admin'}
       />
     </div>
   );

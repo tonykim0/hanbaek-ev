@@ -8,7 +8,6 @@ import { areaLabel, estimateCapacity } from '@/lib/solar/estimate';
 import type { Check, CheckStatus, Estimate, GridView, Level, Report, Verdict } from '@/lib/solar/types';
 import { LEVEL_LABEL } from '@/lib/solar/verdict';
 import GridDetail from './GridDetail';
-import ProposalPanel from './ProposalPanel';
 import SiteMap from './SiteMap';
 import { LEVEL_TONE, PANEL, StatusPill, TEXT } from './ui';
 import { useGroundBoxes } from './useGroundBoxes';
@@ -26,7 +25,8 @@ const BECAUSE: Record<Level, string> = {
 };
 
 /**
- * 결과 — 판 셋을 위에서 아래로: ① 결과(장소 · 판정 · 용량 · 발전량 · 계산 가정) ② 지도(배치) ③ 검토 항목.
+ * 결과 — 판 셋을 위에서 아래로: ① 결과(장소 · 판정 · 용량 · 계산 가정) ② 지도(배치) ③ 검토 항목. 부지 검토만 한다 — 제안서는
+ * 「제안서 생성」 화면에서 짓는다(한백 2026-11-08 「부지검토는 부지검토용으로만 제안서생성은 제안서 생성용으로만」). 결과 머리의 고리가 그리로 간다.
  * 답(판정과 용량)이 맨 위에 한 판으로 서고, 그 근거가 밑으로 간다. 같은 값은 한 자리에만 둔다 —
  * 용량은 결과 판, 계통 사정 문장은 검토 항목(판정 밑에는 항목 이름만).
  */
@@ -35,18 +35,12 @@ export default function ReportView({
   mapKey,
   canRegister = false,
   canPropose = false,
-  canManage = false,
-  focus,
 }: {
   report: Report;
   mapKey: string | null;
   canRegister?: boolean;
-  /** 'proposal' — 제안서 생성 화면: 요약 · 지도 · 제안서만 세우고 검토 항목은 뺀다(부지 검토에 있다) */
-  focus?: 'proposal';
-  /** 제안서를 짓는가 — 한백의 눈(관리자 · 열람 전용). 사업자 자료라 협력사에게는 없다 */
+  /** 지붕형 결과에 「이 부지로 제안서 만들기」를 세우는가 — 한백의 눈(관리자 · 열람 전용). 사업자 자료라 협력사에게는 없다 */
   canPropose?: boolean;
-  /** 제안서 틀 · 조건을 고치는가 — 한백 관리자 */
-  canManage?: boolean;
 }) {
   // 지붕형은 지도에서 고른 지붕의 패널 장수가 용량이다 — 고를 때마다 용량·발전량·계통·허가·종합 판정을 다시 센다
   const plan = useRoofPlan(report.mode === 'roof' ? report.map : null);
@@ -120,7 +114,7 @@ export default function ReportView({
         basis={basis}
         register={register}
         canRegister={canRegister}
-        jump={focus !== 'proposal'}
+        canPropose={canPropose && report.mode === 'roof'}
       />
 
       {/* 검토마다 새로 그린다 — 앞 결과의 도형이 남지 않게 */}
@@ -135,19 +129,14 @@ export default function ReportView({
         />
       )}
 
-      {/* 제안서 — 지붕형에서 고른 지붕의 배치로 사업자 틀을 채운다(한백 2026-11-06). 지상형은 사업자 상품이 지붕 임대라 없다 */}
-      {canPropose && plan && <ProposalPanel report={report} plan={plan} canManage={canManage} />}
-
-      {focus !== 'proposal' && (
-        <div className={PANEL}>
-          <h2 className={`border-b border-slate-100 px-5 py-3 ${TEXT.head}`}>검토 항목 {checks.length}개</h2>
-          <ul className="divide-y divide-slate-100">
-            {checks.map((c) => (
-              <CheckRow key={c.key} check={c} grid={c.key === 'grid' ? grid : null} />
-            ))}
-          </ul>
-        </div>
-      )}
+      <div className={PANEL}>
+        <h2 className={`border-b border-slate-100 px-5 py-3 ${TEXT.head}`}>검토 항목 {checks.length}개</h2>
+        <ul className="divide-y divide-slate-100">
+          {checks.map((c) => (
+            <CheckRow key={c.key} check={c} grid={c.key === 'grid' ? grid : null} />
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }
@@ -161,20 +150,21 @@ function Summary({
   basis,
   register,
   canRegister,
-  jump = true,
+  canPropose,
 }: {
   report: Report;
   verdict: Verdict;
   checks: Check[];
   estimate: Estimate | null;
   basis: string;
-  /** 판정을 정한 항목 이름이 밑의 검토 항목으로 가는 고리인가 — 검토 항목을 안 세우는 제안서 생성 화면에서는 글자만 */
-  jump?: boolean;
   /** AI 지붕 배치로 용량을 정했을 때만 — 건축물대장 면적으로 센 용량(견줘 보는 값) */
   register: Estimate | null;
   canRegister: boolean;
+  /** 「이 부지로 제안서 만들기」 — 지붕형 · 한백의 눈 */
+  canPropose: boolean;
 }) {
   const { place } = report;
+  const address = place.roadAddress ?? place.jibunAddress ?? place.query;
   const tone = LEVEL_TONE[verdict.level];
   // 자료를 못 받아 조건부가 된 판정은 「확인 못한 것」 — 사유가 다르다
   const head = verdict.level === 'conditional' && verdict.because.every((c) => c.status === 'unknown') ? '확인 못한 것' : BECAUSE[verdict.level];
@@ -188,19 +178,24 @@ function Summary({
           <Badge>{report.mode === 'roof' ? '지붕형' : '지상형'}</Badge>
           {place.buildingName ?? place.roadAddress ?? place.query}
         </h2>
-        {/* 검토한 부지를 그대로 상담으로 — 주소 · 건물명 · 설치 형태를 들고 접수 폼으로 간다(현장관리) */}
-        {canRegister && (
-          <BtnLink
-            kind="side"
-            size="sm"
-            href={`/solar/sites/new?${new URLSearchParams({
-              address: place.roadAddress ?? place.jibunAddress ?? place.query,
-              name: place.buildingName ?? '',
-              kind: report.mode,
-            })}`}
-          >
-            이 부지로 상담 접수
-          </BtnLink>
+        {/* 다음 걸음 — 검토한 부지를 그대로 상담 접수(현장관리) · 제안서 생성으로. 주소를 들고 간다 */}
+        {(canRegister || canPropose) && (
+          <div className="flex flex-wrap gap-2">
+            {canRegister && (
+              <BtnLink
+                kind="side"
+                size="sm"
+                href={`/solar/sites/new?${new URLSearchParams({ address, name: place.buildingName ?? '', kind: report.mode })}`}
+              >
+                이 부지로 상담 접수
+              </BtnLink>
+            )}
+            {canPropose && (
+              <BtnLink kind="side" size="sm" href={`/solar/proposals?${new URLSearchParams({ q: address })}`}>
+                이 부지로 제안서 만들기
+              </BtnLink>
+            )}
+          </div>
         )}
       </div>
       <p className={`mt-0.5 ${TEXT.label}`}>{[place.roadAddress, place.jibunAddress].filter(Boolean).join(' · ')}</p>
@@ -218,13 +213,9 @@ function Summary({
                 {verdict.because.map((c, i) => (
                   <span key={c.key}>
                     {i > 0 && ' · '}
-                    {jump ? (
-                      <a href={`#check-${c.key}`} className="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900">
-                        {c.title}
-                      </a>
-                    ) : (
-                      <span className="font-semibold text-slate-900">{c.title}</span>
-                    )}
+                    <a href={`#check-${c.key}`} className="font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900">
+                      {c.title}
+                    </a>
                   </span>
                 ))}
               </>
