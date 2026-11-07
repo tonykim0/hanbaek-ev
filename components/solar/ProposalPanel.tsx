@@ -68,7 +68,7 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
     fetch('/api/solar/proposals')
       .then(async (r) => {
         const b = (await r.json().catch(() => ({}))) as { templates?: ProposalTemplate[]; error?: string };
-        if (!r.ok || !b.templates) throw new Error(b.error ?? `틀을 읽지 못했습니다 (${r.status})`);
+        if (!r.ok || !b.templates) throw new Error(b.error ?? `템플릿을 읽지 못했습니다 (${r.status})`);
         if (live) setTemplates(b.templates);
       })
       .catch((err) => live && setLoadError(err instanceof Error ? err.message : String(err)));
@@ -81,7 +81,7 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
   const stateOf = (key: TemplateKey): string | null => {
     const t = templateOf(key);
     if (!t) return null;
-    if (!t.file) return '틀 없음';
+    if (!t.file) return '템플릿 없음';
     return missingTerms(key, t.terms).length ? '조건 미지정' : null;
   };
   const chosen = product ? productOf(product) : null;
@@ -104,7 +104,7 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
   // 못 짓는 까닭 — 위에서부터 처음 걸리는 것 하나를 단추에 적는다
   const blocker =
     ([
-      [!templates, '틀 읽는 중'],
+      [!templates, '템플릿 읽는 중'],
       [!customer.trim(), '고객명 없음'],
       [!address.trim(), '주소 없음'],
       [!sellerName.trim(), '영업사 없음'],
@@ -229,7 +229,7 @@ export default function ProposalPanel({ report, plan, canManage }: { report: Rep
                   </Choice>
                 );
               })}
-              {/* 틀을 아직 못 받은 상품 — 못 고르는 칩(lib/solar/proposal/products UPCOMING) */}
+              {/* 템플릿을 아직 못 받은 상품 — 못 고르는 칩(lib/solar/proposal/products UPCOMING) */}
               {UPCOMING.filter((u) => u.company === company).map((u) => (
                 <Choice key={u.label} on={false} disabled>
                   {u.label}
@@ -268,7 +268,7 @@ const termText = (f: TermField, v: unknown): string =>
 function TemplateAdmin({ templates, onChange }: { templates: ProposalTemplate[]; onChange: (t: ProposalTemplate) => void }) {
   return (
     <details className="border-t border-slate-100 pt-3">
-      <summary className={`cursor-pointer ${TEXT.label}`}>틀 · 조건</summary>
+      <summary className={`cursor-pointer ${TEXT.label}`}>템플릿 · 조건</summary>
       <ul className="mt-2 divide-y divide-slate-100">
         {TEMPLATE_KEYS.map((key) => (
           <TemplateRow key={key} template={templates.find((t) => t.key === key)!} onChange={onChange} />
@@ -328,11 +328,11 @@ function TemplateRow({ template, onChange }: { template: ProposalTemplate; onCha
             {template.file.name} · {template.file.at.slice(0, 10)}
           </span>
         ) : (
-          <Tag tone="warn">틀 없음</Tag>
+          <Tag tone="warn">템플릿 없음</Tag>
         )}
         <input ref={fileRef} type="file" accept={def.file === 'pptx' ? '.pptx' : '.pdf'} className="hidden" onChange={(e) => e.target.files?.[0] && void upload(e.target.files[0])} />
         <Btn size="sm" kind="quiet" onClick={() => fileRef.current?.click()} busy={busy?.startsWith('올리는') ?? false} busyLabel={busy ?? undefined}>
-          {template.file ? '틀 바꾸기' : '틀 올리기'}
+          {template.file ? '템플릿 바꾸기' : '템플릿 올리기'}
         </Btn>
         {!editing && (
           <Btn size="sm" kind="quiet" onClick={openTerms}>

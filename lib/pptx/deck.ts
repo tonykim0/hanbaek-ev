@@ -76,7 +76,7 @@ export class Slide {
 
   shape(name: string): Element {
     const el = this.find(name);
-    if (!el) throw new Error(`틀이 바뀌었습니다 — ${this.label}에 「${name}」 칸이 없습니다.`);
+    if (!el) throw new Error(`템플릿이 바뀌었습니다 — ${this.label}에 「${name}」 칸이 없습니다.`);
     return el;
   }
 
@@ -268,7 +268,7 @@ export class Deck {
   /** n 번째 슬라이드(1부터) */
   async slide(n: number): Promise<Slide> {
     const part = this.slides[n - 1];
-    if (!part) throw new Error(`틀이 바뀌었습니다 — ${n}번째 슬라이드가 없습니다(지금 ${this.slides.length}장).`);
+    if (!part) throw new Error(`템플릿이 바뀌었습니다 — ${n}번째 슬라이드가 없습니다(지금 ${this.slides.length}장).`);
     const hit = this.opened.get(part);
     if (hit) return hit;
     const xml = await this.zip.file(part)!.async('string');

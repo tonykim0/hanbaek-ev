@@ -62,7 +62,7 @@ export async function setProposalTemplateFile(key: TemplateKey, file: { url: str
     await writeAudit(tx, {
       projectId: null,
       actor,
-      action: '태양광 제안서 틀',
+      action: '태양광 제안서 템플릿',
       field: `${TEMPLATES[key].company} ${TEMPLATES[key].title}`,
       oldValue: before?.fileName ?? null,
       newValue: file.name.slice(0, 200),

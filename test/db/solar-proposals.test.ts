@@ -21,7 +21,7 @@ const json = (method: string, body: unknown, query = '') =>
 /** 시험 전의 루모라 조건 — 끝에 되돌린다 */
 let before: { terms: Record<string, number>; termsAt: Date | null; termsBy: string | null } | null = null;
 
-describe('태양광 제안서 — 틀 · 조건의 문', () => {
+describe('태양광 제안서 — 템플릿 · 조건의 문', () => {
   it('협력사는 읽기부터 403 · 열람 전용은 읽는다', async () => {
     await signIn(USERS.ecoelec);
     expect((await GET()).status).toBe(403);

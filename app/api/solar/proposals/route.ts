@@ -42,19 +42,19 @@ export async function GET() {
   try {
     return NextResponse.json({ templates: await listProposalTemplates() });
   } catch (err) {
-    return failed(err, '제안서 틀 읽기');
+    return failed(err, '제안서 템플릿 읽기');
   }
 }
 
 export async function POST(request: Request) {
   const session = await requireAdmin();
-  if (!session) return fail('제안서 틀은 한백 관리자만 올립니다.', 403);
+  if (!session) return fail('제안서 템플릿은 한백 관리자만 올립니다.', 403);
   const body = (await request.json().catch(() => null)) as { key?: unknown; filename?: unknown; pathname?: unknown } | null;
   const key = body?.key;
-  if (!isTemplateKey(key)) return fail('어느 틀인지 알 수 없습니다.', 400);
+  if (!isTemplateKey(key)) return fail('어느 템플릿인지 알 수 없습니다.', 400);
   const kind = TEMPLATES[key].file;
   const filename = typeof body?.filename === 'string' ? body.filename.normalize('NFC').trim() : '';
-  if (!filename.toLowerCase().endsWith(`.${kind}`)) return fail(`${TEMPLATES[key].company} ${TEMPLATES[key].title} 틀은 ${kind} 파일입니다 — ${TEMPLATES[key].hint}`, 400);
+  if (!filename.toLowerCase().endsWith(`.${kind}`)) return fail(`${TEMPLATES[key].company} ${TEMPLATES[key].title} 템플릿은 ${kind} 파일입니다 — ${TEMPLATES[key].hint}`, 400);
   if (!process.env.BLOB_READ_WRITE_TOKEN) return fail('파일 저장소(Blob)가 연결되지 않았습니다.', 500);
 
   // ── 1단계: 토큰 — 자리는 우리가 짓는다 ───────────────────────────────
@@ -85,7 +85,7 @@ export async function POST(request: Request) {
     const template = await setProposalTemplateFile(key, { url: found.url, name: filename, size: found.size }, actorOf(session));
     return NextResponse.json({ template });
   } catch (err) {
-    return failed(err, '제안서 틀 저장');
+    return failed(err, '제안서 템플릿 저장');
   }
 }
 
@@ -93,7 +93,7 @@ export async function PATCH(request: Request) {
   const session = await requireAdmin();
   if (!session) return fail('제안서 조건은 한백 관리자만 고칩니다.', 403);
   const body = (await request.json().catch(() => null)) as { key?: unknown; terms?: unknown } | null;
-  if (!isTemplateKey(body?.key)) return fail('어느 틀인지 알 수 없습니다.', 400);
+  if (!isTemplateKey(body?.key)) return fail('어느 템플릿인지 알 수 없습니다.', 400);
   try {
     return NextResponse.json({ template: await setProposalTerms(body.key, body.terms, actorOf(session)) });
   } catch (err) {

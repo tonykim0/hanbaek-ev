@@ -119,7 +119,7 @@ export const PRODUCTS: ProductDef[] = [
  * 틀을 아직 못 받은 상품 — 고르는 자리에 못 고르는 칩으로 세운다(한백 2026-11-07 「모햇 이라는 사업제안서 유형도 있는데 이건 아직 내가
  * 템플릿을 못받았어. 선택지로 해놓고 비활성화」). 모햇은 에이치에너지 2026 하반기 영업정책의 상품 이름이다. 틀이 오면 TEMPLATES · PRODUCTS 로 옮긴다.
  */
-export const UPCOMING: { company: string; label: string; why: string }[] = [{ company: '에이치에너지', label: '모햇', why: '틀 받기 전' }];
+export const UPCOMING: { company: string; label: string; why: string }[] = [{ company: '에이치에너지', label: '모햇', why: '템플릿 받기 전' }];
 
 export const TEMPLATE_KEYS = Object.keys(TEMPLATES) as TemplateKey[];
 export const isTemplateKey = (v: unknown): v is TemplateKey => typeof v === 'string' && (TEMPLATE_KEYS as string[]).includes(v);

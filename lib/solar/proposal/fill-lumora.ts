@@ -373,11 +373,11 @@ async function renderPages(data: ArrayBuffer, masksOf: (page: number) => Rect[])
   const lib = await pdfjs();
   const doc = await lib.getDocument({ data: new Uint8Array(data) }).promise;
   try {
-    if (doc.numPages !== PAGES) throw new Error(`틀이 바뀌었습니다 — 루모라 임대형 제안서는 ${PAGES}쪽인데 이 파일은 ${doc.numPages}쪽입니다.`);
+    if (doc.numPages !== PAGES) throw new Error(`템플릿이 바뀌었습니다 — 루모라 임대형 제안서는 ${PAGES}쪽인데 이 파일은 ${doc.numPages}쪽입니다.`);
     // 덱이 맞는가 — 4쪽 표의 머리(「구분」 · 「내용」)와 7쪽 표의 「건설기간」이 있어야 한다
     for (const [n, word] of [[4, '설치규모'], [7, '건설기간']] as const) {
       const text = (await (await doc.getPage(n)).getTextContent()).items.map((i) => ('str' in i ? i.str : '')).join('').replace(/\s/g, '');
-      if (!text.includes(word)) throw new Error(`틀이 바뀌었습니다 — ${n}쪽에 「${word}」가 없습니다.`);
+      if (!text.includes(word)) throw new Error(`템플릿이 바뀌었습니다 — ${n}쪽에 「${word}」가 없습니다.`);
     }
     const jpegs: Uint8Array[] = [];
     let size = { cx: 0, cy: 0 };

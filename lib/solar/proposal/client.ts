@@ -29,7 +29,7 @@ export async function uploadProposalTemplate(key: TemplateKey, file: File, onPct
   });
   const c = await fetch('/api/solar/proposals', { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify({ key, pathname: tb.pathname, filename: file.name }) });
   const cb = (await c.json().catch(() => ({}))) as { template?: ProposalTemplate; error?: string };
-  if (!c.ok || !cb.template) throw new Error(cb.error ?? '올린 틀을 확인하지 못했습니다.');
+  if (!c.ok || !cb.template) throw new Error(cb.error ?? '올린 템플릿을 확인하지 못했습니다.');
   return cb.template;
 }
 
@@ -42,9 +42,9 @@ export async function saveProposalTerms(key: TemplateKey, terms: Record<string, 
 
 /** 제안서 한 벌 — 틀 파일을 받아 그 상품의 생성기로 채운다 */
 export async function buildProposal(product: ProductKey, template: ProposalTemplate, input: ProposalInput): Promise<Blob> {
-  if (!template.file) throw new Error('틀이 아직 없습니다.');
+  if (!template.file) throw new Error('템플릿이 아직 없습니다.');
   const res = await fetch(template.file.url);
-  if (!res.ok) throw new Error(`틀 파일을 받지 못했습니다 (${res.status}).`);
+  if (!res.ok) throw new Error(`템플릿 파일을 받지 못했습니다 (${res.status}).`);
   const data = await res.arrayBuffer();
   const args = { template: data, terms: template.terms as Terms, input };
   const p = productOf(product);
