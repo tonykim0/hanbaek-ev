@@ -8,7 +8,8 @@
  *
  * 카드마다 「고치기」로 연다 — 평소엔 글자, 고칠 때만 입력칸(화면 규칙 4).
  * 사업자등록번호는 적는 대로 하이픈이 붙고 국세청 검증 숫자를 본다(정본 lib/bizid). 은행은
- * 골라 넣고 계좌번호는 숫자만 받는다(lib/bank-account) — 저장소와 같은 규칙을 쓴다.
+ * 골라 넣고 계좌번호는 숫자만 받는다(lib/bank-account) — 저장소와 같은 규칙을 쓴다. 보일 때는 그 은행의
+ * 하이픈이 붙는다(formatAccountNo — 입력칸도 적는 동안만 숫자, 칸을 떠나면 하이픈). 통장사본과 같은 모양이라 대조가 쉽다.
  * 서류(사업자등록증·통장사본)는 올리기·채우기·교체·지우기 — 편집 모드와 무관하게 그 자리에서 한다.
  * 서류를 올리면 Claude 가 읽어 입력칸을 1차로 채운다(/api/admin/partner-details/read).
  * ★채우는 데서 멈춘다★ — 저장은 사람이 「저장」을 눌러야 한다. 판독은 타이핑을 덜어 주는
@@ -27,6 +28,8 @@ import {
   ACCOUNT_DIGITS_MAX,
   ACCOUNT_DIGITS_MIN,
   BANKS,
+  accountPlaceholder,
+  formatAccountNo,
   isValidAccountNo,
   normalizeAccountNo,
 } from '@/lib/bank-account';
@@ -106,6 +109,8 @@ function PartnerCard({
   const [localError, setLocalError] = useState<string | null>(null);
   const [reading, setReading] = useState<PartnerFileKind | null>(null);
   const [readIssues, setReadIssues] = useState<string[]>([]);
+  /** 계좌번호 칸을 적는 중 — 그동안은 숫자만, 떠나면 그 은행의 하이픈(적는 도중 자릿수마다 하이픈이 갈아 끼지 않게) */
+  const [typingAccount, setTypingAccount] = useState(false);
   const [form, setForm] = useState({
     bizRegNo: '', ceo: '', addr: '', bankName: '', bankAccountNo: '', bankHolder: '',
   });
@@ -279,10 +284,12 @@ function PartnerCard({
                 </Field>
                 <Field label="계좌번호">
                   <input
-                    value={form.bankAccountNo}
+                    value={typingAccount ? form.bankAccountNo : formatAccountNo(form.bankName, form.bankAccountNo)}
                     disabled={busy}
                     inputMode="numeric"
-                    placeholder="숫자만"
+                    placeholder={accountPlaceholder(form.bankName)}
+                    onFocus={() => setTypingAccount(true)}
+                    onBlur={() => setTypingAccount(false)}
                     onChange={(e) =>
                       setForm((f) => ({ ...f, bankAccountNo: normalizeAccountNo(e.target.value) }))
                     }
@@ -336,7 +343,7 @@ function PartnerCard({
                 {details.bankName || details.bankAccountNo ? (
                   <span className="font-bold text-slate-800">
                     {details.bankName ?? <Empty kind="miss" />}{' '}
-                    <span className="tabular-nums">{details.bankAccountNo ?? ''}</span>
+                    <span className="tabular-nums">{formatAccountNo(details.bankName, details.bankAccountNo)}</span>
                     {details.bankHolder && (
                       <span className="font-semibold text-slate-500"> · {details.bankHolder}</span>
                     )}

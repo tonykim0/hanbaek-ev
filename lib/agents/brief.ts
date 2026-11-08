@@ -11,6 +11,7 @@ import { BOARD_COLUMNS, bandOfColumn, boardColumnOf, courtOfColumn, type BoardCo
 import { batchKey, batchStateOf, type Batch, type BatchState } from '@/lib/payout-board';
 import { OVERDUE_DAYS, whatOf, type TodoItem } from '@/lib/todo-types';
 import { won } from '@/lib/format';
+import { formatAccountNo } from '@/lib/bank-account';
 import { normalizeOrg } from '@/lib/roles';
 import { CONSOLE_URL } from '@/lib/portal-intake';
 import type { CpoName, ProjectSummary } from '@/types/project';
@@ -194,7 +195,8 @@ function settlementBrief(data: ScopeData): string {
     const org = normalizeOrg(b.org);
     const partner = org ? data.partners?.get(org) : undefined;
     if (partner) {
-      const bank = [partner.bankName, partner.bankAccountNo, partner.bankHolder && `예금주 ${partner.bankHolder}`].filter(Boolean).join(' ');
+      const bank = [partner.bankName, formatAccountNo(partner.bankName, partner.bankAccountNo), partner.bankHolder && `예금주 ${partner.bankHolder}`]
+        .filter(Boolean).join(' ');
       out.push(`  지급처: ${[
         partner.bizRegNo && `사업자등록번호 ${partner.bizRegNo}`,
         partner.ceo && `대표 ${partner.ceo}`,

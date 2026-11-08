@@ -12,6 +12,7 @@
  */
 import { itemNameOf, requestNameOf, sortBatches, statementPathOf, vatOf, type AgitBatch, type AgitPayee } from './post';
 import type { PurchaseSheet } from './purchase-xlsx';
+import { formatAccountNo } from '@/lib/bank-account';
 
 export interface AgitBundlePlan {
   /** 「26년 10월 영업위탁 수수료 1차.zip」 */
@@ -64,7 +65,7 @@ export function agitBundleOf(
           supply: b.total,
           vat: vatOf(b.total),
           bank: payee?.bankName ?? '',
-          account: payee?.bankAccountNo ?? '',
+          account: formatAccountNo(payee?.bankName, payee?.bankAccountNo),
           holder: payee?.bankHolder ?? '',
           note: b.invoice ? '' : '세금계산서 없음',
         };

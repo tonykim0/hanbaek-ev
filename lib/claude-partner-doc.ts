@@ -13,7 +13,7 @@
  *     조용히 빈칸으로 두는 것보다 낫다(화면 규칙 10: 빈칸은 「안 넣음」이라는 다른 말이다).
  */
 import Anthropic from '@anthropic-ai/sdk';
-import { BANKS, isValidAccountNo, normalizeAccountNo } from './bank-account';
+import { BANKS, isValidAccountNo, matchBankName, normalizeAccountNo } from './bank-account';
 import { formatKoreanBizId, isValidKoreanBizId } from './bizid';
 import { uprightPdf } from './pdf-orient';
 import type { PartnerFileKind } from './auth/partner-details';
@@ -294,28 +294,4 @@ function normalize(raw: unknown, kind: PartnerFileKind): PartnerDocReadResult {
   }
 
   return { fields, issues };
-}
-
-/**
- * 「국민」·「국민은행」·「KB국민」 이 다 같은 곳을 가리킨다 — 목록의 이름으로 되돌린다.
- *
- * 「은행」·「주식회사」처럼 어느 은행에나 붙는 말은 떼고 견준다. 떼고 남은 것이 두 글자가
- * 안 되면 포기한다 — 「은행」 한 마디가 목록의 첫 줄에 붙어 엉뚱한 곳으로 돈이 가느니
- * 못 읽은 것으로 두는 편이 낫다.
- */
-export function matchBankName(value: string): string | null {
-  const squeeze = (s: string) => s.replace(/[\s()·.,]/g, '').toLowerCase();
-  const core = (s: string) => squeeze(s).replace(/^주식회사/, '').replace(/은행$/, '');
-
-  const exact = BANKS.find((b) => squeeze(b) === squeeze(value));
-  if (exact) return exact;
-
-  const target = core(value);
-  if (target.length < 2) return null;
-  return (
-    BANKS.find((b) => {
-      const bank = core(b);
-      return bank.includes(target) || target.includes(bank);
-    }) ?? null
-  );
 }

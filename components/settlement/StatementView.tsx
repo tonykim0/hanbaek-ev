@@ -32,6 +32,7 @@ import type { PayoutKind, PayoutRow, TaxInvoice } from '@/types/project';
 import type { PartnerDetailsView } from '@/lib/auth/partner-details';
 import { HANBAEK } from '@/lib/hanbaek';
 import { formatKoreanBizIdInput } from '@/lib/bizid';
+import { formatAccountNo } from '@/lib/bank-account';
 import { batchStateOf, INVOICE_LOCKED_WHY } from '@/lib/payout-board';
 import { useAction } from '@/lib/use-action';
 import PrintButton from './PrintButton';
@@ -250,7 +251,7 @@ export default function StatementView({
             {partner?.bankName || partner?.bankAccountNo ? (
               <span className="font-bold text-slate-800">
                 {partner.bankName ?? <Empty kind="miss" />}{' '}
-                <span className="tabular-nums">{partner.bankAccountNo ?? ''}</span>
+                <span className="tabular-nums">{formatAccountNo(partner.bankName, partner.bankAccountNo)}</span>
                 {partner.bankHolder && (
                   <span className="font-semibold text-slate-500"> · {partner.bankHolder}</span>
                 )}
