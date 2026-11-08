@@ -104,7 +104,7 @@ export type Trace = {
   meta: { model: string; servedBy: string; z: number; metersPerPx: number; width: number; height: number; inputTokens: number; outputTokens: number; ms: number };
 };
 
-type Raw = { roofs: { points: { x: number; y: number }[]; kind: RoofKind; note: string }[]; obstacles: { points: { x: number; y: number }[]; note: string }[] };
+export type Raw = { roofs: { points: { x: number; y: number }[]; kind: RoofKind; note: string }[]; obstacles: { points: { x: number; y: number }[]; note: string }[] };
 
 /** 사진 픽셀 꼭짓점 → 닫힌 경위도 고리. 꼭짓점이 셋보다 적거나 사진 밖이면 버린다 */
 export function ringOf(points: { x: number; y: number }[], a: Pick<Aerial, 'originX' | 'originY' | 'z' | 'width' | 'height'>): LngLat[] | null {
@@ -114,6 +114,38 @@ export function ringOf(points: { x: number; y: number }[], a: Pick<Aerial, 'orig
   return [...ring, ring[0]];
 }
 
+/** AI 의 답 → 픽셀 꼭짓점 묶음. 거절 · 잘림 · JSON 아님은 그 까닭으로 던진다 [순수] */
+export function readTrace(res: { stop_reason: string | null; content: { type: string; text?: string }[] } & StopDetails): Raw {
+  if (res.stop_reason === 'refusal') throw new Error(`[AI] 응답 거절 (${res.stop_details?.category ?? '사유 없음'})`);
+  if (res.stop_reason === 'max_tokens') throw new Error('[AI] 응답이 잘림 (max_tokens)');
+  const text = res.content.flatMap((b) => (b.type === 'text' && b.text !== undefined ? [b.text] : [])).join('');
+  try {
+    return JSON.parse(text) as Raw;
+  } catch {
+    throw new Error(`[AI] JSON 아님: ${text.slice(0, 200)}`);
+  }
+}
+
+/**
+ * 픽셀 꼭짓점 → 경위도 지붕 · 못 까는 곳 [순수]. 사진 밖 · 꼭짓점 셋 미만은 버리고, 20㎡ 밑의 지붕도 버리고(헛간 · 잡음),
+ * 모르는 갈래는 「기타」로. 한 지붕을 겹쳐 딴 것(큰 지붕 안의 작은 지붕)은 뺀다 — 그대로 두면 그 자리에 패널이 두 번 깔린다.
+ */
+export function traceOf(raw: Raw, aerial: Pick<Aerial, 'originX' | 'originY' | 'z' | 'width' | 'height'>): Pick<Trace, 'roofs' | 'obstacles'> {
+  const roofs = dropNested(
+    raw.roofs.flatMap((r) => {
+      const ring = ringOf(r.points, aerial);
+      if (!ring) return [];
+      const polygons: PolygonCoords[] = [[ring]];
+      const area = areaOf(polygons);
+      return area >= 20 ? [{ polygons, kind: KINDS.includes(r.kind) ? r.kind : ('기타' as const), note: r.note, area }] : [];
+    }),
+  );
+  const obstacles = raw.obstacles.flatMap((o) => {
+    const ring = ringOf(o.points, aerial);
+    return ring ? [{ polygons: [[ring]] as PolygonCoords[], note: o.note }] : [];
+  });
+  return { roofs, obstacles };
+}
 
 let client: Anthropic | null = null;
 
@@ -144,33 +176,8 @@ export async function traceRoofs(parcel: PolygonCoords[]): Promise<Trace> {
   const asked = Date.now();
   const res = await client.beta.messages.create(params, { timeout: CALL_TIMEOUT_MS, maxRetries: 0 });
   logLlmCall({ route: 'solar-roofs', model: MODEL, ms: Date.now() - asked, usage: res.usage });
-  if (res.stop_reason === 'refusal') throw new Error(`[AI] 응답 거절 (${(res as StopDetails).stop_details?.category ?? '사유 없음'})`);
-  if (res.stop_reason === 'max_tokens') throw new Error('[AI] 응답이 잘림 (max_tokens)');
-  const text = res.content.flatMap((b) => (b.type === 'text' ? [b.text] : [])).join('');
-  let raw: Raw;
-  try {
-    raw = JSON.parse(text) as Raw;
-  } catch {
-    throw new Error(`[AI] JSON 아님: ${text.slice(0, 200)}`);
-  }
-
-  // 한 지붕을 겹쳐 딴 것(큰 지붕 안의 작은 지붕)은 뺀다 — 그대로 두면 그 자리에 패널이 두 번 깔린다
-  const roofs = dropNested(
-    raw.roofs.flatMap((r) => {
-      const ring = ringOf(r.points, aerial);
-      if (!ring) return [];
-      const polygons: PolygonCoords[] = [[ring]];
-      const area = areaOf(polygons);
-      return area >= 20 ? [{ polygons, kind: KINDS.includes(r.kind) ? r.kind : '기타', note: r.note, area }] : [];
-    }),
-  );
-  const obstacles = raw.obstacles.flatMap((o) => {
-    const ring = ringOf(o.points, aerial);
-    return ring ? [{ polygons: [[ring]] as PolygonCoords[], note: o.note }] : [];
-  });
   return {
-    roofs,
-    obstacles,
+    ...traceOf(readTrace(res), aerial),
     meta: {
       model: MODEL,
       servedBy: res.model,

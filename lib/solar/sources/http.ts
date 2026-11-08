@@ -1,7 +1,4 @@
 /** 바깥 API 한 번 — 시간 제한을 두고, 실패는 이유가 보이는 Error 로 바꾼다. */
-/** 잠깐 쉬기 — 바깥 자료가 헛 응답을 줄 때 한 번 더 묻기 전에 */
-export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
-
 export class SourceError extends Error {
   constructor(
     public source: string,
@@ -12,6 +9,9 @@ export class SourceError extends Error {
     super(`[${source}] ${message}`);
   }
 }
+
+/** 잠깐 쉬기 — 바깥 자료가 헛 응답을 줄 때 한 번 더 묻기 전에 */
+export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 export async function getJson<T = unknown>(
   source: string,

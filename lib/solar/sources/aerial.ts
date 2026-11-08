@@ -25,16 +25,10 @@ export type Aerial = {
 };
 
 /**
- * @param bbox 필지 외접 사각형 [서, 남, 동, 북]
- * @param outline 사진에 노란 선으로 그려 넣을 필지 — AI 가 「어느 땅의 지붕인가」를 안다
- * @param maxPx 긴 변 한도 — 고해상 비전이 1:1 좌표로 읽는 범위(2,576px) 안에서 비용을 아낀다
+ * 사진의 자리 — 둘레를 marginM 넓혀 긴 변이 maxPx 안에 드는 가장 큰 확대 단계(14~19), 그 단계의 픽셀 창(왼쪽 위 x0·y0 · 오른쪽 아래
+ * x1·y1, 전체 픽셀 좌표)과 받을 타일. [순수]
  */
-export async function aerialOf(
-  bbox: [number, number, number, number],
-  outline: PolygonCoords[],
-  { marginM = 25, maxPx = 1600 } = {},
-): Promise<Aerial> {
-  const { key, domain } = vworldKey();
+export function tileWindow(bbox: [number, number, number, number], { marginM, maxPx }: { marginM: number; maxPx: number }) {
   const [w, s, e, n] = expandBbox(bbox, marginM);
 
   // 긴 변이 한도 안에 드는 가장 큰 확대 단계
@@ -48,8 +42,23 @@ export async function aerialOf(
   const [x1, y1] = toWorldPx([e, s], z).map(Math.ceil) as [number, number];
   const [tx0, ty0, tx1, ty1] = [Math.floor(x0 / TILE), Math.floor(y0 / TILE), Math.floor(x1 / TILE), Math.floor(y1 / TILE)];
 
-  const jobs: { tx: number; ty: number }[] = [];
-  for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) jobs.push({ tx, ty });
+  const tiles: { tx: number; ty: number }[] = [];
+  for (let ty = ty0; ty <= ty1; ty++) for (let tx = tx0; tx <= tx1; tx++) tiles.push({ tx, ty });
+  return { z, x0, y0, x1, y1, tx0, ty0, tiles, midLat: (s + n) / 2 };
+}
+
+/**
+ * @param bbox 필지 외접 사각형 [서, 남, 동, 북]
+ * @param outline 사진에 노란 선으로 그려 넣을 필지 — AI 가 「어느 땅의 지붕인가」를 안다
+ * @param maxPx 긴 변 한도 — 고해상 비전이 1:1 좌표로 읽는 범위(2,576px) 안에서 비용을 아낀다
+ */
+export async function aerialOf(
+  bbox: [number, number, number, number],
+  outline: PolygonCoords[],
+  { marginM = 25, maxPx = 1600 } = {},
+): Promise<Aerial> {
+  const { key, domain } = vworldKey();
+  const { z, x0, y0, x1, y1, tx0, ty0, tiles: jobs, midLat } = tileWindow(bbox, { marginM, maxPx });
   const width = x1 - x0;
   const height = y1 - y0;
   // 타일을 받는 대로 자른 판(필지 둘레)에 바로 얹는다 — 판 왼쪽 위는 타일 묶음 왼쪽 위에서 (x0, y0) 만큼 들어간 자리
@@ -91,5 +100,5 @@ export async function aerialOf(
     );
   }
   const jpeg = encodeJpeg(photo, 88);
-  return { jpeg, width, height, z, originX: x0, originY: y0, metersPerPx: metersPerPx((s + n) / 2, z) };
+  return { jpeg, width, height, z, originX: x0, originY: y0, metersPerPx: metersPerPx(midLat, z) };
 }
