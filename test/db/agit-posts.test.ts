@@ -28,9 +28,9 @@ import { admin, withPayableProject } from './money-kit';
 /* 거래명세서 PDF 는 서버 브라우저가 그린다 — 시험에서는 가짜(크롬 없이). 무엇을 그리라고 했는지만 본다 */
 const pdfCalls: string[][] = [];
 vi.mock('@/lib/agit/statement-pdf', () => ({
-  statementPdfs: async ({ paths }: { paths: string[] }) => {
+  renderAgitFiles: async ({ paths }: { paths: string[] }) => {
     pdfCalls.push(paths);
-    return paths.map(() => new Uint8Array([37, 80, 68, 70]));
+    return { pdfs: paths.map(() => new Uint8Array([37, 80, 68, 70])), image: new Uint8Array([137, 80, 78, 71]) };
   },
   cookiePairs: () => [],
 }));
@@ -273,6 +273,7 @@ describe('정산 담당의 초안 → 한백의 승인 → 아지트', () => {
         `${name}/`,
         `${name}/${org}_거래명세서.pdf`,
         `${name}/구매요청간소화_전기차충전기 영업위탁수수료(98년 2월 3월 19일 지급 내역).xlsx`,
+        `${name}/구매요청간소화_전기차충전기 영업위탁수수료(98년 2월 3월 19일 지급 내역).png`,
       ].sort());
       expect(pdfCalls).toEqual([[`/payments/statement?org=${encodeURIComponent(org)}&date=${D4}&kind=${encodeURIComponent('영업비')}`]]);
       expect((await getFiles(new Request('http://test.local/x'), { params: { id: 'none' } })).status).toBe(404);

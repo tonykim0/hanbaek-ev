@@ -7,6 +7,8 @@
  * 로그인: 누른 한백의 쿠키를 ★그 콘솔 주소에만★ 심는다 — 글꼴 CDN 같은 다른 곳의 요청에는 안 실린다.
  * 글꼴은 화면과 같은 Pretendard(CDN)다 — 다 받을 때까지 기다린다(networkidle0 · document.fonts.ready).
  * 열리지 않으면(로그인으로 튕김 · 4xx · 시간 초과) 사람 말로 던진다 — zip 을 반쪽으로 내주지 않는다.
+ * 같은 브라우저로 구매요청간소화 엑셀의 캡처(PNG)도 찍는다(lib/agit/purchase-image 의 HTML — 한백 「중간에 엑셀파일 스크린샷 찍은것도
+ * 파일로 올려야해」). 띄우는 데 몇 초라 한 번 띄워 둘 다 짓는다.
  */
 import type { Browser } from 'puppeteer-core';
 
@@ -32,11 +34,13 @@ async function launch(): Promise<Browser> {
 }
 
 /**
- * 거래명세서 여러 장 — paths 는 콘솔 안의 경로(statementPathOf), origin 은 지금 요청이 온 콘솔 주소.
+ * 거래명세서 여러 장과 엑셀 캡처 — paths 는 콘솔 안의 경로(statementPathOf), origin 은 지금 요청이 온 콘솔 주소, html 은 캡처할 표.
  * 브라우저는 한 번 띄워 차례로 연다(띄우는 데 몇 초 — 장마다 띄우지 않는다).
  */
-export async function statementPdfs(input: { origin: string; cookie: string | null; paths: string[] }): Promise<Uint8Array[]> {
-  if (input.paths.length === 0) return [];
+export async function renderAgitFiles(input: {
+  origin: string; cookie: string | null; paths: string[]; html: string | null;
+}): Promise<{ pdfs: Uint8Array[]; image: Uint8Array | null }> {
+  if (input.paths.length === 0 && !input.html) return { pdfs: [], image: null };
   const origin = new URL(input.origin);
   const browser = await launch();
   try {
@@ -71,7 +75,20 @@ export async function statementPdfs(input: { origin: string; cookie: string | nu
       out.push(await page.pdf({ format: 'A4', printBackground: false, preferCSSPageSize: true }));
       await page.emulateMediaType('screen');
     }
-    return out;
+    /* 엑셀 캡처 — 콘솔 화면이 아니라 우리가 지은 표다(쿠키 · 우회 머리가 필요 없다). 또렷하게 두 배로 찍는다 */
+    let image: Uint8Array | null = null;
+    if (input.html) {
+      const shot = await browser.newPage();
+      await shot.setViewport({ width: 1400, height: 800, deviceScaleFactor: 2 });
+      await shot.setContent(input.html, { waitUntil: 'load', timeout: PAGE_TIMEOUT_MS });
+      /* 글꼴(CDN 의 나눠 받는 조각)이 다 올 때까지 */
+      await shot.waitForNetworkIdle({ idleTime: 300, timeout: PAGE_TIMEOUT_MS }).catch(() => {});
+      await shot.evaluate(() => document.fonts.ready.then(() => true));
+      const table = await shot.$('#sheet');
+      if (!table) throw new Error('엑셀 캡처를 그리지 못했습니다.');
+      image = await table.screenshot({ type: 'png' });
+    }
+    return { pdfs: out, image };
   } finally {
     await browser.close().catch(() => {});
   }

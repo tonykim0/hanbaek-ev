@@ -3,7 +3,8 @@
  * (한백 2026-11-08 「열린구매 글에는 거래명세서, 세금계산서 그리고 엑셀파일이 들어가야해」 → 「개별 파일로 하나의 zip으로 다운받아서 올려」)
  *
  * 아지트 웹훅은 파일을 못 붙인다 — 그래서 콘솔이 그 결제일의 첨부를 zip 하나로 묶어 주고 한백이 받아 아지트 글에 붙인다.
- * 안: 구매요청간소화 엑셀(lib/agit/purchase-xlsx) · 배치마다 거래명세서 PDF(콘솔 화면 그대로 — lib/agit/statement-pdf) · 붙은
+ * 안: 구매요청간소화 엑셀(lib/agit/purchase-xlsx)과 그 캡처 PNG(본문 가운데에 붙인다 — lib/agit/purchase-image) · 배치마다 거래명세서
+ * PDF(콘솔 화면 그대로 — lib/agit/statement-pdf) · 붙은
  * 세금계산서. 이름 · 폴더는 한백이 올려 온 zip 그대로(lib/agit/bundle). 받을 때마다 지금 원장으로 짓는다 — 저장하지 않는다.
  * 거래명세서 PDF 는 서버의 브라우저가 이 요청의 로그인으로 그 화면을 연다(쿠키는 콘솔 주소에만).
  */
@@ -15,7 +16,7 @@ import { isUnexpectedError } from '@/lib/api/errors';
 import { loadAgitBundleInput } from '@/lib/agit/load';
 import { agitBundleOf } from '@/lib/agit/bundle';
 import { agitZipOf, fetchOurBlob } from '@/lib/agit/bundle-zip';
-import { statementPdfs } from '@/lib/agit/statement-pdf';
+import { renderAgitFiles } from '@/lib/agit/statement-pdf';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -33,7 +34,7 @@ export async function GET(request: Request, { params }: { params: { id: string }
     if (!batches.some((b) => b.org)) return fail('그 결제일에 나갈 지급이 0건입니다 — 묶을 것이 없습니다.', 422);
     const plan = agitBundleOf(post.payDate, batches, payeeOf);
     const zip = await agitZipOf(plan, {
-      statements: (paths) => statementPdfs({ origin: new URL(request.url).origin, cookie: request.headers.get('cookie'), paths }),
+      render: ({ paths, html }) => renderAgitFiles({ origin: new URL(request.url).origin, cookie: request.headers.get('cookie'), paths, html }),
       file: (url) => fetchOurBlob(url),
     });
     return new NextResponse(new Blob([zip as BlobPart], { type: 'application/zip' }), {

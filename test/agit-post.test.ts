@@ -13,6 +13,7 @@ import { agitBundleOf, safeName } from '@/lib/agit/bundle';
 import { agitZipOf } from '@/lib/agit/bundle-zip';
 import { purchaseXlsx } from '@/lib/agit/purchase-xlsx';
 import { cookiePairs } from '@/lib/agit/statement-pdf';
+import { purchaseHtml } from '@/lib/agit/purchase-image';
 import { agitPostUrlOf, sendToAgit } from '@/lib/agit/send';
 import type { PayoutRow } from '@/types/project';
 
@@ -180,18 +181,32 @@ describe('첨부 zip — 한백이 올려 온 zip 모양 (26년 9월 2차)', () 
     const plan = agitBundleOf('2026-11-10', [
       { ...nov10[1], invoice: true, invoiceFile: { url: 'https://x.public.blob.vercel-storage.com/inv/a.pdf', name: 'a.pdf' } },
     ], payeeOf);
-    const statements = vi.fn(async (paths: string[]) => paths.map(() => new Uint8Array([37, 80, 68, 70])));
+    const render = vi.fn(async ({ paths }: { paths: string[]; html: string }) => ({
+      pdfs: paths.map(() => new Uint8Array([37, 80, 68, 70])), image: new Uint8Array([137, 80, 78, 71]),
+    }));
     const file = vi.fn(async () => new Uint8Array([1, 2, 3]));
-    const zip = await JSZip.loadAsync(await agitZipOf(plan, { statements, file }));
+    const zip = await JSZip.loadAsync(await agitZipOf(plan, { render, file }));
     expect(Object.keys(zip.files).sort()).toEqual([
       '26년 10월 영업위탁 수수료 1차/',
+      '26년 10월 영업위탁 수수료 1차/구매요청간소화_전기차충전기 영업위탁수수료(26년 10월 1차 내역).png',
       '26년 10월 영업위탁 수수료 1차/구매요청간소화_전기차충전기 영업위탁수수료(26년 10월 1차 내역).xlsx',
       '26년 10월 영업위탁 수수료 1차/에코일렉_거래명세서.pdf',
       '26년 10월 영업위탁 수수료 1차/에코일렉_세금계산서.pdf',
     ]);
-    expect(statements).toHaveBeenCalledWith([plan.statements[0].path]);
+    expect(render.mock.calls[0][0].paths).toEqual([plan.statements[0].path]);
+    expect(render.mock.calls[0][0].html).toContain('26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차');
     const evil = { ...plan, invoices: [{ name: 'x.pdf', url: 'https://evil.com/x.pdf' }] };
-    await expect(agitZipOf(evil, { statements, file })).rejects.toThrow(/콘솔 저장소가 아닙니다/);
+    await expect(agitZipOf(evil, { render, file })).rejects.toThrow(/콘솔 저장소가 아닙니다/);
+  });
+
+  it('엑셀 캡처의 표 — 엑셀과 같은 칸 · 금액은 쉼표 · 글자는 HTML 로 막는다', () => {
+    const html = purchaseHtml({
+      subject: '공사 <b>', content: ' 내용',
+      rows: [{ content: 'c', org: '에코일렉', supply: 96_460_000, vat: 9_646_000, bank: '국민', account: '1-2', holder: 'h', note: '' }],
+    });
+    expect(html).toContain('id="sheet"');
+    expect(html).toContain('공사 &lt;b&gt;');
+    for (const t of ['요청간', '구매번호', '96,460,000', '106,106,000', '㈜한백', '소 계', '필수사항']) expect(html, t).toContain(t);
   });
 
   it('쿠키 머리 — 이름 · 값 쌍만', () => {

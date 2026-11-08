@@ -33,7 +33,7 @@ const esc = (s: string): string =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /* 스타일 번호(styles.xml cellXfs 차례) */
-const S = { plain: 0, head: 1, text: 2, money: 3, center: 4, sum: 5, note: 6, hint: 7, label: 8 } as const;
+const S = { plain: 0, head: 1, text: 2, money: 3, center: 4, sum: 5, note: 6, hint: 7, label: 8, yellow: 9 } as const;
 type Style = (typeof S)[keyof typeof S];
 type Cell = { ref: string; style: Style; text?: string; num?: number };
 
@@ -65,7 +65,7 @@ function sheetXml(sheet: PurchaseSheet): string {
   span('E3', 'G3', S.hint, '구매팀 작성');
   heights.set(5, 30);
   put('C5', S.label, '구분');
-  put('D5', S.center, '요청간');
+  put('D5', S.yellow, '요청간');
   put('E5', S.label, '구매번호');
   span('F5', 'G5', S.center, '');
   put('H5', S.label, '내용');
@@ -152,13 +152,14 @@ const STYLES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
   + '<font><b/><sz val="10"/><name val="맑은 고딕"/><family val="3"/><charset val="129"/></font>'
   + '<font><sz val="9"/><color rgb="FF808080"/><name val="맑은 고딕"/><family val="3"/><charset val="129"/></font>'
   + '</fonts>'
-  + '<fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'
-  + '<fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill></fills>'
+  + '<fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill>'
+  + '<fill><patternFill patternType="solid"><fgColor rgb="FFF2F2F2"/><bgColor indexed="64"/></patternFill></fill>'
+  + '<fill><patternFill patternType="solid"><fgColor rgb="FFFFF2CC"/><bgColor indexed="64"/></patternFill></fill></fills>'
   + '<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border>'
   + '<border><left style="thin"><color auto="1"/></left><right style="thin"><color auto="1"/></right>'
   + '<top style="thin"><color auto="1"/></top><bottom style="thin"><color auto="1"/></bottom><diagonal/></border></borders>'
   + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-  + '<cellXfs count="9">'
+  + '<cellXfs count="10">'
   /* 0 plain */ + '<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
   /* 1 head */ + '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf>'
   /* 2 text */ + '<xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
@@ -168,6 +169,7 @@ const STYLES = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
   /* 6 note */ + '<xf numFmtId="0" fontId="2" fillId="0" borderId="1" xfId="0" applyFont="1" applyBorder="1" applyAlignment="1"><alignment vertical="center" wrapText="1"/></xf>'
   /* 7 hint */ + '<xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment horizontal="center"/></xf>'
   /* 8 label */ + '<xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
+  /* 9 yellow — 「요청간」(양식의 노란 칸) */ + '<xf numFmtId="0" fontId="1" fillId="3" borderId="1" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyAlignment="1"><alignment horizontal="center" vertical="center"/></xf>'
   + '</cellXfs>'
   + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
   + '</styleSheet>';

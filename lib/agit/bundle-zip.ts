@@ -7,12 +7,13 @@ import JSZip from 'jszip';
 import { ourBlobPathname } from '@/lib/intake-stage';
 import type { AgitBundlePlan } from './bundle';
 import { purchaseXlsx } from './purchase-xlsx';
+import { purchaseHtml } from './purchase-image';
 
 export async function agitZipOf(
   plan: AgitBundlePlan,
   hands: {
-    /** 거래명세서 PDF — paths 와 같은 차례로 */
-    statements(paths: string[]): Promise<Uint8Array[]>;
+    /** 거래명세서 PDF(paths 와 같은 차례로)와 엑셀 캡처(html) — 서버 브라우저 한 번 */
+    render(input: { paths: string[]; html: string }): Promise<{ pdfs: Uint8Array[]; image: Uint8Array | null }>;
     /** 세금계산서 파일 — 우리 Blob 주소만 온다 */
     file(url: string): Promise<Uint8Array>;
   }
@@ -20,8 +21,10 @@ export async function agitZipOf(
   const zip = new JSZip();
   const dir = zip.folder(plan.folder)!;
   dir.file(plan.xlsxName, await purchaseXlsx(plan.sheet));
-  const pdfs = await hands.statements(plan.statements.map((s) => s.path));
+  const { pdfs, image } = await hands.render({ paths: plan.statements.map((s) => s.path), html: purchaseHtml(plan.sheet) });
   if (pdfs.length !== plan.statements.length) throw new Error('거래명세서를 다 만들지 못했습니다.');
+  if (!image) throw new Error('엑셀 캡처를 만들지 못했습니다.');
+  dir.file(plan.imageName, image);
   plan.statements.forEach((s, i) => dir.file(s.name, pdfs[i]));
   for (const inv of plan.invoices) {
     if (!ourBlobPathname(inv.url)) throw new Error(`세금계산서 주소가 콘솔 저장소가 아닙니다 — ${inv.name}`);
