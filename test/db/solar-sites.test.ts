@@ -5,11 +5,12 @@
  * 담당은 누가 정하나(협력사는 제 소속으로 굳고, 한백은 태양광 참여 협력사 중에서 고른다 — 「한백 직접」은 없다) ·
  * 번호는 다시 쓰지 않는다.
  */
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { and, eq, inArray } from 'drizzle-orm';
 import { POST } from '@/app/api/solar/sites/route';
 import { DELETE, PATCH } from '@/app/api/solar/sites/[id]/route';
-import { POST as FILES } from '@/app/api/solar/sites/[id]/files/route';
+import { DELETE as FILES_DELETE, POST as FILES } from '@/app/api/solar/sites/[id]/files/route';
+import { SERVER_ERROR_MESSAGE } from '@/lib/api/errors';
 import { SITE_NOT_FOUND, solarSiteStore } from '@/lib/data/solar-sites';
 import { getDb } from '@/lib/db/client';
 import { auditLog, solarSites, users } from '@/lib/db/schema';
@@ -209,5 +210,34 @@ describe('파일 — 붙이기 · 빼기 (한 줄 update)', () => {
     expect((await ask({ pathname: `solar-sites/${id}/../x.pdf` }, true)).status).toBe(400);
     expect((await ask({ blobUrl: 'https://evil.example.com/solar-sites/x.pdf', filename: 'x.pdf' })).status).toBe(400);
     expect((await ask({ blobUrl: `https://x.public.blob.vercel-storage.com/projects/HB-1/a.pdf`, filename: 'a.pdf' })).status).toBe(400);
+  });
+
+  it('파일 라우트의 오류 가르기 — 규칙 위반은 422 그 문구, DB 오류는 한글 값이 실려 와도 500 과 [solar-files] 한 줄', async () => {
+    const id = String((await create(USERS.ecoelec)).json?.id);
+    const drop = () =>
+      FILES_DELETE(
+        new Request('http://test.local/api', { method: 'DELETE', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ url: 'https://x/a.pdf' }) }),
+        { params: { id } },
+      );
+    const spy = vi.spyOn(solarSiteStore, 'removeFile');
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      await signIn(USERS.ecoelec);
+      spy.mockRejectedValueOnce(new Error('그 파일이 이 현장에 없습니다.'));
+      const rule = await drop();
+      expect(rule.status).toBe(422);
+      expect(((await rule.json()) as { error: string }).error).toBe('그 파일이 이 현장에 없습니다.');
+      expect(logged).not.toHaveBeenCalled();
+
+      // 드라이버 오류는 실패한 쿼리의 값(한글 파일 이름)을 싣고 온다 — 한글이 있다고 사람 잘못(422)으로 보면 안 된다
+      spy.mockRejectedValueOnce(Object.assign(new Error('Failed query: update "solar_sites" set "files" = $1 params: 고지서1.pdf'), { code: '40P01' }));
+      const broken = await drop();
+      expect(broken.status).toBe(500);
+      expect(((await broken.json()) as { error: string }).error).toBe(SERVER_ERROR_MESSAGE);
+      expect(logged.mock.calls[0]?.[0]).toBe('[solar-files]');
+    } finally {
+      spy.mockRestore();
+      logged.mockRestore();
+    }
   });
 });

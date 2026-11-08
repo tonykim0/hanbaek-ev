@@ -14,6 +14,7 @@
  */
 import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 import { NextResponse } from 'next/server';
+import { BadRequest, isUnexpectedError, SERVER_ERROR_MESSAGE } from '@/lib/api/errors';
 import { actorOf, getSessionUser } from '@/lib/auth/session';
 import type { SessionPayload } from '@/lib/auth/types';
 import { solarSiteStore } from '@/lib/data/solar-sites';
@@ -35,11 +36,17 @@ async function gate(): Promise<Gate> {
   return { ok: true, session };
 }
 
-/** 저장소의 규칙 위반(한글 메시지)은 422, 그 밖은 500 과 [solar-files] 한 줄 */
+/**
+ * 저장소의 규칙 위반(맨 Error)은 422, 값 잘못(BadRequest)은 400, 그 밖(DB 드라이버 · 코드 결함 · Blob)은 500 과 [solar-files] 한 줄 —
+ * 쓰기 껍데기와 같은 가르기(lib/api/errors). 전에는 메시지에 한글이 있는가로 갈랐는데, DB 오류는 실패한 쿼리의 값(한글 파일 이름 ·
+ * 현장 이름)을 메시지에 싣고 와서 422 로 화면에 그대로 나가고 로그에는 아무 줄도 안 남았다(감시가 못 본다).
+ */
 function failed(err: unknown) {
-  if (err instanceof Error && /[가-힣]/.test(err.message)) return NextResponse.json({ error: err.message }, { status: 422 });
-  console.error('[solar-files]', err);
-  return NextResponse.json({ error: '파일을 처리하지 못했습니다.' }, { status: 500 });
+  if (isUnexpectedError(err)) {
+    console.error('[solar-files]', err);
+    return NextResponse.json({ error: SERVER_ERROR_MESSAGE }, { status: 500 });
+  }
+  return NextResponse.json({ error: (err as Error).message }, { status: err instanceof BadRequest ? 400 : 422 });
 }
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {

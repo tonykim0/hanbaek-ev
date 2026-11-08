@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useRef, useState } from 'react';
 import { useAddressSearch, type PostcodeData } from '@/components/contracts/AddressSearchButton';
 import { Btn, Choice, Empty, Err, FIELD, FIELD_BASE, TEXT } from '@/components/ui';
+import { sizeLabel } from '@/lib/file-kind';
 import { uploadSiteFile } from '@/lib/solar/site-upload';
 import { SITE_KIND_LABEL, SITE_KINDS, SITE_LIMITS, type SiteDraft } from '@/lib/solar/sites';
 import { uploadEach } from '@/lib/upload-each';
@@ -184,7 +185,7 @@ export default function SiteForm({
               {picked.map((f, i) => (
                 <li key={`${f.name}-${i}`} className="flex items-center gap-3 border-t border-slate-100 py-1.5 first:border-t-0">
                   <span className={`min-w-0 truncate ${TEXT.body}`}>{f.name}</span>
-                  <span className={`shrink-0 tabular-nums ${TEXT.meta}`}>{(f.size / 1024 / 1024).toFixed(1)}MB</span>
+                  <span className={`shrink-0 tabular-nums ${TEXT.meta}`}>{sizeLabel(f.size)}</span>
                   <span className="ml-auto shrink-0">
                     <Btn kind="undo" size="sm" disabled={busy} onClick={() => setPicked((x) => x.filter((_, j) => j !== i))}>
                       빼기
