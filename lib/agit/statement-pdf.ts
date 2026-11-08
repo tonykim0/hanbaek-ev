@@ -46,10 +46,24 @@ export async function statementPdfs(input: { origin: string; cookie: string | nu
       ...c, domain: origin.hostname, path: '/', secure: origin.protocol === 'https:', httpOnly: true,
     }));
     if (cookies.length) await page.browserContext().setCookie(...cookies);
+    /*
+     * 프리뷰는 Vercel 배포 보호가 서버 브라우저의 요청도 막는다(vercel.com 로그인으로 넘긴다). 프로젝트에 자동화 우회 열쇠가 있으면
+     * 콘솔 주소로 가는 요청에만 그 머리를 단다 — 글꼴 CDN 같은 다른 곳에는 안 실린다. 운영 주소는 보호가 없어 머리가 있어도 무해하다.
+     */
+    const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    if (bypass) {
+      await page.setRequestInterception(true);
+      page.on('request', (req) => {
+        const same = new URL(req.url()).origin === origin.origin;
+        void req.continue(same ? { headers: { ...req.headers(), 'x-vercel-protection-bypass': bypass } } : undefined);
+      });
+    }
     const out: Uint8Array[] = [];
     for (const path of input.paths) {
       const res = await page.goto(new URL(path, origin).toString(), { waitUntil: 'networkidle0', timeout: PAGE_TIMEOUT_MS });
-      if (new URL(page.url()).pathname.startsWith('/login')) throw new Error('거래명세서를 열 수 없습니다 — 로그인이 풀렸습니다. 다시 로그인해 주세요.');
+      const at = new URL(page.url());
+      if (at.origin !== origin.origin) throw new Error(`거래명세서를 열 수 없습니다 — ${at.hostname} 로 넘어갔습니다(배포 보호).`);
+      if (at.pathname.startsWith('/login')) throw new Error('거래명세서를 열 수 없습니다 — 로그인이 풀렸습니다. 다시 로그인해 주세요.');
       if (!res || res.status() >= 400) throw new Error(`거래명세서를 열 수 없습니다(${res?.status() ?? '응답 없음'}).`);
       await page.evaluate(() => document.fonts.ready.then(() => true));
       await page.emulateMediaType('print');
