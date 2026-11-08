@@ -326,8 +326,10 @@ export async function purchaseHtml(xlsx: Uint8Array): Promise<string> {
 
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=block">
 <style>
-  body { margin: 0; padding: 16px; background: #fff; font-family: 'Pretendard Variable', Pretendard, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
+  /* 한자(틀의 「4月」 · 「해당 청구 月」)는 Pretendard 에 없고 서버(리눅스)에는 받칠 글꼴도 없다 — Noto Sans KR 이 받친다(쓰는 글자만 받는다) */
+  body { margin: 0; padding: 16px; background: #fff; font-family: 'Pretendard Variable', Pretendard, 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; }
   table { border-collapse: collapse; table-layout: fixed; }
   td { padding: 0 3px; overflow: hidden; }
   .n { white-space: pre; overflow: hidden; line-height: 1.25; }

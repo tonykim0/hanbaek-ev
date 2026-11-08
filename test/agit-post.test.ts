@@ -291,6 +291,7 @@ describe('첨부 zip — 한백이 올려 온 zip 모양 (26년 9월 2차)', () 
     expect(html).toContain('background:#fef2cb'); // 요청간 · 입금처의 노란 칸
     expect(html).toContain('border-left:1px solid #000000'); // 바깥 테두리(thin)
     expect(html).toContain('1px dotted #000000'); // 안쪽 테두리(hair)
+    expect(html).toContain("'Noto Sans KR'"); // 한자(4月)를 받칠 글꼴 — 서버에는 없다
   });
 
   it('숫자 꼴 — 회계 꼴(쉼표 · 0 은 -) · 「General"月"」 · 날짜', () => {
