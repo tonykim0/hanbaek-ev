@@ -62,6 +62,21 @@ export const solarSites = pgTable('solar_sites', {
  * 파일은 Blob 의 solar-proposals/<틀>/ 아래(사업자가 준 원본 그대로), 조건은 숫자들(terms). 둘 다 한백 관리자가 화면에서 넣는다 —
  * 저장소가 공개라 값을 코드 · 마이그레이션에 두지 않는다.
  */
+/**
+ * AI 지붕 따기의 결과 · 부른 기록 (migrations/0127, 2026-11-08) — 같은 필지는 하루 안의 마지막 결과를 돌려주고, 계정마다 오늘 줄 수가
+ * 하루 한도다. 부르기 전에 줄을 세우고(trace 없음) 끝나면 적는다 — 실패한 것도 한 번으로 센다(lib/data/solar-roof-traces).
+ */
+export const solarRoofTraces = pgTable('solar_roof_traces', {
+  id: text('id').primaryKey(),
+  pnu: text('pnu').notNull(),
+  userId: text('user_id').notNull(),
+  trace: jsonb('trace').$type<unknown>(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (t) => ({
+  byPnu: index('solar_roof_traces_pnu_idx').on(t.pnu, t.createdAt),
+  byUser: index('solar_roof_traces_user_idx').on(t.userId, t.createdAt),
+}));
+
 export const solarProposalTemplates = pgTable('solar_proposal_templates', {
   key: text('key').primaryKey(),
   fileUrl: text('file_url'),
