@@ -21,7 +21,7 @@ export interface AgitBundlePlan {
   /** zip 안의 폴더 — zip 이름에서 .zip 을 뗀 것 */
   folder: string;
   xlsxName: string;
-  /** 엑셀 캡처 — 본문 「2. 지급요청 품목」 밑에 붙이고 파일로도 올린다 */
+  /** 엑셀 캡처 — 지난 글은 본문 「구매 내역」 밑에 넣었다(웹훅은 그림을 못 넣어 첨부로 올린다) */
   imageName: string;
   sheet: PurchaseSheet;
   /** 배치마다 거래명세서 — 콘솔 주소(경로)와 넣을 이름 */

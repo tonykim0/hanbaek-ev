@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import JSZip from 'jszip';
 import {
-  agitAssigneesOf, agitDraftsOf, agitPayloadOf, agitPostOf, agitPostedSay, agitWebhookOf, assigneesLabel, badAgitIds, itemNameOf,
+  agitAssigneesOf, agitDraftsOf, agitPayloadOf, agitPostOf, agitPostedSay, agitTitleOf, agitWebhookOf, assigneesLabel, badAgitIds, itemNameOf,
   requestNameOf, upcomingPayDates, vatOf, type AgitBatch, type AgitPayee,
 } from '@/lib/agit/post';
 import { agitBundleOf, safeName } from '@/lib/agit/bundle';
@@ -43,31 +43,39 @@ const nov10: AgitBatch[] = [
 describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 지난 「영업위탁 수수료」 글)', () => {
   const ECO_LINK = `${URL_}/payments/statement?org=${encodeURIComponent('에코일렉')}&date=2026-11-10&kind=${encodeURIComponent('영업비')}`;
 
-  it('제목 #구매요청간소화 · 지급 요청일 · 구매사유 · 지급요청 품목 · 거래명세서 주소 · cc — 계좌는 본문에 없다', () => {
+  it('한백의 구매요청간소화 글 그대로(마크다운) — 배경 · 구매 내역 · 기한 · 청구 금액 · 참고자료 · cc · 계좌는 본문에 없다', () => {
     const post = agitPostOf('2026-11-10', nov10, URL_);
     expect(post.text).toBe([
-      '26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차 #구매요청간소화',
-      '지급 요청일: 2026. 11. 10 (화요일)',
-      '1. 구매사유',
-      '- 공사명 : 26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차',
-      '- 상황설명 : 26년 10월 동안 진행된 전기차 충전기 설치 영업에 대한 영업위탁 수수료 1차',
-      '2. 지급요청 품목',
-      '부가세 전 101,360,000 / 부가세 포함 111,496,000',
-      '- 에코일렉 · 영업비 1차 · 96,460,000원',
-      '- 이브이솔루션 (영업) · 영업비 1차 · 4,900,000원',
-      '참고자료',
-      '거래명세서 내역',
-      '에코일렉',
-      ECO_LINK,
-      '',
-      '이브이솔루션 (영업)',
-      `${URL_}/payments/statement?org=${encodeURIComponent('이브이솔루션 (영업)')}&date=2026-11-10&kind=${encodeURIComponent('영업비')}`,
-      'cc @@team.finance',
+      '#구매요청간소화',
+      '# 배경',
+      '> **- 공사명 :** 26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차',
+      '> **- 상황설명 :** 26년 10월 동안 진행된 전기차 충전기 설치 영업에 대한 영업위탁 수수료 1차',
+      '# 구매 내역',
+      '> - 에코일렉 · 영업비 1차 · 96,460,000원',
+      '> - 이브이솔루션 (영업) · 영업비 1차 · 4,900,000원',
+      '# 기한',
+      '> 정기결제일 11월 10일',
+      '# **청구 금액**',
+      '> 부가세 전 101,360,000',
+      '> 부가세 포함 111,496,000',
+      '# 참고자료',
+      '> 거래명세서 내역',
+      `> [에코일렉](${ECO_LINK})`,
+      `> [이브이솔루션 (영업)](${URL_}/payments/statement?org=${encodeURIComponent('이브이솔루션 ')}%28${encodeURIComponent('영업')}%29&date=2026-11-10&kind=${encodeURIComponent('영업비')})`,
+      'cc [@@team.finance](https://han-baek.agit.io/parties/6776)',
     ].join('\n'));
     expect(post.text).not.toContain('123-45-6789');
     expect(post).toMatchObject({
-      total: 101_360_000, batches: 2, blocked: null, title: '26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차 #구매요청간소화',
+      total: 101_360_000, batches: 2, blocked: null, title: '26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차',
     });
+  });
+
+  it('정기결제가 아닌 날은 「지급일」 · 저장한 글의 제목은 공사명(옛 모양의 글도)', () => {
+    expect(agitPostOf('2026-11-17', nov10, URL_).text).toContain('# 기한\n> 지급일 11월 17일\n');
+    const post = agitPostOf('2026-11-10', nov10, URL_);
+    expect(agitTitleOf(post.text)).toBe('26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차');
+    expect(agitTitleOf('26년 10월 … 1차 #구매요청간소화\n지급 요청일: …\n1. 구매사유\n- 공사명 : 26년 10월 옛 글\n')).toBe('26년 10월 옛 글');
+    expect(agitTitleOf('제목만\n둘째 줄')).toBe('제목만');
   });
 
   it('이름 짓기 — 25일은 2차 · 1월은 지난해 12월 · 시공비가 섞이면 「및 시공비」 · 정기결제가 아닌 날은 그날', () => {
@@ -87,12 +95,12 @@ describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 �
       { ...nov10[1], invoice: true },
       { org: '에코일렉', kind: '시공비', total: 1_000, invoice: false, lines: lines(1, 1, 1_000) },
     ], URL_);
-    expect(post.text).toContain('- 에코일렉 · 영업비 1차 · 96,460,000원\n');
-    expect(post.text).toContain('- 에코일렉 · 시공비 1차 · 1,000원\n');
+    expect(post.text).toContain('> - 에코일렉 · 영업비 1차 · 96,460,000원\n');
+    expect(post.text).toContain('> - 에코일렉 · 시공비 1차 · 1,000원\n');
     /* 한백 11-08 「현장수, 기수는 빼」 — 계산서 없음도 품목 줄에 달지 않는다(정산 담당의 말 · 엑셀 비고가 짚는다) */
     expect(post.text).not.toMatch(/개 현장|\d기 ·|세금계산서 없음/);
-    expect(post.text).toContain('에코일렉 (영업비)\n');
-    expect(post.text).toContain('에코일렉 (시공비)\n');
+    expect(post.text).toContain('> [에코일렉 (영업비)](');
+    expect(post.text).toContain('> [에코일렉 (시공비)](');
   });
 
   it('품목명 — 회차가 섞이면 「 / 」로 잇는다 · 현장 수 · 대수 · 건수는 적지 않는다', () => {
@@ -109,7 +117,7 @@ describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 �
       { org: 'A', kind: '영업비', total: 15, invoice: false, lines: [] },
       { org: 'B', kind: '영업비', total: 15, invoice: false, lines: [] },
     ], URL_);
-    expect(post.text).toContain('부가세 전 30 / 부가세 포함 32'); // 1 + 1 (총액 30 의 10% = 3 이 아니다)
+    expect(post.text).toContain('> 부가세 전 30\n> 부가세 포함 32\n'); // 1 + 1 (총액 30 의 10% = 3 이 아니다)
   });
 
   it('올릴 수 없는 결제일 — 지급 0건 · 지급처 미정', () => {
@@ -131,7 +139,7 @@ describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 �
     const one = agitDraftsOf('2026-11-07', rows, [], [], URL_);
     const two = agitDraftsOf('2026-11-07', [...rows].reverse(), [], [], URL_);
     expect(one.map((d) => d.text)).toEqual(two.map((d) => d.text));
-    expect(one[0].text).toContain('- 에코일렉 · 영업비 1차 · 2,730,001원\n');
+    expect(one[0].text).toContain('> - 에코일렉 · 영업비 1차 · 2,730,001원\n');
     expect(agitDraftsOf('2026-11-11', rows, [], [], URL_)).toEqual([]); // 지난 결제일은 없다
     expect(agitDraftsOf('2026-11-11', rows, [], [], URL_, '2026-11-10')).toHaveLength(1); // 고르면 지난 날도
   });

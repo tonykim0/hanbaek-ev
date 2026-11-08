@@ -16,10 +16,14 @@
  * 한 번 정해 두기). 웹훅 가이드(아지트 연동 설정의 「사용법 알아보기」, 한백이 붙여 줌): {"text", "task": {"assignees": [아지트 ID…]}}
  * 를 보내면 요청 글이 서고, 상태(0 요청 · 1 진행 · 2 완료 · 3 승인)는 아지트에서 담당자가 바꾼다. 기한 칸은 가이드에 없다.
  *
- * ★글은 한백이 올려 온 양식 그대로다★(2026-11-08 — 아지트의 지난 「… 영업위탁 수수료 N차」 글을 읽고 맞췄다): 첫 줄 제목 + #구매요청간소화 ·
- * 지급 요청일 · 1. 구매사유(공사명 · 상황설명) · 2. 지급요청 품목(부가세 전 / 포함 + 배치 줄) · 참고자료(지급처마다 거래명세서 주소) ·
- * cc @@team.finance. 이름은 「전달 N월 … 1차」(10일) · 「2차」(25일) — 한 달 일의 수수료를 다음 달 두 번에 나눠 낸다. 계좌는 본문에 적지
- * 않는다 — 첨부 엑셀(구매요청간소화 양식)에만 있다. 글양식은 「구매요청간소화」(웹훅 task.template_name).
+ * ★글은 한백이 긴급하지 않을 때 올려 온 「구매요청간소화」 양식 그대로 — 마크다운이다★(2026-11-08 — 첫 판은 긴급 글(「[긴급] … #긴급구매요청」 ·
+ * 1. 구매사유 · 2. 지급요청 품목 · 참고자료)의 줄을 글자로만 보내 머리 · 회색 상자가 없었고, 한백이 「기존 올라갔던 글들과 형식이 안맞고
+ * 긴급이 아니야 이건은」으로 지웠다. 아지트 글은 마크다운이다(# 머리 · > 회색 상자 · [글](주소) — 한백이 붙여 준 지난 글의 원문).
+ * 한백이 고른 모양은 26년 6월 1차 · 4월 글): #구매요청간소화 · # 배경(> **- 공사명 :** · > **- 상황설명 :**) · # 구매 내역(> - 거래처 ·
+ * 품목명 · 금액 — 지난 글은 여기에 엑셀 캡처를 넣었다, 웹훅은 그림을 못 넣어 캡처는 첨부로) · # 기한(> 정기결제일 11월 10일) ·
+ * # **청구 금액**(> 부가세 전 · > 부가세 포함) · # 참고자료(> 거래명세서 내역 · > [지급처](거래명세서 주소)) · cc [@@team.finance](팀 주소).
+ * 제목 줄은 없다 — 목록 · 감사기록에는 공사명을 쓴다(agitTitleOf). 이름은 「전달 N월 … 1차」(10일) · 「2차」(25일) — 한 달 일의 수수료를
+ * 다음 달 두 번에 나눠 낸다. 계좌는 본문에 적지 않는다 — 첨부 엑셀(구매요청간소화 양식)에만 있다. 글양식은 「구매요청간소화」(웹훅 task.template_name).
  *
  * 아지트 웹훅은 글자만 받는다(파일을 못 붙인다) — 엑셀 · 거래명세서 PDF · 세금계산서는 콘솔이 zip 하나로 묶고(lib/agit/bundle · 정산 담당
  * 카드의 「첨부 파일 받기」) 한백이 받아 그 글에 붙인다.
@@ -56,8 +60,8 @@ export interface AgitBatch {
 
 /** 글양식 — 열린구매 그룹의 「구매요청간소화」(웹훅 task.template_name · 글 머리의 꼬리표) */
 export const AGIT_TEMPLATE = '구매요청간소화';
-/** 재무팀 — 지난 글이 끝에 달던 cc(아지트 팀 멘션) */
-export const AGIT_CC = '@@team.finance';
+/** 재무팀 — 지난 글이 끝에 달던 cc(아지트 팀 멘션 · 마크다운 원문 그대로 — 팀 주소로 거는 고리다) */
+export const AGIT_CC = '[@@team.finance](https://han-baek.agit.io/parties/6776)';
 
 export interface AgitPostText {
   payDate: string;
@@ -153,34 +157,52 @@ export function agitPostOf(payDate: string, batches: readonly AgitBatch[], conso
   const total = sorted.reduce((n, b) => n + b.total, 0);
   const vat = sorted.reduce((n, b) => n + vatOf(b.total), 0);
   const name = requestNameOf(payDate, sorted.map((b) => b.kind));
-  const title = `${name.subject} #${AGIT_TEMPLATE}`;
+  const [, m, d] = payDate.split('-').map(Number);
   /* 거래처 · 품목명 · 금액만(한백 11-08 — 위 itemNameOf). 세금계산서가 빠진 배치는 정산 담당의 말 · 엑셀 비고가 짚는다 */
-  const items = sorted.map((b) => `- ${b.org ?? '지급처 미정'} · ${itemNameOf(b.kind, b.lines)} · ${won(b.total)}원`);
-  const links = sorted.filter((b) => b.org).flatMap((b, i) => [
-    ...(i ? [''] : []),
-    `${b.org}${sorted.filter((x) => x.org === b.org).length > 1 ? ` (${b.kind})` : ''}`,
-    `${consoleUrl}${statementPathOf(payDate, b.org!, b.kind)}`,
-  ]);
+  const items = sorted.map((b) => `> - ${mdText(b.org ?? '지급처 미정')} · ${itemNameOf(b.kind, b.lines)} · ${won(b.total)}원`);
+  const links = sorted.filter((b) => b.org).map((b) => {
+    const label = `${b.org}${sorted.filter((x) => x.org === b.org).length > 1 ? ` (${b.kind})` : ''}`;
+    return `> [${mdText(label)}](${mdHref(`${consoleUrl}${statementPathOf(payDate, b.org!, b.kind)}`)})`;
+  });
   const text = [
-    title,
-    `지급 요청일: ${name.requestDay}`,
-    '1. 구매사유',
-    `- 공사명 : ${name.subject}`,
-    `- 상황설명 : ${name.situation}`,
-    '2. 지급요청 품목',
-    `부가세 전 ${won(total)} / 부가세 포함 ${won(total + vat)}`,
+    `#${AGIT_TEMPLATE}`,
+    '# 배경',
+    `> **- 공사명 :** ${name.subject}`,
+    `> **- 상황설명 :** ${name.situation}`,
+    '# 구매 내역',
     ...items,
-    '참고자료',
-    '거래명세서 내역',
+    '# 기한',
+    `> ${name.round ? '정기결제일' : '지급일'} ${m}월 ${d}일`,
+    '# **청구 금액**',
+    `> 부가세 전 ${won(total)}`,
+    `> 부가세 포함 ${won(total + vat)}`,
+    '# 참고자료',
+    '> 거래명세서 내역',
     ...links,
     `cc ${AGIT_CC}`,
   ].join('\n');
+  const title = name.subject;
   const blocked = sorted.length === 0
     ? '지급 0건 — 올릴 것 없음'
     : sorted.some((b) => !b.org)
       ? '지급처 미정 배치 — 올릴 수 없음'
       : null;
   return { payDate, title, text, total, batches: sorted.length, blocked };
+}
+
+/** 마크다운 글자 — 고리 · 강조로 읽힐 표시를 막는다 */
+const mdText = (s: string): string => s.replace(/([\\[\]*_`])/g, '\\$1');
+/** 마크다운 고리의 주소 — 괄호(지급처 이름의 「(영업)」)가 고리를 끊지 않게 */
+const mdHref = (url: string): string => url.replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/ /g, '%20');
+
+/**
+ * 저장한 글의 제목 — 글이 「#구매요청간소화」로 시작해(제목 줄이 없다) 목록 · 감사기록 · 올렸다는 말에는 공사명을 쓴다.
+ * 공사명 줄이 없는 글(옛 모양이 아닌 것)은 첫 줄.
+ */
+export function agitTitleOf(body: string): string {
+  const line = body.split('\n').find((l) => l.includes('공사명 :'));
+  if (line) return line.replace(/^>\s*/, '').replace(/\*\*/g, '').replace(/^-\s*공사명\s*:\s*/, '').trim();
+  return body.split('\n')[0] ?? '';
 }
 
 /** 글을 올릴 결제일 — 오늘이거나 앞으로 올 지급일(지난 지급일의 글은 늦었다) · 이른 것이 위 */

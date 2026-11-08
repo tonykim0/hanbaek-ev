@@ -29,7 +29,7 @@ import { seal, unseal } from '@/lib/agents/secret-box';
 import { OPEN_PURCHASE_AGENT, openPurchaseKey } from '@/lib/agents/open-purchase';
 import { agentAuditKey, type AgentMessageMeta } from '@/types/agents';
 import {
-  AGIT_MAX_ASSIGNEES, AGIT_POST_STATUSES, agitAssigneesOf, agitPostedSay, agitWebhookOf, badAgitIds,
+  AGIT_MAX_ASSIGNEES, AGIT_POST_STATUSES, agitAssigneesOf, agitPostedSay, agitTitleOf, agitWebhookOf, badAgitIds,
   type AgitHookInfo, type AgitPostRecord, type AgitPostStatus,
 } from '@/lib/agit/post';
 import type { ProjectRepository } from '../repository';
@@ -55,7 +55,7 @@ function recordOf(row: Row): AgitPostRecord {
     id: row.id,
     payDate: row.payDate,
     status: statusOf(row.status),
-    title: row.body.split('\n')[0] ?? '',
+    title: agitTitleOf(row.body),
     body: row.body,
     total: row.total,
     batches: row.batches,
@@ -187,7 +187,7 @@ export const agitStore: Pick<
     const { id, plan } = await db.transaction(async (tx) => {
       await lockPayDate(tx, input.payDate);
       if (await sendingOf(tx, input.payDate)) throw new Error('이 결제일 글을 올리는 중입니다 — 잠시 뒤 다시 보세요.');
-      const title = input.body.split('\n')[0] ?? '';
+      const title = agitTitleOf(input.body);
       const [open] = await tx.select().from(agitPosts)
         .where(and(eq(agitPosts.payDate, input.payDate), inArray(agitPosts.status, OPEN)))
         .orderBy(desc(agitPosts.createdAt)).limit(1);
@@ -201,7 +201,7 @@ export const agitStore: Pick<
           ...(moved ? { messageId: input.messageId } : {}),
         }).where(eq(agitPosts.id, open.id));
         if (changed) {
-          await writeAudit(tx, { projectId: null, actor, action: '아지트 글 초안 고침', field: AUDIT_FIELD, oldValue: open.body.split('\n')[0], newValue: title });
+          await writeAudit(tx, { projectId: null, actor, action: '아지트 글 초안 고침', field: AUDIT_FIELD, oldValue: agitTitleOf(open.body), newValue: title });
         }
         return { id: open.id, plan: 'refresh' as const };
       }
@@ -267,7 +267,7 @@ export const agitStore: Pick<
       const [row] = await tx.select().from(agitPosts).where(eq(agitPosts.id, input.id)).for('update');
       if (!row) throw new Error('올린 글을 찾을 수 없습니다.');
       if (row.status !== 'sending') throw new Error('올리는 중인 글이 아닙니다.');
-      const title = row.body.split('\n')[0] ?? '';
+      const title = agitTitleOf(row.body);
       if (!input.result.ok) {
         const error = input.result.error.slice(0, 500);
         await tx.update(agitPosts).set({ status: 'failed', error }).where(eq(agitPosts.id, row.id));
