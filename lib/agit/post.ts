@@ -21,7 +21,8 @@
  * 긴급이 아니야 이건은」으로 지웠다. 아지트 글은 마크다운이다(# 머리 · > 회색 상자 · [글](주소) — 한백이 붙여 준 지난 글의 원문).
  * 한백이 고른 모양은 26년 6월 1차 · 4월 글): #구매요청간소화 · # 배경(> **- 공사명 :** · > **- 상황설명 :**) · # 구매 내역(> - 거래처 ·
  * 품목명 · 금액 — 지난 글은 여기에 엑셀 캡처를 넣었다, 웹훅은 그림을 못 넣어 캡처는 첨부로) · # 기한(> 정기결제일 11월 10일) ·
- * # **청구 금액**(> 부가세 전 · > 부가세 포함) · # 참고자료(> 거래명세서 내역 · > [지급처](거래명세서 주소)) · cc [@@team.finance](팀 주소).
+ * # **청구 금액**(> 부가세 전 · > 부가세 포함) · # 참고자료(> 거래명세서 내역 · > [지급처](거래명세서 주소)).
+ * ★cc @@team.finance 는 달지 않는다★ — 한백 「cc [@@team.finance]붙는건 긴급일때만」(같은 날 — 재무팀을 부르는 것은 긴급 글뿐이다).
  * 제목 줄은 없다 — 목록 · 감사기록에는 공사명을 쓴다(agitTitleOf). 이름은 「전달 N월 … 1차」(10일) · 「2차」(25일) — 한 달 일의 수수료를
  * 다음 달 두 번에 나눠 낸다. 계좌는 본문에 적지 않는다 — 첨부 엑셀(구매요청간소화 양식)에만 있다. 글양식은 「구매요청간소화」(웹훅 task.template_name).
  *
@@ -60,8 +61,6 @@ export interface AgitBatch {
 
 /** 글양식 — 열린구매 그룹의 「구매요청간소화」(웹훅 task.template_name · 글 머리의 꼬리표) */
 export const AGIT_TEMPLATE = '구매요청간소화';
-/** 재무팀 — 지난 글이 끝에 달던 cc(아지트 팀 멘션 · 마크다운 원문 그대로 — 팀 주소로 거는 고리다) */
-export const AGIT_CC = '[@@team.finance](https://han-baek.agit.io/parties/6776)';
 
 export interface AgitPostText {
   payDate: string;
@@ -179,7 +178,6 @@ export function agitPostOf(payDate: string, batches: readonly AgitBatch[], conso
     '# 참고자료',
     '> 거래명세서 내역',
     ...links,
-    `cc ${AGIT_CC}`,
   ].join('\n');
   const title = name.subject;
   const blocked = sorted.length === 0

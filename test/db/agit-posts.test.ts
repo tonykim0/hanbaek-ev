@@ -247,7 +247,7 @@ describe('정산 담당의 초안 → 한백의 승인 → 아지트', () => {
       expect(cards).toHaveLength(1);
       expect(cards[0]).toMatchObject({ status: 'draft', payDate: D3, batches: 1, postedBy: '정산 담당' });
       expect(cards[0].body).toContain(`- ${org} · 영업비 1차 · `);
-      expect(cards[0].body).toContain('cc [@@team.finance](https://han-baek.agit.io/parties/6776)');
+      expect(cards[0].body).toContain('# 참고자료'); // 구매요청간소화 글(마크다운) · cc 는 긴급 글에만
       expect(cards[0].title).toBe('98년 2월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차');
     });
   });

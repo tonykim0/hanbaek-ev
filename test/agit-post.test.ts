@@ -62,9 +62,9 @@ describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 �
       '> 거래명세서 내역',
       `> [에코일렉](${ECO_LINK})`,
       `> [이브이솔루션 (영업)](${URL_}/payments/statement?org=${encodeURIComponent('이브이솔루션 ')}%28${encodeURIComponent('영업')}%29&date=2026-11-10&kind=${encodeURIComponent('영업비')})`,
-      'cc [@@team.finance](https://han-baek.agit.io/parties/6776)',
     ].join('\n'));
     expect(post.text).not.toContain('123-45-6789');
+    expect(post.text).not.toContain('team.finance'); // cc 는 긴급 글에만(한백 11-08)
     expect(post).toMatchObject({
       total: 101_360_000, batches: 2, blocked: null, title: '26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차',
     });
