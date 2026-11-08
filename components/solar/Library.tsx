@@ -5,9 +5,11 @@ import { useMemo, useRef, useState } from 'react';
 import FileViewer from '@/components/FileViewer';
 import { Blank, Btn, BtnLink, Confirm, Err, FIELD_BASE, GroupHead, Note, PANEL, Picks, Saved, TEXT } from '@/components/ui';
 import { dayOf } from '@/lib/date';
-import { canPreviewFile, extOf, isImageFile, sizeLabel } from '@/lib/file-kind';
 import { categoriesOf, groupLibrary, LIBRARY_CATEGORY_MAX, LOOSE_LABEL, type LibraryFile } from '@/lib/solar/library';
 import { uploadLibraryFile } from '@/lib/solar/library-upload';
+import { uploadEach } from '@/lib/upload-each';
+import { useAction } from '@/lib/use-action';
+import FileRow from './FileRow';
 
 /**
  * 태양광 자료실 (2026-11-04, 한백 「태양광사업관리 페이지에서도 자료실 기능 · 제목은 그냥 자료실 · 우리가 업로드 · 왼쪽 사이드바」).
@@ -45,52 +47,22 @@ export default function Library({
   const [done, setDone] = useState<string | null>(null);
   const [viewing, setViewing] = useState<LibraryFile | null>(null);
   const [asking, setAsking] = useState<LibraryFile | null>(null);
-  const [removing, setRemoving] = useState(false);
-  const [removeError, setRemoveError] = useState<string | null>(null);
+  const del = useAction();
 
   async function upload(list: File[]) {
     if (!list.length) return;
     setUploadError(null);
     setDone(null);
-    const failed: string[] = [];
-    let ok = 0;
-    let replaced = 0;
-    for (const [i, f] of list.entries()) {
-      try {
-        const r = await uploadLibraryFile(category, f, (pct) => setBusy(`올리는 중 ${i + 1}/${list.length} · ${pct}%`));
-        ok += 1;
-        if (r.replaced) replaced += 1;
-      } catch (err) {
-        failed.push(err instanceof Error ? err.message : `${f.name} — 올리지 못했습니다`);
-      }
-    }
+    const { ok, failed } = await uploadEach(list, (f, onPct) => uploadLibraryFile(category, f, onPct), (i, n, pct) => setBusy(`올리는 중 ${i + 1}/${n} · ${pct}%`));
+    const replaced = ok.filter((r) => r.replaced).length;
     setBusy(null);
-    if (ok) setDone(`${ok}개 올림${replaced ? ` · 그중 ${replaced}개는 같은 이름이라 교체` : ''}`);
+    if (ok.length) setDone(`${ok.length}개 올림${replaced ? ` · 그중 ${replaced}개는 같은 이름이라 교체` : ''}`);
     if (failed.length) setUploadError(failed.join(' · '));
     router.refresh();
   }
 
   async function remove(f: LibraryFile) {
-    setRemoving(true);
-    setRemoveError(null);
-    try {
-      const res = await fetch('/api/solar/library', {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pathname: f.pathname }),
-      });
-      if (!res.ok) {
-        const b = (await res.json().catch(() => ({}))) as { error?: string };
-        setRemoveError(b.error ?? '빼지 못했습니다.');
-        return;
-      }
-      setAsking(null);
-      router.refresh();
-    } catch {
-      setRemoveError('네트워크 오류입니다. 다시 시도해주세요.');
-    } finally {
-      setRemoving(false);
-    }
+    if (await del.run({ url: '/api/solar/library', method: 'DELETE', body: { pathname: f.pathname }, fail: '빼지 못했습니다.' })) setAsking(null);
   }
 
   return (
@@ -156,7 +128,11 @@ export default function Library({
               {heads && <GroupHead title={g.category ?? LOOSE_LABEL} meta={`${g.files.length}건`} />}
               <ul className={heads ? 'mt-2' : ''}>
                 {g.files.map((f) => (
-                  <Row key={f.pathname} file={f} canManage={canManage} onView={() => setViewing(f)} onRemove={() => setAsking(f)} />
+                  <FileRow key={f.pathname} file={f} at={f.uploadedAt} download={f.downloadUrl} onView={() => setViewing(f)} onRemove={canManage ? () => setAsking(f) : undefined}>
+                    <BtnLink kind="quiet" href={f.downloadUrl} download={f.name} className="shrink-0">
+                      받기
+                    </BtnLink>
+                  </FileRow>
                 ))}
               </ul>
             </section>
@@ -170,58 +146,15 @@ export default function Library({
         title="자료를 뺄까요?"
         detail={asking ? `${asking.name} 이(가) 자료실에서 빠집니다 — 한 부는 목록 밖 보관 자리에 남습니다.` : undefined}
         confirmLabel="빼기"
-        busy={removing}
+        busy={del.busy}
         busyLabel="빼는 중…"
-        error={removeError}
+        error={del.error}
         onConfirm={() => asking && void remove(asking)}
         onCancel={() => {
           setAsking(null);
-          setRemoveError(null);
+          del.setError(null);
         }}
       />
     </div>
-  );
-}
-
-/** 자료 한 줄 — 그림 · 이름(미리보기 또는 받기) · 크기 · 날짜 · 받기, 반대쪽 끝에 빼기(관리자) */
-function Row({ file: f, canManage, onView, onRemove }: { file: LibraryFile; canManage: boolean; onView: () => void; onRemove: () => void }) {
-  const name = 'min-w-0 truncate text-left text-base font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900';
-  return (
-    <li className="flex items-center gap-3 border-t border-slate-100 py-2 first:border-t-0">
-      {/* 사진은 줄에서 바로 보인다 — 누르면 크게 */}
-      {isImageFile(f) ? (
-        <button type="button" onClick={onView} aria-label={`${f.name} 미리보기`} className="h-10 w-10 shrink-0 overflow-hidden rounded-tag border border-slate-200 bg-slate-50">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={f.url} alt="" loading="lazy" className="h-full w-full object-cover" />
-        </button>
-      ) : (
-        <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-tag border border-slate-200 bg-slate-50 text-micro font-black text-slate-500">
-          {extOf(f).toUpperCase()}
-        </span>
-      )}
-      {canPreviewFile(f) ? (
-        <button type="button" onClick={onView} className={name}>
-          {f.name}
-        </button>
-      ) : (
-        // 그릴 수 없는 형식(엑셀 · 워드 · 한글) — 이름이 곧 받기다
-        <a href={f.downloadUrl} download={f.name} className={name}>
-          {f.name}
-        </a>
-      )}
-      <span className={`shrink-0 tabular-nums ${TEXT.meta}`}>
-        {sizeLabel(f.size)} · {dayOf(new Date(f.uploadedAt))}
-      </span>
-      <BtnLink kind="quiet" href={f.downloadUrl} download={f.name} className="shrink-0">
-        받기
-      </BtnLink>
-      {canManage && (
-        <span className="ml-auto shrink-0">
-          <Btn kind="undo" size="sm" onClick={onRemove}>
-            빼기
-          </Btn>
-        </span>
-      )}
-    </li>
   );
 }

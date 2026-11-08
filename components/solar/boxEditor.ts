@@ -1,6 +1,6 @@
 import { boxCorners, boxFromCorners, knobPoint, MIN_SIDE_M, moveBy, resizeCorner, rotateToward, type Box } from '@/lib/solar/boxes';
 import type { LngLat } from '@/lib/solar/geo';
-import type { KakaoMaps, KMap, Listener, Overlay, PolygonShape } from './kakao';
+import { latLngOf, type KakaoMaps, type KMap, type Listener, type Overlay, type PolygonShape } from './kakao';
 
 /**
  * 지상형 네모 고치기 — 파워포인트처럼(한백 「돌릴 수 있는 네모 필요」): 네모를 누르면 고르고, 모서리 □ 를 끌면 크기,
@@ -42,7 +42,7 @@ export function createBoxEditor(o: {
   onChange: (s: EditorState) => void;
 }): BoxEditor {
   const { maps, map } = o;
-  const at = ([lng, lat]: LngLat) => new maps.LatLng(lat, lng);
+  const at = latLngOf(maps);
   const views = new Map<string, View>();
   let selected: string | null = null;
   let drawing = false;
@@ -163,8 +163,7 @@ export function createBoxEditor(o: {
     const poly = new maps.Polygon({ map, path: boxCorners(b).map(at), ...o.style });
     const labelEl = document.createElement('div');
     labelEl.title = '끌어서 옮기기';
-    labelEl.style.cssText =
-      "padding:2px 8px;border-radius:9999px;background:rgba(255,255,255,.92);color:#0f172a;font:700 12px/1.6 'Pretendard Variable',sans-serif;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.35);cursor:move;touch-action:none;user-select:none;font-variant-numeric:tabular-nums";
+    labelEl.style.cssText = `${PILL_CSS};cursor:move;touch-action:none;user-select:none`;
     const label = new maps.CustomOverlay({ map, position: at(b.center), content: labelEl, xAnchor: 0.5, yAnchor: 0.5, zIndex: 8, clickable: true });
     const rmEl = removeEl();
     const remove = new maps.CustomOverlay({ map, position: at(boxCorners(b)[2]), content: rmEl, xAnchor: 0.5, yAnchor: 0.5, zIndex: 9, clickable: true });
@@ -297,6 +296,10 @@ function handleEl(kind: 'corner' | 'knob', title: string): HTMLElement {
 }
 
 /** 네모 지우기 × */
+/** 지도 위 흰 둥근 꼬리표(네모 가운데 넓이 · 용량) — 끌어 옮기는 꼬리표와 확정한 네모의 꼬리표가 같은 모양이다 */
+export const PILL_CSS =
+  "padding:2px 8px;border-radius:9999px;background:rgba(255,255,255,.92);color:#0f172a;font:700 12px/1.6 'Pretendard Variable',sans-serif;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.35);font-variant-numeric:tabular-nums";
+
 export function removeEl(onClick?: () => void): HTMLElement {
   const b = document.createElement('button');
   b.type = 'button';

@@ -5,19 +5,22 @@ import { Btn, Choice, Err, FIELD, SectionHead } from '@/components/ui';
 import { formatKoreanPhone } from '@/lib/contract-form';
 import type { ProposalTemplate } from '@/lib/data/solar-proposals';
 import { today } from '@/lib/date';
+import { downloadBlob } from '@/lib/download';
 import type { LngLat } from '@/lib/solar/geo';
 import { capacityKw, kwText } from '@/lib/solar/proposal/calc';
-import { buildProposal } from '@/lib/solar/proposal/client';
-import { PHONE_DIGITS, phoneDigitsOf, proposalFileName, storedSeller, type ProposalInput, type Seller } from '@/lib/solar/proposal/fill-common';
+import { proposalBlocker } from '@/lib/solar/proposal/blocker';
+import { buildProposal, fetchProposalTemplates } from '@/lib/solar/proposal/client';
+import { proposalFileName, storedSeller, type ProposalInput, type Seller } from '@/lib/solar/proposal/fill-common';
 import { proposalLayout, type ProposalLayout } from '@/lib/solar/proposal/layout-rule';
 import { missingTerms, PRODUCTS, productOf, UPCOMING, type ProductKey, type TemplateKey, type Terms } from '@/lib/solar/proposal/products';
-import type { Mode, Report, Suggestion } from '@/lib/solar/types';
-import { fetchSiteReport, SearchBox } from './Checker';
+import type { Report } from '@/lib/solar/types';
+import { SearchBox } from './Checker';
 import { siteImager } from './proposal-image';
 import ProposalTemplates from './ProposalTemplates';
 import SiteMap from './SiteMap';
 import { PANEL, TEXT } from './ui';
 import { useRoofPlan } from './useRoofPlan';
+import { useSiteReport } from './useSiteReport';
 
 const COMPANIES = Array.from(new Set([...PRODUCTS, ...UPCOMING].map((p) => p.company)));
 
@@ -50,9 +53,8 @@ function saveSeller(s: Seller): void {
  * 짓는 일은 브라우저가 한다 — 서버에 남는 것이 없다.
  */
 export default function ProposalMaker({ mapKey, initialQ, canManage }: { mapKey: string | null; initialQ: string; canManage: boolean }) {
-  const [report, setReport] = useState<Report | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [loadFail, setLoadFail] = useState<string | null>(null);
+  // 들고 온 주소(부지 검토의 「이 부지로 제안서 만들기」)는 처음 한 번 불러온다
+  const { report, busy: loading, error: loadFail, run: load } = useSiteReport(initialQ.length >= 2 ? { q: initialQ, mode: 'roof' } : null);
   const [templates, setTemplates] = useState<ProposalTemplate[] | null>(null);
   const [templatesFail, setTemplatesFail] = useState<string | null>(null);
   const [product, setProduct] = useState<ProductKey | null>(null);
@@ -61,38 +63,12 @@ export default function ProposalMaker({ mapKey, initialQ, canManage }: { mapKey:
 
   useEffect(() => {
     let live = true;
-    fetch('/api/solar/proposals')
-      .then(async (r) => {
-        const b = (await r.json().catch(() => ({}))) as { templates?: ProposalTemplate[]; error?: string };
-        if (!r.ok || !b.templates) throw new Error(b.error ?? `템플릿을 읽지 못했습니다 (${r.status})`);
-        if (live) setTemplates(b.templates);
-      })
+    fetchProposalTemplates()
+      .then((t) => live && setTemplates(t))
       .catch((err) => live && setTemplatesFail(err instanceof Error ? err.message : String(err)));
     return () => {
       live = false;
     };
-  }, []);
-
-  async function load(mode: Mode, q: string, picked?: Suggestion) {
-    if (!q.trim() || loading) return;
-    setLoading(true);
-    setLoadFail(null);
-    try {
-      setReport(await fetchSiteReport(mode, q, picked));
-    } catch (err) {
-      setReport(null);
-      setLoadFail(err instanceof Error ? err.message : String(err));
-    } finally {
-      setLoading(false);
-    }
-  }
-  // 들고 온 주소(부지 검토의 「이 부지로 제안서 만들기」)는 처음 한 번만 — 다시 그려질 때마다 돌면 바깥 자료의 하루 한도를 깎는다
-  const started = useRef(false);
-  useEffect(() => {
-    if (initialQ.length < 2 || started.current) return;
-    started.current = true;
-    void load('roof', initialQ);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 처음 한 번
   }, []);
 
   /** 그 템플릿으로 못 짓는 까닭 — 칩 꼬리와 만들기 단추가 같이 쓴다 */
@@ -113,8 +89,8 @@ export default function ProposalMaker({ mapKey, initialQ, canManage }: { mapKey:
         sub="제안할 건물"
         placeholder="도로명·지번 주소 또는 건물명"
         initialQuery={initialQ}
-        busy={loading ? 'roof' : null}
-        error={loadFail}
+        busy={loading}
+        error={loadFail?.text ?? null}
         onRun={load}
         action="불러오기"
         busyAction="불러오는 중…"
@@ -247,26 +223,19 @@ function ProposalSite({
       : null;
 
   // 못 짓는 까닭 — 화면 위에서부터(2 상품 → 3 배치 → 4 고객 · 영업사) 처음 걸리는 것 하나를 단추에 적는다
-  const blocker =
-    ([
-      [!templates, '템플릿 읽는 중'],
-      [!chosen, '상품 미선택'],
-    ] as const).find(([hit]) => hit)?.[1] ??
-    (chosen ? stateOf(chosen.template) : null) ??
-    ([
-      [!place.pnu, '필지 없음'],
-      [!plan, '지도 자료 없음'],
-      [aiBusy, 'AI 패널 배치 중'],
-      [!plan?.roofs.length, '패널 배치 전'],
-      [!plan?.selected.size, '고른 지붕 없음'],
-      [!customer.trim(), '고객명 없음'],
-      [!address.trim(), '주소 없음'],
-      [!seller.company.trim(), '영업사 없음'],
-      [!seller.person.trim(), '담당자명 없음'],
-      [!seller.phone, '연락처 없음'],
-      [phoneDigitsOf(seller.phone).length !== PHONE_DIGITS, `연락처 ${PHONE_DIGITS}자리 아님`],
-    ] as const).find(([hit]) => hit)?.[1] ??
-    null;
+  const blocker = proposalBlocker({
+    templatesLoaded: !!templates,
+    productChosen: !!chosen,
+    templateState: chosen ? stateOf(chosen.template) : null,
+    pnu: place.pnu,
+    hasPlan: !!plan,
+    aiBusy,
+    roofs: plan?.roofs.length ?? 0,
+    selected: plan?.selected.size ?? 0,
+    customer,
+    address,
+    seller,
+  });
 
   const building = useRef(false);
   const build = async () => {
@@ -296,14 +265,7 @@ function ProposalSite({
       setStep(chosen.template === 'lumora-rent' ? '쪽 굽는 중…' : '제안서 짓는 중…');
       const blob = await buildProposal(chosen.key, template, input);
       const name = proposalFileName(input.customer, `${chosen.company} ${chosen.label}`, input.today);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      downloadBlob(blob, name, 60_000);
       saveSeller(input.seller);
       const kw = capacityKw(lay.count, (template.terms.moduleWatt as number) ?? 0);
       setDone(`받았습니다 — ${name} · 패널 ${lay.count.toLocaleString()}장 · ${kwText(kw)} kW`);

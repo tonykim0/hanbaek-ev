@@ -6,6 +6,7 @@ import { useAddressSearch, type PostcodeData } from '@/components/contracts/Addr
 import { Btn, Choice, Empty, Err, FIELD, FIELD_BASE, TEXT } from '@/components/ui';
 import { uploadSiteFile } from '@/lib/solar/site-upload';
 import { SITE_KIND_LABEL, SITE_KINDS, SITE_LIMITS, type SiteDraft } from '@/lib/solar/sites';
+import { uploadEach } from '@/lib/upload-each';
 
 /**
  * 상담 접수 · 고치기 폼 — 같은 칸, 같은 규칙(lib/solar/sites cleanSiteInput — 서버가 한 번 더 본다).
@@ -83,14 +84,8 @@ export default function SiteForm({
         router.refresh();
         onDone?.();
       } else if (got.id) {
-        let unsent = 0;
-        for (const [i, f] of picked.entries()) {
-          try {
-            await uploadSiteFile(got.id, f, (pct) => setBusyLabel(`첨부파일 올리는 중 ${i + 1}/${picked.length} · ${pct}%`));
-          } catch {
-            unsent += 1;
-          }
-        }
+        const id = got.id;
+        const unsent = (await uploadEach(picked, (f, onPct) => uploadSiteFile(id, f, onPct), (i, n, pct) => setBusyLabel(`첨부파일 올리는 중 ${i + 1}/${n} · ${pct}%`))).failed.length;
         // 접수한 현장으로 간다 — 적은 것을 바로 보고, 보드의 상담 칸에도 섰다
         router.push(`/solar/sites/${got.id}${unsent ? `?unsent=${unsent}` : ''}`);
         router.refresh();

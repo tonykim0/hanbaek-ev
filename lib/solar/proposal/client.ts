@@ -33,6 +33,14 @@ export async function uploadProposalTemplate(key: TemplateKey, file: File, onPct
   return cb.template;
 }
 
+/** 틀 · 조건 목록 — 제안서 생성이 열릴 때 한 번 */
+export async function fetchProposalTemplates(): Promise<ProposalTemplate[]> {
+  const r = await fetch('/api/solar/proposals');
+  const b = (await r.json().catch(() => ({}))) as { templates?: ProposalTemplate[]; error?: string };
+  if (!r.ok || !b.templates) throw new Error(b.error ?? `템플릿을 읽지 못했습니다 (${r.status})`);
+  return b.templates;
+}
+
 export async function saveProposalTerms(key: TemplateKey, terms: Record<string, string | number>): Promise<ProposalTemplate> {
   const r = await fetch('/api/solar/proposals', { method: 'PATCH', headers: JSON_HEADERS, body: JSON.stringify({ key, terms }) });
   const b = (await r.json().catch(() => ({}))) as { template?: ProposalTemplate; error?: string };

@@ -13,17 +13,16 @@ import ProposalMaker from '@/components/solar/ProposalMaker';
 import { getSessionUser } from '@/lib/auth/session';
 import { BIZ_HOME } from '@/lib/biz';
 import { isHanbaek } from '@/lib/roles';
+import { firstParam } from '@/lib/search-param';
 
 export const metadata = { title: '태양광 제안서 생성' };
-
-const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? '';
 
 /** ?q= — 주소를 들고 오면(부지 검토의 「이 부지로 제안서 만들기」) 「1 현장」에 넣고 바로 불러온다 */
 export default async function SolarProposalsPage({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
   const session = await getSessionUser();
   // 로그인 자체가 없는 경우는 바깥 레이아웃이 먼저 로그인으로 보낸다
   if (!session || !isHanbaek(session.role)) redirect(BIZ_HOME.solar);
-  const q = one(searchParams.q).trim().slice(0, 200);
+  const q = firstParam(searchParams.q).trim().slice(0, 200);
   return (
     <div className="max-w-4xl">
       <h1 className="mb-5 text-h1 font-black text-slate-900">제안서 생성</h1>

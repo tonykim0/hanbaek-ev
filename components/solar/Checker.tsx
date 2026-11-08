@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Btn, Err, FIELD, SectionHead, Tag } from '@/components/ui';
-import { checkParams } from '@/lib/solar/check-query';
 import type { Mode, Report, Suggestion } from '@/lib/solar/types';
 import ReportView from './ReportView';
+import { useSiteReport } from './useSiteReport';
 import { PANEL, TEXT } from './ui';
 
 /** 검색창 둘 — 지붕형 · 지상형을 나눠 둔다(한백 지시). 고르는 단추 대신 창마다 제 검토를 돌린다 */
@@ -16,13 +16,6 @@ const BOXES: { mode: Mode; title: string; sub: string; placeholder: string }[] =
 /**
  * 주소(또는 고른 후보)로 부지를 불러온다 — /api/solar/check. 부지 검토와 제안서 생성(「1 현장」)이 같이 쓴다. 실패하면 그 까닭(한글)을 던진다.
  */
-export async function fetchSiteReport(mode: Mode, q: string, picked?: Suggestion): Promise<Report> {
-  const res = await fetch(`/api/solar/check?${checkParams(mode, q, picked)}`);
-  const body = await res.json();
-  if (!res.ok) throw new Error(body.error ?? `검토 실패 (${res.status})`);
-  return body as Report;
-}
-
 /** 후보 한 줄의 굵은 글자와 밑의 작은 글자 */
 function linesOf(s: Suggestion): { main: string; sub: string | null } {
   if (s.kind === 'place') return { main: s.name ?? '', sub: s.road ?? s.parcel };
@@ -54,33 +47,7 @@ export default function Checker({
    */
   canPropose?: boolean;
 }) {
-  /** 도는 검토의 갈래 — 결과 자리가 하나라 한 번에 하나만 돈다 */
-  const [busy, setBusy] = useState<Mode | null>(null);
-  const [error, setError] = useState<{ mode: Mode; text: string } | null>(null);
-  const [report, setReport] = useState<Report | null>(null);
-
-  async function run(mode: Mode, q: string, picked?: Suggestion) {
-    if (!q.trim() || busy) return;
-    setBusy(mode);
-    setError(null);
-    try {
-      setReport(await fetchSiteReport(mode, q, picked));
-    } catch (err) {
-      setReport(null);
-      setError({ mode, text: err instanceof Error ? err.message : String(err) });
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  // 들고 온 주소는 처음 한 번만 — 다시 그려질 때마다 돌면 바깥 자료의 하루 한도를 깎는다
-  const started = useRef(false);
-  useEffect(() => {
-    if (!initial || started.current) return;
-    started.current = true;
-    void run(initial.mode, initial.q);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 처음 한 번
-  }, []);
+  const { report, busy, error, run } = useSiteReport(initial);
 
   return (
     <div>

@@ -12,17 +12,16 @@ import SiteForm from '@/components/solar/SiteForm';
 import { getSessionUser } from '@/lib/auth/session';
 import { solarSiteStore } from '@/lib/data/solar-sites';
 import { canRegisterSite, draftOf, SITE_KINDS } from '@/lib/solar/sites';
+import { firstParam } from '@/lib/search-param';
 
 export const metadata = { title: '태양광 상담 접수' };
 export const dynamic = 'force-dynamic';
-
-const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? '';
 
 export default async function SolarSiteNewPage({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
   const session = await getSessionUser();
   if (!session) redirect('/login?next=/solar/sites/new');
   if (!canRegisterSite(session)) redirect('/solar/sites');
-  const kind = SITE_KINDS.find((k) => k === one(searchParams.kind));
+  const kind = SITE_KINDS.find((k) => k === firstParam(searchParams.kind));
   // 한백 관리자만 담당을 고른다 — 협력사의 폼에는 그 칸이 없다
   const orgs = session.role === 'admin' ? await solarSiteStore.partnerOrgs() : undefined;
 
@@ -31,7 +30,7 @@ export default async function SolarSiteNewPage({ searchParams }: { searchParams:
       <h1 className="mb-5 text-h1 font-black text-slate-900">상담 접수</h1>
       <div className={`${PANEL} p-5`}>
         <SiteForm
-          initial={draftOf({ name: one(searchParams.name).slice(0, 80), address: one(searchParams.address).slice(0, 200), kind })}
+          initial={draftOf({ name: firstParam(searchParams.name).slice(0, 80), address: firstParam(searchParams.address).slice(0, 200), kind })}
           orgs={orgs}
         />
       </div>

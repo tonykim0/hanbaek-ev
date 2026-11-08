@@ -12,16 +12,15 @@ import { getSessionUser } from '@/lib/auth/session';
 import { isHanbaek } from '@/lib/roles';
 import { canRegisterSite } from '@/lib/solar/sites';
 import type { Mode } from '@/lib/solar/types';
+import { firstParam } from '@/lib/search-param';
 
 export const metadata = { title: '태양광 부지 검토' };
-
-const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? '';
 
 /** ?q=&mode= — 현장 상세의 「부지 검토」가 주소 · 설치 형태를 들고 온다. 그 검색창에 넣고 바로 돈다 */
 export default async function SolarCheckPage({ searchParams }: { searchParams: Record<string, string | string[] | undefined> }) {
   const session = await getSessionUser();
-  const q = one(searchParams.q).trim().slice(0, 200);
-  const mode: Mode = one(searchParams.mode) === 'ground' ? 'ground' : 'roof';
+  const q = firstParam(searchParams.q).trim().slice(0, 200);
+  const mode: Mode = firstParam(searchParams.mode) === 'ground' ? 'ground' : 'roof';
   return (
     <div className="max-w-4xl">
       <h1 className="mb-5 text-h1 font-black text-slate-900">부지 검토</h1>

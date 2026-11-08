@@ -6,11 +6,11 @@ import { MODULE, TILT_DEG } from '@/lib/solar/assumptions';
 import { boxArea, boxCorners, type GroundUse } from '@/lib/solar/boxes';
 import type { LngLat, PolygonCoords } from '@/lib/solar/geo';
 import type { SiteMap as SiteMapData } from '@/lib/solar/types';
-import { createBoxEditor, removeEl, type BoxEditor, type EditorState } from './boxEditor';
-import { loadKakao, type KakaoMaps, type KMap, type Listener, type PolygonShape, type Shape } from './kakao';
+import { createBoxEditor, PILL_CSS, removeEl, type BoxEditor, type EditorState } from './boxEditor';
+import { latLngOf, loadKakao, type KakaoMaps, type KMap, type Listener, type PolygonShape, type Shape } from './kakao';
 import { PANEL, Segmented, TEXT } from './ui';
 import type { GroundPlan, SizedBox } from './useGroundBoxes';
-import { fetchRoofTrace, SKIP_KINDS, type RoofPlan, type TraceResult } from './useRoofPlan';
+import { useRoofTrace, type RoofPlan, type TraceResult } from './useRoofPlan';
 
 const STYLE = {
   parcel: { strokeColor: '#f59e0b', strokeWeight: 3, strokeOpacity: 1, fillColor: '#f59e0b', fillOpacity: 0.08, zIndex: 1 },
@@ -78,12 +78,6 @@ export default function SiteMap({
   planRef.current = plan;
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  /** AI 지붕 따기 — 도는 중 · 결과 한 줄 · 실패 */
-  const [ai, setAi] = useState<{ busy: boolean; msg: string | null; error: boolean; trace?: TraceResult }>({
-    busy: false,
-    msg: null,
-    error: false,
-  });
   const groundRef = useRef(ground);
   groundRef.current = ground;
   /** 고치는 중인 네모 — 편집기가 쥐고 있다. 그 상태(네모들 · 그리는 단계 · 고른 것)가 확정 단추와 안내에 보인다 */
@@ -106,7 +100,7 @@ export default function SiteMap({
     loadKakao(appKey)
       .then((maps) => {
         if (!alive || !el.current) return;
-        const at = ([lng, lat]: LngLat) => new maps.LatLng(lat, lng);
+        const at = latLngOf(maps);
         const map = new maps.Map(el.current, {
           center: new maps.LatLng(data.point.lat, data.point.lng),
           level: 3,
@@ -152,7 +146,7 @@ export default function SiteMap({
   useEffect(() => {
     const m = live.current;
     if (!m || !roofs || !selected) return;
-    const at = ([lng, lat]: LngLat) => new m.maps.LatLng(lat, lng);
+    const at = latLngOf(m.maps);
     const have = roofShapes.current;
     const ids = new Set(roofs.map((r) => r.id));
     for (const [id, shape] of have)
@@ -182,7 +176,7 @@ export default function SiteMap({
     const m = live.current;
     if (!m || !cuts) return;
     const shapes = cuts.map((c) => {
-      const shape = new m.maps.Polygon({ map: m.map, path: c.polygons[0].map((ring) => ring.map(([lng, lat]) => new m.maps.LatLng(lat, lng))), ...STYLE.cut });
+      const shape = new m.maps.Polygon({ map: m.map, path: c.polygons[0].map((ring) => ring.map(latLngOf(m.maps))), ...STYLE.cut });
       m.maps.event.addListener(shape, 'click', () => planRef.current?.removeCut(c.id));
       return shape;
     });
@@ -223,7 +217,7 @@ export default function SiteMap({
   useEffect(() => {
     const m = live.current;
     if (!m || !boxes || editing) return;
-    const at = ([lng, lat]: LngLat) => new m.maps.LatLng(lat, lng);
+    const at = latLngOf(m.maps);
     const shapes: Shape[] = [];
     for (const b of boxes) {
       const c = boxCorners(b);
@@ -322,37 +316,8 @@ export default function SiteMap({
     };
   }, [ready, quads]);
 
-  /* ---------------- AI 패널배치 — 단추 · 저절로(autoRun) 같은 길 하나. 지도가 안 떠도 돈다(지붕을 받아 오는 일이다) */
-  const findRoofs = async () => {
-    if (!pnu || !plan || ai.busy) return;
-    setAi({ busy: true, msg: null, error: false });
-    try {
-      const body = await fetchRoofTrace(pnu);
-      plan.applyTrace(body);
-      const sec = Math.round((body.meta?.ms ?? 0) / 1000);
-      const trace: TraceResult = body;
-      const skipped = trace.roofs.filter((r) => SKIP_KINDS.has(r.kind)).length;
-      setAi({
-        busy: false,
-        error: false,
-        trace,
-        msg: `AI가 지붕 ${trace.roofs.length}곳${skipped ? `(그중 ${skipped}곳은 천막·슬레이트라 패널을 안 깔았습니다)` : ''}${
-          trace.obstacles.length ? ` · 못 까는 곳 ${trace.obstacles.length}곳` : ''
-        }을 찾았습니다${body.cached ? ' (저장해 둔 결과)' : ` · ${sec}초`}`,
-      });
-    } catch (err) {
-      setAi({ busy: false, error: true, msg: err instanceof Error ? err.message : String(err) });
-    }
-  };
-  // 저절로는 한 번만 — 이미 배치가 있으면(앞서 돌렸으면) 안 돈다. 개발 모드의 두 번 도는 효과에도 한 번(ref)
-  const autoRan = useRef(false);
-  useEffect(() => {
-    if (!autoRun || autoRan.current || !plan || !pnu || plan.roofs.length) return;
-    autoRan.current = true;
-    void findRoofs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 처음 한 번
-  }, [autoRun, pnu, !!plan]);
-  useEffect(() => onAiBusy?.(ai.busy), [ai.busy, onAiBusy]);
+  /* ---------------- AI 패널배치 — 단추 · 저절로(autoRun) 같은 길 하나(useRoofTrace) */
+  const { ai, run: findRoofs } = useRoofTrace(pnu, plan, autoRun, onAiBusy);
 
   if (!appKey) {
     return (
@@ -521,7 +486,7 @@ function AiNotes({ trace }: { trace: TraceResult }) {
         <ul className={`mt-1 space-y-0.5 ${TEXT.body}`}>
           {trace.roofs.map((r, i) => (
             <li key={`r${i}`}>
-              <span className="font-bold text-slate-900">{r.kind}</span> {Math.round((r as { area?: number }).area ?? 0).toLocaleString()}㎡ — {r.note}
+              <span className="font-bold text-slate-900">{r.kind}</span> {Math.round(r.area ?? 0).toLocaleString()}㎡ — {r.note}
             </li>
           ))}
           {trace.obstacles.map((o, i) => (
@@ -548,7 +513,6 @@ function MapHint({ text }: { text: string }) {
 function boxLabel(b: SizedBox): HTMLElement {
   const div = document.createElement('div');
   div.textContent = `${Math.round(b.area).toLocaleString()}㎡ · ${b.kw.toLocaleString()}kW`;
-  div.style.cssText =
-    "padding:2px 8px;border-radius:9999px;background:rgba(255,255,255,.92);color:#0f172a;font:700 12px/1.6 'Pretendard Variable',sans-serif;white-space:nowrap;box-shadow:0 1px 3px rgba(0,0,0,.35);font-variant-numeric:tabular-nums";
+  div.style.cssText = PILL_CSS;
   return div;
 }

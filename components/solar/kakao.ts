@@ -46,6 +46,9 @@ let loading: Promise<KakaoMaps> | null = null;
  * 카카오 앱의 「JavaScript SDK 도메인」에 이 주소가 없으면 스크립트가 거절되거나 load 가 끝내 안 불린다 — 10초로 끊는다.
  * 그리기 라이브러리(libraries=drawing)는 쓰지 않는다 — 그 네모는 돌릴 수 없어 지상형 네모는 직접 그린다(boxEditor).
  */
+/** 경위도 [경도, 위도] → 카카오 좌표 */
+export const latLngOf = (maps: KakaoMaps) => ([lng, lat]: [number, number]): LatLng => new maps.LatLng(lat, lng);
+
 export function loadKakao(appKey: string): Promise<KakaoMaps> {
   if (loading) return loading;
   loading = new Promise<KakaoMaps>((resolve, reject) => {
