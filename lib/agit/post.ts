@@ -75,7 +75,7 @@ export const VAT_RATE = 0.1;
 /** 부가세 — 공급가액의 10%, 원 단위 절사(세금계산서가 그렇게 끊는다) */
 export const vatOf = (supply: number): number => Math.floor(supply * VAT_RATE);
 
-/** 회차 — 현장 수 · 대수로 적는다. 그 밖(회수)은 건수 · 금액으로 적는다 */
+/** 회차의 차례 — 그 밖(회수 · 차감 …)은 뒤에 가나다 */
 const STEP_ORDER = ['1차', '2차', '선금', '차액'];
 
 /** 「11/10」 */
@@ -87,24 +87,18 @@ export const shortDay = (day: string): string => {
 /** 정기결제(10일 · 25일)인가 — 다른 날을 골라 가확정한 배치도 있다 */
 const isRegular = (day: string): boolean => (REGULAR_PAY_DAYS as readonly string[]).includes(day.slice(8, 10));
 
-/** 「영업비 1차 · 20개 현장 106기」 — 회차가 섞이면 「 / 」로 잇는다 */
-export function detailOf(kind: PayoutKind, lines: readonly AgitLine[]): string {
+/**
+ * 품목명 — 「영업비 1차」 · 회차가 섞이면 「 / 」로 잇는다(「시공비 1차 / 2차 / 회수」). 글의 품목 줄과 엑셀의 내용 칸이 같이 쓴다.
+ * ★현장 수 · 대수는 적지 않는다★(한백 2026-11-08 「본문에 각 거래처 이름과 품목명 금액만 올리면 되지, 현장수, 기수는 빼」 —
+ * 지난 엑셀의 내용 칸도 「(25년 환경부 사업 2차 잔금)」처럼 품목만 적었다). 현장은 거래명세서에 있다.
+ */
+export function itemNameOf(kind: PayoutKind, lines: readonly AgitLine[]): string {
   const labels = [...new Set(lines.map((l) => l.label))].sort((a, b) => {
     const ia = STEP_ORDER.indexOf(a);
     const ib = STEP_ORDER.indexOf(b);
     return (ia < 0 ? STEP_ORDER.length : ia) - (ib < 0 ? STEP_ORDER.length : ib) || a.localeCompare(b, 'ko');
   });
-  const parts = labels.map((label) => {
-    const mine = lines.filter((l) => l.label === label);
-    if (!STEP_ORDER.includes(label)) {
-      return `${label} · ${mine.length}건 ${won(mine.reduce((n, l) => n + l.amount, 0))}원`;
-    }
-    /* 한 현장이 같은 회차로 두 줄이어도 현장 · 대수는 한 번 센다 */
-    const sites = new Map(mine.map((l) => [l.projectId, l.qty]));
-    const qty = [...sites.values()].reduce((n, q) => n + q, 0);
-    return `${label} · ${sites.size}개 현장${qty > 0 ? ` ${qty}기` : ''}`;
-  });
-  return `${kind} ${parts.join(' / ')}`;
+  return labels.length ? `${kind} ${labels.join(' / ')}` : kind;
 }
 
 /** 배치 차례 — 지급처 가나다 · 같은 지급처면 영업비 먼저(제목이 「영업위탁 수수료 및 시공비」 차례다 — 가나다로는 시공비가 앞선다) */
@@ -160,8 +154,8 @@ export function agitPostOf(payDate: string, batches: readonly AgitBatch[], conso
   const vat = sorted.reduce((n, b) => n + vatOf(b.total), 0);
   const name = requestNameOf(payDate, sorted.map((b) => b.kind));
   const title = `${name.subject} #${AGIT_TEMPLATE}`;
-  const items = sorted.map((b) =>
-    `- ${b.org ?? '지급처 미정'} · ${detailOf(b.kind, b.lines)} · ${won(b.total)}원${b.invoice ? '' : ' · 세금계산서 없음'}`);
+  /* 거래처 · 품목명 · 금액만(한백 11-08 — 위 itemNameOf). 세금계산서가 빠진 배치는 정산 담당의 말 · 엑셀 비고가 짚는다 */
+  const items = sorted.map((b) => `- ${b.org ?? '지급처 미정'} · ${itemNameOf(b.kind, b.lines)} · ${won(b.total)}원`);
   const links = sorted.filter((b) => b.org).flatMap((b, i) => [
     ...(i ? [''] : []),
     `${b.org}${sorted.filter((x) => x.org === b.org).length > 1 ? ` (${b.kind})` : ''}`,

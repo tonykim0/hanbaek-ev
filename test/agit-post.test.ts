@@ -6,7 +6,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
 import {
-  agitAssigneesOf, agitDraftsOf, agitPayloadOf, agitPostOf, agitPostedSay, agitWebhookOf, assigneesLabel, badAgitIds, detailOf,
+  agitAssigneesOf, agitDraftsOf, agitPayloadOf, agitPostOf, agitPostedSay, agitWebhookOf, assigneesLabel, badAgitIds, itemNameOf,
   requestNameOf, upcomingPayDates, vatOf, type AgitBatch, type AgitPayee,
 } from '@/lib/agit/post';
 import { agitBundleOf, safeName } from '@/lib/agit/bundle';
@@ -47,8 +47,8 @@ describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 �
       '- 상황설명 : 26년 10월 동안 진행된 전기차 충전기 설치 영업에 대한 영업위탁 수수료 1차',
       '2. 지급요청 품목',
       '부가세 전 101,360,000 / 부가세 포함 111,496,000',
-      '- 에코일렉 · 영업비 1차 · 20개 현장 106기 · 96,460,000원 · 세금계산서 없음',
-      '- 이브이솔루션 (영업) · 영업비 1차 · 1개 현장 7기 · 4,900,000원 · 세금계산서 없음',
+      '- 에코일렉 · 영업비 1차 · 96,460,000원',
+      '- 이브이솔루션 (영업) · 영업비 1차 · 4,900,000원',
       '참고자료',
       '거래명세서 내역',
       '에코일렉',
@@ -76,21 +76,25 @@ describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 �
     expect(odd.requestDay).toBe('2026. 11. 17 (화요일)');
   });
 
-  it('같은 지급처가 영업비 · 시공비 둘이면 거래명세서 줄에 구분을 단다 · 계산서가 붙었으면 「없음」을 안 적는다', () => {
+  it('같은 지급처가 영업비 · 시공비 둘이면 거래명세서 줄에 구분을 단다 · 품목 줄은 거래처 · 품목명 · 금액뿐이다', () => {
     const post = agitPostOf('2026-11-10', [
       { ...nov10[1], invoice: true },
       { org: '에코일렉', kind: '시공비', total: 1_000, invoice: false, lines: lines(1, 1, 1_000) },
     ], URL_);
-    expect(post.text).toContain('- 에코일렉 · 영업비 1차 · 20개 현장 106기 · 96,460,000원\n');
+    expect(post.text).toContain('- 에코일렉 · 영업비 1차 · 96,460,000원\n');
+    expect(post.text).toContain('- 에코일렉 · 시공비 1차 · 1,000원\n');
+    /* 한백 11-08 「현장수, 기수는 빼」 — 계산서 없음도 품목 줄에 달지 않는다(정산 담당의 말 · 엑셀 비고가 짚는다) */
+    expect(post.text).not.toMatch(/개 현장|\d기 ·|세금계산서 없음/);
     expect(post.text).toContain('에코일렉 (영업비)\n');
     expect(post.text).toContain('에코일렉 (시공비)\n');
   });
 
-  it('회차가 섞이면 「 / 」로 잇고, 회수는 건수 · 금액 · 한 현장은 한 번 센다', () => {
-    expect(detailOf('시공비', [
+  it('품목명 — 회차가 섞이면 「 / 」로 잇는다 · 현장 수 · 대수 · 건수는 적지 않는다', () => {
+    expect(itemNameOf('시공비', [
       ...lines(2, 3, 100, '2차'), ...lines(3, 4, 100, '1차'), { projectId: 'Pa', label: '회수', amount: -2_800_000, qty: 9 },
       { projectId: 'P1차0', label: '1차', amount: 50, qty: 4 },
-    ])).toBe('시공비 1차 · 3개 현장 12기 / 2차 · 2개 현장 6기 / 회수 · 1건 -2,800,000원');
+    ])).toBe('시공비 1차 / 2차 / 회수');
+    expect(itemNameOf('영업비', [])).toBe('영업비');
   });
 
   it('부가세는 배치마다 10% 절사의 합 — 세금계산서 합과 맞는다', () => {
@@ -121,7 +125,7 @@ describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 �
     const one = agitDraftsOf('2026-11-07', rows, [], [], URL_);
     const two = agitDraftsOf('2026-11-07', [...rows].reverse(), [], [], URL_);
     expect(one.map((d) => d.text)).toEqual(two.map((d) => d.text));
-    expect(one[0].text).toContain('영업비 1차 · 3개 현장 3기');
+    expect(one[0].text).toContain('- 에코일렉 · 영업비 1차 · 2,730,001원\n');
     expect(agitDraftsOf('2026-11-11', rows, [], [], URL_)).toEqual([]); // 지난 결제일은 없다
     expect(agitDraftsOf('2026-11-11', rows, [], [], URL_, '2026-11-10')).toHaveLength(1); // 고르면 지난 날도
   });
@@ -143,7 +147,7 @@ describe('첨부 zip — 한백이 올려 온 zip 모양 (26년 9월 2차)', () 
     expect(plan.xlsxName).toBe('구매요청간소화_전기차충전기 영업위탁수수료(26년 10월 1차 내역).xlsx');
     expect(plan.sheet.subject).toBe('26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차');
     expect(plan.sheet.rows[0]).toEqual({
-      content: '26년 10월 전기차 충전 인프라 구축사업 (영업비 1차 · 20개 현장 106기)', org: '에코일렉',
+      content: '26년 10월 전기차 충전 인프라 구축사업 (영업비 1차)', org: '에코일렉',
       supply: 96_460_000, vat: 9_646_000, bank: '국민은행', account: '123-45-6789', holder: '에코일렉', note: '',
     });
     expect(plan.sheet.rows[1]).toMatchObject({ org: '이브이솔루션 (영업)', bank: '', note: '세금계산서 없음' });

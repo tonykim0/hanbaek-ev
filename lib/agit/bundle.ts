@@ -10,7 +10,7 @@
  *     에코일렉_세금계산서_영업비.pdf                                        ← 배치에 붙은 계산서(협력사가 낸 것)
  * 아지트 웹훅은 파일을 못 붙인다 — 한백이 정산 담당 카드에서 받아 그 글에 붙인다.
  */
-import { requestNameOf, sortBatches, statementPathOf, vatOf, detailOf, type AgitBatch, type AgitPayee } from './post';
+import { itemNameOf, requestNameOf, sortBatches, statementPathOf, vatOf, type AgitBatch, type AgitPayee } from './post';
 import type { PurchaseSheet } from './purchase-xlsx';
 
 export interface AgitBundlePlan {
@@ -59,7 +59,7 @@ export function agitBundleOf(
       rows: sorted.map((b) => {
         const payee = payeeOf(b.org);
         return {
-          content: `${name.month} 전기차 충전 인프라 구축사업 (${detailOf(b.kind, b.lines)})`,
+          content: `${name.month} 전기차 충전 인프라 구축사업 (${itemNameOf(b.kind, b.lines)})`,
           org: b.org!,
           supply: b.total,
           vat: vatOf(b.total),
