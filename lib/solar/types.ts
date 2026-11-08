@@ -45,7 +45,7 @@ export type Verdict = {
 };
 
 export type Estimate = {
-  /** 설치 가능 면적(㎡) — 지붕 면적·땅 면적에 이용률을 곱한 값 */
+  /** 용량을 센 넓이(㎡) — 건축면적 · 고른 지붕 · 필지 · 설치면적의 넓이 그대로(이용률은 ㎡ 당 kW 에 들어 있다) */
   usableArea: number;
   capacityKw: number;
   assumptions: Fact[];

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { solarGate } from '@/lib/solar/api-gate';
+import { modeOf, pickedOf } from '@/lib/solar/check-query';
 import { InputError, runCheck } from '@/lib/solar/run';
-import type { Mode, Suggestion } from '@/lib/solar/types';
 
 /** GET /api/solar/check?q=&mode= — 주소 하나를 검토한다(필지 · 건물 · 용도지역 · 계통 · 조례). DB 에 쓰지 않는다 */
 export const dynamic = 'force-dynamic';
@@ -12,25 +12,12 @@ export async function GET(req: Request) {
   if (denied) return denied;
   const url = new URL(req.url);
   const q = url.searchParams.get('q')?.trim() ?? '';
-  const mode: Mode = url.searchParams.get('mode') === 'ground' ? 'ground' : 'roof';
+  const mode = modeOf(url.searchParams);
   if (q.length < 2) return NextResponse.json({ error: '주소를 넣어 주세요.' }, { status: 400 });
   if (q.length > 200) return NextResponse.json({ error: '주소가 너무 깁니다.' }, { status: 400 });
 
   // 자동완성에서 고른 후보 — 좌표가 있으면 그 자리로 본다
-  const lat = Number(url.searchParams.get('lat'));
-  const lng = Number(url.searchParams.get('lng'));
-  const picked: Suggestion | null =
-    Number.isFinite(lat) && Number.isFinite(lng) && lat > 33 && lat < 39 && lng > 124 && lng < 132
-      ? {
-          kind: url.searchParams.get('kind') === 'place' ? 'place' : 'address',
-          name: url.searchParams.get('name') || null,
-          road: url.searchParams.get('road') || null,
-          parcel: url.searchParams.get('parcel') || null,
-          category: null,
-          lat,
-          lng,
-        }
-      : null;
+  const picked = pickedOf(url.searchParams);
 
   try {
     return NextResponse.json(await runCheck(q, mode, picked));

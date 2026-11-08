@@ -2,6 +2,13 @@ import { LEVELS, type Check, type Level, type Verdict } from './types';
 
 const rank = (l: Level) => LEVELS.indexOf(l);
 
+/** 가장 나쁜 상태 — 없으면 통과 */
+export function worstLevel(levels: Iterable<Level>): Level {
+  let worst: Level = 'ok';
+  for (const l of levels) if (rank(l) > rank(worst)) worst = l;
+  return worst;
+}
+
 /**
  * 검사들의 상태 → 종합 판정.
  *
@@ -14,8 +21,7 @@ export function judge(checks: Check[]): Verdict {
   );
   const unknown = checks.filter((c) => c.status === 'unknown');
 
-  let level: Level = 'ok';
-  for (const c of known) if (rank(c.status) > rank(level)) level = c.status;
+  const level = worstLevel(known.map((c) => c.status));
 
   if (level === 'ok' && unknown.length > 0) {
     return { level: 'conditional', because: unknown, unknown };

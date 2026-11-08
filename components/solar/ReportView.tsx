@@ -42,7 +42,7 @@ export default function ReportView({
   /** 지붕형 결과에 「이 부지로 제안서 만들기」를 세우는가 — 한백의 눈(관리자 · 열람 전용). 사업자 자료라 협력사에게는 없다 */
   canPropose?: boolean;
 }) {
-  // 지붕형은 지도에서 고른 지붕의 패널 장수가 용량이다 — 고를 때마다 용량·발전량·계통·허가·종합 판정을 다시 센다
+  // 지붕형은 지도에서 고른 지붕의 패널 장수가 용량이다 — 고를 때마다 용량·계통·허가·종합 판정을 다시 센다
   const plan = useRoofPlan(report.mode === 'roof' ? report.map : null);
   // 지상형은 지도에 그려 확정한 네모의 넓이가 용량이다 — 네모가 없으면 필지 면적으로 센다
   const ground = useGroundBoxes(report.mode === 'ground' && report.map ? report.map.point.lat : null);
@@ -62,7 +62,6 @@ export default function ReportView({
       byLayout
         ? estimateCapacity({
             capacityKw: capacityKw ?? 0,
-            mode: 'roof',
             capacityNote: `지도 배치 — ${MODULE.watt}W 모듈(${MODULE.lengthM} × ${MODULE.widthM}m) ${plan.count.toLocaleString()}장, ${
               plan.style === 'flush'
                 ? '지붕면 부착형'
@@ -73,7 +72,6 @@ export default function ReportView({
         : byBoxes
           ? estimateCapacity({
               capacityKw: capacityKw ?? 0,
-              mode: 'ground',
               capacityNote: carport
                 ? `주차장 캐노피 — 설치면적 ${boxCount}곳(${Math.round(boxesArea).toLocaleString()}㎡)을 캐노피 지붕으로 보고 ${MODULE.watt}W 모듈 ${boxPanels.toLocaleString()}장을 빈틈없이(낮은 경사 한 면이라 줄 간격 없음) · 주차면 1면(2.5 × 5m)에 약 ${(((capacityKw ?? 0) / Math.max(boxesArea, 1)) * 12.5).toFixed(1)}kW`
                 : `땅에 세움 — 설치면적 ${boxCount}곳 · 넓이 합 ${Math.round(boxesArea).toLocaleString()}㎡ · 땅 ${AREA_PER_KW.ground}㎡ 당 1kW`,

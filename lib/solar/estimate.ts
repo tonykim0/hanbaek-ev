@@ -19,7 +19,6 @@ export function estimate(input: {
 }): Estimate | null {
   return estimateCapacity({
     capacityKw: capacityOf(input.area, input.mode),
-    mode: input.mode,
     capacityNote: `${input.mode === 'roof' ? '건축면적' : '땅 면적'} ${AREA_PER_KW[input.mode]}㎡ 당 1kW`,
     usableArea: input.area,
   });
@@ -28,7 +27,6 @@ export function estimate(input: {
 /** 용량이 정해진 뒤의 셈 — 지도에서 지붕을 골라 패널 장수로 용량을 정할 때도 이것을 부른다 */
 export function estimateCapacity(input: {
   capacityKw: number;
-  mode: Mode;
   /** 계산 가정의 「용량」 줄 — 무엇으로 용량을 정했나 */
   capacityNote: string;
   usableArea: number;

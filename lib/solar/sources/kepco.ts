@@ -1,5 +1,5 @@
 import type { GridLayer, GridRow } from '../types';
-import { getJson, qs, SourceError } from './http';
+import { getJson, qs, sleep, SourceError } from './http';
 
 /**
  * 한전 전력데이터 개방포털 OPEN API 「분산전원연계 정보」.
@@ -138,7 +138,7 @@ async function getOnce(url: string): Promise<unknown> {
     return await getJson('한전', url);
   } catch (err) {
     if (!emptyBody(err)) throw err;
-    await new Promise((r) => setTimeout(r, 400));
+    await sleep(400);
     return getJson('한전', url);
   }
 }

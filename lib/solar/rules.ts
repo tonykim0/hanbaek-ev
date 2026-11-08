@@ -47,11 +47,12 @@ export const ZONE_RULES: ZoneRule[] = [
 
 export type ZoneHit = { zone: string; level: Level; why: string; law?: string };
 
-/** 「접함」은 경계가 닿기만 한 것이라 뺀다 — 「포함」·「저촉」만 그 땅의 지역이다. */
+/** 그 땅의 지역 · 지구 — 「접함」은 경계가 닿기만 한 것이라 뺀다. 「포함」·「저촉」만 그 땅의 것이다 */
+export const zonesInside = <Z extends { relation: string }>(zones: readonly Z[]): Z[] => zones.filter((z) => !/접함/.test(z.relation));
+
 export function judgeZones(zones: { name: string; relation: string }[], mode: Mode): ZoneHit[] {
   const hits: ZoneHit[] = [];
-  for (const z of zones) {
-    if (/접함/.test(z.relation)) continue;
+  for (const z of zonesInside(zones)) {
     const rule = ZONE_RULES.find((r) => r.match.test(z.name) && r[mode] !== null);
     if (rule) hits.push({ zone: z.name, level: rule[mode]!, why: rule.why, law: rule.law });
   }
@@ -222,7 +223,7 @@ export function judgePermit(capacityKw: number | null, sido: string | null): { l
  */
 const SETBACK_AREAS = /역사문화환경|(문화재|문화유산|국가유산).{0,4}보호구역|생태.?경관보전지역|관광지(?!구)|관광단지|자연취락지구/;
 export function judgeRoofSetback(zones: { name: string; relation: string }[] | null): { level: Level | 'skip'; why: string; law?: string } {
-  const hit = (zones ?? []).filter((z) => !/접함/.test(z.relation) && SETBACK_AREAS.test(z.name)).map((z) => z.name);
+  const hit = zonesInside(zones ?? []).filter((z) => SETBACK_AREAS.test(z.name)).map((z) => z.name);
   if (hit.length)
     return {
       level: 'conditional',

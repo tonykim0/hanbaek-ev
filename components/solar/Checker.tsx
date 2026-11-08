@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Btn, Err, FIELD, SectionHead, Tag } from '@/components/ui';
+import { checkParams } from '@/lib/solar/check-query';
 import type { Mode, Report, Suggestion } from '@/lib/solar/types';
 import ReportView from './ReportView';
 import { PANEL, TEXT } from './ui';
@@ -16,16 +17,7 @@ const BOXES: { mode: Mode; title: string; sub: string; placeholder: string }[] =
  * 주소(또는 고른 후보)로 부지를 불러온다 — /api/solar/check. 부지 검토와 제안서 생성(「1 현장」)이 같이 쓴다. 실패하면 그 까닭(한글)을 던진다.
  */
 export async function fetchSiteReport(mode: Mode, q: string, picked?: Suggestion): Promise<Report> {
-  const params = new URLSearchParams({ q: q.trim(), mode });
-  if (picked) {
-    params.set('lat', String(picked.lat));
-    params.set('lng', String(picked.lng));
-    if (picked.road) params.set('road', picked.road);
-    if (picked.parcel) params.set('parcel', picked.parcel);
-    if (picked.name) params.set('name', picked.name);
-    params.set('kind', picked.kind);
-  }
-  const res = await fetch(`/api/solar/check?${params}`);
+  const res = await fetch(`/api/solar/check?${checkParams(mode, q, picked)}`);
   const body = await res.json();
   if (!res.ok) throw new Error(body.error ?? `검토 실패 (${res.status})`);
   return body as Report;

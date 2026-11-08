@@ -10,6 +10,7 @@ import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
 import { isHanbaek } from '@/lib/roles';
 import { aerialOf } from '@/lib/solar/sources/aerial';
+import { hasVworld } from '@/lib/solar/sources/vworld';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -28,7 +29,7 @@ export async function GET(req: Request) {
   const [w, s, e, n] = bbox;
   if (!(w < e && s < n) || e - w > MAX_SPAN_DEG || n - s > MAX_SPAN_DEG) return fail('둘레가 너무 크거나 뒤집혔습니다.', 400);
   const px = Math.min(2400, Math.max(400, Number(params.get('px')) || 1600));
-  if (!process.env.VWORLD_KEY) return fail('항공사진 키(VWORLD_KEY)가 아직 없습니다.', 503);
+  if (!hasVworld()) return fail('항공사진 키(VWORLD_KEY)가 아직 없습니다.', 503);
   try {
     const a = await aerialOf([w, s, e, n], [], { marginM: 0, maxPx: px });
     return new NextResponse(new Uint8Array(a.jpeg), {

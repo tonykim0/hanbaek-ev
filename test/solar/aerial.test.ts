@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { fromWorldPx, metersPerPx, toWorldPx } from '@/lib/solar/sources/aerial';
-import { ringOf, solarApiKey } from '@/lib/solar/roof-trace';
+import { fromWorldPx, metersPerPx, toWorldPx } from '@/lib/solar/mercator';
+import { solarApiKey } from '@/lib/solar/api-key';
+import { ringOf } from '@/lib/solar/roof-trace';
 
 describe('항공영상 픽셀 ↔ 경위도', () => {
   it('되돌리면 같은 자리 (충주, 19단계)', () => {

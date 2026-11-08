@@ -2,6 +2,7 @@ import type { PolygonCoords } from '../geo';
 import { expandBbox } from '../geo';
 import { metersPerPx, TILE, toWorldPx } from '../mercator';
 import { SourceError } from './http';
+import { vworldKey } from './vworld';
 import { blank, decodeJpeg, encodeJpeg, paste, strokeRing } from './raster';
 
 /**
@@ -10,7 +11,6 @@ import { blank, decodeJpeg, encodeJpeg, paste, strokeRing } from './raster';
  * 지도 모양 자료보다 새것이다: 충주 동충주산단4길 17 의 2024-11 준공 공장이 찍혀 있다.
  * 경위도 ↔ 픽셀 셈은 lib/solar/mercator 다(제안서의 가배치 그림이 브라우저에서 같은 셈을 쓴다) — 예전 자리에서도 부르게 다시 내보낸다.
  */
-export { fromWorldPx, metersPerPx, toWorldPx } from '../mercator';
 const MAX_ZOOM = 19;
 
 export type Aerial = {
@@ -34,8 +34,7 @@ export async function aerialOf(
   outline: PolygonCoords[],
   { marginM = 25, maxPx = 1600 } = {},
 ): Promise<Aerial> {
-  const key = process.env.VWORLD_KEY;
-  if (!key) throw new Error('[VWorld] VWORLD_KEY 없음');
+  const { key, domain } = vworldKey();
   const [w, s, e, n] = expandBbox(bbox, marginM);
 
   // 긴 변이 한도 안에 드는 가장 큰 확대 단계
@@ -62,7 +61,7 @@ export async function aerialOf(
     const got = await Promise.all(
       jobs.slice(i, i + 6).map(async ({ tx, ty }) => {
         const res = await fetch(`https://api.vworld.kr/req/wmts/1.0.0/${key}/Satellite/${z}/${ty}/${tx}.jpeg`, {
-          headers: process.env.VWORLD_DOMAIN ? { Referer: process.env.VWORLD_DOMAIN } : undefined,
+          headers: domain ? { Referer: domain } : undefined,
           signal: AbortSignal.timeout(10_000),
         });
         const type = res.headers.get('content-type') ?? '';

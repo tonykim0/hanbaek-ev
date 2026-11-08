@@ -1,5 +1,5 @@
 import { hasKakao, kakaoAddresses, kakaoPlaces } from './sources/kakao';
-import { vworldSuggest } from './sources/vworld';
+import { hasVworld, vworldSuggest } from './sources/vworld';
 import type { Suggestion } from './types';
 
 export type SuggestResult = { items: Suggestion[]; error: string | null };
@@ -10,7 +10,7 @@ export type SuggestResult = { items: Suggestion[]; error: string | null };
  * 「후보 0건」으로 삼키면 키가 없는 것과 정말 없는 것이 같아 보인다.
  */
 export async function suggest(query: string, size = 10): Promise<SuggestResult> {
-  if (!hasKakao() && !process.env.VWORLD_KEY) {
+  if (!hasKakao() && !hasVworld()) {
     return { items: [], error: '검색 키가 없어 후보를 띄울 수 없습니다 (KAKAO_REST_KEY 또는 VWORLD_KEY)' };
   }
   const tasks: Promise<Suggestion[]>[] = hasKakao()

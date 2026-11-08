@@ -1,5 +1,7 @@
 import { bboxOf, distanceBetween, expandBbox, type PolygonCoords } from './geo';
 import { dongRiOf, jibunOf, parsePnu, type PnuParts } from './pnu';
+import { str } from './props';
+import { sleep } from './sources/http';
 import { gridRowsIn, kepcoCodes, type Codes } from './sources/kepco';
 import { parcelsIn } from './sources/vworld';
 import type { GridRow } from './types';
@@ -26,11 +28,6 @@ export const NEIGHBOR_RADIUS_M = 150;
 /** 한전에 물어볼 둘레 필지 수 — 가까운 것부터 하나씩 */
 export const NEIGHBOR_TRIES = 8;
 
-const prop = (p: Record<string, unknown>, k: string) => {
-  const v = p[k];
-  return v === undefined || v === null || v === '' ? null : String(v);
-};
-
 /**
  * 차례: ① 이 읍면동(리) 전체 ② 그 번지 ③ 둘레 필지 ④ ①의 동 전체.
  * 동 전체를 먼저 묻는 이유 둘 — 자료가 새·옛 코드 중 어디에 있는지 한 번에 정하고(화성 새 구는 옛 41590 에만 있다),
@@ -48,7 +45,7 @@ export async function gridNear(pnu: string, jibunAddress: string | null, polys: 
   if (!area.code) {
     // 동 전체가 비면 그 동의 번지를 다 건너뛰므로, 한전이 가끔 주는 헛 404 한 번에 결과가 통째로 「기록 없음」이 된다
     // (폭스존 광주점이 다섯 번 중 한 번 그랬다, 2026-11-03) — 잠깐 쉬고 첫 코드로 한 번 더 묻는다
-    await new Promise((r) => setTimeout(r, 500));
+    await sleep(500);
     area = await gridRowsIn(chain.slice(0, 1), { dong, ri, jibun: null });
   }
   const found: Codes[] = area.code ? [area.code] : [];
@@ -67,8 +64,8 @@ export async function gridNear(pnu: string, jibunAddress: string | null, polys: 
     });
     const ranked = neighbors
       .map((f) => ({
-        pnu: prop(f.properties, 'pnu'),
-        address: prop(f.properties, 'addr'),
+        pnu: str(f.properties.pnu),
+        address: str(f.properties.addr),
         d: distanceBetween(polys, f.polygons),
         polygons: f.polygons,
       }))

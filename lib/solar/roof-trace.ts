@@ -3,7 +3,8 @@ import { logLlmCall } from '@/lib/llm-usage';
 import { areaOf, bboxOf, type LngLat, type PolygonCoords } from './geo';
 import type { RoofKind } from './building-register';
 import { dropNested } from './roof-merge';
-import { aerialOf, fromWorldPx, type Aerial } from './sources/aerial';
+import { fromWorldPx } from './mercator';
+import { aerialOf, type Aerial } from './sources/aerial';
 import { solarApiKey } from './api-key';
 
 /**
@@ -113,8 +114,6 @@ export function ringOf(points: { x: number; y: number }[], a: Pick<Aerial, 'orig
   return [...ring, ring[0]];
 }
 
-/** 태양광의 API 키 — lib/solar/api-key(태양광 AI에이전트도 같은 키를 쓴다). 밖에서 부르던 이름 그대로 내보낸다 */
-export { solarApiKey };
 
 let client: Anthropic | null = null;
 

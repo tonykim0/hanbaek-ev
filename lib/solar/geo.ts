@@ -9,7 +9,7 @@ export type Ring = LngLat[];
 export type PolygonCoords = Ring[];
 
 const R = 6_371_008.8;
-const rad = (d: number) => (d * Math.PI) / 180;
+export const rad = (d: number) => (d * Math.PI) / 180;
 
 export function projector(origin: LngLat) {
   const k = Math.cos(rad(origin[1]));
@@ -103,7 +103,7 @@ export function distanceBetween(a: PolygonCoords[], b: PolygonCoords[]): number 
   const ringsB = b.map((p) => p[0].map(proj));
 
   for (const ra of ringsA) for (const rb of ringsB) {
-    if (rb.some((pt) => inside(pt, ra)) || ra.some((pt) => inside(pt, rb))) return 0;
+    if (rb.some((pt) => pointInRing(pt, ra)) || ra.some((pt) => pointInRing(pt, rb))) return 0;
   }
   let best = Infinity;
   for (const ra of ringsA)
@@ -133,9 +133,9 @@ export function coveredShare(a: PolygonCoords[], bs: PolygonCoords[][], n = 30):
   for (let i = 0; i < n; i++)
     for (let j = 0; j < n; j++) {
       const pt: [number, number] = [x0 + ((i + 0.5) / n) * (x1 - x0), y0 + ((j + 0.5) / n) * (y1 - y0)];
-      if (!ringsA.some((r) => inside(pt, r))) continue;
+      if (!ringsA.some((r) => pointInRing(pt, r))) continue;
       inA++;
-      if (ringsB.some((r) => inside(pt, r))) inB++;
+      if (ringsB.some((r) => pointInRing(pt, r))) inB++;
     }
   return inA ? inB / inA : 0;
 }
@@ -143,10 +143,11 @@ export function coveredShare(a: PolygonCoords[], bs: PolygonCoords[][], n = 30):
 /** 점이 폴리곤(들) 안에 있는가 — 구멍은 보지 않는다 */
 export function containsPoint(polys: PolygonCoords[], pt: LngLat): boolean {
   const proj = projector(pt);
-  return polys.some((p) => inside([0, 0], p[0].map(proj)));
+  return polys.some((p) => pointInRing([0, 0], p[0].map(proj)));
 }
 
-function inside([x, y]: [number, number], ring: [number, number][]): boolean {
+/** 점이 고리 안인가(반직선 세기) — 평면 좌표 · 경위도 어느 쪽이든 같은 셈이다 */
+export function pointInRing([x, y]: [number, number], ring: readonly [number, number][]): boolean {
   let hit = false;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
     const [xi, yi] = ring[i];
@@ -159,12 +160,13 @@ function inside([x, y]: [number, number], ring: [number, number][]): boolean {
 function toRing(p: [number, number], ring: [number, number][]): number {
   let best = Infinity;
   for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    best = Math.min(best, toSegment(p, ring[j], ring[i]));
+    best = Math.min(best, pointToSegment(p, ring[j], ring[i]));
   }
   return best;
 }
 
-function toSegment([px, py]: [number, number], [ax, ay]: [number, number], [bx, by]: [number, number]): number {
+/** 점과 선분 사이 거리 */
+export function pointToSegment([px, py]: [number, number], [ax, ay]: [number, number], [bx, by]: [number, number]): number {
   const dx = bx - ax;
   const dy = by - ay;
   const len = dx * dx + dy * dy;

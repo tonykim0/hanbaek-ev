@@ -10,8 +10,6 @@ import { getJson, qs, SourceError } from './http';
  */
 const BASE = 'https://apis.data.go.kr/1613000/BldRgstHubService';
 
-export const hasRegisterKey = () => Boolean(process.env.DATA_GO_KR_KEY);
-
 function serviceKey(): string | null {
   const k = process.env.DATA_GO_KR_KEY?.trim();
   if (!k) return null;

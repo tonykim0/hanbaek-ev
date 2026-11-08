@@ -8,11 +8,14 @@ import { getJson, qs, SourceError } from './http';
  * 키는 발급 때 적은 서비스 URL 에 묶인다. 서버에서 부를 때는 그 URL 을 domain 으로 같이 보낸다.
  */
 
-function key(): { key: string; domain: string | undefined } {
+export function vworldKey(): { key: string; domain: string | undefined } {
   const k = process.env.VWORLD_KEY;
   if (!k) throw new Error('[VWorld] VWORLD_KEY 없음');
   return { key: k, domain: process.env.VWORLD_DOMAIN };
 }
+
+/** VWorld 키가 있는가 — 없으면 부르는 쪽이 「키가 아직 없습니다」로 돌려보낸다 */
+export const hasVworld = (): boolean => Boolean(process.env.VWORLD_KEY);
 
 type Status = { status?: string; error?: { code?: string; text?: string } };
 
@@ -51,7 +54,7 @@ async function search(
   category?: 'road' | 'parcel',
   size = 5,
 ): Promise<SearchHit[]> {
-  const { key: k, domain } = key();
+  const { key: k, domain } = vworldKey();
   const url = `https://api.vworld.kr/req/search?${qs({
     service: 'search',
     request: 'search',
@@ -118,7 +121,7 @@ export async function features(
   filter: { geomFilter?: string; attrFilter?: string; buffer?: number },
   size = 1000,
 ): Promise<Feature[]> {
-  const { key: k, domain } = key();
+  const { key: k, domain } = vworldKey();
   const url = `https://api.vworld.kr/req/data?${qs({
     service: 'data',
     request: 'GetFeature',
@@ -184,7 +187,7 @@ type LandUseBody = {
 
 /** 필지에 걸린 용도지역·지구 전부 — 이름과 「포함·저촉·접함」 */
 export async function zonesOf(pnu: string): Promise<Zone[]> {
-  const { key: k, domain } = key();
+  const { key: k, domain } = vworldKey();
   const url = `https://api.vworld.kr/ned/data/getLandUseAttr?${qs({
     pnu,
     format: 'json',
@@ -220,7 +223,7 @@ type TraitsField = { tpgrphHgCodeNm?: string; tpgrphFrmCodeNm?: string; roadSide
 type TraitsBody = { landCharacteristicss?: { field?: TraitsField[] }; landCharacteristics?: { field?: TraitsField[] } };
 
 export async function landTraits(pnu: string, year = new Date().getFullYear()): Promise<LandTraits | null> {
-  const { key: k, domain } = key();
+  const { key: k, domain } = vworldKey();
   for (const y of [year, year - 1]) {
     const url = `https://api.vworld.kr/ned/data/getLandCharacteristics?${qs({ pnu, stdrYear: y, format: 'json', numOfRows: 5, pageNo: 1, key: k, domain })}`;
     const body = await getJson<TraitsBody>('VWorld 토지특성', url);

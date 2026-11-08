@@ -1,5 +1,5 @@
 import { LAYOUT, MODULE, TILT_DEG } from './assumptions';
-import { centroidOf, projector, unprojector, type LngLat, type PolygonCoords } from './geo';
+import { centroidOf, pointInRing, pointToSegment, projector, rad, unprojector, type LngLat, type PolygonCoords } from './geo';
 
 /**
  * 지붕 위 모듈 배치 — 지붕 모양 안에 모듈을 실제 크기로 채운다. 용량은 이 장수 × 모듈 출력이다.
@@ -54,7 +54,6 @@ export const SPEC: LayoutSpec = {
 };
 
 type Pt = [number, number];
-const rad = (d: number) => (d * Math.PI) / 180;
 /** 미터 평면의 허용 오차 — 경위도와 미터를 오가며 생기는 비틀림(µm 단위)을 넘어서는 0.1mm */
 const EPS_M = 1e-4;
 
@@ -125,27 +124,19 @@ export function mainAxis(points: Pt[]): { angle: number; along: number; across: 
   return { angle: best.angle, along: best.along, across: best.across };
 }
 
-const inside = ([x, y]: Pt, ring: Pt[]) => {
-  let hit = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
-  }
-  return hit;
-};
-
 type Rect = { x0: number; y0: number; x1: number; y1: number };
+/** 직사각형의 네 꼭짓점 — 왼쪽 아래부터 반시계 */
+const cornersOf = (r: Rect): Pt[] => [
+  [r.x0, r.y0],
+  [r.x1, r.y0],
+  [r.x1, r.y1],
+  [r.x0, r.y1],
+];
+/** 모듈 장수 × 출력(W) → kW */
+const kwOf = (count: number, watt: number) => (count * watt) / 1000;
 type Edge = { a: Pt; b: Pt; minX: number; minY: number; maxX: number; maxY: number };
 
 const pointRect = ([px, py]: Pt, r: Rect) => Math.hypot(Math.max(r.x0 - px, 0, px - r.x1), Math.max(r.y0 - py, 0, py - r.y1));
-const pointSeg = ([px, py]: Pt, [ax, ay]: Pt, [bx, by]: Pt) => {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const len = dx * dx + dy * dy;
-  const t = len ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len)) : 0;
-  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
-};
 const segsCross = (p1: Pt, p2: Pt, q1: Pt, q2: Pt) => {
   const d = (a: Pt, b: Pt, c: Pt) => (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
   const d1 = d(q1, q2, p1);
@@ -157,15 +148,10 @@ const segsCross = (p1: Pt, p2: Pt, q1: Pt, q2: Pt) => {
 
 /** 선분과 축정렬 직사각형 사이 거리 — 겹치면 0 */
 function segRect(e: Edge, r: Rect): number {
-  const corners: Pt[] = [
-    [r.x0, r.y0],
-    [r.x1, r.y0],
-    [r.x1, r.y1],
-    [r.x0, r.y1],
-  ];
+  const corners = cornersOf(r);
   if (pointRect(e.a, r) === 0 || pointRect(e.b, r) === 0) return 0;
   for (let i = 0; i < 4; i++) if (segsCross(e.a, e.b, corners[i], corners[(i + 1) % 4])) return 0;
-  return Math.min(pointRect(e.a, r), pointRect(e.b, r), ...corners.map((c) => pointSeg(c, e.a, e.b)));
+  return Math.min(pointRect(e.a, r), pointRect(e.b, r), ...corners.map((c) => pointToSegment(c, e.a, e.b)));
 }
 
 /* ---------------------------------------------------------- 배치 */
@@ -208,14 +194,9 @@ function fill(rings: Pt[][], w: number, d: number, stepX: number, stepY: number,
   const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
 
   const fits = (r: Rect) => {
-    const corners: Pt[] = [
-      [r.x0, r.y0],
-      [r.x1, r.y0],
-      [r.x1, r.y1],
-      [r.x0, r.y1],
-    ];
-    if (!corners.every((c) => inside(c, outer))) return false;
-    if (holes.some((h) => corners.some((c) => inside(c, h)))) return false;
+    const corners = cornersOf(r);
+    if (!corners.every((c) => pointInRing(c, outer))) return false;
+    if (holes.some((h) => corners.some((c) => pointInRing(c, h)))) return false;
     for (const e of edges) {
       if (e.maxX < r.x0 - margin || e.minX > r.x1 + margin || e.maxY < r.y0 - margin || e.minY > r.y1 + margin) continue;
       // 첫 줄은 테두리에서 정확히 margin 에 선다 — 돌린 건물에서는 그 거리가 margin 보다 조금 작게 나와 줄이 통째로 빠졌다
@@ -286,32 +267,13 @@ export function layoutRoof(polys: PolygonCoords[], style: LayoutStyle, latDeg: n
   for (const p of rings) {
     const r = p.map((ring) => ring.map(rot));
     for (const m of fill(r, w, d, stepX, stepY, spec.setbackM, spec.aisleEvery, spec.aisleM, spec.minRun)) {
-      quads.push(
-        (
-          [
-            [m.x0, m.y0],
-            [m.x1, m.y0],
-            [m.x1, m.y1],
-            [m.x0, m.y1],
-          ] as Pt[]
-        ).map((q) => toLngLat(back(q))),
-      );
+      quads.push(cornersOf(m).map((q) => toLngLat(back(q))));
     }
   }
-  return { quads, count: quads.length, kw: (quads.length * watt) / 1000, watt };
+  return { quads, count: quads.length, kw: kwOf(quads.length, watt), watt };
 }
 
 /* ---------------------------------------------------------- 빼기 */
-
-const insideLL = ([x, y]: LngLat, ring: LngLat[]) => {
-  let hit = false;
-  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
-    const [xi, yi] = ring[i];
-    const [xj, yj] = ring[j];
-    if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
-  }
-  return hit;
-};
 
 /**
  * 빼기 영역과 겹치는 모듈을 지운다 — 원형 구조물·중정·채광창·옥상 설비처럼 지붕 모양에는 들어 있지만 못 까는 곳
@@ -323,7 +285,7 @@ export function cutLayout(layout: Layout, cuts: PolygonCoords[][]): Layout {
   const rings = cuts.flatMap((polys) => polys.map((p) => p[0]).filter((r): r is LngLat[] => Boolean(r?.length)));
   const quads = layout.quads.filter((q) => {
     const center: LngLat = [(q[0][0] + q[2][0]) / 2, (q[0][1] + q[2][1]) / 2];
-    return !rings.some((ring) => [...q, center].some((p) => insideLL(p, ring)) || ring.some((v) => insideLL(v, q)));
+    return !rings.some((ring) => [...q, center].some((p) => pointInRing(p, ring)) || ring.some((v) => pointInRing(v, q)));
   });
-  return quads.length === layout.count ? layout : { ...layout, quads, count: quads.length, kw: (quads.length * layout.watt) / 1000 };
+  return quads.length === layout.count ? layout : { ...layout, quads, count: quads.length, kw: kwOf(quads.length, layout.watt) };
 }
