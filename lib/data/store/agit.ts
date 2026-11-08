@@ -1,9 +1,12 @@
 /**
- * 아지트 열린구매 글 저장소 (migrations/0124) — 웹훅 연결 한 줄과 올린 글.
+ * 아지트 열린구매 글 저장소 (migrations/0126) — 웹훅 연결 한 줄(과 요청 담당자)과 올린 글.
  * (한백 2026-11-07 「콘솔에 있는 거래명세서 기반으로 여기에 자동적으로 글을 쓰게 하고싶어」 — 글을 짓는 것은 lib/agit/post)
  *
  * ★웹훅 주소가 곧 열쇠다★ — 그 주소만 있으면 누구든 그 그룹에 글을 쓴다. 그래서 잠가 두고(lib/agents/secret-box — 메일 앱 비밀번호와
- * 같은 열쇠) 화면 · 응답 · 감사기록에 싣지 않는다. 풀어 쓰는 것은 올리는 그 순간(agitHookUrl)뿐이다.
+ * 같은 열쇠) 화면 · 응답 · 감사기록에 싣지 않는다. 풀어 쓰는 것은 올리는 그 순간(agitHookFor)뿐이다.
+ *
+ * ★요청 담당자는 연결 줄에 한 번 정해 둔다★(한백 2026-11-08 「아지트 글에서 담당자 설정도 필요해」 → 요청 글 담당자 칸 · 한 번 정해
+ * 두기) — 아지트 ID 배열(assignees). 다시 연결해도 남고, 끊으면 같이 걷힌다. 올린 글에는 그때 붙인 사람을 같이 남긴다.
  *
  * ★두 번 올리지 않는다★ — 올리기는 두 걸음이다(메일과 같은 모양): claimAgitPost 가 결제일 잠금 안에서 「올리는 중」 줄을 세우고,
  * 라우트가 아지트에 보낸 뒤 finishAgitPost 가 결과를 적는다. 그 사이에 같은 결제일을 또 누르면 「올리는 중」에 걸린다. 이미 올린
@@ -22,7 +25,8 @@ import { seal, unseal } from '@/lib/agents/secret-box';
 import { OPEN_PURCHASE_AGENT, openPurchaseKey } from '@/lib/agents/open-purchase';
 import { agentAuditKey, type AgentMessageMeta } from '@/types/agents';
 import {
-  AGIT_POST_STATUSES, agitPostedSay, agitWebhookOf, type AgitHookInfo, type AgitPostRecord, type AgitPostStatus,
+  AGIT_MAX_ASSIGNEES, AGIT_POST_STATUSES, agitAssigneesOf, agitPostedSay, agitWebhookOf, badAgitIds,
+  type AgitHookInfo, type AgitPostRecord, type AgitPostStatus,
 } from '@/lib/agit/post';
 import type { ProjectRepository } from '../repository';
 import { assertAdmin, assertHanbaek } from './shared';
@@ -47,18 +51,24 @@ function recordOf(row: typeof agitPosts.$inferSelect): AgitPostRecord {
     batches: row.batches,
     error: row.error,
     postedBy: row.postedBy,
+    assignees: row.assignees ?? [],
     at: stampOf(row.postedAt ?? row.createdAt),
   };
 }
 
+const hookInfoOf = (row: typeof agitHooks.$inferSelect): AgitHookInfo => ({
+  connectedBy: row.connectedBy, connectedAt: stampOf(row.connectedAt), assignees: row.assignees ?? [],
+});
+
 export const agitStore: Pick<
   ProjectRepository,
-  'getAgitHook' | 'saveAgitHook' | 'deleteAgitHook' | 'agitHookUrl' | 'listAgitPosts' | 'claimAgitPost' | 'finishAgitPost'
+  | 'getAgitHook' | 'saveAgitHook' | 'saveAgitAssignees' | 'deleteAgitHook' | 'agitHookFor'
+  | 'listAgitPosts' | 'claimAgitPost' | 'finishAgitPost'
 > = {
   async getAgitHook(actor): Promise<AgitHookInfo | null> {
     assertHanbaek(actor, '아지트 연결');
     const [row] = await getDb().select().from(agitHooks).where(eq(agitHooks.id, HOOK_ID)).limit(1);
-    return row ? { connectedBy: row.connectedBy, connectedAt: stampOf(row.connectedAt) } : null;
+    return row ? hookInfoOf(row) : null;
   },
 
   async saveAgitHook(input, actor): Promise<AgitHookInfo> {
@@ -80,6 +90,29 @@ export const agitStore: Pick<
     return saved;
   },
 
+  async saveAgitAssignees(input, actor): Promise<AgitHookInfo> {
+    assertAdmin(actor, '아지트 담당자');
+    const assignees = agitAssigneesOf(input.assignees);
+    if (!assignees) {
+      const bad = badAgitIds(input.assignees);
+      throw new Error(bad.length
+        ? `아지트 ID 가 아닙니다 — ${bad.slice(0, 3).join(', ')} (영문 · 숫자 · 점, 20자까지)`
+        : `담당자는 ${AGIT_MAX_ASSIGNEES}명까지입니다.`);
+    }
+    await getDb().transaction(async (tx) => {
+      const [old] = await tx.select({ assignees: agitHooks.assignees }).from(agitHooks).where(eq(agitHooks.id, HOOK_ID)).for('update');
+      if (!old) throw new Error('아지트 미연결 — 먼저 「아지트 연결」에서 웹훅 주소를 넣어 주세요.');
+      await tx.update(agitHooks).set({ assignees }).where(eq(agitHooks.id, HOOK_ID));
+      await writeAudit(tx, {
+        projectId: null, actor, action: '아지트 담당자', field: AUDIT_FIELD,
+        oldValue: old.assignees?.length ? old.assignees.join(', ') : null, newValue: assignees.length ? assignees.join(', ') : null,
+      });
+    });
+    const saved = await agitStore.getAgitHook(actor);
+    if (!saved) throw new Error('담당자를 저장하지 못했습니다.');
+    return saved;
+  },
+
   async deleteAgitHook(actor): Promise<boolean> {
     assertAdmin(actor, '아지트 연결');
     return getDb().transaction(async (tx) => {
@@ -90,13 +123,14 @@ export const agitStore: Pick<
     });
   },
 
-  async agitHookUrl(actor): Promise<string> {
+  async agitHookFor(actor): Promise<{ url: string; assignees: string[] }> {
     assertAdmin(actor, '아지트 올리기');
-    const [row] = await getDb().select({ token: agitHooks.token }).from(agitHooks).where(eq(agitHooks.id, HOOK_ID)).limit(1);
+    const [row] = await getDb().select({ token: agitHooks.token, assignees: agitHooks.assignees }).from(agitHooks)
+      .where(eq(agitHooks.id, HOOK_ID)).limit(1);
     if (!row) throw new Error('아지트 미연결 — 거래명세서 화면의 「아지트 연결」에서 웹훅 주소를 넣어 주세요.');
     const url = unseal(row.token, getSecret());
     if (!url) throw new Error('아지트 연결을 풀 수 없습니다(서버 열쇠가 바뀜) — 다시 연결해 주세요.');
-    return url;
+    return { url, assignees: row.assignees ?? [] };
   },
 
   async listAgitPosts(actor, payDates): Promise<AgitPostRecord[]> {
@@ -126,7 +160,8 @@ export const agitStore: Pick<
       }
       const id = crypto.randomUUID();
       await tx.insert(agitPosts).values({
-        id, payDate: input.payDate, status: 'sending', body: input.body, total: input.total, batches: input.batches, postedBy: actor.name,
+        id, payDate: input.payDate, status: 'sending', body: input.body, total: input.total, batches: input.batches,
+        assignees: input.assignees, postedBy: actor.name,
       });
       return { id };
     });

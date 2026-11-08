@@ -5,7 +5,8 @@
  */
 import { describe, expect, it, vi } from 'vitest';
 import {
-  agitDraftsOf, agitPostOf, agitPostedSay, agitWebhookOf, detailOf, upcomingPayDates, vatOf, type AgitBatch, type AgitPayee,
+  agitAssigneesOf, agitDraftsOf, agitPayloadOf, agitPostOf, agitPostedSay, agitWebhookOf, assigneesLabel, badAgitIds, detailOf,
+  upcomingPayDates, vatOf, type AgitBatch, type AgitPayee,
 } from '@/lib/agit/post';
 import { sendToAgit } from '@/lib/agit/send';
 import type { PayoutRow } from '@/types/project';
@@ -119,38 +120,75 @@ describe('웹훅 주소', () => {
   });
 });
 
+describe('요청 담당자 (한백 2026-11-08 「아지트 글에서 담당자 설정도 필요해」)', () => {
+  it('아지트 ID 를 쉼표 · 띄어쓰기로 여럿 — 앞의 @ 는 떼고 같은 ID 는 한 번', () => {
+    expect(agitAssigneesOf('kiko.x, ella.a')).toEqual(['kiko.x', 'ella.a']);
+    expect(agitAssigneesOf(' @kiko.x  @ella.a,kiko.x ')).toEqual(['kiko.x', 'ella.a']);
+    expect(agitAssigneesOf('Kiko.X kiko.x')).toEqual(['Kiko.X']);
+    expect(agitAssigneesOf('')).toEqual([]);
+    expect(agitAssigneesOf(' , ')).toEqual([]);
+  });
+
+  it('아지트 ID 가 아니면(영문 · 숫자 · 점 20자 밖) null — 틀린 것을 짚는다', () => {
+    expect(agitAssigneesOf('kiko.x, 김정우')).toBeNull();
+    expect(badAgitIds('kiko.x, 김정우, a_b')).toEqual(['김정우', 'a_b']);
+    expect(agitAssigneesOf('a'.repeat(21))).toBeNull();
+    expect(agitAssigneesOf('a@b.com')).toBeNull();
+  });
+
+  it('여섯 명부터는 받지 않는다', () => {
+    expect(agitAssigneesOf('a b c d e')).toHaveLength(5);
+    expect(agitAssigneesOf('a b c d e f')).toBeNull();
+  });
+
+  it('담당자가 있으면 요청 글(task.assignees) — 가이드의 몸 그대로', () => {
+    expect(agitPayloadOf('글', ['kiko.x', 'ella.a'])).toEqual({ text: '글', task: { assignees: ['kiko.x', 'ella.a'] } });
+    expect(agitPayloadOf('글', [])).toEqual({ text: '글' });
+    expect(assigneesLabel(['kiko.x', 'ella.a'])).toBe('@kiko.x · @ella.a');
+  });
+});
+
 describe('올리기', () => {
   const HOOK = `https://agit.io/webhook/${TOKEN}`;
+  const body = (text: string) => agitPayloadOf(text, ['kiko.x']);
 
-  it('{"text": 글} 을 POST 한다 · 200 이면 올림', async () => {
+  it('{"text", "task": {"assignees"}} 를 POST 한다 · 200 이면 올림', async () => {
     const fetcher = vi.fn(async () => new Response('{}', { status: 200 }));
-    expect(await sendToAgit(HOOK, '안녕\n둘째 줄', fetcher as unknown as typeof fetch)).toEqual({ ok: true });
+    expect(await sendToAgit(HOOK, body('안녕\n둘째 줄'), fetcher as unknown as typeof fetch)).toEqual({ ok: true });
     expect(fetcher).toHaveBeenCalledTimes(1);
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(HOOK);
     expect(init.method).toBe('POST');
-    expect(JSON.parse(String(init.body))).toEqual({ text: '안녕\n둘째 줄' });
+    expect(JSON.parse(String(init.body))).toEqual({ text: '안녕\n둘째 줄', task: { assignees: ['kiko.x'] } });
   });
 
   it('404 · 그 밖의 거절 · 닿지 못함 · 시간 넘김은 사람 말로', async () => {
     const as = (f: () => Promise<Response>) => f as unknown as typeof fetch;
-    expect(await sendToAgit(HOOK, 'x', as(async () => new Response('', { status: 404 }))))
+    expect(await sendToAgit(HOOK, body('x'), as(async () => new Response('', { status: 404 }))))
       .toEqual({ ok: false, error: expect.stringContaining('웹훅을 모릅니다(404)') });
-    expect(await sendToAgit(HOOK, 'x', as(async () => new Response('', { status: 500 }))))
+    expect(await sendToAgit(HOOK, body('x'), as(async () => new Response('', { status: 500 }))))
       .toEqual({ ok: false, error: '아지트가 받지 않았습니다(500).' });
     const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    expect(await sendToAgit(HOOK, 'x', as(async () => { throw new TypeError('fetch failed'); })))
+    expect(await sendToAgit(HOOK, body('x'), as(async () => { throw new TypeError('fetch failed'); })))
       .toEqual({ ok: false, error: expect.stringContaining('닿지 못했습니다') });
     const timeout = new Error('t');
     timeout.name = 'TimeoutError';
-    expect(await sendToAgit(HOOK, 'x', as(async () => { throw timeout; })))
+    expect(await sendToAgit(HOOK, body('x'), as(async () => { throw timeout; })))
       .toEqual({ ok: false, error: expect.stringContaining('올라갔을 수 있으니') });
     quiet.mockRestore();
   });
 
+  it('거절의 까닭이 짧은 글이면 붙인다 — HTML 은 안 붙인다', async () => {
+    const as = (f: () => Promise<Response>) => f as unknown as typeof fetch;
+    expect(await sendToAgit(HOOK, body('x'), as(async () => new Response('{"error":"invalid assignee"}', { status: 422 }))))
+      .toEqual({ ok: false, error: '아지트가 받지 않았습니다(422) — {"error":"invalid assignee"}' });
+    expect(await sendToAgit(HOOK, body('x'), as(async () => new Response('<!DOCTYPE html><p>x</p>', { status: 400 }))))
+      .toEqual({ ok: false, error: '아지트가 받지 않았습니다(400).' });
+  });
+
   it('웹훅 주소가 아니면 부르지 않는다', async () => {
     const fetcher = vi.fn();
-    expect((await sendToAgit(`https://evil.com/webhook/${TOKEN}`, 'x', fetcher as unknown as typeof fetch)).ok).toBe(false);
+    expect((await sendToAgit(`https://evil.com/webhook/${TOKEN}`, body('x'), fetcher as unknown as typeof fetch)).ok).toBe(false);
     expect(fetcher).not.toHaveBeenCalled();
   });
 });

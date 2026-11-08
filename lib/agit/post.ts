@@ -8,6 +8,10 @@
  *     금액이 바뀌었으면 올리지 않는다(store/agit · app/api/agit/posts). 11-05 아침 상신 알림이 에코일렉 89,040,000원을 적은 뒤
  *     같은 날 대당 +10만으로 96,460,000원이 됐다 — 아침에 저절로 올렸다면 옛 금액이 아지트에 남았다.
  *
+ * ★글은 아지트 「요청」 글로 올린다 — 담당자를 붙여★(한백 2026-11-08 「아지트 글에서 담당자 설정도 필요해」 → 요청 글 담당자 칸 ·
+ * 한 번 정해 두기). 웹훅 가이드(아지트 연동 설정의 「사용법 알아보기」, 한백이 붙여 줌): {"text", "task": {"assignees": [아지트 ID…]}}
+ * 를 보내면 요청 글이 서고, 상태(0 요청 · 1 진행 · 2 완료 · 3 승인)는 아지트에서 담당자가 바꾼다. 기한 칸은 가이드에 없다.
+ *
  * 아지트 웹훅은 글자만 받는다(파일을 못 붙인다) — 세금계산서 · 사업자등록증 · 통장사본은 「있음/없음」만 적고, 거래명세서는 콘솔 주소다.
  * 부가세는 배치마다 공급가액의 10%(원 단위 절사)를 더한다 — 세금계산서가 배치마다 한 장이라 그 합이 계산서 합과 맞는다.
  */
@@ -187,7 +191,47 @@ export function agitDraftsOf(
 export interface AgitHookInfo {
   connectedBy: string;
   connectedAt: string;
+  /** 요청 글의 담당자 — 아지트 ID. 비면 올리지 못한다(「담당자 미지정」) */
+  assignees: string[];
 }
+
+/** 요청 담당자는 이만큼까지 — 가이드는 여럿을 받는다고만 적었다 */
+export const AGIT_MAX_ASSIGNEES = 5;
+
+/**
+ * 아지트 ID 는 영문 · 숫자 · 점, 20자까지(아지트 안내서 「아지트 ID가 중요한 이유」 — kiko.x · jason.new 꼴).
+ * 쉼표 · 띄어쓰기로 여럿을 받고 앞의 @ 는 뗀다(멘션으로 적는 버릇). 같은 ID 는 한 번. 하나라도 틀리면 null — 무엇이 틀렸는지는
+ * 부르는 쪽이 badAgitIds 로 짚는다. 빈 글은 [](담당자 비우기).
+ */
+const AGIT_ID_RE = /^[A-Za-z0-9.]{1,20}$/;
+
+const agitIdTokens = (raw: string): string[] =>
+  raw.split(/[\s,]+/).map((s) => s.replace(/^@+/, '')).filter(Boolean);
+
+export function badAgitIds(raw: string): string[] {
+  return agitIdTokens(raw).filter((s) => !AGIT_ID_RE.test(s));
+}
+
+export function agitAssigneesOf(raw: string): string[] | null {
+  const ids = agitIdTokens(raw);
+  if (ids.some((s) => !AGIT_ID_RE.test(s))) return null;
+  const seen = new Set<string>();
+  const out = ids.filter((s) => {
+    const k = s.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+  return out.length > AGIT_MAX_ASSIGNEES ? null : out;
+}
+
+/** 웹훅에 보내는 몸 — 담당자가 있으면 요청 글(task), 없으면 보통 글. 라우트는 담당자 없이 부르지 않는다 */
+export function agitPayloadOf(text: string, assignees: readonly string[]): { text: string; task?: { assignees: string[] } } {
+  return assignees.length ? { text, task: { assignees: [...assignees] } } : { text };
+}
+
+/** 담당자를 보이는 글 — 「@kiko.x · @ella.a」 */
+export const assigneesLabel = (ids: readonly string[]): string => ids.map((s) => `@${s}`).join(' · ');
 
 export const AGIT_POST_STATUSES = ['sending', 'posted', 'failed'] as const;
 export type AgitPostStatus = (typeof AGIT_POST_STATUSES)[number];
@@ -202,6 +246,8 @@ export interface AgitPostRecord {
   batches: number;
   error: string | null;
   postedBy: string;
+  /** 그 글에 붙인 요청 담당자(아지트 ID) — 담당자를 바꾼 뒤에도 그때의 사람이 남는다 */
+  assignees: string[];
   /** 올린 때(못 올렸으면 누른 때) — 'YYYY-MM-DD HH:mm' 한국 시각 */
   at: string;
 }

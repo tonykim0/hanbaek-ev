@@ -875,12 +875,14 @@ export const agentMails = pgTable('agent_mails', {
 
 // ── 아지트 ─────────────────────────────────────────────────────
 /**
- * 아지트 그룹 웹훅 — 한 줄(id 'agit', migrations/0124). 주소가 곧 열쇠라 잠가 둔다(lib/agents/secret-box) — 화면 · 응답으로 나가지
+ * 아지트 그룹 웹훅 — 한 줄(id 'agit', migrations/0126). 주소가 곧 열쇠라 잠가 둔다(lib/agents/secret-box) — 화면 · 응답으로 나가지
  * 않는다(store/agit). DB 마다 따로라 개발 · 프리뷰는 따로 연결하지 않는 한 운영 그룹에 글을 못 쓴다.
+ * assignees 는 요청 글의 담당자(아지트 ID) — 다시 연결해도 남는다.
  */
 export const agitHooks = pgTable('agit_hooks', {
   id: text('id').primaryKey(),
   token: text('token').notNull(),
+  assignees: jsonb('assignees').$type<string[]>().notNull().default([]),
   connectedBy: text('connected_by').notNull(),
   connectedAt: timestamp('connected_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -897,6 +899,8 @@ export const agitPosts = pgTable('agit_posts', {
   total: bigint('total', { mode: 'number' }).notNull(),
   batches: integer('batches').notNull(),
   error: text('error'),
+  /** 그 글에 붙인 요청 담당자 */
+  assignees: jsonb('assignees').$type<string[]>().notNull().default([]),
   postedBy: text('posted_by').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   postedAt: timestamp('posted_at', { withTimezone: true }),

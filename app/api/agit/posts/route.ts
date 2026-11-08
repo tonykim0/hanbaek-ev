@@ -5,11 +5,13 @@
  * 다르면 올리지 않는다★ — 미리보기 뒤에 금액 · 계산서 · 계좌가 바뀌었으면 한백이 새 글을 보고 다시 누른다(422 — 화면이 새로 그린다).
  * 이미 올린 결제일은 again 이 있어야 다시 올린다(store/agit claimAgitPost). 아지트가 받지 않으면 200 에 「못 올림」 줄이 온다 —
  * 그 까닭이 단추 옆에 뜨고 다시 누르면 된다(메일 보내기와 같은 모양).
+ * ★요청 글로 올린다★ — 연결 줄의 담당자(아지트 ID)를 붙인다. 담당자가 비었으면 올리지 않는다(화면 단추도 「담당자 미지정」).
  */
 import { adminWrite, BadRequest } from '@/lib/api/write-route';
 import { getRepository } from '@/lib/data';
 import { loadAgitDraft } from '@/lib/agit/load';
 import { sendToAgit } from '@/lib/agit/send';
+import { agitPayloadOf } from '@/lib/agit/post';
 
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -22,15 +24,19 @@ export const POST = adminWrite<Record<string, never>, { payDate?: unknown; seen?
     if (typeof body.seen !== 'string') throw new BadRequest('미리 본 글이 없습니다.');
     if (body.again !== undefined && typeof body.again !== 'boolean') throw new BadRequest('again 은 참/거짓이어야 합니다.');
     const repo = getRepository();
-    const hook = await repo.agitHookUrl(actor);
+    const hook = await repo.agitHookFor(actor);
+    if (hook.assignees.length === 0) throw new Error('아지트 요청 담당자 미지정 — 「담당자」에서 아지트 ID 를 넣어 주세요.');
     const draft = await loadAgitDraft(actor, body.payDate);
     if (draft.blocked) throw new Error(draft.blocked);
     if (draft.text !== body.seen) throw new Error('미리 본 뒤에 금액이나 내용이 바뀌었습니다 — 새 글을 보고 다시 올려 주세요.');
     const { id } = await repo.claimAgitPost(
-      { payDate: draft.payDate, body: draft.text, total: draft.total, batches: draft.batches, again: body.again === true },
+      {
+        payDate: draft.payDate, body: draft.text, total: draft.total, batches: draft.batches,
+        assignees: hook.assignees, again: body.again === true,
+      },
       actor
     );
-    const result = await sendToAgit(hook, draft.text);
+    const result = await sendToAgit(hook.url, agitPayloadOf(draft.text, hook.assignees));
     return { post: await repo.finishAgitPost({ id, result }, actor) };
   }
 );

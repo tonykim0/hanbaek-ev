@@ -9,15 +9,16 @@
  * ★올릴 때 서버가 지금 금액으로 다시 짓는다★ — 펼친 뒤 금액이 바뀌었으면 올리지 않고 새 글로 다시 그린다(app/api/agit/posts).
  * 이미 올린 결제일은 「다시 올리기」다 — 고쳐 올리는 일이 있다. 못 하는 까닭은 단추 이름에 적는다(화면 규칙 3).
  * 연결은 머리의 「아지트 연결」 — 웹훅 주소를 붙여 넣는다. 주소가 곧 열쇠라 가린 칸이고 다시 보여 주지 않는다.
+ * 그 밑 「요청 담당」이 요청 글의 담당자(아지트 ID)다 — 한 번 정해 두고 모든 글에 붙인다(한백 2026-11-08). 비었으면 올리지 못한다.
  */
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { won } from '@/lib/format';
 import { dayLabel } from '@/lib/business-days';
-import type { AgitHookInfo, AgitPostRecord, AgitPostText } from '@/lib/agit/post';
+import { assigneesLabel, type AgitHookInfo, type AgitPostRecord, type AgitPostText } from '@/lib/agit/post';
 import { Btn, Confirm, Err, FIELD_BASE, PANEL, SectionHead, Tag, TEXT } from '@/components/ui';
 
-async function send(url: string, method: 'PUT' | 'POST' | 'DELETE', body?: unknown): Promise<{ ok: boolean; json: Record<string, unknown> }> {
+async function send(url: string, method: 'PUT' | 'PATCH' | 'POST' | 'DELETE', body?: unknown): Promise<{ ok: boolean; json: Record<string, unknown> }> {
   const res = await fetch(url, {
     method,
     headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
@@ -91,6 +92,68 @@ function AgitHook({ hook, canEdit }: { hook: AgitHookInfo | null; canEdit: boole
   );
 }
 
+/** 요청 글의 담당자 — 연결 밑 한 줄. 쉼표 · 띄어쓰기로 여럿, 비우면 지운다(화면 규칙 7) */
+function AgitAssignees({ hook, canEdit }: { hook: AgitHookInfo | null; canEdit: boolean }) {
+  const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [value, setValue] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ids = hook?.assignees ?? [];
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      const { ok, json } = await send('/api/agit/hook', 'PATCH', { assignees: value });
+      if (!ok) setError(typeof json.error === 'string' ? json.error : '저장하지 못했습니다.');
+      else {
+        setOpen(false);
+        router.refresh();
+      }
+    } catch {
+      setError('네트워크 오류입니다. 다시 시도해주세요.');
+    }
+    setBusy(false);
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">
+      <span className={TEXT.label}>요청 담당</span>
+      {open ? (
+        <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+          <input
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            placeholder="아지트 ID — kiko.x, ella.a"
+            autoComplete="off"
+            autoFocus
+            className={`${FIELD_BASE} w-64`}
+          />
+          <Btn size="sm" type="submit" busy={busy} busyLabel="저장 중…">저장</Btn>
+          <Btn size="sm" kind="quiet" disabled={busy} onClick={() => { setOpen(false); setError(null); }}>취소</Btn>
+        </form>
+      ) : (
+        <>
+          {!hook ? (
+            <span className={TEXT.meta}>—</span>
+          ) : ids.length ? (
+            <span className={TEXT.body}>{assigneesLabel(ids)}</span>
+          ) : (
+            <Tag tone="warn">미지정</Tag>
+          )}
+          {hook && canEdit && (
+            <Btn size="sm" kind={ids.length ? 'quiet' : 'side'} onClick={() => { setValue(ids.join(', ')); setError(null); setOpen(true); }}>
+              {ids.length ? '바꾸기' : '담당자 지정'}
+            </Btn>
+          )}
+        </>
+      )}
+      <Err>{error}</Err>
+    </div>
+  );
+}
+
 function PostState({ post }: { post: AgitPostRecord | undefined }) {
   if (!post) return <Tag>안 올림</Tag>;
   if (post.status === 'posted') return <Tag tone="ok">올림 {post.at.slice(5)} · {post.postedBy}</Tag>;
@@ -99,12 +162,14 @@ function PostState({ post }: { post: AgitPostRecord | undefined }) {
 }
 
 function DraftRow({
-  draft, posts, connected, canEdit,
+  draft, posts, connected, assignees, canEdit,
 }: {
   draft: AgitPostText;
   /** 이 결제일에 올린 글 — 최근이 앞 */
   posts: AgitPostRecord[];
   connected: boolean;
+  /** 요청 담당자 — 비면 올리지 못한다 */
+  assignees: string[];
   canEdit: boolean;
 }) {
   const router = useRouter();
@@ -117,7 +182,9 @@ function DraftRow({
   /* 마지막으로 올린 것 — 「다시 올리기」를 가르고, 지금 글과 다르면 그 사실을 적는다 */
   const posted = posts.find((p) => p.status === 'posted');
   const again = Boolean(posted);
-  const blocked = !connected ? '아지트 미연결 — 올릴 수 없음' : draft.blocked;
+  const blocked = !connected
+    ? '아지트 미연결 — 올릴 수 없음'
+    : assignees.length === 0 ? '요청 담당 미지정 — 올릴 수 없음' : draft.blocked;
 
   async function post() {
     setBusy(true);
@@ -191,8 +258,8 @@ function DraftRow({
         title={`${dayLabel(draft.payDate)} 결제 글을 아지트에 ${again ? '다시 ' : ''}올립니다`}
         detail={again
           ? `${posted?.at ?? ''}에 올린 글이 있습니다 — 새 글이 하나 더 섭니다. 앞 글은 아지트에서 지워 주세요.`
-          : '열린구매 그룹 사람들에게 보이고, 콘솔에서는 지울 수 없습니다.'}
-        hint={`지급 ${draft.batches}건 · 공급가액 ${won(draft.total)}원`}
+          : '열린구매 그룹에 요청 글로 섭니다 — 그룹 사람들에게 보이고, 콘솔에서는 지울 수 없습니다.'}
+        hint={`지급 ${draft.batches}건 · 공급가액 ${won(draft.total)}원 · 담당 ${assigneesLabel(assignees)}`}
         confirmLabel="올리기"
         busy={busy}
         busyLabel="올리는 중…"
@@ -219,6 +286,7 @@ export default function AgitPosts({
       <SectionHead title="아지트 열린구매 글" meta={`결제일 ${drafts.length}건`}>
         <AgitHook hook={hook} canEdit={canEdit} />
       </SectionHead>
+      <AgitAssignees hook={hook} canEdit={canEdit} />
       {drafts.length === 0 ? (
         <p className={`${TEXT.meta} mt-3`}>앞으로 나갈 지급 0건</p>
       ) : (
@@ -229,6 +297,7 @@ export default function AgitPosts({
               draft={d}
               posts={posts.filter((p) => p.payDate === d.payDate)}
               connected={hook !== null}
+              assignees={hook?.assignees ?? []}
               canEdit={canEdit}
             />
           ))}

@@ -6,9 +6,12 @@
 -- agit_hooks  웹훅 주소 한 줄(id 'agit') — 주소가 곧 열쇠라 잠가 둔다(lib/agents/secret-box). DB 마다 따로라 개발 · 프리뷰는 연결하지
 --             않는 한 운영 그룹에 글을 못 쓴다.
 -- agit_posts  올린 글(올리는 중 · 올림 · 못 올림) — 한 결제일에 여러 번 올릴 수 있다(금액이 바뀌어 다시 올리는 일).
+-- assignees   요청 글의 담당자(아지트 ID 배열, 한백 2026-11-08 「아지트 글에서 담당자 설정도 필요해」 — 한 번 정해 두기).
+--             연결 줄에 두고(다시 연결해도 남는다), 올린 글에는 그때 붙인 사람을 남긴다.
 create table if not exists agit_hooks (
   id text primary key,
   token text not null,
+  assignees jsonb not null default '[]'::jsonb,
   connected_by text not null,
   connected_at timestamptz not null default now()
 );
@@ -21,9 +24,14 @@ create table if not exists agit_posts (
   total bigint not null,
   batches integer not null,
   error text,
+  assignees jsonb not null default '[]'::jsonb,
   posted_by text not null,
   created_at timestamptz not null default now(),
   posted_at timestamptz
 );
 
 create index if not exists agit_posts_pay_date_idx on agit_posts (pay_date, created_at);
+
+-- 개발 DB 에는 담당자 칸 없는 앞 판(0124_agit-posts — 번호가 겹쳐 0126 으로 옮겼다)이 먼저 돌았다
+alter table agit_hooks add column if not exists assignees jsonb not null default '[]'::jsonb;
+alter table agit_posts add column if not exists assignees jsonb not null default '[]'::jsonb;

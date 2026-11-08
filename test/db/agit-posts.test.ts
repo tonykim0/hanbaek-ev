@@ -1,15 +1,16 @@
 /**
- * 아지트 열린구매 글 — 연결 · 올리기의 문(app/api/agit/hook · posts · store/agit · migrations/0124).
+ * 아지트 열린구매 글 — 연결 · 담당자 · 올리기의 문(app/api/agit/hook · posts · store/agit · migrations/0126).
  * 한백 2026-11-07 「콘솔에 있는 거래명세서 기반으로 여기에 자동적으로 글을 쓰게」 — 결제일마다 한 글 · 한백이 눌러야 올라간다.
  *
  * 보는 것: 관리자만 연결 · 올림(열람 전용 · 협력사 403) · 웹훅 주소만 받고 응답 · DB · 감사기록에 주소를 싣지 않는다 · 미연결이면 못 올림 ·
  * ★미리 본 글과 지금 글이 다르면 아지트를 부르지 않는다★ · 이미 올린 결제일은 again 이 있어야 · 동시에 두 번 눌러도 한 번 ·
  * 아지트가 거절하면 「못 올림」(할 일은 그대로) · 올리면 정산 담당의 그 결제일 상신 할 일이 끝나고 대화에 한 줄.
+ * 요청 담당자(한백 2026-11-08): 아지트 ID 만 받는다 · 비었으면 못 올림 · 다시 연결해도 남는다 · 보낸 몸에 task.assignees 가 실린다.
  * ★아지트는 부르지 않는다★ — fetch 를 바꿔 끼운다. 웹훅 주소는 지어낸 것이다(진짜는 그 그룹의 열쇠다).
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { and, eq, gte, inArray, like, sql } from 'drizzle-orm';
-import { PUT as putHook, DELETE as deleteHook } from '@/app/api/agit/hook/route';
+import { PUT as putHook, PATCH as patchHook, DELETE as deleteHook } from '@/app/api/agit/hook/route';
 import { POST as postAgit } from '@/app/api/agit/posts/route';
 import { getRepository } from '@/lib/data';
 import { getDb } from '@/lib/db/client';
@@ -75,6 +76,7 @@ describe('아지트 연결', () => {
       await signIn(u);
       expect((await call(putHook, { method: 'PUT', body: { url: HOOK } })).status, u.id).toBe(403);
       expect((await call(deleteHook, { method: 'DELETE' })).status, u.id).toBe(403);
+      expect((await call(patchHook, { method: 'PATCH', body: { assignees: 'kiko.x' } })).status, u.id).toBe(403);
       expect((await call(postAgit, { body: { payDate: D, seen: 'x' } })).status, u.id).toBe(403);
     }
   });
@@ -88,7 +90,8 @@ describe('아지트 연결', () => {
     expect(JSON.stringify(ok.json)).not.toContain(`test-${RUN}`);
     const [row] = await getDb().select().from(agitHooks).where(eq(agitHooks.id, 'agit'));
     expect(row.token).not.toContain(`test-${RUN}`);
-    expect(await repo.agitHookUrl(admin)).toBe(HOOK);
+    expect((await call(patchHook, { method: 'PATCH', body: { assignees: '' } })).status).toBe(200);
+    expect(await repo.agitHookFor(admin)).toEqual({ url: HOOK, assignees: [] });
     const audits = await getDb().select().from(auditLog).where(and(eq(auditLog.field, '아지트'), gte(auditLog.at, started)));
     expect(audits.length).toBeGreaterThan(0);
     expect(JSON.stringify(audits)).not.toContain(`test-${RUN}`);
@@ -97,7 +100,33 @@ describe('아지트 연결', () => {
     const off = await call(postAgit, { body: { payDate: D, seen: 'x' } });
     expect(off.status).toBe(422);
     expect(off.json?.error).toMatch(/아지트 미연결/);
+    const noHook = await call(patchHook, { method: 'PATCH', body: { assignees: 'kiko.x' } });
+    expect(noHook.status).toBe(422);
+    expect(noHook.json?.error).toMatch(/아지트 미연결/);
     expect((await call(putHook, { method: 'PUT', body: { url: HOOK } })).status).toBe(200);
+  });
+
+  it('요청 담당자 — 아지트 ID 만 · 비었으면 못 올림 · 다시 연결해도 남는다', async () => {
+    await signIn(USERS.admin);
+    expect((await call(patchHook, { method: 'PATCH', body: { assignees: ['kiko.x'] } })).status).toBe(400);
+    const bad = await call(patchHook, { method: 'PATCH', body: { assignees: 'kiko.x, 김정우' } });
+    expect(bad.status).toBe(422);
+    expect(bad.json?.error).toMatch(/아지트 ID 가 아닙니다 — 김정우/);
+
+    const fetcher = stubFetch(async () => new Response('{}', { status: 200 }));
+    const none = await call(postAgit, { body: { payDate: D, seen: 'x' } });
+    expect(none.status).toBe(422);
+    expect(none.json?.error).toMatch(/요청 담당자 미지정/);
+    expect(fetcher).not.toHaveBeenCalled();
+
+    const ok = await call(patchHook, { method: 'PATCH', body: { assignees: 'kiko.x, @ella.a' } });
+    expect(ok.status).toBe(200);
+    expect(ok.json?.hook).toMatchObject({ assignees: ['kiko.x', 'ella.a'] });
+    expect((await call(putHook, { method: 'PUT', body: { url: HOOK } })).status).toBe(200);
+    expect((await repo.agitHookFor(admin)).assignees).toEqual(['kiko.x', 'ella.a']);
+    const [audit] = await getDb().select().from(auditLog)
+      .where(and(eq(auditLog.action, '아지트 담당자'), eq(auditLog.newValue, 'kiko.x, ella.a'), gte(auditLog.at, started)));
+    expect(audit).toBeDefined();
   });
 });
 
@@ -127,7 +156,7 @@ describe('아지트에 올리기', () => {
       expect(fetcher).toHaveBeenCalledTimes(1);
       const [url, init] = fetcher.mock.calls[0];
       expect(url).toBe(HOOK);
-      expect(JSON.parse(String(init.body))).toEqual({ text: draft.text });
+      expect(JSON.parse(String(init.body))).toEqual({ text: draft.text, task: { assignees: ['kiko.x', 'ella.a'] } });
 
       expect((await openTask(D))?.doneAt).not.toBeNull();
       const said = await getDb().select({ body: agentMessages.body, role: agentMessages.role }).from(agentMessages)
@@ -144,6 +173,7 @@ describe('아지트에 올리기', () => {
       expect(fetcher).toHaveBeenCalledTimes(2);
       const posts = await repo.listAgitPosts(admin, [D]);
       expect(posts.map((p) => p.status)).toEqual(['posted', 'posted']);
+      expect(posts[0].assignees).toEqual(['kiko.x', 'ella.a']);
     });
   });
 
