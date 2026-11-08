@@ -27,7 +27,8 @@ const cache = new Map<string, Promise<string | null>>();
 
 /* pdf.js 는 무겁다(37MB 중 실려 나가는 것은 일부다) — 쓸 때 실어 온다 */
 let libP: Promise<typeof import('pdfjs-dist')> | null = null;
-function lib() {
+/** pdf.js — 처음 부를 때 한 번 싣고 일꾼 자리를 맞춘다(루모라 제안서 생성기도 이것을 쓴다) */
+export function loadPdfjs() {
   libP ??= import('pdfjs-dist').then((m) => {
     /*
      * ★일꾼은 우리 서버에서 그대로 내려준다★ — CDN 주소를 적으면 밖으로 나가는 요청이
@@ -58,7 +59,7 @@ export function pdfThumb(url: string): Promise<string | null> {
   const job = (async () => {
     let doc: PDFDocumentProxy | null = null;
     try {
-      const pdfjs = await lib();
+      const pdfjs = await loadPdfjs();
       doc = await pdfjs.getDocument({ url, disableAutoFetch: true, disableStream: false }).promise;
       const page = await doc.getPage(1);
       const base = page.getViewport({ scale: 1 });
@@ -118,7 +119,7 @@ export async function pdfPages(
    */
   opts: { maxPx: number; maxPages: number; maxScale?: number }
 ): Promise<{ pages: RenderedPage[]; total: number }> {
-  const pdfjs = await lib();
+  const pdfjs = await loadPdfjs();
   const doc = await pdfjs.getDocument({ data }).promise;
   try {
     const total = doc.numPages;
@@ -162,7 +163,7 @@ export async function openPdf(data: ArrayBuffer): Promise<{
   render(n: number, scale: number): Promise<RenderedPage>;
   close(): void;
 }> {
-  const pdfjs = await lib();
+  const pdfjs = await loadPdfjs();
   const doc = await pdfjs.getDocument({ data }).promise;
   return {
     total: doc.numPages,

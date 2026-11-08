@@ -10,7 +10,7 @@
 import { Deck } from '@/lib/pptx/deck';
 import { EMU_PER_PT, textBoxXml } from '@/lib/pptx/xml';
 import { capacityKw, kwText, manwonText, solarShare } from './calc';
-import { fitText, sellerBlock, sellerCover, type FillArgs } from './fill-common';
+import { sellerBlock, sellerCover, setFittedText, type FillArgs } from './fill-common';
 
 const S = (n: number) => `Google Shape;${n};p21`;
 const PT = EMU_PER_PT;
@@ -24,10 +24,7 @@ export async function fillHenergy({ template, terms, input }: FillArgs): Promise
   const kw = capacityKw(input.panels, terms.moduleWatt);
   const r = solarShare(kw, terms);
   const s = await deck.slide(7);
-  // 고객명 — 길면 틀의 크기에서 줄인다(칸 너비 = 모양 폭 − 좌우 기본 여백 7.2pt)
-  const nameSize = s.fontSizeOf(S(90));
-  const fitted = nameSize ? fitText(input.customer, nameSize, s.boxOf(S(90)).w / PT - 14.4) : null;
-  s.setText(S(90), input.customer, fitted && nameSize && fitted < nameSize ? { size: fitted } : {});
+  setFittedText(s, S(90), input.customer);
   /*
    * 「임대 제안서」(91)는 틀 그대로지만 칸이 글에 꼭 맞아(103pt) 글꼴(Noto Sans KR)이 없는 컴퓨터에서는 「임대 제안 / 서」로 접혔다 —
    * 칸만 넓힌다(오른쪽은 빈 자리다).

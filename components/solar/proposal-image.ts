@@ -7,7 +7,7 @@
  */
 import type { LngLat } from '@/lib/solar/geo';
 import { toWorldPx } from '@/lib/solar/mercator';
-import type { SiteImage } from '@/lib/solar/proposal/fill-common';
+import type { SiteImager } from '@/lib/solar/proposal/fill-common';
 
 /** 받아 올 사진의 둘레 — 지붕 둘레의 두 배 정사각(자리 비율이 0.6~1.7 이어도 잘라 낼 수 있게), 적어도 한 변 80m */
 const SPAN_TIMES = 2;
@@ -17,8 +17,6 @@ const MARGIN = 1.3;
 const OUT_W = 1600;
 
 const M_PER_DEG_LAT = 111_320;
-
-export type SiteImager = (aspect: number, withPanels: boolean) => Promise<SiteImage>;
 
 /**
  * @param quads  고른 지붕의 패널 — 하나에 네 꼭짓점

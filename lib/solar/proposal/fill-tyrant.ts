@@ -9,10 +9,11 @@
  *        (한백 「수정가능하게」) — 모양 · 색은 상품설명서의 「Cash Flow (1MW, 기본형 기준)」 쪽을 따랐다.
  * 표의 숫자는 lib/solar/proposal/calc solar15 — 삽입용 엑셀(기본형 · 5년 선납형)의 셈과 같다.
  */
-import { Deck } from '@/lib/pptx/deck';
+import { Deck, type Slide } from '@/lib/pptx/deck';
 import { EMU_PER_PT, paras, pictureXml, tableXml, tagXml, textBoxXml, type Cell } from '@/lib/pptx/xml';
-import { capacityKw, eok2, kwText, solar15, SOLAR15_RENT_YEARS, type Solar15Variant } from './calc';
-import { fitText, mountText, sellerBlock, sellerCover, splitAddress, type FillArgs } from './fill-common';
+import { capacityKw, eok2, kwText, solar15, SOLAR15_RENT_YEARS, type Solar15, type Solar15Variant } from './calc';
+import { mountText, sellerBlock, sellerCover, setFittedText, splitAddress, type FillArgs, type ProposalInput, type Seller } from './fill-common';
+import type { Terms } from './products';
 
 const FONT = 'Pretendard';
 const PT = EMU_PER_PT;
@@ -57,23 +58,24 @@ export async function fillTyrant({ template, terms, input }: FillArgs, variant: 
   const deck = await Deck.open(template);
   const kw = capacityKw(input.panels, terms.moduleWatt);
   const cf = solar15(kw, terms, variant);
+  await fillSummary(await deck.slide(2), kw, cf, terms, input);
+  fillCashFlow(await deck.slide(3), kw, cf, terms, variant);
+  await addSeller(deck, input.seller);
+  // 뺄 장 — 뒤에서부터(앞을 빼면 뒤의 차례가 당겨진다)
+  for (const sha of DROP_PICTURES) for (const n of (await deck.slidesUsing(sha)).reverse()) await deck.dropSlide(n);
+  return deck.save();
+}
 
-  // ── 2장 Project 요약 ───────────────────────────────────────────
-  const s2 = await deck.slide(2);
+/** 2장 Project 요약 — 고객 글은 칸에 맞춰(길면 틀의 크기에서 줄인다) · 숫자 · 현장 가배치 그림 */
+async function fillSummary(s2: Slide, kw: number, cf: Solar15, terms: Terms, input: ProposalInput): Promise<void> {
   const [line1, line2] = splitAddress(input.address);
-  /** 고객 글을 칸에 맞춰 넣는다 — 길면 틀의 크기에서 줄인다(칸 너비 = 모양 폭 − 좌우 기본 여백 7.2pt) */
-  const fitIn = (name: string, text: string) => {
-    const size = s2.fontSizeOf(name);
-    const z = size ? fitText(text, size, s2.boxOf(name).w / PT - 14.4) : null;
-    s2.setText(name, text, z && size && z < size ? { size: z } : {});
-  };
-  fitIn(S2.project, input.customer);
+  setFittedText(s2, S2.project, input.customer);
   s2.setText(S2.kw, `${kwText(kw)} kW`);
   s2.setText(S2.sum20, `${eok2(cf.sum1to20)} 억원`);
   s2.setText(S2.sum35, `${eok2(cf.sum35)} 억원`);
-  fitIn(S2.where1, line1);
+  setFittedText(s2, S2.where1, line1);
   // 둘째 줄은 도로명 쪽만 — 고객명까지 붙이면 칸(212pt)을 넘어 두 줄로 접혀 밑의 선을 덮었다(고객명은 제목에 있다)
-  fitIn(S2.where2, line2 || input.customer);
+  setFittedText(s2, S2.where2, line2 || input.customer);
   s2.setText(S2.mount, mountText(input.mount));
   s2.setText(S2.module, `${terms.moduleWatt} Wp`);
   /*
@@ -84,9 +86,13 @@ export async function fillTyrant({ template, terms, input }: FillArgs, variant: 
   const pic = await input.image(slot.w / slot.h, true);
   s2.remove(S2.image);
   s2.append(pictureXml(s2.nextId(), '현장 가배치', s2.addMedia(pic.bytes, 'jpeg'), slot, 3121));
+}
 
-  // ── 3장 Cash Flow — 엑셀 그림을 걷고 표로 ──────────────────────────
-  const s3 = await deck.slide(3);
+/**
+ * 3장 Cash Flow — 엑셀 그림을 걷고 고칠 수 있는 표로: [주요가정] · 요약 · [이익배분] 두 표 · 표 기준.
+ * 모양 번호(id)는 그 장의 다음 번호부터 지은 차례대로 매긴다.
+ */
+function fillCashFlow(s3: Slide, kw: number, cf: Solar15, terms: Terms, variant: Solar15Variant): void {
   const area = s3.boxOf(S3.table);
   s3.remove(S3.table);
   // 그림 위에 얹었던 회색 테두리 둘 — 옛 그림의 칸에 맞춘 것이라 같이 걷는다
@@ -183,22 +189,19 @@ export async function fillTyrant({ template, terms, input }: FillArgs, variant: 
     }),
   );
   s3.append(xml.join(''));
+}
 
-  // ── 영업사 — 표지의 부제 밑 한 줄 · 마지막 장(「The end of Document」) 밑 두 줄. 어두운 사진 위라 흰 글자 ────────
+/** 영업사 — 표지의 부제 밑 한 줄 · 마지막 장(「The end of Document」) 밑 두 줄. 어두운 사진 위라 흰 글자 */
+async function addSeller(deck: Deck, seller: Seller): Promise<void> {
   const s1 = await deck.slide(1);
-  const cover = sellerCover(input.seller, { font: FONT, size: 13, label: C.brand, name: 'FFFFFF', contact: 'FFFFFF' }, 620);
+  const cover = sellerCover(seller, { font: FONT, size: 13, label: C.brand, name: 'FFFFFF', contact: 'FFFFFF' }, 620);
   // 두 줄이면 부제(약 463pt 까지)와 밑의 고지 문구(506.7pt 부터) 사이에 둘 다 들게
   const coverBox = cover.length > 1 ? { x: 50 * PT, y: 467 * PT, w: 620 * PT, h: 37 * PT } : { x: 50 * PT, y: 474 * PT, w: 620 * PT, h: 24 * PT };
   s1.append(textBoxXml(s1.nextId(), '영업사', coverBox, cover, { anchor: 'ctr', wrap: false }));
   const end = await deck.slide(deck.slides.length);
   end.append(
-    textBoxXml(end.nextId(), '영업사 연락처', { x: 180 * PT, y: 300 * PT, w: 600 * PT, h: 60 * PT }, sellerBlock(input.seller, { font: FONT, size: 18, contactSize: 14, name: 'FFFFFF', contact: 'FFFFFF' }, 600, 'ctr'), {
+    textBoxXml(end.nextId(), '영업사 연락처', { x: 180 * PT, y: 300 * PT, w: 600 * PT, h: 60 * PT }, sellerBlock(seller, { font: FONT, size: 18, contactSize: 14, name: 'FFFFFF', contact: 'FFFFFF' }, 600, 'ctr'), {
       anchor: 't',
     }),
   );
-
-  // ── 뺄 장 — 뒤에서부터(앞을 빼면 뒤의 차례가 당겨진다) ──────────────────
-  for (const sha of DROP_PICTURES) for (const n of (await deck.slidesUsing(sha)).reverse()) await deck.dropSlide(n);
-
-  return deck.save();
 }

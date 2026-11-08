@@ -2,11 +2,14 @@
  * 제안서 채우기의 공통 — 생성기 셋(fill-tyrant · fill-henergy · fill-lumora)이 받는 현장 값과 작은 도구들.
  */
 import { formatKoreanPhone } from '@/lib/contract-form';
-import type { Align, Para } from '@/lib/pptx/xml';
+import type { Slide } from '@/lib/pptx/deck';
+import { EMU_PER_PT, type Align, type Para } from '@/lib/pptx/xml';
 import type { Terms } from './products';
 
 /** 현장 사진 한 장 — 자리 비율(가로/세로)에 맞춰 이미 자른 JPEG */
 export type SiteImage = { bytes: Uint8Array; width: number; height: number };
+/** 자리 비율(가로/세로)의 현장 사진 — withPanels 면 패널을 그린 것(가배치), 아니면 항공사진 그대로(사업지 사진) */
+export type SiteImager = (aspect: number, withPanels: boolean) => Promise<SiteImage>;
 
 export type ProposalInput = {
   /** 고객명 — 「(주)OO」 */
@@ -33,7 +36,7 @@ export type ProposalInput = {
    * 현장 사진을 자리 비율로 — withPanels 면 패널을 그린 것(가배치), 아니면 항공사진 그대로(사업지 사진).
    * 사진은 한 번 받아 두고 자리마다 잘라 쓴다(components/solar/proposal-image).
    */
-  image: (aspect: number, withPanels: boolean) => Promise<SiteImage>;
+  image: SiteImager;
 };
 
 export type FillArgs = { template: ArrayBuffer; terms: Terms; input: ProposalInput };
@@ -101,6 +104,19 @@ export const FIT_SAFE = 0.9;
 /** 그 칸(widthPt)의 90% 에 드는 글자 크기 — 원래 크기(size)를 넘지 않고, min 까지만 줄인다 */
 export function fitText(text: string, size: number, widthPt: number, min = 8): number {
   return fitSizePt((z) => estWidthPt(text, z), size, widthPt * FIT_SAFE, min);
+}
+
+/** 글상자의 좌우 기본 여백(pt) — 틀이 여백을 따로 적지 않은 칸(파워포인트 기본 0.1인치) */
+const INSET_PT = 7.2;
+
+/**
+ * 틀의 칸(name)에 글을 넣되 칸에 들게 — 길면 틀의 글자 크기에서 줄인다(칸 너비 = 모양 폭 − 좌우 기본 여백).
+ * 틀에 크기가 안 적힌 칸(물려받는 크기)은 그대로 넣는다.
+ */
+export function setFittedText(slide: Slide, name: string, text: string): void {
+  const size = slide.fontSizeOf(name);
+  const z = size ? fitText(text, size, slide.boxOf(name).w / EMU_PER_PT - INSET_PT * 2) : null;
+  slide.setText(name, text, z && size && z < size ? { size: z } : {});
 }
 
 /**

@@ -17,6 +17,8 @@ export const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presenta
 const P14_NS = 'http://schemas.microsoft.com/office/powerpoint/2010/main';
 
 const ser = (d: Document) => new XMLSerializer().serializeToString(d);
+/** 관계 파일의 줄(Relationship)들 */
+const relsIn = (d: Document | Element): Element[] => Array.from(d.getElementsByTagNameNS(PKG_REL_NS, 'Relationship'));
 /** 내용의 SHA-256(16진) — 브라우저 · node 둘 다의 Web Crypto */
 export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const d = await crypto.subtle.digest('SHA-256', new Uint8Array(bytes));
@@ -154,7 +156,7 @@ export class Slide {
   addMedia(bytes: Uint8Array, ext: 'jpeg' | 'png'): string {
     const path = this.deck.addMediaFile(bytes, ext);
     const root = this.rels.documentElement;
-    const used = new Set(Array.from(root.getElementsByTagNameNS(PKG_REL_NS, 'Relationship')).map((r) => r.getAttribute('Id')));
+    const used = new Set(relsIn(root).map((r) => r.getAttribute('Id')));
     let n = used.size + 1;
     while (used.has(`rId${n}`)) n++;
     const rel = this.rels.createElementNS(PKG_REL_NS, 'Relationship');
@@ -185,8 +187,8 @@ export class Slide {
     return null;
   }
 
-  /** 모양의 자리(EMU) — 그 자리에 새 것을 얹을 때 */
-  boxOf(name: string): { x: number; y: number; w: number; h: number } {
+  /** 모양의 자리 칸 — 왼쪽 위(off) · 크기(ext). 없으면 멈춘다 */
+  private xfrmOf(name: string): { off: Element; ext: Element } {
     const el = this.shape(name);
     // a:ext 는 이름표의 확장 칸(a:extLst/a:ext — 만든 번호)에도 있다 — 자리 칸(xfrm)의 자식만 본다
     const xfrm = el.getElementsByTagNameNS(A_NS, 'xfrm')[0] ?? el.getElementsByTagNameNS(P_NS, 'xfrm')[0];
@@ -194,17 +196,18 @@ export class Slide {
     const off = kid('off');
     const ext = kid('ext');
     if (!off || !ext) throw new Error(`${this.label}의 「${name}」에 자리가 없습니다.`);
+    return { off, ext };
+  }
+
+  /** 모양의 자리(EMU) — 그 자리에 새 것을 얹을 때 */
+  boxOf(name: string): { x: number; y: number; w: number; h: number } {
+    const { off, ext } = this.xfrmOf(name);
     return { x: Number(off.getAttribute('x')), y: Number(off.getAttribute('y')), w: Number(ext.getAttribute('cx')), h: Number(ext.getAttribute('cy')) };
   }
 
   /** 모양의 자리를 바꾼다(EMU) */
   setBox(name: string, box: { x: number; y: number; w: number; h: number }): void {
-    const el = this.shape(name);
-    const xfrm = el.getElementsByTagNameNS(A_NS, 'xfrm')[0] ?? el.getElementsByTagNameNS(P_NS, 'xfrm')[0];
-    const kid = (local: string) => Array.from(xfrm?.childNodes ?? []).find((n): n is Element => n.nodeType === 1 && (n as Element).localName === local);
-    const off = kid('off');
-    const ext = kid('ext');
-    if (!off || !ext) throw new Error(`${this.label}의 「${name}」에 자리가 없습니다.`);
+    const { off, ext } = this.xfrmOf(name);
     off.setAttribute('x', String(Math.round(box.x)));
     off.setAttribute('y', String(Math.round(box.y)));
     ext.setAttribute('cx', String(Math.round(box.w)));
@@ -257,7 +260,7 @@ export class Deck {
     if (!presXml || !relsXml) throw new Error('파워포인트 파일(pptx)이 아닙니다.');
     const pres = parseXml(presXml);
     const rels = parseXml(relsXml);
-    const target = new Map(Array.from(rels.getElementsByTagNameNS(PKG_REL_NS, 'Relationship')).map((r) => [r.getAttribute('Id'), r.getAttribute('Target') ?? '']));
+    const target = new Map(relsIn(rels).map((r) => [r.getAttribute('Id'), r.getAttribute('Target') ?? '']));
     const ids = pres.getElementsByTagNameNS(P_NS, 'sldId');
     for (let i = 0; i < ids.length; i++) deck.slides.push(resolve('ppt/presentation.xml', target.get(ids[i].getAttributeNS(R_NS, 'id') ?? ids[i].getAttribute('r:id')) ?? ''));
     const sz = pres.getElementsByTagNameNS(P_NS, 'sldSz')[0];
@@ -303,7 +306,7 @@ export class Deck {
       const doc = parseXml(await f.async('string'));
       out.set(
         f.name,
-        Array.from(doc.getElementsByTagNameNS(PKG_REL_NS, 'Relationship'))
+        relsIn(doc)
           .filter((r) => r.getAttribute('TargetMode') !== 'External')
           .map((r) => resolve(owner, r.getAttribute('Target') ?? '')),
       );
@@ -323,7 +326,7 @@ export class Deck {
       const part = this.slides[i];
       const relXml = await this.zip.file(relsPathOf(part))?.async('string');
       if (!relXml) continue;
-      for (const r of Array.from(parseXml(relXml).getElementsByTagNameNS(PKG_REL_NS, 'Relationship'))) {
+      for (const r of relsIn(parseXml(relXml))) {
         if (r.getAttribute('Type') !== IMAGE_REL || r.getAttribute('TargetMode') === 'External') continue;
         const path = resolve(part, r.getAttribute('Target') ?? '');
         let h = memo.get(path);
@@ -352,7 +355,7 @@ export class Deck {
     this.sync();
     const pres = parseXml(await this.zip.file('ppt/presentation.xml')!.async('string'));
     const presRels = parseXml(await this.zip.file('ppt/_rels/presentation.xml.rels')!.async('string'));
-    const rel = Array.from(presRels.getElementsByTagNameNS(PKG_REL_NS, 'Relationship')).find((r) => resolve('ppt/presentation.xml', r.getAttribute('Target') ?? '') === part);
+    const rel = relsIn(presRels).find((r) => resolve('ppt/presentation.xml', r.getAttribute('Target') ?? '') === part);
     if (!rel) throw new Error(`${n}번째 슬라이드의 관계가 없습니다.`);
     const rid = rel.getAttribute('Id');
     const ridOf = (el: Element) => el.getAttributeNS(R_NS, 'id') || el.getAttribute('r:id');
@@ -386,7 +389,7 @@ export class Deck {
 
   /** 고친 것을 묶어 파일로 — 브라우저는 Blob, 시험(node)은 Uint8Array */
   async save(): Promise<Blob | Uint8Array> {
-    for (const s of this.opened.values()) s.flush(this.zip);
+    this.sync();
     if (this.needsType.size) {
       const ct = parseXml(await this.zip.file('[Content_Types].xml')!.async('string'));
       const have = new Set(Array.from(ct.getElementsByTagNameNS(CT_NS, 'Default')).map((d) => (d.getAttribute('Extension') ?? '').toLowerCase()));

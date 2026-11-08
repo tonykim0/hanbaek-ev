@@ -13,6 +13,7 @@ import {
   estWidthPt, fitSizePt, fitText, mountText, PHONE_DIGITS, phoneDigitsOf, proposalFileName, sellerBlock, sellerContact, sellerCover, splitAddress, storedSeller,
 } from '@/lib/solar/proposal/fill-common';
 import { formatKoreanPhone } from '@/lib/contract-form';
+import { lumoraPlans } from '@/lib/solar/proposal/fill-lumora';
 import { cleanTerms, missingTerms, PRODUCTS, TEMPLATE_KEYS, TEMPLATES, UPCOMING } from '@/lib/solar/proposal/products';
 import { paraXml, rectXml, tableXml, textBoxXml } from '@/lib/pptx/xml';
 import { orphansOf, sha256Hex } from '@/lib/pptx/deck';
@@ -95,6 +96,30 @@ describe('루모라 임대 — 세 선납 안', () => {
     expect(r.crossover).toMatchObject({ year: 8, one: 8_000_000, ten: 7_000_000, before: 7_000_000 });
   });
   it('끝내 못 앞서면 null', () => expect(lumoraRent(100, { moduleWatt: 600, price1: 1_000, price5: 9_000, price10: 9_000 }).crossover).toBeNull());
+});
+
+describe('루모라 제안서 — 바뀌는 쪽의 칸 계획', () => {
+  const t = { moduleWatt: 600, price1: 10_000, price5: 9_000, price10: 7_000 };
+  const plan = lumoraPlans(lumoraRent(120, t), {
+    customer: '(주)가나',
+    address: '충청북도 충주시 산척면 동충주산단4길 17',
+    panels: 200,
+    mount: { style: 'tilted', tiltDeg: 12 },
+    shadeDeg: 23,
+    gridSpareKw: null,
+    today: '2026-11-08',
+    seller: { company: '(주)가나에너지', person: '홍길동', phone: '010-0000-0000' },
+    image: async () => ({ bytes: new Uint8Array(), width: 1, height: 1 }),
+  }, 600);
+  it('바뀌는 쪽은 표지 · 3 · 4 · 7 · 8 · 마지막(23) — 사진 자리는 4쪽(항공사진) · 8쪽(가배치)', () => {
+    expect(Object.keys(plan).map(Number)).toEqual([1, 3, 4, 7, 8, 23]);
+    expect(plan[4].picture?.withPanels).toBe(false);
+    expect(plan[8].picture?.withPanels).toBe(true);
+  });
+  it('7쪽 연차표 — 세 안 × (20년 + 합계) 칸마다 지우고 다시 쓴다', () => {
+    expect(plan[7].overlays.filter((o) => o.name === '연차표 칸')).toHaveLength(63);
+    expect(plan[7].masks).toHaveLength(8 + 63);
+  });
 });
 
 describe('자가소비형 — 솔라쉐어바로 · 구독형 리스', () => {

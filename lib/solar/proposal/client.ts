@@ -6,8 +6,8 @@
  * 실패하면 그 까닭(한글)을 던진다 — 부르는 쪽이 누른 자리 옆에 띄운다.
  */
 import type { ProposalTemplate } from '@/lib/data/solar-proposals';
-import type { ProposalInput } from './fill-common';
-import { productOf, TEMPLATES, type ProductKey, type TemplateKey, type Terms } from './products';
+import type { FillArgs, ProposalInput } from './fill-common';
+import { TEMPLATES, type ProductKey, type TemplateKey, type Terms } from './products';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 const mb = (n: number) => Math.round((n / 1024 / 1024) * 10) / 10;
@@ -46,18 +46,29 @@ export async function buildProposal(product: ProductKey, template: ProposalTempl
   const res = await fetch(template.file.url);
   if (!res.ok) throw new Error(`템플릿 파일을 받지 못했습니다 (${res.status}).`);
   const data = await res.arrayBuffer();
-  const args = { template: data, terms: template.terms as Terms, input };
-  const p = productOf(product);
-  let out: Blob | Uint8Array;
-  if (p.template === 'tyrant-solar15') {
-    const { fillTyrant } = await import('./fill-tyrant');
-    out = await fillTyrant(args, product === 'tyrant-solar15-prepay' ? 'prepay' : 'basic');
-  } else if (p.template === 'henergy-solarshare2') {
-    const { fillHenergy } = await import('./fill-henergy');
-    out = await fillHenergy(args);
-  } else {
-    const { fillLumora } = await import('./fill-lumora');
-    out = await fillLumora(args);
-  }
+  const out = await fill(product, { template: data, terms: template.terms as Terms, input });
   return out instanceof Blob ? out : new Blob([out as BlobPart]);
+}
+
+/** 상품의 생성기 — 상품마다 빠짐없이(상품을 더하면 tsc 가 여기를 짚는다) */
+async function fill(product: ProductKey, args: FillArgs): Promise<Blob | Uint8Array> {
+  switch (product) {
+    case 'tyrant-solar15-basic':
+    case 'tyrant-solar15-prepay': {
+      const { fillTyrant } = await import('./fill-tyrant');
+      return fillTyrant(args, product === 'tyrant-solar15-prepay' ? 'prepay' : 'basic');
+    }
+    case 'henergy-solarshare2': {
+      const { fillHenergy } = await import('./fill-henergy');
+      return fillHenergy(args);
+    }
+    case 'lumora-rent': {
+      const { fillLumora } = await import('./fill-lumora');
+      return fillLumora(args);
+    }
+    default: {
+      const none: never = product;
+      throw new Error(`생성기가 없는 상품입니다 — ${String(none)}`);
+    }
+  }
 }

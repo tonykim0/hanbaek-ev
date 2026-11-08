@@ -12,6 +12,10 @@
  */
 import type { Terms } from './products';
 
+/** from 년차부터 to 년차까지의 합(1부터 · 받는 돈이 없는 해 null 은 0) */
+const sumYears = (years: readonly (number | null)[], from: number, to: number): number =>
+  years.slice(from - 1, to).reduce<number>((s, v) => s + (v ?? 0), 0);
+
 /** 패널 장수 × 모듈 출력 → kW (소수 둘째 — 「194.95 kW」처럼 자료가 그렇게 적는다) */
 export const capacityKw = (panels: number, watt: number): number => Math.round(panels * watt * 100 / 1000) / 100;
 
@@ -55,7 +59,7 @@ export function solar15(kw: number, t: Terms, variant: Solar15Variant): Solar15 
       years.push(eok(kw * t.hoursPerDay * 365 * unitPrice * (1 - t.degradationPct / 100) ** (n - 1)));
     }
   }
-  const sum = (a: number, b: number) => years.slice(a - 1, b).reduce<number>((s, v) => s + (v ?? 0), 0);
+  const sum = (a: number, b: number) => sumYears(years, a, b);
   const sum35 = sum(1, 35);
   return {
     variant,
@@ -147,7 +151,7 @@ export function lumoraRent(kw: number, t: Terms): Lumora {
     return { prepay, price, annual, upfront: annual * prepay, total: annual * LUMORA_YEARS, years };
   };
   const options = { 1: opt(1), 5: opt(5), 10: opt(10) } as Record<LumoraPrepay, LumoraOption>;
-  const cum = (o: LumoraOption, n: number) => o.years.slice(0, n).reduce<number>((s, v) => s + (v ?? 0), 0);
+  const cum = (o: LumoraOption, n: number) => sumYears(o.years, 1, n);
   let crossover: Lumora['crossover'] = null;
   for (let n = 2; n <= LUMORA_YEARS; n++) {
     if (cum(options[1], n) > cum(options[10], n)) {
