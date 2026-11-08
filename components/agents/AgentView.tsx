@@ -16,6 +16,8 @@ import { AgentTasks } from '@/components/agents/AgentTasks';
 import { AgentWeeks } from '@/components/agents/AgentWeeks';
 import { AgentMark } from '@/components/agents/kit';
 import { MailAccount } from '@/components/agents/MailAccount';
+import { AgitAccount } from '@/components/agents/AgitAccount';
+import { OPEN_PURCHASE_AGENT } from '@/lib/agents/open-purchase';
 import { ReadAgentAlarms } from '@/components/agents/ReadAgentAlarms';
 import { roleLineOf, stateOf } from '@/components/agents/status';
 import { NowLine, StateBadge } from '@/components/agents/AgentState';
@@ -26,6 +28,7 @@ import { NowLine, StateBadge } from '@/components/agents/AgentState';
  * (한백 지시 2026-11-02 「각 운영사별로 해야 할 업무들과 각 담당자와의 커뮤니케이션을 기록해야해 · 그 업무들에 대한 정의도
  * 내가 담당자별로 지정할거야」 · 「주단위로 뭐했는지도 과거 이력 조회」 · 「파일업로드 기능도」 — 모양은 components/agents/kit)
  * 담당이 올린 메일 초안은 대화의 그 답 밑에 서고 한백이 승인해야 나간다 — 보내는 메일(한백의 다음 메일)은 머리말 밑 한 줄이다(MailAccount).
+ * 전기차 정산 담당은 아지트 열린구매 글 초안도 그렇다(AgitCard · 한백 2026-11-08) — 아지트 연결 · 요청 담당은 그 밑 두 줄(AgitAccount).
  *
  * 사업마다의 팀 화면 밑에 선다(/admin/agents/[id] 전기차 · /solar/agents/[id] 태양광 — 2026-11-04). 다른 사업의 주소로 열면 제
  * 사업의 주소로 보낸다(알림 줄 · 옛 링크가 사업을 모르고 열어도 제 틀 · 제 팀으로 간다).
@@ -53,6 +56,14 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
     loadAgentSide(biz, actor), getRepository().getMailAccount(actor, biz), getRepository().agentTeam(actor, biz),
     getRepository().agentMemos(actor, agent.id),
   ]);
+  /* 아지트 열린구매 글 — 전기차 정산 담당만. 실린 말 밑의 초안과 연결 · 요청 담당 */
+  const withAgit = agent.id === OPEN_PURCHASE_AGENT && agent.biz === 'ev';
+  const [agitHook, agitPosts] = withAgit
+    ? await Promise.all([
+      getRepository().getAgitHook(actor),
+      getRepository().listAgitPosts(actor, detail.messages.map((m) => m.id)),
+    ])
+    : [null, []];
   const lead = isLead(agent.kind);
   const headline = side.headline(agent);
   const open = detail.tasks.filter((t) => !t.doneAt);
@@ -102,8 +113,9 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
             </div>
           </div>
         </div>
-        <div className="mt-4">
+        <div className="mt-4 flex flex-col gap-1.5">
           <MailAccount account={account} biz={biz} />
+          {withAgit && agitHook && <AgitAccount hook={agitHook} />}
         </div>
       </header>
 
@@ -124,6 +136,7 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
             connected={account !== null}
             week={detail.week}
             today={side.today}
+            agit={withAgit ? { posts: agitPosts, connected: agitHook?.connected ?? false, assignees: agitHook?.assignees ?? [] } : undefined}
           />
         </div>
         {/*

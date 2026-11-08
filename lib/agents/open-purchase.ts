@@ -10,8 +10,10 @@
  *   한백의 규칙이 다르면 payDayOf 한 곳을 고친다. 예: 2026-12-25(성탄절) → 12-24(목)에 나감 → 12-21(월)까지 상신.
  * ★기한 날 아침에 한 번★ — 그날을 놓쳤으면(크론이 못 돌았으면) 나가는 날 전까지는 늦게라도 한 번, 「기한이 지났습니다」로.
  *   나가는 날이 되면 말하지 않는다 — 그때의 상신 알림은 소음이다.
- * 그날 나갈 배치(지급처 × 구분)와 합계를 같이 적는다 — 상신할 것이 그것이다. 아지트 열린구매 글은 거래명세서 화면이 결제일마다 짓고
- * 한백이 눌러 올린다(lib/agit · 2026-11-07) — 올리면 이 할 일이 저절로 끝난다(store/agit finishAgitPost 가 이 열쇠로 찾는다).
+ * 그날 나갈 배치(지급처 × 구분)와 합계를 같이 적는다 — 상신할 것이 그것이다. ★아지트 열린구매 글 초안을 같이 올린다★(한백 2026-11-08
+ * 「정산담당 에이전트가 때가 되면 초안을 올려주고, 내가 승인하면 정산담당에이전트가 아지트에 글을 올리는 구조」 — lib/agit ·
+ * lib/agents/remind-run): 이 말 밑에 카드가 서고 한백이 「승인하고 올리기」를 누르면 올라간다 — 올리면 이 할 일이 저절로 끝난다
+ * (store/agit finishAgitPost 가 이 열쇠로 찾는다). 글을 지을 수 없으면(지급 0건 · 지급처 미정) 그 까닭을 적는다.
  */
 import { REGULAR_PAY_DAYS, type Batch } from '@/lib/payout-board';
 import {
@@ -84,7 +86,13 @@ export interface RemindPlan {
  * 그날 남길 것 — 할 일 · 대화의 말 · 알림. batches 는 그 결제일의 배치(가확정 · 확정)만 넘긴다.
  * 나가기 전이라 상태는 둘뿐이다 — 확정했으면 「확정」, 아니면 「가확정」(lib/payout-board batchStateOf 의 앞날 쪽).
  */
-export function openPurchasePlan(due: OpenPurchaseDue, today: string, batches: readonly Batch[]): RemindPlan {
+export function openPurchasePlan(
+  due: OpenPurchaseDue,
+  today: string,
+  batches: readonly Batch[],
+  /** 아지트 글 초안을 지을 수 없는 까닭(lib/agit/post AgitPostText.blocked) — null 이면 초안을 이 말 밑에 올린다 */
+  agitBlocked: string | null = null
+): RemindPlan {
   const title = `열린구매 상신 — ${monthDay(due.payDate)} 정기결제`;
   const total = batches.reduce((n, b) => n + b.total, 0);
   const sum = batches.length ? `지급 ${batches.length}건 · 공급가액 ${won(total)}원` : '지급 0건';
@@ -109,7 +117,9 @@ export function openPurchasePlan(due: OpenPurchaseDue, today: string, batches: r
     years.length ? `${years.join(' · ')}년 공휴일 표가 없어 주말만 빼고 셌습니다.` : '',
     batches.length ? `그날 ${sum}` : '그날 지급할 배치가 0건입니다 — 가확정한 지급이 없습니다.',
     ...rows,
-    '아지트 열린구매 글은 거래명세서 화면 맨 아래에서 보고 올립니다 — 올리면 이 할 일이 저절로 끝납니다.',
+    agitBlocked
+      ? `아지트 열린구매 글 초안은 올리지 않았습니다(${agitBlocked}) — 배치가 서면 초안을 올려 달라고 말해 주세요.`
+      : '아지트 열린구매 글 초안을 아래에 올렸습니다 — 「승인하고 올리기」를 누르면 그때 금액으로 다시 지어 올립니다. 올리면 이 할 일이 저절로 끝납니다.',
   ].filter(Boolean).join('\n');
 
   return {

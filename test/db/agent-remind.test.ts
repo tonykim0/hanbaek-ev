@@ -110,15 +110,17 @@ describe('담당의 정기 알림 — 정산 담당의 열린구매 상신', () 
 
   it('크론의 정기 일 — 기한 전날은 아무것도 안 하고, 기한 날 아침에 정산 담당이 한 번 남긴다', async () => {
     // 한국 시각 2027-01-04 09:00 — 1월 10일(일) 정기결제는 앞 영업일 1월 8일(금)에 나가고 기한은 1월 5일(화)
-    expect(await runAgentReminders(new Date('2027-01-04T00:00:00Z'))).toEqual({ day: '2027-01-04', due: [], reminded: [] });
+    expect(await runAgentReminders(new Date('2027-01-04T00:00:00Z'))).toEqual({ day: '2027-01-04', due: [], reminded: [], drafted: [] });
+    // 그날 나갈 배치가 없다 — 아지트 글 초안은 안 서고 그 까닭을 적는다(초안이 서는 길은 test/db/agit-posts)
     expect(await runAgentReminders(new Date('2027-01-05T00:00:00Z')))
-      .toEqual({ day: '2027-01-05', due: ['2027-01-10'], reminded: ['2027-01-10'] });
+      .toEqual({ day: '2027-01-05', due: ['2027-01-10'], reminded: ['2027-01-10'], drafted: [] });
 
     const said = await getDb().select().from(agentMessages).where(byKey(JAN_KEY));
     expect(said).toHaveLength(1);
     expect(said[0].author).toBe('정산 담당');
     expect(said[0].body).toContain('1월 10일(일) 정기결제 — 오늘이 열린구매 상신 기한입니다(3영업일 전).');
     expect(said[0].body).toContain('1월 10일은 일요일이라 앞 영업일 1월 8일(금)에 나간다고 보고 셌습니다.');
+    expect(said[0].body).toContain('아지트 열린구매 글 초안은 올리지 않았습니다(지급 0건 — 올릴 것 없음)');
     const [task] = await getDb().select().from(agentTasks).where(and(eq(agentTasks.agentId, AGENT), eq(agentTasks.kind, JAN_KEY)));
     expect(task).toMatchObject({ title: JAN_TITLE, due: '2027-01-05' });
 

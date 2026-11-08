@@ -29,6 +29,8 @@
  * ★자동의 말★(2026-11-04 · lib/site-mail) — 계약서가 접수되면 콘솔이 그 담당의 이름으로 할 일 · 양식 메일 초안을 남긴다(말의 종류
  * auto). 「자동」 꼬리표와 그 현장으로 가는 고리를 단다. 정산 담당의 열린구매 상신 알림(lib/agents/open-purchase)도 자동의 말이다 —
  * 현장 대신 「거래명세서 보기 →」(meta.link).
+ * ★아지트 열린구매 글 초안★(2026-11-08 · lib/agit) — 정산 담당이 올린 초안(상신 알림 · agit_post)도 그 말 밑에 선다(AgitCard).
+ * 한백이 「승인하고 올리기」를 눌러야 올라간다. 카드는 서버가 그린 목록을 그대로 쓴다 — 답 뒤의 router.refresh 가 새 카드를 싣는다.
  */
 import Link from 'next/link';
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
@@ -39,6 +41,8 @@ import { AGENT_FILE_MAX_BYTES, AGENT_FILES_PER_MESSAGE, sizeLabel } from '@/lib/
 import { shiftDay, weekRange } from '@/lib/agents/weeks';
 import { AgentMark, Clip, FileChip, LINK, Spark } from './kit';
 import { MailCard } from './MailCard';
+import { AgitCard } from './AgitCard';
+import type { AgitPostRecord } from '@/lib/agit/post';
 
 type Phase = 'idle' | 'sending' | 'thinking';
 
@@ -75,7 +79,7 @@ function dayHead(day: string, today: string): string {
   return day.slice(0, 4) === today.slice(0, 4) ? label : `${y}년 ${label}`;
 }
 
-export function AgentRoom({ agentId, agentName, home, messages, mails, connected, week, today }: {
+export function AgentRoom({ agentId, agentName, home, messages, mails, connected, week, today, agit }: {
   agentId: string;
   agentName: string;
   /** 이 담당의 화면 주소 — 사업마다의 조직도 밑(lib/biz BIZ_AGENTS). 주간 기록에서 「지금 대화로」가 간다 */
@@ -88,6 +92,8 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
   /** 한 주를 골랐을 때 — 그 주와, 대화 사이에 끼는 일 */
   week: { start: string; end: string; events: AgentEvent[] } | null;
   today: string;
+  /** 정산 담당(전기차)만 — 실린 말에 딸린 아지트 글 초안 · 아지트 연결 · 요청 담당 */
+  agit?: { posts: AgitPostRecord[]; connected: boolean; assignees: string[] };
 }) {
   const router = useRouter();
   const [list, setList] = useState(messages);
@@ -271,6 +277,14 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
     if (m.messageId && shown.has(m.messageId)) mailsOf.set(m.messageId, [...(mailsOf.get(m.messageId) ?? []), m]);
   }
   const loose = mailList.filter((m) => !m.messageId || !shown.has(m.messageId));
+  /* 아지트 글 초안도 그것을 올린 말 밑에 — 실린 말에 딸린 것만 온다(AgentView) */
+  const agitOf = new Map<string, AgitPostRecord[]>();
+  for (const a of agit?.posts ?? []) {
+    if (a.messageId && shown.has(a.messageId)) agitOf.set(a.messageId, [...(agitOf.get(a.messageId) ?? []), a]);
+  }
+  const agitCard = (a: AgitPostRecord) => (
+    <AgitCard key={a.id} post={a} connected={agit?.connected ?? false} assignees={agit?.assignees ?? []} />
+  );
   const pendingMails = mailList.filter((m) => m.status === 'draft' || m.status === 'failed').length;
 
   /* 말 · 일 · 따로 선 초안을 시각 순으로 — 날이 바뀌면 가름줄 */
@@ -288,7 +302,13 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
       day = d;
       items.push(<DayRule key={`day|${d}`} label={dayHead(d, today)} />);
     }
-    if (r.said) items.push(<Said key={r.said.id} message={r.said} team={team} />, ...(mailsOf.get(r.said.id) ?? []).map(card));
+    if (r.said) {
+      items.push(
+        <Said key={r.said.id} message={r.said} team={team} />,
+        ...(mailsOf.get(r.said.id) ?? []).map(card),
+        ...(agitOf.get(r.said.id) ?? []).map(agitCard),
+      );
+    }
     else if (r.mail) items.push(card(r.mail));
     else items.push(<Happened key={`${r.event!.at}|${r.event!.kind}|${r.event!.title}`} event={r.event!} />);
   }
@@ -538,6 +558,7 @@ function Said({ message: m, team }: { message: AgentMessage; team: string }) {
     m.meta?.added?.length ? `할 일 ${m.meta.added.length}건 적음` : null,
     m.meta?.done?.length ? `할 일 ${m.meta.done.length}건 끝냄` : null,
     m.meta?.mails?.length ? `메일 초안 ${m.meta.mails.length}통` : null,
+    m.meta?.agit?.length ? `아지트 글 초안 ${m.meta.agit.length}건` : null,
     m.meta?.directions?.length ? `목표 · 방향 ${m.meta.directions.length}건 고침` : null,
     m.meta?.duties?.length ? `업무 정의 ${m.meta.duties.length}건 고침` : null,
     m.meta?.memos?.length ? `메모 ${m.meta.memos.length}건 적음` : null,

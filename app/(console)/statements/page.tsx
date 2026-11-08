@@ -2,14 +2,9 @@ import { getRepository } from '@/lib/data';
 import { actorOf, getSessionUser, viewerOf } from '@/lib/auth/session';
 import { isHanbaek } from '@/lib/roles';
 import { redirect } from 'next/navigation';
-import { thisMonth as seoulMonth, today } from '@/lib/date';
-import { CONSOLE_URL } from '@/lib/portal-intake';
-import { loadPartnerLines } from '@/lib/partner-lines';
-import { agitDraftsOf } from '@/lib/agit/post';
-import { payeeOfMap } from '@/lib/agit/load';
+import { thisMonth as seoulMonth } from '@/lib/date';
 import PayChart, { type MonthBar } from '@/components/settlement/PayChart';
 import StatementsBoard from '@/components/settlement/StatementsBoard';
-import AgitPosts from '@/components/settlement/AgitPosts';
 
 export const metadata = { title: '협력사 거래명세서' };
 export const dynamic = 'force-dynamic';
@@ -67,20 +62,6 @@ export default async function StatementsPage() {
   }
   const series = [...barBy.values()].sort((a, b) => a.month.localeCompare(b.month));
 
-  /*
-   * 아지트 열린구매 글 — 한백의 눈에만(지급처 계좌가 실린다). 위에서 읽은 원장 · 확정 · 계산서로 짓는다 — 올리는 라우트가 같은
-   * 함수(agitDraftsOf)로 다시 지어 견준다(lib/agit/load). 협력사 정보 · 연결 · 올린 글만 더 읽는다.
-   */
-  const agit = seesAll ? await (async () => {
-    const actor = actorOf(session);
-    const drafts = agitDraftsOf(today(), history, finals, invoices, payeeOfMap(await loadPartnerLines()), CONSOLE_URL);
-    const [hook, posts] = await Promise.all([
-      getRepository().getAgitHook(actor),
-      getRepository().listAgitPosts(actor, drafts.map((d) => d.payDate)),
-    ]);
-    return { drafts, hook, posts };
-  })() : null;
-
   return (
     <div className="flex flex-col gap-6">
       {/*
@@ -111,10 +92,6 @@ export default async function StatementsPage() {
         role={session.role}
         myOrg={session.org}
       />
-
-      {agit && (
-        <AgitPosts drafts={agit.drafts} posts={agit.posts} hook={agit.hook} canEdit={session.role === 'admin'} />
-      )}
     </div>
   );
 }

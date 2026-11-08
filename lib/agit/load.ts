@@ -1,7 +1,7 @@
 /**
  * 아지트 글의 재료를 읽는다 (서버 전용) — 거래명세서 화면과 같은 정본(원장 줄 · 확정 · 계산서 · 협력사 정보)을 그때 읽어 짓는다.
- * 올리는 라우트가 부른다(app/api/agit/posts — 누르는 순간의 금액으로 다시 짓기). 화면은 이미 읽은 원장으로 agitDraftsOf 를 부른다
- * — 둘이 같은 함수라 같은 재료면 같은 글이 나오고, 다르면 「금액이 바뀌었다」로 걸린다.
+ * 초안을 짓는 셋(상신 알림 크론 lib/agents/remind-run · 정산 담당의 agit_post · 답 라우트)과 승인하는 라우트(app/api/agit/posts/[id]
+ * — 누르는 순간의 금액으로 다시 짓기)가 같이 부른다. 같은 재료면 같은 글이 나오고, 다르면 「금액이 바뀌었다」로 걸린다.
  */
 import { getRepository } from '@/lib/data';
 import { today } from '@/lib/date';

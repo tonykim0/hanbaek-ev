@@ -185,6 +185,8 @@ export interface AgentMessageMeta {
   done?: string[];
   /** 이 답에서 올린 메일 초안의 제목 */
   mails?: string[];
+  /** 이 답에서 올린 아지트 열린구매 글 초안의 결제일 이름(「11월 10일 정기결제」 — agit_post) */
+  agit?: string[];
   /** 이 답에서 팀장이 올리거나 고치거나 지운 목표 · 방향의 이름 */
   directions?: string[];
   /** 이 답에서 말을 남긴 팀원의 이름(tell_teammate) */

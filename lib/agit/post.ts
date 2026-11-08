@@ -4,9 +4,13 @@
  *
  * 한백이 고른 것(같은 날, 미리보기를 보고):
  *   · 글 하나 = 결제일 하나 — 그날 나가는 배치(지급처 × 구분) 전부가 한 글의 줄이 된다.
- *   · 올리는 때 = 한백이 거래명세서 화면에서 「아지트에 올리기」를 누를 때. ★그때 콘솔의 지금 금액으로 다시 짓는다★ — 미리보기 뒤에
- *     금액이 바뀌었으면 올리지 않는다(store/agit · app/api/agit/posts). 11-05 아침 상신 알림이 에코일렉 89,040,000원을 적은 뒤
+ *   · 올리는 때 = 한백이 승인할 때. ★그때 콘솔의 지금 금액으로 다시 짓는다★ — 초안 뒤에 금액이 바뀌었으면 올리지 않고 초안을
+ *     새 금액으로 고친다(store/agit · app/api/agit/posts/[id]). 11-05 아침 상신 알림이 에코일렉 89,040,000원을 적은 뒤
  *     같은 날 대당 +10만으로 96,460,000원이 됐다 — 아침에 저절로 올렸다면 옛 금액이 아지트에 남았다.
+ *   · ★정산 담당이 한다★(한백 2026-11-08 「이걸 정산담당 에이전트가 처리해야하는거야」 → 「정산담당 에이전트가 때가 되면 초안을
+ *     올려주고, 내가 승인하면 정산담당에이전트가 아지트에 글을 올리는 구조」) — 결제일 3영업일 전 아침 크론이 상신 알림과 함께
+ *     초안을 정산 담당 대화에 올리고(lib/agents/remind-run), 한백이 대화에서 시키면 담당이 agit_post 로 올린다(lib/agents/brain).
+ *     한백이 초안 카드의 「승인하고 올리기」를 누르면 정산 담당 이름으로 아지트에 올라간다(메일 초안과 같은 길).
  *
  * ★글은 아지트 「요청」 글로 올린다 — 담당자를 붙여★(한백 2026-11-08 「아지트 글에서 담당자 설정도 필요해」 → 요청 글 담당자 칸 ·
  * 한 번 정해 두기). 웹훅 가이드(아지트 연동 설정의 「사용법 알아보기」, 한백이 붙여 줌): {"text", "task": {"assignees": [아지트 ID…]}}
@@ -189,9 +193,15 @@ export function agitDraftsOf(
 
 /** 아지트 연결 — 주소(열쇠)는 싣지 않는다 */
 export interface AgitHookInfo {
-  connectedBy: string;
-  connectedAt: string;
-  /** 요청 글의 담당자 — 아지트 ID. 비면 올리지 못한다(「담당자 미지정」) */
+  /** 웹훅이 연결돼 있는가 */
+  connected: boolean;
+  /** 연결한 사람 · 때 — 연결 전이면 null */
+  connectedBy: string | null;
+  connectedAt: string | null;
+  /**
+   * 요청 글의 담당자 — 아지트 ID. 비면 올리지 못한다(「요청 담당 미지정」). ★연결과 따로다★ — 연결 전에 미리 넣어 두고, 끊어도 남는다
+   * (한백 2026-11-08 「담당자는 미리 넣어둘수없나」)
+   */
   assignees: string[];
 }
 
@@ -233,30 +243,50 @@ export function agitPayloadOf(text: string, assignees: readonly string[]): { tex
 /** 담당자를 보이는 글 — 「@kiko.x · @ella.a」 */
 export const assigneesLabel = (ids: readonly string[]): string => ids.map((s) => `@${s}`).join(' · ');
 
-export const AGIT_POST_STATUSES = ['sending', 'posted', 'failed'] as const;
+/**
+ * 글 한 줄의 자리 — 정산 담당이 초안을 올리고(draft) 한백이 승인하면 올리는 중(sending) → 올림(posted) · 못 올림(failed).
+ * 못 올린 것은 다시 승인해 올린다(초안과 같은 자리).
+ */
+export const AGIT_POST_STATUSES = ['draft', 'sending', 'posted', 'failed'] as const;
 export type AgitPostStatus = (typeof AGIT_POST_STATUSES)[number];
 
-/** 올린 글 한 줄 — 화면은 결제일마다 마지막 것을 보인다 */
+/** 아지트 글 한 줄 — 정산 담당 대화의 그 말 밑에 카드로 선다(components/agents/AgitCard) */
 export interface AgitPostRecord {
   id: string;
   payDate: string;
   status: AgitPostStatus;
   title: string;
+  /** 아지트에 갈(간) 글 그대로 */
+  body: string;
   total: number;
   batches: number;
   error: string | null;
+  /** 초안이면 쓴 담당, 올렸으면 승인한 사람 */
   postedBy: string;
-  /** 그 글에 붙인 요청 담당자(아지트 ID) — 담당자를 바꾼 뒤에도 그때의 사람이 남는다 */
+  /** 그 글에 붙인 요청 담당자(아지트 ID) — 올릴 때 적는다. 담당자를 바꾼 뒤에도 그때의 사람이 남는다 */
   assignees: string[];
-  /** 올린 때(못 올렸으면 누른 때) — 'YYYY-MM-DD HH:mm' 한국 시각 */
+  /** 카드가 서는 대화의 말 — 상신 알림 · 초안을 올린 답. 없으면 만든 때의 자리에 따로 선다 */
+  messageId: string | null;
+  /** 이미 올린 결제일을 다시 올리는 초안인가 */
+  again: boolean;
+  /** 올린 글의 아지트 주소 — 아지트가 돌려준 것(없으면 null) */
+  agitUrl: string | null;
+  /** 만든 때 — 'YYYY-MM-DD HH:mm' 한국 시각 */
+  createdAt: string;
+  /** 올린 때(못 올렸으면 누른 때) — 초안이면 만든 때 */
   at: string;
 }
 
-/** 올린 뒤 정산 담당 대화에 남는 한 줄(자동) */
+/** 결제일의 이름 — 「11월 10일 정기결제」 · 「3월 17일 지급」 */
+export function payDateName(payDate: string): string {
+  const [, m, d] = payDate.split('-').map(Number);
+  return `${m}월 ${d}일 ${isRegular(payDate) ? '정기결제' : '지급'}`;
+}
+
+/** 올린 뒤 정산 담당 대화에 남는 한 줄(자동) — by 는 승인한 사람 */
 export function agitPostedSay(post: Pick<AgitPostText, 'payDate' | 'title' | 'total' | 'batches'>, by: string): string {
-  const [, m, d] = post.payDate.split('-').map(Number);
   return [
-    `${m}월 ${d}일 ${isRegular(post.payDate) ? '정기결제' : '지급'} 열린구매 글을 아지트에 올렸습니다 — 지급 ${post.batches}건 · 공급가액 ${won(post.total)}원 (${by}).`,
+    `${payDateName(post.payDate)} 열린구매 글을 아지트에 올렸습니다 — 지급 ${post.batches}건 · 공급가액 ${won(post.total)}원 (승인 ${by}).`,
     post.title,
   ].join('\n');
 }

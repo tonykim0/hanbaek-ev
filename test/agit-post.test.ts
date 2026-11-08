@@ -8,7 +8,7 @@ import {
   agitAssigneesOf, agitDraftsOf, agitPayloadOf, agitPostOf, agitPostedSay, agitWebhookOf, assigneesLabel, badAgitIds, detailOf,
   upcomingPayDates, vatOf, type AgitBatch, type AgitPayee,
 } from '@/lib/agit/post';
-import { sendToAgit } from '@/lib/agit/send';
+import { agitPostUrlOf, sendToAgit } from '@/lib/agit/send';
 import type { PayoutRow } from '@/types/project';
 
 const URL_ = 'https://hanbaek-re.vercel.app';
@@ -96,7 +96,7 @@ describe('결제일마다 한 글', () => {
 
   it('올린 뒤 정산 담당 대화의 한 줄', () => {
     expect(agitPostedSay({ payDate: '2026-11-10', title: 'T', total: 101_360_000, batches: 2 }, '김정우'))
-      .toBe('11월 10일 정기결제 열린구매 글을 아지트에 올렸습니다 — 지급 2건 · 공급가액 101,360,000원 (김정우).\nT');
+      .toBe('11월 10일 정기결제 열린구매 글을 아지트에 올렸습니다 — 지급 2건 · 공급가액 101,360,000원 (승인 김정우).\nT');
   });
 });
 
@@ -176,6 +176,17 @@ describe('올리기', () => {
     expect(await sendToAgit(HOOK, body('x'), as(async () => { throw timeout; })))
       .toEqual({ ok: false, error: expect.stringContaining('올라갔을 수 있으니') });
     quiet.mockRestore();
+  });
+
+  it('아지트가 돌려준 글 id · 주소를 받는다 — 주소는 https 의 *.agit.io 만 (2026-11-08 실측 모양)', async () => {
+    const as = (f: () => Promise<Response>) => f as unknown as typeof fetch;
+    const answer = '{"status":"ok","id":365222313,"url":"https://team-hanbaek.agit.io/g/300450579/wall/365222313"}';
+    expect(await sendToAgit(HOOK, body('x'), as(async () => new Response(answer, { status: 200 }))))
+      .toEqual({ ok: true, agitId: '365222313', agitUrl: 'https://team-hanbaek.agit.io/g/300450579/wall/365222313' });
+    for (const bad of ['http://team-hanbaek.agit.io/x', 'https://evilagit.io/x', 'https://agit.io.evil.com/x', 'javascript:alert(1)', 3]) {
+      expect(agitPostUrlOf(bad), String(bad)).toBeUndefined();
+    }
+    expect(agitPostUrlOf('https://agit.io/g/1/wall/2')).toBe('https://agit.io/g/1/wall/2');
   });
 
   it('거절의 까닭이 짧은 글이면 붙인다 — HTML 은 안 붙인다', async () => {

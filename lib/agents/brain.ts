@@ -2,7 +2,8 @@
  * 에이전트가 답한다 (서버 전용) — 업무 정의 · 열린 할 일 · 지금 콘솔 자료 · 지난 대화를 읽고 한백의 지시에 답한다.
  *
  * ★손에 쥔 것은 할 일 목록과 메일 초안뿐이다★ — add_task · complete_task · draft_mail, 양식 메일이 있는 운영사 담당은 site_mail
- * (나이스 계약서 초안 · 현대엔지니어링 설치승인서 — lib/site-mail). 반려 · 확정 · 단계 이동 · 지급 같은 콘솔의 값은 못 바꾼다(그건
+ * (나이스 계약서 초안 · 현대엔지니어링 설치승인서 — lib/site-mail), 전기차 정산 담당은 agit_post(아지트 열린구매 글 초안 — 한백이
+ * 승인해야 올라간다, lib/agit). 반려 · 확정 · 단계 이동 · 지급 같은 콘솔의 값은 못 바꾼다(그건
  * 사람이 콘솔에서 누른다 — 판독이 반려하지 않는 것과 같은 원칙). 전략·기획만 웹 검색을 더 쥔다. 운영사 담당은 그 운영사의
  * 단가표를 읽는 pricing_table 을 쥔다 — 읽기만이다(lib/agents/pricing-table · 한백 2026-11-04 「영업정책 업데이트 되면 키단가표 업데이트」).
  * 계약서가 접수되면 콘솔이 그 담당의 이름으로 할 일 · 양식 메일 초안을 저절로 남긴다(말의 종류 auto) — 대화에서는 「[자동 …]」으로 읽는다.
@@ -98,11 +99,14 @@ function roleOf(agent: Agent): string {
         + '2) 지급관리: 협력사(영업사 · 시공사)에게 줄 영업비 · 시공비. 지급은 배치(지급처 × 구분 × 지급일)로 묶여 가확정 → 확정 → '
         + '지급완료로 간다. 가확정이면 협력사가 세금계산서를 발행할 차례이고, 확정 누락은 지급일이 지났는데 확정을 건너뛴 것이다.\n'
         + '3) 열린구매: 지급을 위해 한백 사내 아지트에 지출 글을 올리고 붙일 자료를 챙긴다. [열린구매] 자료가 재료다. '
-        + '★아지트 글은 콘솔이 짓는다★ — 거래명세서 화면 맨 아래 「아지트 열린구매 글」이 결제일마다 한 글(그날 나가는 배치 전부 · '
-        + '공급가액 · 부가세 · 계좌 · 세금계산서 있음/없음)을 짓고, 한백이 「아지트에 올리기」를 누르면 그때 금액으로 올라간다. '
-        + '너는 아지트에 올리지 못한다 — 글을 물으면 그 화면을 알려 주고, 한백이 따로 써 달라고 할 때만 [열린구매] 자료로 쓴다. '
-        + '붙일 자료는 자료 줄에 있는 것(거래명세서 주소 · 세금계산서 · 사업자등록증 · 통장사본)을 보고 없는 것은 없다고 짚는다. '
-        + '아지트에 올리면 그 결제일의 상신 할 일이 저절로 끝나고 대화에 「아지트에 올렸습니다」 한 줄이 선다.';
+        + '★아지트 글은 결제일마다 하나 · 콘솔이 짓는다★ — 그날 나가는 배치 전부(공급가액 · 부가세 · 계좌 · 세금계산서 있음/없음)를 '
+        + '콘솔이 거래명세서로 짓는다. 결제일 3영업일 전 아침에 콘솔이 네 이름으로 상신 할 일과 그 글의 초안을 이 대화에 저절로 올린다. '
+        + '한백이 아지트 글을 올려 달라 · 초안을 보여 달라고 하면 agit_post(결제일)로 초안을 이 답 밑에 올린다 — 금액 · 계좌를 네가 옮겨 '
+        + '적지 않는다. 이미 올린 결제일은 한백이 다시 올리라고 할 때만 again. 너는 혼자 올리지 못한다 — 한백이 초안의 「승인하고 '
+        + '올리기」를 누르면 콘솔이 그때 금액으로 다시 지어 아지트 열린구매 그룹에 요청 글로 올리고, 요청 담당(한백이 '
+        + '「아지트 연결」 밑에 정해 둔 아지트 ID)을 붙인다. 올리면 그 결제일의 상신 할 일이 저절로 끝나고 대화에 「아지트에 올렸습니다」 한 줄이 선다. '
+        + '한백이 따로 써 달라고 할 때만 [열린구매] 자료로 글을 쓴다. 붙일 자료는 자료 줄에 있는 것(거래명세서 주소 · 세금계산서 · '
+        + '사업자등록증 · 통장사본)을 보고 없는 것은 없다고 짚는다.';
     case 'strategy':
       return '시장 정보를 모으고 전략·기획을 맡는다. 전기차 충전 인프라 시장(환경부 보조금 정책 · 운영사 동향 · 공동주택 충전기 '
         + '설치 의무 · 경쟁 시공사)을 웹 검색으로 찾아보고, [수주 흐름]과 견주어 한백에 필요한 것을 정리한다. '
@@ -292,6 +296,13 @@ export interface AgentHands {
   siteMail?(projectId: string): Promise<{ id: string; subject: string; plan: string; to: string[] }>;
   /** 그 운영사의 지금 단가표 글 — 운영사 담당만(lib/agents/pricing-table). 읽기만이다 */
   pricingTable?(): Promise<string>;
+  /**
+   * 아지트 열린구매 글 초안 — 전기차 정산 담당만(store/agit draftAgitPost). 글을 지을 수 없거나(지급 0건 · 지급처 미정) 이미 올린
+   * 결제일인데 again 이 아니면 사람 말로 던진다. plan: create 새로 · refresh 고침 · keep 같은 글
+   */
+  agitDraft?(input: { payDate: string; again: boolean }): Promise<{
+    id: string; plan: 'create' | 'refresh' | 'keep'; name: string; batches: number; total: number;
+  }>;
   /** 팀장만 — 팀 목표 · 방향 올리기(id 없이) · 고치기(id). 저장소가 틀리면 사람 말로 던진다 */
   saveDirection?(input: { id: string | null; title: string; body: string }): Promise<{ id: string; title: string }>;
   /** 팀장만 — 팀 목표 · 방향 지우기. 지운 줄의 이름을 돌려준다 */
@@ -398,6 +409,26 @@ function draftMailTool(withBundles: boolean) {
     },
   };
 }
+
+/**
+ * 아지트 열린구매 글 초안 — 전기차 정산 담당만(라우트가 손을 이어 줄 때). 글은 콘솔이 거래명세서로 짓고(lib/agit/post), 담당은
+ * 결제일만 고른다 — 금액 · 계좌를 담당이 옮겨 적지 않는다. 한백이 승인해야 올라간다(한백 2026-11-08 「내가 승인하면
+ * 정산담당에이전트가 아지트에 글을 올리는 구조」).
+ */
+const AGIT_POST_TOOL = {
+  name: 'agit_post',
+  description: '그 결제일의 아지트 열린구매 글 초안을 이 답 밑에 올린다. 글은 콘솔이 거래명세서(그날 나가는 배치 전부 · 공급가액 · 부가세 · '
+    + '계좌 · 세금계산서 있음/없음)로 짓는다 — 너는 결제일만 준다. 같은 결제일의 승인 전 초안이 있으면 지금 금액으로 고쳐 이 답 밑으로 옮긴다. '
+    + '너는 아지트에 올리지 못한다 — 한백이 초안의 「승인하고 올리기」를 눌러야 올라간다. 이미 올린 결제일은 한백이 다시 올리라고 할 때만 again.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      pay_date: { type: 'string', description: '결제일 YYYY-MM-DD — 배치의 지급일([열린구매] 자료의 날짜)' },
+      again: { type: 'boolean', description: '이미 올린 결제일을 다시 올리는 초안인가 — 한백이 다시 올리라고 했을 때만 true (선택)' },
+    },
+    required: ['pay_date'],
+  },
+};
 
 /** 여러 현장의 같은 서류를 묶는다 — 전기차 담당(라우트가 손을 이어 줄 때). 묶기만 하고, 메일은 draft_mail 로 묶음마다 쓴다 */
 const BUNDLE_TOOL = {
@@ -605,7 +636,9 @@ const LEAD_TOOLS = [
  */
 export function toolsOf(
   agent: Agent,
-  hands: Pick<AgentHands, 'siteMail' | 'pricingTable' | 'saveDirection' | 'tellTeammate' | 'saveMemo' | 'saveDuty' | 'bundleSiteDocs'>,
+  hands: Pick<
+    AgentHands, 'siteMail' | 'pricingTable' | 'saveDirection' | 'tellTeammate' | 'saveMemo' | 'saveDuty' | 'bundleSiteDocs' | 'agitDraft'
+  >,
 ): unknown[] {
   const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
   return [
@@ -613,6 +646,7 @@ export function toolsOf(
     COMPLETE_TASK_TOOL,
     draftMailTool(Boolean(hands.bundleSiteDocs)),
     ...(hands.bundleSiteDocs ? [BUNDLE_TOOL] : []),
+    ...(agent.kind === 'settlement' && hands.agitDraft ? [AGIT_POST_TOOL] : []),
     ...(siteSpec ? [siteMailTool(siteSpec)] : []),
     ...(agent.kind === 'operator' && hands.pricingTable ? [PRICING_TOOL] : []),
     ...(hands.saveDuty ? DUTY_TOOLS : []),
@@ -710,6 +744,7 @@ export async function agentReply(input: {
   const added: string[] = [];
   const done: string[] = [];
   const mails: string[] = [];
+  const agitDrafts: string[] = [];
   const directions: string[] = [];
   const told: string[] = [];
   const memoed: string[] = [];
@@ -803,6 +838,21 @@ export async function agentReply(input: {
             ? `같은 초안이 이미 올라와 있다 (id=${made.id}, ${who}) — 그대로 두었다. 한백이 승인하면 나간다.`
             : `초안을 올렸다 (id=${made.id}, ${who})${made.plan === 'replace' ? ' — 앞의 보내지 않은 초안은 서류가 달라 버렸다' : ''}. `
               + '아직 보내지 않았다 — 한백이 승인하면 나간다.',
+        };
+      }
+      if (block.name === 'agit_post' && agent.kind === 'settlement' && hands.agitDraft) {
+        const payDate = str(args.pay_date);
+        if (!DAY_RE.test(payDate)) return fail('pay_date 는 YYYY-MM-DD 다.');
+        if (agitDrafts.length >= 3) return fail('한 답에 아지트 글 초안은 셋까지다.');
+        const made = await hands.agitDraft({ payDate, again: args.again === true });
+        agitDrafts.push(made.name);
+        const sum = `지급 ${made.batches}건 · 공급가액 ${made.total.toLocaleString('ko-KR')}원`;
+        return {
+          type: 'tool_result', tool_use_id: block.id,
+          content: (made.plan === 'create' ? `초안을 올렸다 (id=${made.id}, ${made.name} · ${sum})`
+            : made.plan === 'refresh' ? `같은 결제일의 승인 전 초안을 지금 금액으로 고쳐 이 답 밑으로 옮겼다 (id=${made.id}, ${sum})`
+              : `같은 초안이 이미 있어 이 답 밑으로 옮겼다 (id=${made.id}, ${sum})`)
+            + ' — 아직 올리지 않았다. 한백이 「승인하고 올리기」를 누르면 그때 금액으로 다시 지어 아지트에 올라간다.',
         };
       }
       if (block.name === 'pricing_table' && agent.kind === 'operator' && hands.pricingTable) {
@@ -1022,6 +1072,7 @@ export async function agentReply(input: {
     ...(added.length ? { added } : {}),
     ...(done.length ? { done } : {}),
     ...(mails.length ? { mails } : {}),
+    ...(agitDrafts.length ? { agit: agitDrafts } : {}),
     ...(directions.length ? { directions } : {}),
     ...(told.length ? { told } : {}),
     ...(memoed.length ? { memos: memoed } : {}),
@@ -1031,12 +1082,13 @@ export async function agentReply(input: {
   };
   if (!text) {
     // 할 일 · 메일 초안은 이미 남았을 수 있다 — 그 사실은 남긴다
-    if (added.length || done.length || mails.length || directions.length || told.length || memoed.length || dutied.length) {
+    if (added.length || done.length || mails.length || agitDrafts.length || directions.length || told.length || memoed.length || dutied.length) {
       return {
         text: [
           added.length ? `할 일을 적었습니다: ${added.join(' · ')}` : '',
           done.length ? `끝냈습니다: ${done.join(' · ')}` : '',
           mails.length ? `메일 초안을 올렸습니다: ${mails.join(' · ')}` : '',
+          agitDrafts.length ? `아지트 글 초안을 올렸습니다: ${agitDrafts.join(' · ')}` : '',
           directions.length ? `목표 · 방향을 고쳤습니다: ${directions.join(' · ')}` : '',
           told.length ? `팀원에게 남겼습니다: ${told.join(' · ')}` : '',
           memoed.length ? `메모를 적었습니다: ${memoed.join(' · ')}` : '',

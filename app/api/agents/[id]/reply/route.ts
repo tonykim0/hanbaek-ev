@@ -20,6 +20,8 @@
  * 전기차 담당은 여러 현장의 같은 서류를 한 통에 들어갈 만큼씩 zip 으로 묶고(bundle_site_docs) 묶음마다 메일 초안을 쓴다
  * (draft_mail attach_bundle_ids · lib/agents/bundle-run — 한백 2026-11-05 「프로젝트마다 저장되어있는 파일을 한꺼번에 불러와서
  * 압축해서 이메일로」 · 「B로하자」 — 첨부로만).
+ * 전기차 정산 담당은 agit_post 로 결제일의 아지트 열린구매 글 초안을 올린다(lib/agit — 글은 콘솔이 짓는다 · 한백 2026-11-08 「내가
+ * 승인하면 정산담당에이전트가 아지트에 글을 올리는 구조」). 그 초안도 이 답 밑에 서고, 한백이 승인해야 올라간다(app/api/agit/posts/[id]).
  */
 import { getRepository } from '@/lib/data';
 import { adminWrite } from '@/lib/api/write-route';
@@ -28,6 +30,9 @@ import { pricingTableText } from '@/lib/agents/pricing-table';
 import { loadAgentBrief } from '@/lib/agents/scope';
 import { siteMailOfCpo } from '@/lib/site-mail';
 import { requestSiteMail } from '@/lib/site-mail-run';
+import { loadAgitDraft } from '@/lib/agit/load';
+import { payDateName } from '@/lib/agit/post';
+import { OPEN_PURCHASE_AGENT } from '@/lib/agents/open-purchase';
 import { awaitsReply, queryOf, searchText } from '@/lib/agents/memory';
 import { bundleFileOf, bundleSiteDocs } from '@/lib/agents/bundle-run';
 import {
@@ -86,6 +91,8 @@ async function answer(
   ]);
   const mates = teammatesOf(detail.agent, team);
   const drafted: string[] = [];
+  /* 이 답에서 올린 아지트 글 초안 — 답을 남긴 뒤 그 답 밑으로 잇는다 */
+  const agitDrafted: string[] = [];
   const siteSpec = detail.agent.kind === 'operator' ? siteMailOfCpo(detail.agent.cpo) : null;
   /* 운영사 담당은 그 운영사의 단가표를 읽는다(읽기만 — 부를 때만 저장소에서) */
   const operatorCpo = detail.agent.kind === 'operator' ? detail.agent.cpo : null;
@@ -135,6 +142,18 @@ async function answer(
         return searchText(hits, total, query);
       },
       readFile: (id) => repo.agentFileOf(agentId, id, actor),
+      /* 아지트 열린구매 글 초안 — 전기차 정산 담당만. 글은 콘솔이 거래명세서로 짓는다 */
+      ...(agentId === OPEN_PURCHASE_AGENT && biz === 'ev' ? {
+        agitDraft: async (q: { payDate: string; again: boolean }) => {
+          const draft = await loadAgitDraft(actor, q.payDate);
+          if (draft.blocked) throw new Error(`${payDateName(q.payDate)} 글을 지을 수 없다 — ${draft.blocked}`);
+          const { post, plan } = await repo.draftAgitPost({
+            payDate: draft.payDate, body: draft.text, total: draft.total, batches: draft.batches, again: q.again, messageId: null,
+          }, actor);
+          agitDrafted.push(post.id);
+          return { id: post.id, plan, name: payDateName(post.payDate), batches: post.batches, total: post.total };
+        },
+      } : {}),
       ...(operatorCpo ? {
         pricingTable: async () => pricingTableText(await repo.listPricingRules(actor), operatorCpo),
       } : {}),
@@ -170,6 +189,7 @@ async function answer(
     },
   });
   const message = await repo.addAgentMessage({ agentId, role: 'agent', body: turn.text, meta: turn.meta }, actor);
+  if (agitDrafted.length) await repo.linkAgitPosts({ ids: agitDrafted, messageId: message.id }, actor);
   if (drafted.length === 0) return { message, mails: [] };
   await repo.linkAgentMails({ agentId, ids: drafted, messageId: message.id }, actor);
   const mails = (await repo.getAgent(agentId, actor)).mails.filter((m) => drafted.includes(m.id));

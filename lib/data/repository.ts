@@ -616,29 +616,44 @@ export interface ProjectRepository {
   /** 연결 끊기 — 없었으면 null */
   deleteMailAccount(actor: Actor, biz?: Biz): Promise<{ email: string } | null>;
   /*
-   * 아지트 열린구매 글 (store/agit · migrations/0126) — 결제일마다 한 글을 거래명세서로 짓고(lib/agit/post) 한백이 눌러 올린다.
-   * 웹훅 주소는 잠가 두고 올릴 때만 agitHookFor 가 푼다. 연결 · 담당자 · 올리기는 관리자, 보기는 한백의 눈.
+   * 아지트 열린구매 글 (store/agit · migrations/0126) — 결제일마다 한 글을 거래명세서로 짓고(lib/agit/post) 정산 담당이 초안을
+   * 올리면 한백이 승인해 올린다. 웹훅 주소는 잠가 두고 올릴 때만 agitHookFor 가 푼다. 모두 관리자(에이전트 화면이 관리자만이다).
    */
-  /** 아지트 연결 — 없으면 null. 주소는 싣지 않는다 */
-  getAgitHook(actor: Actor): Promise<AgitHookInfo | null>;
+  /** 아지트 연결 · 요청 담당 — 아무것도 없으면 연결 전 · 담당 0명. 주소는 싣지 않는다 */
+  getAgitHook(actor: Actor): Promise<AgitHookInfo>;
   /** 연결 — 웹훅 주소를 잠가 둔다(한 줄 — 다시 연결하면 주소만 갈아 끼우고 담당자는 남는다) */
   saveAgitHook(input: { url: string }, actor: Actor): Promise<AgitHookInfo>;
-  /** 요청 담당자 — 아지트 ID 를 쉼표 · 띄어쓰기로(빈 글이면 비운다). 연결 전이거나 ID 가 틀리면 사람 말로 던진다 */
+  /** 요청 담당자 — 아지트 ID 를 쉼표 · 띄어쓰기로(빈 글이면 비운다). 연결 전에도 넣는다. ID 가 틀리면 사람 말로 던진다 */
   saveAgitAssignees(input: { assignees: string }, actor: Actor): Promise<AgitHookInfo>;
-  /** 끊기 — 없었으면 false */
+  /** 끊기 — 주소만 비운다(요청 담당은 남는다). 연결돼 있지 않았으면 false */
   deleteAgitHook(actor: Actor): Promise<boolean>;
   /** 올릴 때만 — 풀어 둔 웹훅 주소와 담당자. 연결이 없거나 풀 수 없으면 사람 말로 던진다 */
   agitHookFor(actor: Actor): Promise<{ url: string; assignees: string[] }>;
-  /** 그 결제일들에 올린 글 — 최근이 앞 */
-  listAgitPosts(actor: Actor, payDates: string[]): Promise<AgitPostRecord[]>;
-  /** 올리기 첫 걸음 — 결제일 잠금 안에서 「올리는 중」을 세운다. 올리는 중이면 · 이미 올렸는데 again 이 아니면 던진다 */
-  claimAgitPost(
-    input: { payDate: string; body: string; total: number; batches: number; assignees: string[]; again: boolean },
+  /** 그 대화의 말들 밑에 선 글 — 만든 차례 */
+  listAgitPosts(actor: Actor, messageIds: string[]): Promise<AgitPostRecord[]>;
+  /** 글 한 줄 — 없으면 null */
+  getAgitPost(actor: Actor, id: string): Promise<AgitPostRecord | null>;
+  /**
+   * 초안 — 그 결제일의 열린 초안(초안 · 못 올림)이 있으면 지금 글로 고치고(messageId 를 주면 그 말 밑으로 옮긴다), 없으면 새로.
+   * 올리는 중이면 · 이미 올린 결제일인데 again 이 아니면 사람 말로 던진다. plan: create 새로 · refresh 고침 · keep 같은 글
+   */
+  draftAgitPost(
+    input: { payDate: string; body: string; total: number; batches: number; again: boolean; messageId: string | null },
     actor: Actor
-  ): Promise<{ id: string }>;
+  ): Promise<{ post: AgitPostRecord; plan: 'create' | 'refresh' | 'keep' }>;
+  /** 초안을 그 말 밑으로 — 담당의 답이 남은 뒤(답 라우트) */
+  linkAgitPosts(input: { ids: string[]; messageId: string }, actor: Actor): Promise<void>;
+  /**
+   * 올리기 첫 걸음(한백의 승인) — 결제일 잠금 안에서 그 초안을 「올리는 중」으로 세우고 지금 글 · 담당자를 적는다. 초안 · 못 올림이
+   * 아니면 · 같은 결제일을 올리는 중이면 던진다
+   */
+  claimAgitPost(
+    input: { id: string; body: string; total: number; batches: number; assignees: string[] },
+    actor: Actor
+  ): Promise<AgitPostRecord>;
   /** 올리기 끝 — 결과를 적는다. 올렸으면 정산 담당의 그 결제일 상신 할 일을 끝내고 대화에 한 줄 */
   finishAgitPost(
-    input: { id: string; result: { ok: true } | { ok: false; error: string } },
+    input: { id: string; result: { ok: true; agitId?: string; agitUrl?: string } | { ok: false; error: string } },
     actor: Actor
   ): Promise<AgitPostRecord>;
   /** 보낼 때만 — 풀어 둔 앱 비밀번호와 주소. 연결이 없거나 풀 수 없으면 사람 말로 던진다 */

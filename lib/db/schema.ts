@@ -877,19 +877,21 @@ export const agentMails = pgTable('agent_mails', {
 /**
  * 아지트 그룹 웹훅 — 한 줄(id 'agit', migrations/0126). 주소가 곧 열쇠라 잠가 둔다(lib/agents/secret-box) — 화면 · 응답으로 나가지
  * 않는다(store/agit). DB 마다 따로라 개발 · 프리뷰는 따로 연결하지 않는 한 운영 그룹에 글을 못 쓴다.
- * assignees 는 요청 글의 담당자(아지트 ID) — 다시 연결해도 남는다.
+ * assignees 는 요청 글의 담당자(아지트 ID) — 연결과 따로다: 연결 전에 넣어 두고(token 이 빈 줄), 끊어도 남는다(token 만 비운다).
  */
 export const agitHooks = pgTable('agit_hooks', {
   id: text('id').primaryKey(),
-  token: text('token').notNull(),
+  /** 잠근 웹훅 주소 — 비었으면 연결 전(담당자만 미리 넣어 둔 줄) · 끊으면 비운다 */
+  token: text('token'),
   assignees: jsonb('assignees').$type<string[]>().notNull().default([]),
-  connectedBy: text('connected_by').notNull(),
-  connectedAt: timestamp('connected_at', { withTimezone: true }).notNull().defaultNow(),
+  connectedBy: text('connected_by'),
+  connectedAt: timestamp('connected_at', { withTimezone: true }),
 });
 
 /**
- * 아지트에 올린 열린구매 글 — 결제일 하나에 한 글(lib/agit/post). status: sending(올리는 중 — 두 번 누름을 막는다) · posted · failed.
- * 한 결제일에 여러 줄일 수 있다 — 금액이 바뀌어 다시 올리는 일. body 는 실제로 보낸 글 그대로다.
+ * 아지트 열린구매 글 — 결제일 하나에 한 글(lib/agit/post). status: draft(정산 담당이 올린 초안 — 한백의 승인을 기다린다) ·
+ * sending(올리는 중 — 두 번 누름을 막는다) · posted · failed. 한 결제일에 열린 초안은 하나다(store/agit draftAgitPost) — 여러 줄은
+ * 다시 올린 것이다. body 는 초안이면 지금 글, 올렸으면 실제로 보낸 글 그대로다.
  */
 export const agitPosts = pgTable('agit_posts', {
   id: text('id').primaryKey(),
@@ -899,11 +901,21 @@ export const agitPosts = pgTable('agit_posts', {
   total: bigint('total', { mode: 'number' }).notNull(),
   batches: integer('batches').notNull(),
   error: text('error'),
-  /** 그 글에 붙인 요청 담당자 */
+  /** 그 글에 붙인 요청 담당자 — 올릴 때 적는다 */
   assignees: jsonb('assignees').$type<string[]>().notNull().default([]),
+  /** 카드가 서는 정산 담당 대화의 말(agent_messages.id) — 상신 알림 · 초안을 올린 답 */
+  messageId: text('message_id'),
+  /** 이미 올린 결제일을 다시 올리는 초안 */
+  again: boolean('again').notNull().default(false),
+  /** 아지트가 돌려준 그 글의 id · 주소(lib/agit/send) — 카드의 「아지트에서 보기」 */
+  agitId: text('agit_id'),
+  agitUrl: text('agit_url'),
+  /** 초안이면 쓴 담당, 올렸으면 승인한 사람 */
   postedBy: text('posted_by').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  /** 올린 때 — 올리는 중에는 누른 때(멈춘 「올리는 중」을 가른다) */
   postedAt: timestamp('posted_at', { withTimezone: true }),
 }, (t) => ({
   byPayDate: index('agit_posts_pay_date_idx').on(t.payDate, t.createdAt),
+  byMessage: index('agit_posts_message_idx').on(t.messageId),
 }));

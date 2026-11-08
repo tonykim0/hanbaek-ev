@@ -3,6 +3,8 @@
  * 요청 글을 세우고 담당자를 붙인다(몸은 lib/agit/post agitPayloadOf · 가이드는 그 머리말).
  * (2026-11-07 실측: 한백 그룹 웹훅에 한 줄을 보내 200 · 다른 팀 코드도 같은 모양 — github.com/WRKR-KEA/backend-tms)
  *
+ * 받으면 아지트가 그 글의 id · 주소를 돌려준다(2026-11-08 실측 — {"status":"ok","id":365222313,"url":"https://team-hanbaek.agit.io/g/…/wall/…"})
+ * — 주소는 *.agit.io 의 https 일 때만 받아 카드의 「아지트에서 보기」에 단다.
  * 아지트가 거절하면 그 답의 앞 200자를 까닭에 붙인다 — 담당자 ID 가 틀렸을 때 무엇이 틀렸는지 아지트만 안다(HTML 이면 안 붙인다).
  *
  * ★주소는 agitWebhookOf 를 통과한 것만 부른다★ — 저장할 때 한 번(라우트), 보낼 때 한 번 더 본다.
@@ -11,7 +13,20 @@
  */
 import { agitWebhookOf, type agitPayloadOf } from './post';
 
-export type AgitSendResult = { ok: true } | { ok: false; error: string };
+export type AgitSendResult = { ok: true; agitId?: string; agitUrl?: string } | { ok: false; error: string };
+
+/** 아지트가 돌려준 글 주소 — https 의 agit.io · *.agit.io 만(다른 곳으로 가는 고리를 화면에 달지 않는다) */
+export function agitPostUrlOf(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  try {
+    const u = new URL(raw);
+    const host = u.hostname;
+    if (u.protocol !== 'https:' || u.username || u.password || u.port) return undefined;
+    return host === 'agit.io' || host.endsWith('.agit.io') ? u.toString() : undefined;
+  } catch {
+    return undefined;
+  }
+}
 
 export const AGIT_TIMEOUT_MS = 10_000;
 
@@ -36,7 +51,12 @@ export async function sendToAgit(
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(AGIT_TIMEOUT_MS),
     });
-    if (res.ok) return { ok: true };
+    if (res.ok) {
+      const json = (await res.json().catch(() => null)) as { id?: unknown; url?: unknown } | null;
+      const id = typeof json?.id === 'number' || typeof json?.id === 'string' ? String(json.id) : undefined;
+      const url = agitPostUrlOf(json?.url);
+      return { ok: true, ...(id ? { agitId: id } : {}), ...(url ? { agitUrl: url } : {}) };
+    }
     if (res.status === 404) return { ok: false, error: '아지트가 이 웹훅을 모릅니다(404) — 그룹에서 웹훅을 지웠으면 새 주소로 다시 연결해 주세요.' };
     return { ok: false, error: `아지트가 받지 않았습니다(${res.status})${(await reasonOf(res)) || '.'}` };
   } catch (e) {
