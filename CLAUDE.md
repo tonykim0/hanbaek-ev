@@ -304,13 +304,17 @@
   일하는 것을 막는다. 알림 판단은 `watch-notify.py`, 상태·로그는 `~/hanbaek-backups/auto/watch-*`.
   저장소 밖에 두는 이유: launchd 는 `~/Documents` 를 못 읽는다(주간 백업 `backup-prod.sh` 가 그래서 2주 실패했다).
   한계: 이 Mac 이 켜져 있고 로그인돼 있을 때만 — Slack·메일로 보내려면 `watch-notify.py` 의 notify 에 웹훅 한 줄.
-- ★**운영 백업은 매일 09:30 이다 — DB 와 파일(Blob) 둘 다**★ (2026-11-06 주 1회에서 바꿨다 — 11-02 덤프에 그 뒤 나흘치와
-  에이전트 표 10개가 없었고, 파일은 사본이 어디에도 없었다). `~/hanbaek-backups/backup-prod.sh`(launchd `com.hanbaek.db-backup`)가
-  DB 를 `auto/prod-*.dump`(최근 60개 · 두 달)로, 운영 Blob 을 `blob/`(저장소 이름 그대로 · 새 파일만 받는다 · 운영에서 지운 것도
-  남긴다 · 같은 이름이 바뀌면 앞 것은 `_replaced/` · 목록과 blob 주소는 `_list.json`)으로 받는다. Blob 토큰은
-  `~/hanbaek-backups/.env.prod-blob` 이다 — Vercel 의 것은 Sensitive 라 `set-blob-token.sh` 가 클립보드에서 넣는다. 결과는
-  `auto/backup.log` 마지막 한 줄이고 감시가 「실패 —」·「경고 —」와 덤프 나이(3일)를 본다. 성공은 알리지 않는다.
-  ★백업은 개발 DB 에 넣지 않는다★ — 프리뷰에 운영 자료가 안 보이는 것은 백업이 없어서가 아니다. ★사본은 이 Mac 하나뿐이다★.
+- ★**운영 백업은 매일 09:30 이다 — DB 와 파일(Blob) 둘 다, 이 Mac 과 Google Drive 에**★ (2026-11-06 주 1회에서 바꿨다 — 11-02 덤프에
+  그 뒤 나흘치와 에이전트 표 10개가 없었고, 파일은 사본이 어디에도 없었다). `~/hanbaek-backups/backup-prod.sh`(launchd `com.hanbaek.db-backup`)가
+  DB 를 `auto/prod-*.dump`(최근 60개 · 두 달)로 뜨고 같은 것을 `prod-backup/db/` 에 두고, 운영 파일을 `prod-backup/blob/`(저장소 이름
+  그대로 · 새 파일만 받는다 · 운영에서 지운 것도 남긴다)로 받는다. 주소 · DB 자리 대응은 `prod-backup/manifest.json` 이다 — `scripts/archive-blob.ts`
+  와 같은 모양이라 `scripts/restore-blob.ts --archive ~/hanbaek-backups/prod-backup` 로 되살린다. ★파일 목록은 Blob 이 아니라 그날 덤프에서
+  읽는다 — 토큰이 없다★(2026-11-08 `blob-tool/mirror.mjs` — 운영 파일은 공개 주소라 받는 데 열쇠가 필요 없고, 이 Mac 에 운영 파일을 지울
+  수 있는 토큰을 두지 않는다. 대가: DB 에 없는 자료실(전기차 · 태양광)은 빠진다). ★`prod-backup/` 은 Google Drive 앱이 「내 Mac」 폴더로
+  동기화한다★(사용자 「내 구글드라이브에 저장해줘」 · 사용자 개인 계정 · 폴더는 사용자가 Drive 앱에서 더한다) — 스크립트는
+  `~/Library/CloudStorage` 에 직접 못 쓴다(macOS 보호 · Operation not permitted). 결과는 `auto/backup.log` 마지막 한 줄이고 감시가
+  「실패 —」·「경고 —」와 덤프 나이(3일)를 본다. 성공은 알리지 않는다.
+  ★백업은 개발 DB 에 넣지 않는다★ — 프리뷰에 운영 자료가 안 보이는 것은 백업이 없어서가 아니다.
 - 프로덕션 DB 를 봐야 할 때만 접속 문자열을 바꿔 쓰고, 끝나면 개발 DB 로 되돌린다.
 - 프로덕션의 첫 관리자는 `npm run auth:bootstrap`, 다음 사람부터는 `/admin/accounts`.
 
