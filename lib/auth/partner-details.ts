@@ -22,6 +22,7 @@ import {
   normalizeAccountNo,
 } from '@/lib/bank-account';
 import { isValidKoreanBizId } from '@/lib/bizid';
+import { isHanbaek } from '@/lib/roles';
 
 export interface PartnerDetailsView {
   bizRegNo: string | null;
@@ -62,7 +63,8 @@ function assertSelfOrAdmin(actor: Actor, targetId: string, what: string): void {
 }
 
 /**
- * 협력사 계정인지 확인하고 정규화된 id 를 돌려준다. 관리자 계정에는 협력사 정보가 없다.
+ * 협력사 계정인지 확인하고 정규화된 id 를 돌려준다. 한백 계정(관리자 · 열람 전용 — 재무팀 등)에는 협력사 정보가 없다
+ * (한백 2026-11-08 「협력사 정보에서 재무팀이랑 한백은 빼자. 해당없어」 — 열람 전용이 협력사 카드로 서 있었다).
  * userStore 로 본다 — DB 계정만이 아니라 배포 설정(AUTH_USERS)·개발 시드 계정도
  * 자기 계좌를 적을 수 있어야 한다.
  */
@@ -70,7 +72,7 @@ async function requirePartnerAccount(loginId: string): Promise<string> {
   const id = loginId.trim().toLowerCase();
   const account = await userStore.find(id);
   if (!account) throw new Error('없는 계정입니다.');
-  if (account.role === 'admin') throw new Error('관리자 계정에는 협력사 정보를 두지 않습니다.');
+  if (isHanbaek(account.role)) throw new Error('한백 계정에는 협력사 정보를 두지 않습니다.');
   return id;
 }
 

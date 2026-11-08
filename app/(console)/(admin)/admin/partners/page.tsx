@@ -28,7 +28,8 @@ export default async function PartnersPage() {
   if (!isHanbaek(session.role)) redirect('/projects');
 
   const [accounts, details] = await Promise.all([userStore.list(), listPartnerDetails()]);
-  const partners = accounts.filter((a) => a.role !== 'admin');
+  // 협력사 계정만 — 한백 계정(관리자 · 열람 전용 — 재무팀 등)은 받을 지급이 없다(한백 2026-11-08 「재무팀이랑 한백은 빼자. 해당없어」)
+  const partners = accounts.filter((a) => !isHanbaek(a.role));
 
   return (
     <>

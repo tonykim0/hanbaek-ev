@@ -50,7 +50,7 @@ const EMPTY_DETAILS: PartnerDetailsView = {
 export default function PartnerDetailsSection({
   accounts, details, dbReady, heading = true, canWrite = true,
 }: {
-  /** 협력사 계정만 — 관리자 계정에는 협력사 정보를 두지 않는다 */
+  /** 협력사 계정만 — 한백 계정(관리자 · 열람 전용)에는 협력사 정보를 두지 않는다 */
   accounts: AccountView[];
   details: Record<string, PartnerDetailsView>;
   dbReady: boolean;
