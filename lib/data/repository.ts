@@ -651,9 +651,9 @@ export interface ProjectRepository {
     input: { id: string; body: string; total: number; batches: number; assignees: string[] },
     actor: Actor
   ): Promise<AgitPostRecord>;
-  /** 올리기 끝 — 결과를 적는다. 올렸으면 정산 담당의 그 결제일 상신 할 일을 끝내고 대화에 한 줄 */
+  /** 올리기 끝 — 결과를 적는다. 올렸으면 정산 담당의 그 결제일 상신 할 일을 끝내고 대화에 한 줄 · body 가 오면 올린 글(엑셀 캡처 · zip 주소가 든 것)로 바꿔 둔다 */
   finishAgitPost(
-    input: { id: string; result: { ok: true; agitId?: string; agitUrl?: string } | { ok: false; error: string } },
+    input: { id: string; result: { ok: true; agitId?: string; agitUrl?: string } | { ok: false; error: string }; body?: string },
     actor: Actor
   ): Promise<AgitPostRecord>;
   /** 보낼 때만 — 풀어 둔 앱 비밀번호와 주소. 연결이 없거나 풀 수 없으면 사람 말로 던진다 */

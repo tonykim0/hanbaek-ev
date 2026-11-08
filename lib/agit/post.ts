@@ -158,8 +158,6 @@ export function agitPostOf(payDate: string, batches: readonly AgitBatch[], conso
   const vat = sorted.reduce((n, b) => n + vatOf(b.total), 0);
   const name = requestNameOf(payDate, sorted.map((b) => b.kind));
   const [, m, d] = payDate.split('-').map(Number);
-  /* 거래처 · 품목명 · 금액만(한백 11-08 — 위 itemNameOf). 세금계산서가 빠진 배치는 정산 담당의 말 · 엑셀 비고가 짚는다 */
-  const items = sorted.map((b) => `> - ${mdText(b.org ?? '지급처 미정')} · ${itemNameOf(b.kind, b.lines)} · ${won(b.total)}원`);
   const links = sorted.filter((b) => b.org).map((b) => {
     const label = `${b.org}${sorted.filter((x) => x.org === b.org).length > 1 ? ` (${b.kind})` : ''}`;
     return `> [${mdText(label)}](${mdHref(`${consoleUrl}${statementPathOf(payDate, b.org!, b.kind)}`)})`;
@@ -169,8 +167,9 @@ export function agitPostOf(payDate: string, batches: readonly AgitBatch[], conso
     '# 배경',
     `> - 공사명 : ${name.subject}`,
     `> - 상황설명 : ${name.situation}`,
+    /* 구매 내역은 엑셀 캡처 그림만(한백 11-09 「구매내역안에 텍스트 필요없어」) — 그림 주소는 올릴 때 붙는다(fillAgitFiles) */
     '# 구매 내역',
-    ...items,
+    `![${AGIT_IMAGE_ALT}](${AGIT_IMAGE_SLOT})`,
     '# 기한',
     `> ${name.round ? '정기결제일' : '지급일'} ${m}월 ${d}일`,
     '# 청구 금액',
@@ -179,6 +178,10 @@ export function agitPostOf(payDate: string, batches: readonly AgitBatch[], conso
     '# 참고자료',
     '> 거래명세서 내역',
     ...links,
+    /* 첨부 파일은 참고자료처럼 머리 + 상자, 고리는 상자 안(한백 11-09) — zip 주소도 올릴 때 붙는다 */
+    '# 첨부 파일',
+    '> 구매요청간소화 엑셀 · 거래명세서 · 세금계산서',
+    `> [${mdText(`${agitFolderOf(payDate, sorted.map((b) => b.kind))}.zip`)}](${AGIT_ZIP_SLOT})`,
   ].join('\n');
   const title = name.subject;
   const blocked = sorted.length === 0
@@ -193,6 +196,33 @@ export function agitPostOf(payDate: string, batches: readonly AgitBatch[], conso
 const mdText = (s: string): string => s.replace(/([\\[\]*_`])/g, '\\$1');
 /** 마크다운 고리의 주소 — 괄호(지급처 이름의 「(영업)」)가 고리를 끊지 않게 */
 const mdHref = (url: string): string => url.replace(/\(/g, '%28').replace(/\)/g, '%29').replace(/ /g, '%20');
+
+/* ── 엑셀 캡처 · 첨부 zip 의 자리 ──
+ * 웹훅은 글자만 받는다 — 그림 · 파일을 못 붙인다. 아지트의 마크다운은 ![글](주소)를 그 주소의 그림으로 그리므로(아지트 app.js 의
+ * outputLink → drmImage, 11-09 확인 · {IMAGE:id} 는 그 글의 첨부에서만 찾아 봇 글에는 안 된다), 승인 때 콘솔이 캡처 · zip 을 Blob 에
+ * 올리고 그 주소를 이 자리에 넣는다(app/api/agit/posts/[id] · lib/agit/bundle-zip publishAgitFiles). 초안 · 카드에는 자리 글이 선다 —
+ * 승인 때 다시 지어 견주는 글(본 글)도 자리 글이라 주소가 견주기에 끼지 않는다. */
+export const AGIT_IMAGE_ALT = '구매요청간소화 엑셀';
+export const AGIT_IMAGE_SLOT = '올릴 때 붙는 엑셀 캡처';
+export const AGIT_ZIP_SLOT = '올릴 때 붙는 첨부 zip';
+
+/** 자리 글에 올린 파일 주소를 넣는다 — 자리가 하나라도 없으면 던진다(자리 글이 아지트에 그대로 나가지 않게) */
+export function fillAgitFiles(text: string, files: { image: string; zip: string }): string {
+  const image = `](${AGIT_IMAGE_SLOT})`;
+  const zip = `](${AGIT_ZIP_SLOT})`;
+  if (!text.includes(image) || !text.includes(zip)) throw new Error('글에 엑셀 캡처 · 첨부 zip 자리가 없습니다.');
+  return text.replace(image, () => `](${mdHref(files.image)})`).replace(zip, () => `](${mdHref(files.zip)})`);
+}
+
+/** 파일 이름에 못 쓰는 글자를 걷는다(/ \ : * ? " < > |) */
+export const safeName = (s: string): string => s.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** 첨부 zip 의 폴더 · 이름(.zip 앞) — 「26년 10월 영업위탁 수수료 1차」 · 정기결제가 아니면 「… (11월 17일 지급)」 대신 「… 11월 17일 지급」 */
+export function agitFolderOf(payDate: string, kinds: readonly PayoutKind[]): string {
+  const name = requestNameOf(payDate, kinds);
+  const tail = name.round ?? `${payDate.slice(5, 7).replace(/^0/, '')}월 ${payDate.slice(8).replace(/^0/, '')}일 지급`;
+  return safeName(`${name.month} ${name.what} ${tail}`);
+}
 
 /**
  * 저장한 글의 제목 — 글이 「#구매요청간소화」로 시작해(제목 줄이 없다) 목록 · 감사기록 · 올렸다는 말에는 공사명을 쓴다.

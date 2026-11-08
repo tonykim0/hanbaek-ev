@@ -144,11 +144,11 @@ export function AgitCard({ post, connected, assignees }: {
         title={`${payDateName(post.payDate)} 열린구매 글을 아지트에 올립니다`}
         detail={post.again
           ? '이 결제일에 올린 글이 있습니다 — 새 글이 하나 더 섭니다. 앞 글은 아지트에서 지워 주세요.'
-          : '열린구매 그룹에 요청 글로 섭니다 — 그룹 사람들에게 보이고, 콘솔에서는 지울 수 없습니다.'}
+          : '열린구매 그룹에 요청 글로 섭니다 — 엑셀 캡처는 구매 내역에, 첨부 zip 은 첨부 파일에 붙어 그룹 사람들에게 보입니다.'}
         hint={`${sum} · 담당 ${assigneesLabel(assignees)}`}
         confirmLabel="올리기"
         busy={busy}
-        busyLabel="올리는 중…"
+        busyLabel="올리는 중… (엑셀 캡처 · 첨부 zip 짓는 중 · 20초쯤)"
         error={error}
         onConfirm={() => void approve()}
         onCancel={() => setAsking(false)}

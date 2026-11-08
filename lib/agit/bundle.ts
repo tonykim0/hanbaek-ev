@@ -11,7 +11,9 @@
  * 아지트 웹훅은 파일을 못 붙인다 — 한백이 정산 담당 카드에서 받아 그 글에 붙인다.
  */
 import { today } from '@/lib/date';
-import { itemNameOf, requestNameOf, sortBatches, statementPathOf, vatOf, type AgitBatch, type AgitPayee } from './post';
+import {
+  agitFolderOf, itemNameOf, requestNameOf, safeName, sortBatches, statementPathOf, vatOf, type AgitBatch, type AgitPayee,
+} from './post';
 import type { PurchaseSheet } from './purchase-xlsx';
 import { formatAccountNo } from '@/lib/bank-account';
 
@@ -21,7 +23,7 @@ export interface AgitBundlePlan {
   /** zip 안의 폴더 — zip 이름에서 .zip 을 뗀 것 */
   folder: string;
   xlsxName: string;
-  /** 엑셀 캡처 — 지난 글은 본문 「구매 내역」 밑에 넣었다(웹훅은 그림을 못 넣어 첨부로 올린다) */
+  /** 엑셀 캡처 — 글의 「구매 내역」에 그림으로 선다(승인 때 Blob 에 올려 주소를 넣는다 · lib/agit/post fillAgitFiles) */
   imageName: string;
   sheet: PurchaseSheet;
   /** 배치마다 거래명세서 — 콘솔 주소(경로)와 넣을 이름 */
@@ -30,8 +32,8 @@ export interface AgitBundlePlan {
   invoices: Array<{ name: string; url: string }>;
 }
 
-/** 파일 이름에 못 쓰는 글자를 걷는다(/ \ : * ? " < > |) */
-export const safeName = (s: string): string => s.replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
+/** 파일 이름에 못 쓰는 글자를 걷는다 — 글의 zip 이름과 같은 것을 쓰려고 lib/agit/post 에 둔다 */
+export { safeName };
 
 /** 원래 파일의 확장자 — 없으면 pdf */
 const extOf = (name: string): string => /\.([A-Za-z0-9]{1,5})$/.exec(name)?.[1]?.toLowerCase() ?? 'pdf';
@@ -46,7 +48,8 @@ export function agitBundleOf(
   const sorted = sortBatches(batches).filter((b) => b.org);
   const name = requestNameOf(payDate, sorted.map((b) => b.kind));
   const tail = name.round ?? `${payDate.slice(5, 7).replace(/^0/, '')}월 ${payDate.slice(8).replace(/^0/, '')}일 지급`;
-  const folder = safeName(`${name.month} ${name.what} ${tail}`);
+  /* 글의 「첨부 파일」 고리 이름과 같다(lib/agit/post agitFolderOf) */
+  const folder = agitFolderOf(payDate, sorted.map((b) => b.kind));
   /* 엑셀 이름 · 「내용」 칸은 지난 양식대로 붙여 쓴다 — 「영업위탁수수료」 */
   const tight = name.what.replace('영업위탁 수수료', '영업위탁수수료');
   /* 같은 지급처가 영업비 · 시공비 둘이면 이름 끝에 구분을 단다 — 하나면 지난 zip 처럼 지급처 이름만 */

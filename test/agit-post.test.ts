@@ -7,7 +7,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import JSZip from 'jszip';
 import {
-  agitAssigneesOf, agitDraftsOf, agitPayloadOf, agitPostOf, agitPostedSay, agitTitleOf, agitWebhookOf, assigneesLabel, badAgitIds, itemNameOf,
+  agitAssigneesOf, agitDraftsOf, agitFolderOf, agitPayloadOf, agitPostOf, agitPostedSay, agitTitleOf, agitWebhookOf, assigneesLabel, badAgitIds,
+  fillAgitFiles, itemNameOf,
   requestNameOf, upcomingPayDates, vatOf, type AgitBatch, type AgitPayee,
 } from '@/lib/agit/post';
 import { agitBundleOf, safeName } from '@/lib/agit/bundle';
@@ -51,8 +52,7 @@ describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 �
       '> - 공사명 : 26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차',
       '> - 상황설명 : 26년 10월 동안 진행된 전기차 충전기 설치 영업에 대한 영업위탁 수수료 1차',
       '# 구매 내역',
-      '> - 에코일렉 · 영업비 1차 · 96,460,000원',
-      '> - 이브이솔루션 (영업) · 영업비 1차 · 4,900,000원',
+      '![구매요청간소화 엑셀](올릴 때 붙는 엑셀 캡처)',
       '# 기한',
       '> 정기결제일 11월 10일',
       '# 청구 금액',
@@ -62,12 +62,28 @@ describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 �
       '> 거래명세서 내역',
       `> [에코일렉](${ECO_LINK})`,
       `> [이브이솔루션 (영업)](${URL_}/payments/statement?org=${encodeURIComponent('이브이솔루션 ')}%28${encodeURIComponent('영업')}%29&date=2026-11-10&kind=${encodeURIComponent('영업비')})`,
+      '# 첨부 파일',
+      '> 구매요청간소화 엑셀 · 거래명세서 · 세금계산서',
+      '> [26년 10월 영업위탁 수수료 1차.zip](올릴 때 붙는 첨부 zip)',
     ].join('\n'));
     expect(post.text).not.toContain('123-45-6789');
     expect(post.text).not.toContain('team.finance'); // cc 는 긴급 글에만(한백 11-08)
     expect(post).toMatchObject({
       total: 101_360_000, batches: 2, blocked: null, title: '26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차',
     });
+  });
+
+  it('엑셀 캡처 · 첨부 zip 자리 — 올릴 때 주소를 넣는다(괄호 · 빈칸은 고리가 안 끊기게) · 자리가 없으면 던진다', () => {
+    const post = agitPostOf('2026-11-10', nov10, URL_);
+    const base = 'https://x.public.blob.vercel-storage.com/agit-posts/2026-11-10/u';
+    const filled = fillAgitFiles(post.text, { image: `${base}/캡처 (1).png`, zip: `${base}/26년 10월.zip` });
+    expect(filled).toContain(`# 구매 내역\n![구매요청간소화 엑셀](${base}/캡처%20%281%29.png)\n# 기한`);
+    expect(filled).toContain(`> [26년 10월 영업위탁 수수료 1차.zip](${base}/26년%2010월.zip)`);
+    expect(filled).not.toContain('올릴 때 붙는');
+    expect(() => fillAgitFiles('# 글', { image: 'a', zip: 'b' })).toThrow(/자리가 없습니다/);
+    /* 글의 zip 이름 = 첨부 zip 의 이름 */
+    expect(`${agitFolderOf('2026-11-10', ['영업비'])}.zip`).toBe(agitBundleOf('2026-11-10', nov10, payeeOf).zipName);
+    expect(agitFolderOf('2026-11-17', ['영업비', '시공비'])).toBe('26년 10월 영업위탁 수수료 및 시공비 11월 17일 지급');
   });
 
   it('정기결제가 아닌 날은 「지급일」 · 저장한 글의 제목은 공사명(옛 모양의 글도)', () => {
@@ -95,10 +111,9 @@ describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 �
       { ...nov10[1], invoice: true },
       { org: '에코일렉', kind: '시공비', total: 1_000, invoice: false, lines: lines(1, 1, 1_000) },
     ], URL_);
-    expect(post.text).toContain('> - 에코일렉 · 영업비 1차 · 96,460,000원\n');
-    expect(post.text).toContain('> - 에코일렉 · 시공비 1차 · 1,000원\n');
-    /* 한백 11-08 「현장수, 기수는 빼」 — 계산서 없음도 품목 줄에 달지 않는다(정산 담당의 말 · 엑셀 비고가 짚는다) */
-    expect(post.text).not.toMatch(/개 현장|\d기 ·|세금계산서 없음/);
+    /* 구매 내역은 엑셀 캡처 그림만 — 품목 줄 · 현장 수 · 계산서 없음은 글에 없다(한백 11-08 · 11-09, 엑셀에 있다) */
+    expect(post.text).not.toMatch(/> - 에코일렉|개 현장|\d기 ·|세금계산서 없음/);
+    expect(post.text).toContain('> [26년 10월 영업위탁 수수료 및 시공비 1차.zip](올릴 때 붙는 첨부 zip)');
     expect(post.text).toContain('> [에코일렉 (영업비)](');
     expect(post.text).toContain('> [에코일렉 (시공비)](');
   });
@@ -139,7 +154,7 @@ describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 �
     const one = agitDraftsOf('2026-11-07', rows, [], [], URL_);
     const two = agitDraftsOf('2026-11-07', [...rows].reverse(), [], [], URL_);
     expect(one.map((d) => d.text)).toEqual(two.map((d) => d.text));
-    expect(one[0].text).toContain('> - 에코일렉 · 영업비 1차 · 2,730,001원\n');
+    expect(one[0].text).toContain('> 부가세 전 2,730,101\n');
     expect(agitDraftsOf('2026-11-11', rows, [], [], URL_)).toEqual([]); // 지난 결제일은 없다
     expect(agitDraftsOf('2026-11-11', rows, [], [], URL_, '2026-11-10')).toHaveLength(1); // 고르면 지난 날도
   });

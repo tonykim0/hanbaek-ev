@@ -43,6 +43,8 @@ type Handler<P, B> = (input: {
   body: B;
   params: P;
   actor: Actor;
+  /** 들어온 요청 — 주소 · 쿠키가 필요한 핸들러만 쓴다(아지트 승인이 거래명세서를 그 로그인으로 인쇄한다) */
+  request: Request;
 }) => Promise<unknown>;
 
 function wrap<P, B>(adminOnly: boolean, deny: string, handle: Handler<P, B>) {
@@ -90,7 +92,7 @@ function wrap<P, B>(adminOnly: boolean, deny: string, handle: Handler<P, B>) {
 
     try {
       // 핸들러가 객체를 돌려주면 응답에 실어 보낸다 (묶음 처리의 실패 목록 같은 것)
-      const extra = await handle({ body, params: ctx.params, actor: actorOf(session) });
+      const extra = await handle({ body, params: ctx.params, actor: actorOf(session), request });
       return NextResponse.json(
         extra && typeof extra === 'object' ? { ok: true, ...extra } : { ok: true }
       );

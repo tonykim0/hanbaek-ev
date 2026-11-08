@@ -275,7 +275,7 @@ export const agitStore: Pick<
         return;
       }
       await tx.update(agitPosts).set({
-        status: 'posted', error: null, postedAt: new Date(),
+        status: 'posted', error: null, postedAt: new Date(), ...(input.body ? { body: input.body } : {}),
         agitId: input.result.agitId ?? null, agitUrl: input.result.agitUrl ?? null,
       }).where(eq(agitPosts.id, row.id));
       await writeAudit(tx, {

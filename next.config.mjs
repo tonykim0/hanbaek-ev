@@ -54,6 +54,8 @@ const nextConfig = {
     // 크로미움 압축본(bin/*.br)은 코드에서 import 하지 않아 추적에서 빠진다 — 그 라우트에만 싣는다
     outputFileTracingIncludes: {
       '/api/agit/posts/[id]/files': ['./node_modules/@sparticuz/chromium/bin/**', './lib/agit/purchase-template.xlsx'],
+      /* 승인도 엑셀 캡처 · 첨부 zip 을 짓는다(거래명세서 인쇄 · 엑셀 틀) */
+      '/api/agit/posts/[id]': ['./node_modules/@sparticuz/chromium/bin/**', './lib/agit/purchase-template.xlsx'],
     },
   },
   async redirects() {

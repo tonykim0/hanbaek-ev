@@ -35,6 +35,16 @@ vi.mock('@/lib/agit/statement-pdf', () => ({
   cookiePairs: () => [],
 }));
 
+/* 승인은 엑셀 캡처 · 첨부 zip 을 Blob 에 올린다 — 시험에서는 가짜 주소만(올리지 않는다). 무엇을 올렸는지만 본다 */
+const blobPuts: string[] = [];
+vi.mock('@vercel/blob', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@vercel/blob')>()),
+  put: async (pathname: string) => {
+    blobPuts.push(pathname);
+    return { url: `https://x.public.blob.vercel-storage.com/${pathname}`, pathname };
+  },
+}));
+
 const repo = getRepository();
 const HOOK = `https://agit.io/webhook/test-${RUN}`;
 /** 아무 시험도 안 쓰는 먼 날 — 그날의 글에 이 시험의 배치만 든다. 10 · 25일이 아니라 「지급」이다 */
@@ -168,7 +178,8 @@ describe('정산 담당의 초안 → 한백의 승인 → 아지트', () => {
       const made = await draftUnder(D, said);
       expect(made.plan).toBe('create');
       expect(made.post).toMatchObject({ status: 'draft', payDate: D, messageId: said, batches: 1, again: false });
-      expect(made.post.body).toContain(`- ${org} · 영업비 1차 · `);
+      expect(made.post.body).toContain(`> [${org}](`); // 참고자료의 그 지급처 거래명세서 고리 — 구매 내역은 엑셀 캡처 자리뿐
+      expect(made.post.body).toContain('# 구매 내역\n![구매요청간소화 엑셀](올릴 때 붙는 엑셀 캡처)');
       expect(made.post.title).toBe('98년 2월 전기차 충전 인프라 구축사업 영업위탁 수수료 (3월 17일 지급)'); // 제목은 공사명(글은 #구매요청간소화 로 시작)
       /* 다시 지어도 같은 줄 — 같은 글이면 그대로, 다른 말 밑으로 옮기면 옮긴다 */
       expect((await draftUnder(D, said)).plan).toBe('keep');
@@ -202,9 +213,15 @@ describe('정산 담당의 초안 → 한백의 승인 → 아지트', () => {
       expect(fetcher).toHaveBeenCalledTimes(1);
       const [url, init] = fetcher.mock.calls[0];
       expect(url).toBe(HOOK);
-      expect(JSON.parse(String(init.body))).toEqual({
-        text: made.post.body, task: { template_name: '구매요청간소화', assignees: ['kiko.x', 'ella.a'] },
-      });
+      /* 보낸 글 = 초안의 자리 글에 올린 캡처 · zip 주소를 넣은 것 · 올린 글도 그것으로 남는다 */
+      const sent = JSON.parse(String(init.body));
+      expect(sent.task).toEqual({ template_name: '구매요청간소화', assignees: ['kiko.x', 'ella.a'] });
+      expect(made.post.body).toContain('](올릴 때 붙는 엑셀 캡처)');
+      expect(sent.text).not.toContain('올릴 때 붙는');
+      expect(sent.text).toMatch(new RegExp(`# 구매 내역\\n!\\[구매요청간소화 엑셀\\]\\(https://x\\.public\\.blob\\.vercel-storage\\.com/agit-posts/${D}/[^)]+\\.png\\)`));
+      expect(sent.text).toMatch(new RegExp(`\\.zip\\]\\(https://x\\.public\\.blob\\.vercel-storage\\.com/agit-posts/${D}/[^)]+\\.zip\\)`));
+      expect((ok.json?.post as { body?: string } | undefined)?.body).toBe(sent.text);
+      expect(blobPuts.filter((b) => b.startsWith(`agit-posts/${D}/`))).toHaveLength(2);
 
       expect((await openTask(D))?.doneAt).not.toBeNull();
       const auto = await getDb().select({ body: agentMessages.body, role: agentMessages.role }).from(agentMessages)
@@ -246,7 +263,7 @@ describe('정산 담당의 초안 → 한백의 승인 → 아지트', () => {
       const cards = await repo.listAgitPosts(admin, [said.id]);
       expect(cards).toHaveLength(1);
       expect(cards[0]).toMatchObject({ status: 'draft', payDate: D3, batches: 1, postedBy: '정산 담당' });
-      expect(cards[0].body).toContain(`- ${org} · 영업비 1차 · `);
+      expect(cards[0].body).toContain(`> [${org}](`);
       expect(cards[0].body).toContain('# 참고자료'); // 구매요청간소화 글(마크다운) · cc 는 긴급 글에만
       expect(cards[0].title).toBe('98년 2월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차');
     });
