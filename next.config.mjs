@@ -53,7 +53,7 @@ const nextConfig = {
     serverComponentsExternalPackages: ['heic-convert', '@sparticuz/chromium', 'puppeteer-core'],
     // 크로미움 압축본(bin/*.br)은 코드에서 import 하지 않아 추적에서 빠진다 — 그 라우트에만 싣는다
     outputFileTracingIncludes: {
-      '/api/agit/posts/[id]/files': ['./node_modules/@sparticuz/chromium/bin/**'],
+      '/api/agit/posts/[id]/files': ['./node_modules/@sparticuz/chromium/bin/**', './lib/agit/purchase-template.xlsx'],
     },
   },
   async redirects() {

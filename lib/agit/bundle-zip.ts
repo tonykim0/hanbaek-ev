@@ -3,11 +3,25 @@
  * 거래명세서 PDF 와 계산서 파일을 받는 손은 부르는 쪽이 준다(라우트는 서버 브라우저 · Blob, 시험은 가짜) — 이 파일은 묶기만 한다.
  * 하나라도 못 받으면 던진다 — 빠진 zip 을 받아 아지트에 올리면 재무가 다시 묻는다.
  */
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import JSZip from 'jszip';
 import { ourBlobPathname } from '@/lib/intake-stage';
 import type { AgitBundlePlan } from './bundle';
 import { purchaseXlsx } from './purchase-xlsx';
 import { purchaseHtml } from './purchase-image';
+
+/**
+ * 구매요청간소화 엑셀의 틀 — 한백이 쓰던 엑셀에서 값만 걷은 것(scripts/agit-purchase-template.ts). 저장소의 파일이고, 운영에서는
+ * next.config 의 outputFileTracingIncludes 가 첨부 zip 라우트에 싣는다.
+ */
+export const PURCHASE_TEMPLATE = 'lib/agit/purchase-template.xlsx';
+let template: Promise<Uint8Array> | null = null;
+export const purchaseTemplate = (): Promise<Uint8Array> =>
+  (template ??= readFile(join(process.cwd(), PURCHASE_TEMPLATE)).then((b) => new Uint8Array(b)).catch((e) => {
+    template = null;
+    throw e;
+  }));
 
 export async function agitZipOf(
   plan: AgitBundlePlan,
@@ -20,8 +34,10 @@ export async function agitZipOf(
 ): Promise<Uint8Array> {
   const zip = new JSZip();
   const dir = zip.folder(plan.folder)!;
-  dir.file(plan.xlsxName, await purchaseXlsx(plan.sheet));
-  const { pdfs, image } = await hands.render({ paths: plan.statements.map((s) => s.path), html: purchaseHtml(plan.sheet) });
+  const xlsx = await purchaseXlsx(plan.sheet, await purchaseTemplate());
+  dir.file(plan.xlsxName, xlsx);
+  /* 캡처는 방금 채운 엑셀 그대로 그린다 — 엑셀과 그림의 모양이 갈리지 않게 */
+  const { pdfs, image } = await hands.render({ paths: plan.statements.map((s) => s.path), html: await purchaseHtml(xlsx) });
   if (pdfs.length !== plan.statements.length) throw new Error('거래명세서를 다 만들지 못했습니다.');
   if (!image) throw new Error('엑셀 캡처를 만들지 못했습니다.');
   dir.file(plan.imageName, image);

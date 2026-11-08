@@ -4,12 +4,13 @@
  *
  * 모양은 한백이 아지트에 올려 온 zip 그대로다(26년 9월 2차 — 「26년 9월 영업위탁 수수료 2차.zip」):
  *   26년 10월 영업위탁 수수료 1차/
- *     구매요청간소화_전기차충전기 영업위탁수수료(26년 10월 1차 내역).xlsx   ← 구매요청간소화 양식(lib/agit/purchase-xlsx)
+ *     구매요청간소화_전기차충전기 영업위탁수수료(26년 10월 1차 내역).xlsx   ← 구매요청간소화 양식 — 한백이 쓰던 엑셀을 틀로(lib/agit/purchase-xlsx)
  *     구매요청간소화_전기차충전기 영업위탁수수료(26년 10월 1차 내역).png    ← 그 엑셀의 캡처 — 본문 가운데에 붙인다(lib/agit/purchase-image)
  *     에코일렉_거래명세서_영업비.pdf                                        ← 콘솔 거래명세서 화면 그대로(lib/agit/statement-pdf)
  *     에코일렉_세금계산서_영업비.pdf                                        ← 배치에 붙은 계산서(협력사가 낸 것)
  * 아지트 웹훅은 파일을 못 붙인다 — 한백이 정산 담당 카드에서 받아 그 글에 붙인다.
  */
+import { today } from '@/lib/date';
 import { itemNameOf, requestNameOf, sortBatches, statementPathOf, vatOf, type AgitBatch, type AgitPayee } from './post';
 import type { PurchaseSheet } from './purchase-xlsx';
 import { formatAccountNo } from '@/lib/bank-account';
@@ -38,7 +39,9 @@ const extOf = (name: string): string => /\.([A-Za-z0-9]{1,5})$/.exec(name)?.[1]?
 export function agitBundleOf(
   payDate: string,
   batches: readonly AgitBatch[],
-  payeeOf: (org: string | null) => AgitPayee | undefined
+  payeeOf: (org: string | null) => AgitPayee | undefined,
+  /** 지은 날 — 엑셀의 =NOW() 칸(M6)에 미리 셈한 값으로 적는다 */
+  madeOn: string = today()
 ): AgitBundlePlan {
   const sorted = sortBatches(batches).filter((b) => b.org);
   const name = requestNameOf(payDate, sorted.map((b) => b.kind));
@@ -57,6 +60,8 @@ export function agitBundleOf(
     sheet: {
       subject: name.subject,
       content: ` 전기차 충전 인프라 구축사업 ${tight}`,
+      year: Number(payDate.slice(0, 4)),
+      madeOn,
       rows: sorted.map((b) => {
         const payee = payeeOf(b.org);
         return {

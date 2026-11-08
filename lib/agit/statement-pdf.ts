@@ -86,6 +86,9 @@ export async function renderAgitFiles(input: {
       await shot.evaluate(() => document.fonts.ready.then(() => true));
       const table = await shot.$('#sheet');
       if (!table) throw new Error('엑셀 캡처를 그리지 못했습니다.');
+      /* 표는 엑셀 열 폭 그대로라 화면보다 넓다(약 1,800점) — 창을 표에 맞춰 잘리지 않게 */
+      const box = await table.boundingBox();
+      if (box) await shot.setViewport({ width: Math.ceil(box.x + box.width + 16), height: Math.ceil(box.y + box.height + 16), deviceScaleFactor: 2 });
       image = await table.screenshot({ type: 'png' });
     }
     return { pdfs: out, image };
