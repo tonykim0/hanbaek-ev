@@ -14,6 +14,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest
 import { and, eq, gte, inArray, like, sql } from 'drizzle-orm';
 import { PUT as putHook, PATCH as patchHook, DELETE as deleteHook } from '@/app/api/agit/hook/route';
 import { POST as approve } from '@/app/api/agit/posts/[id]/route';
+import { GET as getFiles } from '@/app/api/agit/posts/[id]/files/route';
+import JSZip from 'jszip';
 import { getRepository } from '@/lib/data';
 import { getDb } from '@/lib/db/client';
 import { agentMessages, agentTasks, agitHooks, agitPosts, auditLog, notifications } from '@/lib/db/schema';
@@ -23,6 +25,16 @@ import { runAgentReminders } from '@/lib/agents/remind-run';
 import { RUN, USERS, call, signIn } from './kit';
 import { admin, withPayableProject } from './money-kit';
 
+/* 거래명세서 PDF 는 서버 브라우저가 그린다 — 시험에서는 가짜(크롬 없이). 무엇을 그리라고 했는지만 본다 */
+const pdfCalls: string[][] = [];
+vi.mock('@/lib/agit/statement-pdf', () => ({
+  statementPdfs: async ({ paths }: { paths: string[] }) => {
+    pdfCalls.push(paths);
+    return paths.map(() => new Uint8Array([37, 80, 68, 70]));
+  },
+  cookiePairs: () => [],
+}));
+
 const repo = getRepository();
 const HOOK = `https://agit.io/webhook/test-${RUN}`;
 /** 아무 시험도 안 쓰는 먼 날 — 그날의 글에 이 시험의 배치만 든다. 10 · 25일이 아니라 「지급」이다 */
@@ -31,6 +43,8 @@ const D2 = '2098-03-18';
 /** 크론이 초안까지 올리는 정기결제일 — 그 기한 날 아침으로 크론을 부른다 */
 const D3 = '2098-03-10';
 const D3_TITLE = '열린구매 상신 — 3월 10일 정기결제';
+/** 첨부 zip 시험의 결제일 */
+const D4 = '2098-03-19';
 const AGENT = 'settlement';
 const TITLE = `[시험 ${RUN}] 열린구매 상신`;
 const started = new Date();
@@ -46,7 +60,7 @@ const stubFetch = (impl: Fetch) => {
 async function sweep() {
   const db = getDb();
   const keys = [openPurchaseKey(D), openPurchaseKey(D2), openPurchaseKey(D3)];
-  await db.delete(agitPosts).where(inArray(agitPosts.payDate, [D, D2, D3]));
+  await db.delete(agitPosts).where(inArray(agitPosts.payDate, [D, D2, D3, D4]));
   await db.delete(agentTasks).where(and(eq(agentTasks.agentId, AGENT), inArray(agentTasks.kind, keys)));
   await db.delete(agentMessages).where(and(eq(agentMessages.agentId, AGENT), sql`${agentMessages.meta}->>'remind' in (${keys[0]}, ${keys[1]}, ${keys[2]})`));
   await db.delete(agentMessages).where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 1_일 지급 열린구매 글을 아지트에 올렸습니다%')));
@@ -154,8 +168,8 @@ describe('정산 담당의 초안 → 한백의 승인 → 아지트', () => {
       const made = await draftUnder(D, said);
       expect(made.plan).toBe('create');
       expect(made.post).toMatchObject({ status: 'draft', payDate: D, messageId: said, batches: 1, again: false });
-      expect(made.post.body).toContain(`1) ${org} · 영업비 · `);
-      expect(made.post.title).toBe('[열린구매] 3/17 지급 — 협력사 지급 1건');
+      expect(made.post.body).toContain(`- ${org} · 영업비 1차 · `);
+      expect(made.post.title).toBe('98년 2월 전기차 충전 인프라 구축사업 영업위탁 수수료 (3월 17일 지급) #구매요청간소화');
       /* 다시 지어도 같은 줄 — 같은 글이면 그대로, 다른 말 밑으로 옮기면 옮긴다 */
       expect((await draftUnder(D, said)).plan).toBe('keep');
       expect((await draftUnder(D, null)).post.id).toBe(made.post.id);
@@ -188,7 +202,9 @@ describe('정산 담당의 초안 → 한백의 승인 → 아지트', () => {
       expect(fetcher).toHaveBeenCalledTimes(1);
       const [url, init] = fetcher.mock.calls[0];
       expect(url).toBe(HOOK);
-      expect(JSON.parse(String(init.body))).toEqual({ text: made.post.body, task: { assignees: ['kiko.x', 'ella.a'] } });
+      expect(JSON.parse(String(init.body))).toEqual({
+        text: made.post.body, task: { template_name: '구매요청간소화', assignees: ['kiko.x', 'ella.a'] },
+      });
 
       expect((await openTask(D))?.doneAt).not.toBeNull();
       const auto = await getDb().select({ body: agentMessages.body, role: agentMessages.role }).from(agentMessages)
@@ -230,8 +246,36 @@ describe('정산 담당의 초안 → 한백의 승인 → 아지트', () => {
       const cards = await repo.listAgitPosts(admin, [said.id]);
       expect(cards).toHaveLength(1);
       expect(cards[0]).toMatchObject({ status: 'draft', payDate: D3, batches: 1, postedBy: '정산 담당' });
-      expect(cards[0].body).toContain(`1) ${org} · 영업비 · `);
-      expect(cards[0].title).toBe('[열린구매] 3/10 정기결제 — 협력사 지급 1건');
+      expect(cards[0].body).toContain(`- ${org} · 영업비 1차 · `);
+      expect(cards[0].body).toContain('cc @@team.finance');
+      expect(cards[0].title).toBe('98년 2월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차 #구매요청간소화');
+    });
+  });
+
+  it('첨부 zip — 관리자만 · 한 폴더에 구매요청간소화 엑셀과 지급처마다 거래명세서 (한백 「개별 파일로 하나의 zip으로」)', async () => {
+    await withPayableProject(async ({ id, org }) => {
+      await repo.runPayoutBatch([{ projectId: id, kind: '영업비' }], D4, admin);
+      const { post: draft } = await draftUnder(D4, null);
+      const files = () => getFiles(new Request('http://test.local/api/agit/posts/x/files'), { params: { id: draft.id } });
+      for (const u of [USERS.viewer, USERS.ecoelec]) {
+        await signIn(u);
+        expect((await files()).status, u.id).toBe(403);
+      }
+      await signIn(USERS.admin);
+      pdfCalls.length = 0;
+      const res = await files();
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Content-Type')).toBe('application/zip');
+      const name = '98년 2월 영업위탁 수수료 3월 19일 지급';
+      expect(res.headers.get('Content-Disposition')).toContain(encodeURIComponent(`${name}.zip`));
+      const zip = await JSZip.loadAsync(await res.arrayBuffer());
+      expect(Object.keys(zip.files).sort()).toEqual([
+        `${name}/`,
+        `${name}/${org}_거래명세서.pdf`,
+        `${name}/구매요청간소화_전기차충전기 영업위탁수수료(98년 2월 3월 19일 지급 내역).xlsx`,
+      ].sort());
+      expect(pdfCalls).toEqual([[`/payments/statement?org=${encodeURIComponent(org)}&date=${D4}&kind=${encodeURIComponent('영업비')}`]]);
+      expect((await getFiles(new Request('http://test.local/x'), { params: { id: 'none' } })).status).toBe(404);
     });
   });
 

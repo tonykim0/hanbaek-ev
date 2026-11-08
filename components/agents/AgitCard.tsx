@@ -7,10 +7,13 @@
  * 모양은 메일 초안 카드와 같다(components/agents/MailCard — 띠 · 상태 색 · 빨간 확정). 글은 콘솔이 거래명세서로 지은 그대로라 고치는
  * 칸이 없다. 승인하면 서버가 그때 금액으로 다시 짓고, 다르면 올리지 않고 초안을 고쳐 둔다 — 카드가 새 글로 다시 그려지고 까닭이 단추
  * 옆에 뜬다. 연결 · 요청 담당이 비었으면 단추 이름이 그 까닭을 말한다(규칙 3) — 넣는 자리는 머리말 밑 「아지트 연결」 두 줄이다.
+ * ★첨부 파일 받기★(한백 2026-11-08 「개별 파일로 하나의 zip으로 다운받아서 올려」) — 구매요청간소화 엑셀 · 거래명세서 PDF · 세금계산서를
+ * zip 하나로 받는다(app/api/agit/posts/[id]/files). 웹훅은 파일을 못 붙여서 한백이 아지트 글에 붙인다. 거래명세서를 서버가 그려 10~20초 걸린다.
  */
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { won } from '@/lib/format';
+import { downloadBlob } from '@/lib/download';
 import { assigneesLabel, payDateName, type AgitPostRecord } from '@/lib/agit/post';
 import { Btn, Confirm, Err, Tag, TEXT, type Tone } from '@/components/ui';
 
@@ -33,6 +36,7 @@ export function AgitCard({ post, connected, assignees }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [zipping, setZipping] = useState(false);
   const look = LOOK[post.status];
   const open = post.status === 'draft' || post.status === 'failed';
   const blocked = !connected ? '아지트 연결 전 — 올릴 수 없음' : assignees.length === 0 ? '요청 담당 미지정 — 올릴 수 없음' : null;
@@ -59,6 +63,25 @@ export function AgitCard({ post, connected, assignees }: {
       setError('네트워크 오류입니다. 다시 시도해주세요.');
     }
     setBusy(false);
+  }
+
+  async function bundle() {
+    setZipping(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/agit/posts/${post.id}/files`);
+      if (!res.ok) {
+        const json = (await res.json().catch(() => ({}))) as { error?: unknown };
+        setError(typeof json.error === 'string' ? json.error : '첨부 파일을 받지 못했습니다.');
+      } else {
+        const header = res.headers.get('Content-Disposition') ?? '';
+        const name = /filename\*=UTF-8''([^;]+)/.exec(header)?.[1];
+        downloadBlob(await res.blob(), name ? decodeURIComponent(name) : '열린구매 첨부.zip');
+      }
+    } catch {
+      setError('네트워크 오류입니다. 다시 시도해주세요.');
+    }
+    setZipping(false);
   }
 
   async function copy() {
@@ -109,6 +132,9 @@ export function AgitCard({ post, connected, assignees }: {
             {blocked ?? (post.status === 'failed' ? '다시 올리기' : '승인하고 올리기')}
           </Btn>
         )}
+        <Btn size="sm" kind="side" busy={zipping} busyLabel="묶는 중… (거래명세서 PDF)" onClick={() => void bundle()}>
+          첨부 파일 받기 (zip)
+        </Btn>
         <Btn size="sm" kind="quiet" onClick={() => void copy()}>{copied ? '복사됨' : '복사'}</Btn>
         <Err>{error}</Err>
       </div>

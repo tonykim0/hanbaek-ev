@@ -16,7 +16,13 @@
  * 한 번 정해 두기). 웹훅 가이드(아지트 연동 설정의 「사용법 알아보기」, 한백이 붙여 줌): {"text", "task": {"assignees": [아지트 ID…]}}
  * 를 보내면 요청 글이 서고, 상태(0 요청 · 1 진행 · 2 완료 · 3 승인)는 아지트에서 담당자가 바꾼다. 기한 칸은 가이드에 없다.
  *
- * 아지트 웹훅은 글자만 받는다(파일을 못 붙인다) — 세금계산서 · 사업자등록증 · 통장사본은 「있음/없음」만 적고, 거래명세서는 콘솔 주소다.
+ * ★글은 한백이 올려 온 양식 그대로다★(2026-11-08 — 아지트의 지난 「… 영업위탁 수수료 N차」 글을 읽고 맞췄다): 첫 줄 제목 + #구매요청간소화 ·
+ * 지급 요청일 · 1. 구매사유(공사명 · 상황설명) · 2. 지급요청 품목(부가세 전 / 포함 + 배치 줄) · 참고자료(지급처마다 거래명세서 주소) ·
+ * cc @@team.finance. 이름은 「전달 N월 … 1차」(10일) · 「2차」(25일) — 한 달 일의 수수료를 다음 달 두 번에 나눠 낸다. 계좌는 본문에 적지
+ * 않는다 — 첨부 엑셀(구매요청간소화 양식)에만 있다. 글양식은 「구매요청간소화」(웹훅 task.template_name).
+ *
+ * 아지트 웹훅은 글자만 받는다(파일을 못 붙인다) — 엑셀 · 거래명세서 PDF · 세금계산서는 콘솔이 zip 하나로 묶고(lib/agit/bundle · 정산 담당
+ * 카드의 「첨부 파일 받기」) 한백이 받아 그 글에 붙인다.
  * 부가세는 배치마다 공급가액의 10%(원 단위 절사)를 더한다 — 세금계산서가 배치마다 한 장이라 그 합이 계산서 합과 맞는다.
  */
 import { won } from '@/lib/format';
@@ -43,8 +49,15 @@ export interface AgitBatch {
   kind: PayoutKind;
   total: number;
   invoice: boolean;
+  /** 붙은 세금계산서 파일 — 첨부 zip 에 넣는다 */
+  invoiceFile?: { url: string; name: string } | null;
   lines: AgitLine[];
 }
+
+/** 글양식 — 열린구매 그룹의 「구매요청간소화」(웹훅 task.template_name · 글 머리의 꼬리표) */
+export const AGIT_TEMPLATE = '구매요청간소화';
+/** 재무팀 — 지난 글이 끝에 달던 cc(아지트 팀 멘션) */
+export const AGIT_CC = '@@team.finance';
 
 export interface AgitPostText {
   payDate: string;
@@ -94,42 +107,79 @@ export function detailOf(kind: PayoutKind, lines: readonly AgitLine[]): string {
   return `${kind} ${parts.join(' / ')}`;
 }
 
-/** 「계좌 국민은행 123-45 (예금주 에코일렉) · 세금계산서 없음」 */
-function accountOf(payee: AgitPayee | undefined, invoice: boolean): string {
-  const bank = payee
-    ? [payee.bankName, payee.bankAccountNo, payee.bankHolder && `(예금주 ${payee.bankHolder})`].filter(Boolean).join(' ')
-    : '';
-  return `계좌 ${bank || '미등록'} · 세금계산서 ${invoice ? '있음' : '없음'}`;
-}
+/** 배치 차례 — 지급처 가나다 · 같은 지급처면 영업비 먼저(제목이 「영업위탁 수수료 및 시공비」 차례다 — 가나다로는 시공비가 앞선다) */
+export const sortBatches = <T extends { org: string | null; kind: PayoutKind }>(batches: readonly T[]): T[] =>
+  [...batches].sort((a, b) => (a.org ?? '').localeCompare(b.org ?? '', 'ko')
+    || (a.kind === b.kind ? 0 : a.kind === '영업비' ? -1 : 1));
+
+const WEEKDAY_NAMES = '일월화수목금토';
 
 /**
- * 결제일 하나의 글. batches 는 그 결제일의 배치만 넘긴다. payees 는 지급처(lib/roles normalizeOrg 로 고른 이름)의 계좌.
- * 배치 차례는 지급처 가나다 · 영업비 먼저 — 거래명세서 목록과 같다.
+ * 결제일의 요청 이름 — 지난 글의 이름 짓기: 한 달 일의 수수료를 다음 달 10일(1차) · 25일(2차)에 낸다.
+ *   2026-11-10 → 「26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차」 · 시공비가 섞이면 「… 영업위탁 수수료 및 시공비 1차」
+ *   정기결제가 아닌 날(다른 날을 골라 가확정) → 「… 영업위탁 수수료 (11월 17일 지급)」
  */
-export function agitPostOf(
-  payDate: string,
-  batches: readonly AgitBatch[],
-  payeeOf: (org: string | null) => AgitPayee | undefined,
-  consoleUrl: string
-): AgitPostText {
-  const sorted = [...batches].sort((a, b) =>
-    (a.org ?? '').localeCompare(b.org ?? '', 'ko') || a.kind.localeCompare(b.kind, 'ko'));
+export function requestNameOf(payDate: string, kinds: readonly PayoutKind[]) {
+  const [y, m, d] = payDate.split('-').map(Number);
+  const wy = m === 1 ? y - 1 : y;
+  const wm = m === 1 ? 12 : m - 1;
+  const month = `${String(wy).slice(2)}년 ${wm}월`;
+  const sales = kinds.includes('영업비');
+  const cons = kinds.includes('시공비');
+  const what = sales && cons ? '영업위탁 수수료 및 시공비' : cons ? '시공비' : '영업위탁 수수료';
+  const day = String(d).padStart(2, '0');
+  const round = day === REGULAR_PAY_DAYS[0] ? '1차' : day === REGULAR_PAY_DAYS[1] ? '2차' : null;
+  const tail = round ?? `(${m}월 ${d}일 지급)`;
+  const weekday = WEEKDAY_NAMES[new Date(Date.UTC(y, m - 1, d)).getUTCDay()];
+  return {
+    /** 「26년 10월」 — 일한 달 */
+    month,
+    /** 「1차」 · 「2차」 · 정기결제가 아니면 null */
+    round,
+    /** 「영업위탁 수수료」 · 「시공비」 · 「영업위탁 수수료 및 시공비」 */
+    what,
+    /** 공사명 — 「26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차」 */
+    subject: `${month} 전기차 충전 인프라 구축사업 ${what} ${tail}`,
+    /** 상황설명 */
+    situation: `${month} 동안 진행된 전기차 충전기 설치 ${sales && cons ? '영업 · 시공' : cons ? '시공' : '영업'}에 대한 ${what} ${tail}`,
+    /** 「2026. 11. 10 (화요일)」 */
+    requestDay: `${y}. ${String(m).padStart(2, '0')}. ${day} (${weekday}요일)`,
+  };
+}
+
+/** 그 배치의 거래명세서(콘솔) 주소 — 지난 글이 달던 꼴(/payments/statement?org=…&date=…&kind=…) */
+export const statementPathOf = (payDate: string, org: string, kind: PayoutKind): string =>
+  `/payments/statement?org=${encodeURIComponent(org)}&date=${payDate}&kind=${encodeURIComponent(kind)}`;
+
+/**
+ * 결제일 하나의 글. batches 는 그 결제일의 배치만 넘긴다. 배치 차례는 지급처 가나다 · 영업비 먼저 — 거래명세서 목록과 같다.
+ */
+export function agitPostOf(payDate: string, batches: readonly AgitBatch[], consoleUrl: string): AgitPostText {
+  const sorted = sortBatches(batches);
   const total = sorted.reduce((n, b) => n + b.total, 0);
   const vat = sorted.reduce((n, b) => n + vatOf(b.total), 0);
-  const title = `[열린구매] ${shortDay(payDate)} ${isRegular(payDate) ? '정기결제' : '지급'} — 협력사 지급 ${sorted.length}건`;
-  const items = sorted.flatMap((b, i) => [
-    `${i + 1}) ${b.org ?? '지급처 미정'} · ${b.kind} · ${won(b.total)}원`,
-    `   ${detailOf(b.kind, b.lines)}`,
-    `   ${accountOf(payeeOf(b.org), b.invoice)}`,
+  const name = requestNameOf(payDate, sorted.map((b) => b.kind));
+  const title = `${name.subject} #${AGIT_TEMPLATE}`;
+  const items = sorted.map((b) =>
+    `- ${b.org ?? '지급처 미정'} · ${detailOf(b.kind, b.lines)} · ${won(b.total)}원${b.invoice ? '' : ' · 세금계산서 없음'}`);
+  const links = sorted.filter((b) => b.org).flatMap((b, i) => [
+    ...(i ? [''] : []),
+    `${b.org}${sorted.filter((x) => x.org === b.org).length > 1 ? ` (${b.kind})` : ''}`,
+    `${consoleUrl}${statementPathOf(payDate, b.org!, b.kind)}`,
   ]);
   const text = [
     title,
-    '',
+    `지급 요청일: ${name.requestDay}`,
+    '1. 구매사유',
+    `- 공사명 : ${name.subject}`,
+    `- 상황설명 : ${name.situation}`,
+    '2. 지급요청 품목',
+    `부가세 전 ${won(total)} / 부가세 포함 ${won(total + vat)}`,
     ...items,
-    '',
-    `공급가액 합계 ${won(total)}원`,
-    `부가세 ${won(vat)}원 · 합계 ${won(total + vat)}원`,
-    `거래명세서 ${consoleUrl}/statements`,
+    '참고자료',
+    '거래명세서 내역',
+    ...links,
+    `cc ${AGIT_CC}`,
   ].join('\n');
   const blocked = sorted.length === 0
     ? '지급 0건 — 올릴 것 없음'
@@ -165,30 +215,35 @@ export function agitWebhookOf(raw: string): string | null {
  * 앞으로 올 결제일마다 한 글 — 거래명세서 화면과 같은 재료(원장 줄 · 확정 · 계산서)로 짓는다. 배치를 묶는 규칙은 lib/payout-board
  * batchesOf 한 곳이고(거래명세서 목록 · 할 일과 같다), 회차의 현장 · 대수는 원장 줄에서 센다.
  */
+export function agitBatchesOf(
+  rows: readonly PayoutRow[],
+  finals: readonly BatchFinal[],
+  invoices: readonly TaxInvoice[],
+  payDate: string
+): AgitBatch[] {
+  const lines = new Map<string, AgitLine[]>();
+  for (const r of rows) {
+    if (r.paidAt !== payDate) continue;
+    const key = batchKey(r.paidAt, r.org, r.kind);
+    lines.set(key, [...(lines.get(key) ?? []), { projectId: r.projectId, label: r.label, amount: r.amount, qty: r.site.qty }]);
+  }
+  return batchesOf([...rows], [...finals], [...invoices]).filter((b) => b.paidAt === payDate).map((b) => ({
+    org: b.org, kind: b.kind, total: b.total, invoice: Boolean(b.invoice),
+    invoiceFile: b.invoice ? { url: b.invoice.blobUrl, name: b.invoice.filename } : null,
+    lines: lines.get(batchKey(b.paidAt, b.org, b.kind)) ?? [],
+  }));
+}
+
 export function agitDraftsOf(
   today: string,
   rows: readonly PayoutRow[],
   finals: readonly BatchFinal[],
   invoices: readonly TaxInvoice[],
-  payeeOf: (org: string | null) => AgitPayee | undefined,
   consoleUrl: string,
   only?: string
 ): AgitPostText[] {
-  const batches = batchesOf([...rows], [...finals], [...invoices]);
-  const lines = new Map<string, AgitLine[]>();
-  for (const r of rows) {
-    const key = batchKey(r.paidAt, r.org, r.kind);
-    lines.set(key, [...(lines.get(key) ?? []), { projectId: r.projectId, label: r.label, amount: r.amount, qty: r.site.qty }]);
-  }
-  const days = only ? [only] : upcomingPayDates(today, batches.map((b) => b.paidAt));
-  return days.map((day) => agitPostOf(
-    day,
-    batches.filter((b) => b.paidAt === day).map((b) => ({
-      org: b.org, kind: b.kind, total: b.total, invoice: Boolean(b.invoice), lines: lines.get(batchKey(b.paidAt, b.org, b.kind)) ?? [],
-    })),
-    payeeOf,
-    consoleUrl
-  ));
+  const days = only ? [only] : upcomingPayDates(today, batchesOf([...rows], [...finals], [...invoices]).map((b) => b.paidAt));
+  return days.map((day) => agitPostOf(day, agitBatchesOf(rows, finals, invoices, day), consoleUrl));
 }
 
 /** 아지트 연결 — 주소(열쇠)는 싣지 않는다 */
@@ -235,9 +290,12 @@ export function agitAssigneesOf(raw: string): string[] | null {
   return out.length > AGIT_MAX_ASSIGNEES ? null : out;
 }
 
-/** 웹훅에 보내는 몸 — 담당자가 있으면 요청 글(task), 없으면 보통 글. 라우트는 담당자 없이 부르지 않는다 */
-export function agitPayloadOf(text: string, assignees: readonly string[]): { text: string; task?: { assignees: string[] } } {
-  return assignees.length ? { text, task: { assignees: [...assignees] } } : { text };
+/** 웹훅에 보내는 몸 — 담당자가 있으면 요청 글(task · 글양식 구매요청간소화), 없으면 보통 글. 라우트는 담당자 없이 부르지 않는다 */
+export function agitPayloadOf(
+  text: string,
+  assignees: readonly string[]
+): { text: string; task?: { template_name: string; assignees: string[] } } {
+  return assignees.length ? { text, task: { template_name: AGIT_TEMPLATE, assignees: [...assignees] } } : { text };
 }
 
 /** 담당자를 보이는 글 — 「@kiko.x · @ella.a」 */

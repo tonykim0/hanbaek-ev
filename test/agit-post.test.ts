@@ -4,10 +4,15 @@
  * ★웹훅 주소는 지어낸 것이다★ — 진짜 주소는 그 그룹에 글을 쓰는 열쇠라 공개 저장소에 적지 않는다.
  */
 import { describe, expect, it, vi } from 'vitest';
+import JSZip from 'jszip';
 import {
   agitAssigneesOf, agitDraftsOf, agitPayloadOf, agitPostOf, agitPostedSay, agitWebhookOf, assigneesLabel, badAgitIds, detailOf,
-  upcomingPayDates, vatOf, type AgitBatch, type AgitPayee,
+  requestNameOf, upcomingPayDates, vatOf, type AgitBatch, type AgitPayee,
 } from '@/lib/agit/post';
+import { agitBundleOf, safeName } from '@/lib/agit/bundle';
+import { agitZipOf } from '@/lib/agit/bundle-zip';
+import { purchaseXlsx } from '@/lib/agit/purchase-xlsx';
+import { cookiePairs } from '@/lib/agit/statement-pdf';
 import { agitPostUrlOf, sendToAgit } from '@/lib/agit/send';
 import type { PayoutRow } from '@/types/project';
 
@@ -28,30 +33,56 @@ const nov10: AgitBatch[] = [
   },
 ];
 
-describe('결제일마다 한 글', () => {
-  it('한백이 고른 미리보기 모양 — 지급처 가나다 · 영업비 · 금액 · 회차 · 계좌 · 합계 · 부가세 · 거래명세서', () => {
-    const post = agitPostOf('2026-11-10', nov10, payeeOf, URL_);
+describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 지난 「영업위탁 수수료」 글)', () => {
+  const ECO_LINK = `${URL_}/payments/statement?org=${encodeURIComponent('에코일렉')}&date=2026-11-10&kind=${encodeURIComponent('영업비')}`;
+
+  it('제목 #구매요청간소화 · 지급 요청일 · 구매사유 · 지급요청 품목 · 거래명세서 주소 · cc — 계좌는 본문에 없다', () => {
+    const post = agitPostOf('2026-11-10', nov10, URL_);
     expect(post.text).toBe([
-      '[열린구매] 11/10 정기결제 — 협력사 지급 2건',
+      '26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차 #구매요청간소화',
+      '지급 요청일: 2026. 11. 10 (화요일)',
+      '1. 구매사유',
+      '- 공사명 : 26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차',
+      '- 상황설명 : 26년 10월 동안 진행된 전기차 충전기 설치 영업에 대한 영업위탁 수수료 1차',
+      '2. 지급요청 품목',
+      '부가세 전 101,360,000 / 부가세 포함 111,496,000',
+      '- 에코일렉 · 영업비 1차 · 20개 현장 106기 · 96,460,000원 · 세금계산서 없음',
+      '- 이브이솔루션 (영업) · 영업비 1차 · 1개 현장 7기 · 4,900,000원 · 세금계산서 없음',
+      '참고자료',
+      '거래명세서 내역',
+      '에코일렉',
+      ECO_LINK,
       '',
-      '1) 에코일렉 · 영업비 · 96,460,000원',
-      '   영업비 1차 · 20개 현장 106기',
-      '   계좌 국민은행 123-45-6789 (예금주 에코일렉) · 세금계산서 없음',
-      '2) 이브이솔루션 (영업) · 영업비 · 4,900,000원',
-      '   영업비 1차 · 1개 현장 7기',
-      '   계좌 미등록 · 세금계산서 없음',
-      '',
-      '공급가액 합계 101,360,000원',
-      '부가세 10,136,000원 · 합계 111,496,000원',
-      '거래명세서 https://hanbaek-re.vercel.app/statements',
+      '이브이솔루션 (영업)',
+      `${URL_}/payments/statement?org=${encodeURIComponent('이브이솔루션 (영업)')}&date=2026-11-10&kind=${encodeURIComponent('영업비')}`,
+      'cc @@team.finance',
     ].join('\n'));
-    expect(post).toMatchObject({ total: 101_360_000, batches: 2, blocked: null, title: '[열린구매] 11/10 정기결제 — 협력사 지급 2건' });
+    expect(post.text).not.toContain('123-45-6789');
+    expect(post).toMatchObject({
+      total: 101_360_000, batches: 2, blocked: null, title: '26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차 #구매요청간소화',
+    });
   });
 
-  it('정기결제가 아닌 날은 「지급」 · 계산서가 붙었으면 「있음」', () => {
-    const post = agitPostOf('2026-11-12', [{ ...nov10[1], invoice: true }], payeeOf, URL_);
-    expect(post.title).toBe('[열린구매] 11/12 지급 — 협력사 지급 1건');
-    expect(post.text).toContain('세금계산서 있음');
+  it('이름 짓기 — 25일은 2차 · 1월은 지난해 12월 · 시공비가 섞이면 「및 시공비」 · 정기결제가 아닌 날은 그날', () => {
+    expect(requestNameOf('2026-11-25', ['영업비']).subject).toBe('26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 2차');
+    expect(requestNameOf('2027-01-10', ['영업비']).subject).toBe('26년 12월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차');
+    const both = requestNameOf('2026-11-10', ['영업비', '시공비']);
+    expect(both.subject).toBe('26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 및 시공비 1차');
+    expect(both.situation).toBe('26년 10월 동안 진행된 전기차 충전기 설치 영업 · 시공에 대한 영업위탁 수수료 및 시공비 1차');
+    expect(requestNameOf('2026-11-25', ['시공비']).subject).toBe('26년 10월 전기차 충전 인프라 구축사업 시공비 2차');
+    const odd = requestNameOf('2026-11-17', ['영업비']);
+    expect(odd).toMatchObject({ round: null, subject: '26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 (11월 17일 지급)' });
+    expect(odd.requestDay).toBe('2026. 11. 17 (화요일)');
+  });
+
+  it('같은 지급처가 영업비 · 시공비 둘이면 거래명세서 줄에 구분을 단다 · 계산서가 붙었으면 「없음」을 안 적는다', () => {
+    const post = agitPostOf('2026-11-10', [
+      { ...nov10[1], invoice: true },
+      { org: '에코일렉', kind: '시공비', total: 1_000, invoice: false, lines: lines(1, 1, 1_000) },
+    ], URL_);
+    expect(post.text).toContain('- 에코일렉 · 영업비 1차 · 20개 현장 106기 · 96,460,000원\n');
+    expect(post.text).toContain('에코일렉 (영업비)\n');
+    expect(post.text).toContain('에코일렉 (시공비)\n');
   });
 
   it('회차가 섞이면 「 / 」로 잇고, 회수는 건수 · 금액 · 한 현장은 한 번 센다', () => {
@@ -66,13 +97,13 @@ describe('결제일마다 한 글', () => {
     const post = agitPostOf('2026-11-10', [
       { org: 'A', kind: '영업비', total: 15, invoice: false, lines: [] },
       { org: 'B', kind: '영업비', total: 15, invoice: false, lines: [] },
-    ], payeeOf, URL_);
-    expect(post.text).toContain('부가세 2원 · 합계 32원'); // 1 + 1 (총액 30 의 10% = 3 이 아니다)
+    ], URL_);
+    expect(post.text).toContain('부가세 전 30 / 부가세 포함 32'); // 1 + 1 (총액 30 의 10% = 3 이 아니다)
   });
 
   it('올릴 수 없는 결제일 — 지급 0건 · 지급처 미정', () => {
-    expect(agitPostOf('2026-11-10', [], payeeOf, URL_).blocked).toBe('지급 0건 — 올릴 것 없음');
-    expect(agitPostOf('2026-11-10', [{ ...nov10[0], org: null }], payeeOf, URL_).blocked).toBe('지급처 미정 배치 — 올릴 수 없음');
+    expect(agitPostOf('2026-11-10', [], URL_).blocked).toBe('지급 0건 — 올릴 것 없음');
+    expect(agitPostOf('2026-11-10', [{ ...nov10[0], org: null }], URL_).blocked).toBe('지급처 미정 배치 — 올릴 수 없음');
   });
 
   it('앞으로 올 결제일만 · 이른 것이 위', () => {
@@ -80,23 +111,94 @@ describe('결제일마다 한 글', () => {
       .toEqual(['2026-11-07', '2026-11-10', '2026-11-25']);
   });
 
-  it('원장 줄의 차례가 달라도 같은 글이다 — 미리 본 글과 올릴 때 지은 글을 견주는 문이 이것에 기댄다', () => {
+  it('원장 줄의 차례가 달라도 같은 글이다 — 초안과 승인 때 지은 글을 견주는 문이 이것에 기댄다', () => {
     const row = (projectId: string, org: string, amount: number, qty: number): PayoutRow => ({
       entryId: projectId, projectId, projectName: projectId, cpo: '나이스인프라', org, kind: '영업비', label: '1차',
       amount, paidAt: '2026-11-10', note: null, site: { bizTypes: [], termYears: [], powerTypes: [], qty },
     });
     const rows = [row('a', '에코일렉', 910_000, 1), row('b', '에코일렉', 1_820_000, 2), row('c', '갑', 100, 1), row('d', '에코일렉', 1, 0)];
-    const one = agitDraftsOf('2026-11-07', rows, [], [], payeeOf, URL_);
-    const two = agitDraftsOf('2026-11-07', [...rows].reverse(), [], [], payeeOf, URL_);
+    const one = agitDraftsOf('2026-11-07', rows, [], [], URL_);
+    const two = agitDraftsOf('2026-11-07', [...rows].reverse(), [], [], URL_);
     expect(one.map((d) => d.text)).toEqual(two.map((d) => d.text));
     expect(one[0].text).toContain('영업비 1차 · 3개 현장 3기');
-    expect(agitDraftsOf('2026-11-11', rows, [], [], payeeOf, URL_)).toEqual([]); // 지난 결제일은 없다
-    expect(agitDraftsOf('2026-11-11', rows, [], [], payeeOf, URL_, '2026-11-10')).toHaveLength(1); // 고르면 지난 날도
+    expect(agitDraftsOf('2026-11-11', rows, [], [], URL_)).toEqual([]); // 지난 결제일은 없다
+    expect(agitDraftsOf('2026-11-11', rows, [], [], URL_, '2026-11-10')).toHaveLength(1); // 고르면 지난 날도
   });
 
   it('올린 뒤 정산 담당 대화의 한 줄', () => {
     expect(agitPostedSay({ payDate: '2026-11-10', title: 'T', total: 101_360_000, batches: 2 }, '김정우'))
       .toBe('11월 10일 정기결제 열린구매 글을 아지트에 올렸습니다 — 지급 2건 · 공급가액 101,360,000원 (승인 김정우).\nT');
+  });
+});
+
+describe('첨부 zip — 한백이 올려 온 zip 모양 (26년 9월 2차)', () => {
+  it('이름 · 폴더 · 엑셀 줄 · 거래명세서 경로 · 계산서 — 계좌는 엑셀에', () => {
+    const plan = agitBundleOf('2026-11-10', [
+      { ...nov10[1], invoice: true, invoiceFile: { url: 'https://x.public.blob.vercel-storage.com/inv/a.PDF', name: '계산서.PDF' } },
+      nov10[0],
+    ], payeeOf);
+    expect(plan.zipName).toBe('26년 10월 영업위탁 수수료 1차.zip');
+    expect(plan.folder).toBe('26년 10월 영업위탁 수수료 1차');
+    expect(plan.xlsxName).toBe('구매요청간소화_전기차충전기 영업위탁수수료(26년 10월 1차 내역).xlsx');
+    expect(plan.sheet.subject).toBe('26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차');
+    expect(plan.sheet.rows[0]).toEqual({
+      content: '26년 10월 전기차 충전 인프라 구축사업 (영업비 1차 · 20개 현장 106기)', org: '에코일렉',
+      supply: 96_460_000, vat: 9_646_000, bank: '국민은행', account: '123-45-6789', holder: '에코일렉', note: '',
+    });
+    expect(plan.sheet.rows[1]).toMatchObject({ org: '이브이솔루션 (영업)', bank: '', note: '세금계산서 없음' });
+    expect(plan.statements).toEqual([
+      { name: '에코일렉_거래명세서.pdf', path: `/payments/statement?org=${encodeURIComponent('에코일렉')}&date=2026-11-10&kind=${encodeURIComponent('영업비')}` },
+      { name: '이브이솔루션 (영업)_거래명세서.pdf', path: expect.stringContaining('/payments/statement?org=') },
+    ]);
+    expect(plan.invoices).toEqual([{ name: '에코일렉_세금계산서.pdf', url: 'https://x.public.blob.vercel-storage.com/inv/a.PDF' }]);
+  });
+
+  it('같은 지급처가 둘이면 이름에 구분 · 파일 이름에 못 쓰는 글자는 걷는다', () => {
+    const plan = agitBundleOf('2026-11-25', [
+      { org: 'A/B', kind: '영업비', total: 1, invoice: false, lines: [] },
+      { org: 'A/B', kind: '시공비', total: 1, invoice: false, lines: [] },
+    ], payeeOf);
+    expect(plan.zipName).toBe('26년 10월 영업위탁 수수료 및 시공비 2차.zip');
+    expect(plan.statements.map((s) => s.name)).toEqual(['A B_영업비_거래명세서.pdf', 'A B_시공비_거래명세서.pdf']);
+    expect(safeName('a:b*c?"d<e>f|g')).toBe('a b c d e f g');
+  });
+
+  it('구매요청간소화 엑셀 — 시트 「구매(일반)」 · 머리 · 줄 · 소계 · 필수사항', async () => {
+    const plan = agitBundleOf('2026-11-10', nov10, payeeOf);
+    const zip = await JSZip.loadAsync(await purchaseXlsx(plan.sheet));
+    expect(await zip.file('xl/workbook.xml')!.async('string')).toContain('name="구매(일반)"');
+    const xml = await zip.file('xl/worksheets/sheet1.xml')!.async('string');
+    for (const t of ['구매번호', '공사명', '26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차', '거래처', '입금액', '예금주명', '㈜한백', '소 계', '필수사항']) {
+      expect(xml, t).toContain(t);
+    }
+    expect(xml).toContain('<c r="F8" s="3"><v>96460000</v></c>');
+    expect(xml).toContain('<c r="H10" s="5"><v>111496000</v></c>'); // 소계 입금액 = 공급가액 + 세액
+    expect(xml).toContain('<mergeCell ref="C11:E12"/>'); // 특기 사항
+  });
+
+  it('zip 안 — 한 폴더에 엑셀 · 거래명세서 · 계산서 · 우리 Blob 이 아닌 계산서 주소는 거절', async () => {
+    const plan = agitBundleOf('2026-11-10', [
+      { ...nov10[1], invoice: true, invoiceFile: { url: 'https://x.public.blob.vercel-storage.com/inv/a.pdf', name: 'a.pdf' } },
+    ], payeeOf);
+    const statements = vi.fn(async (paths: string[]) => paths.map(() => new Uint8Array([37, 80, 68, 70])));
+    const file = vi.fn(async () => new Uint8Array([1, 2, 3]));
+    const zip = await JSZip.loadAsync(await agitZipOf(plan, { statements, file }));
+    expect(Object.keys(zip.files).sort()).toEqual([
+      '26년 10월 영업위탁 수수료 1차/',
+      '26년 10월 영업위탁 수수료 1차/구매요청간소화_전기차충전기 영업위탁수수료(26년 10월 1차 내역).xlsx',
+      '26년 10월 영업위탁 수수료 1차/에코일렉_거래명세서.pdf',
+      '26년 10월 영업위탁 수수료 1차/에코일렉_세금계산서.pdf',
+    ]);
+    expect(statements).toHaveBeenCalledWith([plan.statements[0].path]);
+    const evil = { ...plan, invoices: [{ name: 'x.pdf', url: 'https://evil.com/x.pdf' }] };
+    await expect(agitZipOf(evil, { statements, file })).rejects.toThrow(/콘솔 저장소가 아닙니다/);
+  });
+
+  it('쿠키 머리 — 이름 · 값 쌍만', () => {
+    expect(cookiePairs('a=1; hb_session=x.y=z ; =bad; b=')).toEqual([
+      { name: 'a', value: '1' }, { name: 'hb_session', value: 'x.y=z' }, { name: 'b', value: '' },
+    ]);
+    expect(cookiePairs(null)).toEqual([]);
   });
 });
 
@@ -142,7 +244,8 @@ describe('요청 담당자 (한백 2026-11-08 「아지트 글에서 담당자 �
   });
 
   it('담당자가 있으면 요청 글(task.assignees) — 가이드의 몸 그대로', () => {
-    expect(agitPayloadOf('글', ['kiko.x', 'ella.a'])).toEqual({ text: '글', task: { assignees: ['kiko.x', 'ella.a'] } });
+    expect(agitPayloadOf('글', ['kiko.x', 'ella.a']))
+      .toEqual({ text: '글', task: { template_name: '구매요청간소화', assignees: ['kiko.x', 'ella.a'] } });
     expect(agitPayloadOf('글', [])).toEqual({ text: '글' });
     expect(assigneesLabel(['kiko.x', 'ella.a'])).toBe('@kiko.x · @ella.a');
   });
@@ -159,7 +262,7 @@ describe('올리기', () => {
     const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
     expect(url).toBe(HOOK);
     expect(init.method).toBe('POST');
-    expect(JSON.parse(String(init.body))).toEqual({ text: '안녕\n둘째 줄', task: { assignees: ['kiko.x'] } });
+    expect(JSON.parse(String(init.body))).toEqual({ text: '안녕\n둘째 줄', task: { template_name: '구매요청간소화', assignees: ['kiko.x'] } });
   });
 
   it('404 · 그 밖의 거절 · 닿지 못함 · 시간 넘김은 사람 말로', async () => {

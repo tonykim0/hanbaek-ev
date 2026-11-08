@@ -49,7 +49,12 @@ const nextConfig = {
       bodySizeLimit: '50mb',
     },
     // heic-convert(libheif wasm)는 번들링하지 않고 런타임에 node_modules에서 로드
-    serverComponentsExternalPackages: ['heic-convert'],
+    // 거래명세서 PDF 의 서버 브라우저(lib/agit/statement-pdf)도 같다 — 크로미움 바이너리를 번들에 넣지 않고 그대로 싣는다
+    serverComponentsExternalPackages: ['heic-convert', '@sparticuz/chromium', 'puppeteer-core'],
+    // 크로미움 압축본(bin/*.br)은 코드에서 import 하지 않아 추적에서 빠진다 — 그 라우트에만 싣는다
+    outputFileTracingIncludes: {
+      '/api/agit/posts/[id]/files': ['./node_modules/@sparticuz/chromium/bin/**'],
+    },
   },
   async redirects() {
     return [
