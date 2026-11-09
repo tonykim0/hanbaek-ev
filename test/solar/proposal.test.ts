@@ -6,14 +6,15 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  capacityKw, eok2, eokManText, kwText, lumoraLease, lumoraRent, manwonText, millionText, monthAfter, profileAngleDeg, solar15, solarShare,
-  solarShareBaro,
+  capacityKw, eok2, eokManText, kwText, lumoraLease, lumoraRent, millionText, mohaet, monthAfter, profileAngleDeg, roughWonText, solar15, wonText,
 } from '@/lib/solar/proposal/calc';
 import {
   estWidthPt, fitSizePt, fitText, mountText, PHONE_DIGITS, phoneDigitsOf, proposalFileName, sellerBlock, sellerContact, sellerCover, splitAddress, storedSeller,
 } from '@/lib/solar/proposal/fill-common';
 import { formatKoreanPhone } from '@/lib/contract-form';
 import { lumoraPlans } from '@/lib/solar/proposal/fill-lumora';
+import { compareCells, compareText, dateText, gridCondition, gridLines, gridNotes, gridTableRows, manText, rentTexts, siteRows } from '@/lib/solar/proposal/fill-henergy';
+import type { GridRow, GridView, SiteFacts } from '@/lib/solar/types';
 import { cleanTerms, missingTerms, PRODUCTS, TEMPLATE_KEYS, TEMPLATES, UPCOMING } from '@/lib/solar/proposal/products';
 import { paraXml, rectXml, tableXml, textBoxXml } from '@/lib/pptx/xml';
 import { orphansOf, sha256Hex } from '@/lib/pptx/deck';
@@ -28,11 +29,13 @@ describe('용량 · 숫자 표기', () => {
     expect(kwText(490.16)).toBe('490.16');
     expect(kwText(1000)).toBe('1,000');
   });
-  it('만원 소수 한 자리(아래 버림) · 억 묶음', () => {
-    expect(manwonText(12_345_678)).toBe('1,234.5 만 원');
-    expect(manwonText(30_000_000)).toBe('3,000 만 원');
-    expect(manwonText(123_456_789)).toBe('1억 2,345.6 만 원');
-    expect(manwonText(200_000_000)).toBe('2억 원');
+  it('원 · 「약 ○억원」(억 소수 둘째, 끝 0 뗌) · 1억 아래는 만원 반올림', () => {
+    expect(wonText(5_486_000.000001)).toBe('5,486,000');
+    expect(roughWonText(109_720_000)).toBe('1.1억원');
+    expect(roughWonText(115_891_750)).toBe('1.16억원');
+    expect(roughWonText(200_000_000)).toBe('2억원');
+    expect(roughWonText(5_486_000)).toBe('549만원');
+    expect(roughWonText(24_000_000)).toBe('2,400만원');
   });
   it('억 · 만원 반올림', () => {
     expect(eokManText(123_456_789)).toBe('1억 2,346만원');
@@ -68,15 +71,96 @@ describe('솔라15 — 임대료 15년 뒤 발전수익', () => {
   });
 });
 
-describe('솔라쉐어 2.0 — 두 지급 방식', () => {
-  it('5년치 선지급 · 매년 지급의 칸과 합계', () => {
-    const r = solarShare(100, { moduleWatt: 600, rentPerKw: 10_000, prepayBasePerKw: 8_000, prepayEventPerKw: 2_000, annualEventPerKw: 30_000 });
-    expect(r.prepay.year1).toBe(100 * 10_000 * 5);
-    expect(r.prepay.y6to20).toBe(100 * 10_000 * 15);
-    expect(r.annual.year1).toBe(100 * 40_000);
-    expect(r.annual.y2to5).toBe(100 * 10_000 * 4);
-    expect(r.prepay.total).toBe(r.prepay.year1 + r.prepay.y6to20);
-    expect(r.annual.total).toBe(r.annual.year1 + r.annual.y2to5 + r.annual.y6to20);
+describe('모햇 — 1년 선납 · 5년 선납 · 참여지원금', () => {
+  // 꾸민 조건(실제 값은 DB — 견본 137.15kW 의 숫자는 저장소 밖에서 원 단위까지 맞췄다)
+  const t = { moduleWatt: 600, rentPerKw: 10_000, prepay5PerKw: 9_000, subsidyPerKw: 20_000 };
+  const r = mohaet(100.5, t);
+  it('1년 선납은 해마다 kW × 임대료 · 5년 선납은 1년차에 5년치(낮은 단가), 2~5년 「-」, 6년차부터 임대료', () => {
+    expect(r.annual).toBe(1_005_000);
+    expect(r.prepay).toBe(4_522_500);
+    expect(r.one.years).toEqual(Array(20).fill(1_005_000));
+    expect(r.five.years.slice(0, 6)).toEqual([4_522_500, null, null, null, null, 1_005_000]);
+    expect(r.one.total).toBe(20_100_000);
+    expect(r.five.total).toBe(4_522_500 + 15 * 1_005_000);
+    expect(r.subsidy).toBe(2_010_000);
+  });
+  it('원 단위로 반올림한 해의 합이 합계다(표의 칸을 더하면 합계)', () => {
+    const odd = mohaet(33.33, { ...t, rentPerKw: 12_345 });
+    expect(odd.annual).toBe(Math.round(33.33 * 12_345));
+    expect(odd.one.total).toBe(odd.annual * 20);
+  });
+  it('임대료 쪽 — 두 머리 · 연차 칸(5년 선납 2~5년은 견본의 「-」 그대로) · 머리말 검정/빨강 · 각주', () => {
+    const x = rentTexts(r, t);
+    expect(x.oneHead).toBe('1년 선납 (연 10,000원/kW)');
+    expect(x.fiveHead).toBe('5년 선납 (1~5년차 연 9,000원/kW)');
+    expect(x.years.map(([n]) => n)).toEqual([1, 2, 3, 4, 5, 6, 7, 20]);
+    expect(x.years[0]).toEqual([1, '1,005,000 원', '4,522,500 원']);
+    expect(x.years[1][2]).toBeNull();
+    expect(x.years[5]).toEqual([6, '1,005,000 원', '1,005,000 원']);
+    expect(x.oneTotal).toBe('20,100,000 원');
+    expect(x.headBlack).toBe('100.5kW 기준 예상 임대수익: ');
+    expect(x.headRed).toBe('20년간 약 2,010만원 (연 평균 약 101만원), 5년 선납 법인은 참여지원금 포함 약 2,161만원');
+    expect(x.note).toContain('참여지원금 20,000원/kW(100.5kW 기준 2,010,000원, 1회)');
+    expect(x.note).toContain(`20년 총 수령액은 ${wonText(r.five.total + r.subsidy)}원입니다.`);
+  });
+  it('비교표 — 20년 총액이 큰 쪽과 차(개인은 지원금 없이 · 법인은 지원금 포함)', () => {
+    const cells = new Map(compareCells(r, t).map(([row, col, text]) => [`${row},${col}`, text]));
+    expect(cells.get('4,1')).toBe('100.5kW 기준 지급액');
+    expect(cells.get('5,3')).toBe('20,000원/kW → 2,010,000원 (1회)');
+    expect(cells.get('8,2')).toBe(`개인 임대인은 1년 선납이 ${wonText(r.one.total - r.five.total)}원 많음`);
+    expect(cells.get('8,3')).toBe(`법인 임대인은 5년 선납이 ${wonText(r.five.total + r.subsidy - r.one.total)}원 많음`);
+    expect(compareText('개인', 10, 10)).toBe('개인 임대인은 두 방식이 같음');
+  });
+  it('공유옥상 구조 그림의 임대료 — 만원으로 떨어지면 만원', () => {
+    expect(manText(40_000)).toBe('4만원');
+    expect(manText(35_000)).toBe('3.5만원');
+    expect(manText(42_500)).toBe('42,500원');
+  });
+});
+
+describe('모햇 부지 검토 — 공적 자료 · 한전 여유용량', () => {
+  const layers = (sub: number | null, tr: number | null, feeder: number | null): GridRow['layers'] => ({
+    substation: { spareKw: sub, acceptedKw: 91_608, limitKw: 100_000 },
+    transformer: { spareKw: tr, acceptedKw: 40_274, limitKw: 50_000 },
+    feeder: { spareKw: feeder, acceptedKw: 8_403, limitKw: 12_000 },
+  });
+  const row = (spare: number | null, l = layers(8_392, 9_726, 3_597)): GridRow => ({ substation: '북충주', transformer: '3', feeder: '영덕', spareKw: spare, layers: l });
+  const view = (r: GridRow, basis: GridView['basis'] = { kind: 'own' }, region: string | null = null): GridView => ({ rows: [r], best: 0, basis, capacityKw: null, region });
+  const site: SiteFacts = { zoning: ['일반공업지역'], landCategory: '공장용지', landAreaM2: 15_446, buildingAreaM2: 3_521.72, buildingUse: '공장', approvedOn: '20240315' };
+  it('표 일곱 칸 — 모르는 칸은 「-」 · 한전선로는 두 줄', () => {
+    expect(siteRows('충북 충주시 산척면 동충주산단4길 17', site, view(row(3_597)), 500)).toEqual([
+      '충북 충주시 산척면 동충주산단4길 17',
+      '일반공업지역',
+      '공장용지',
+      '15,446 ㎡',
+      '3,521.72 ㎡',
+      '2024.03.15',
+      '북충주 변전소 여유용량\n8.39MW (접속 가능)',
+    ]);
+    const blank: SiteFacts = { zoning: [], landCategory: null, landAreaM2: null, buildingAreaM2: null, buildingUse: null, approvedOn: null };
+    expect(siteRows('주소', blank, null, 500)).toEqual(['주소', '-', '-', '-', '-', '-', '-']);
+    expect(dateText('2024')).toBe('2024');
+  });
+  it('접속 조건 — 여유 0 이면 보강 뒤 · 용량보다 작으면 협의 · 이 번지 기록이 아니거나 지역 사정이 있으면 한전 확인', () => {
+    expect(gridCondition(view(row(3_597)), 500)).toBe('접속 가능');
+    expect(gridCondition(view(row(300)), 500)).toBe('여유 부족 — 용량 협의');
+    expect(gridCondition(view(row(0, layers(0, 9_726, 3_597))), 500)).toBe('한전 보강 후 접속');
+    expect(gridCondition(view(row(0, layers(8_392, 9_726, 0))), 500)).toBe('선로 보강 후 접속');
+    expect(gridCondition(view(row(3_597), { kind: 'dong', dong: '산척면 영덕리' }), 500)).toBe('접속 선로 한전 확인');
+    expect(gridCondition(view(row(3_597), { kind: 'own' }, '호남 접수 제한'), 500)).toBe('계통 제약 지역 — 한전 확인');
+    expect(gridCondition(view(row(null)), 500)).toBe('한전 확인 필요');
+    expect(gridLines(null, 500)).toBeNull();
+  });
+  it('한전 표 — 단계마다 접속기준 · 접수 · 여유(MW) · 출처와 어느 번지의 기록인지', () => {
+    expect(gridTableRows(view(row(3_597)))).toEqual([
+      ['변전소', '북충주', '100', '91.61', '8.39'],
+      ['주변압기', '#3', '50', '40.27', '9.73'],
+      ['배전선로', '영덕', '12', '8.4', '3.6'],
+    ]);
+    expect(gridNotes(view(row(3_597), { kind: 'dong', dong: '산척면 영덕리' }), '2026-11-09')).toEqual([
+      '단위 MW · 한전 배전선로 여유용량 공개 자료(2026-11-09 조회)',
+      '산척면 영덕리 선로 1개 중 여유가 가장 큰 선로 — 접속 선로는 한전 확인',
+    ]);
   });
 });
 
@@ -107,6 +191,8 @@ describe('루모라 제안서 — 바뀌는 쪽의 칸 계획', () => {
     mount: { style: 'tilted', tiltDeg: 12 },
     shadeDeg: 23,
     gridSpareKw: null,
+    grid: null,
+    site: { zoning: [], landCategory: null, landAreaM2: null, buildingAreaM2: null, buildingUse: null, approvedOn: null },
     today: '2026-11-08',
     seller: { company: '(주)가나에너지', person: '홍길동', phone: '010-0000-0000' },
     image: async () => ({ bytes: new Uint8Array(), width: 1, height: 1 }),
@@ -122,24 +208,7 @@ describe('루모라 제안서 — 바뀌는 쪽의 칸 계획', () => {
   });
 });
 
-describe('자가소비형 — 솔라쉐어바로 · 구독형 리스', () => {
-  it('솔라쉐어바로 — 발전량 전부를 사고, 자가소비분만큼 한전 요금이 줄고, 초과분은 판다(자가소비량은 해마다 1년차 값)', () => {
-    const b = solarShareBaro(100, { hoursPerDay: 4, degradationPct: 1, ppaPrice: 100, tariffIncreasePct: 10, smp: 50 }, { selfKwh: 100_000, tariff: 200 });
-    expect(b.years).toHaveLength(20);
-    expect(b.years[0]).toEqual({ gen: 146_000, self: 100_000, excess: 46_000, cost: 14_600_000, bill: 20_000_000, sale: 2_300_000, gain: 7_700_000 });
-    expect(b.years[1].gen).toBeCloseTo(144_540);
-    expect(b.years[1].self).toBe(100_000);
-    expect(b.years[1].bill).toBeCloseTo(22_000_000);
-    expect(b.total.gain).toBeCloseTo(b.years.reduce((s, y) => s + y.gain, 0));
-    expect(b.excessPct).toBeCloseTo((46_000 / 146_000) * 100);
-  });
-  it('솔라쉐어바로 — 자가소비량이 발전량보다 많으면 발전량이 다 자가소비(초과 0)', () => {
-    const b = solarShareBaro(100, { hoursPerDay: 4, degradationPct: 1, ppaPrice: 100, tariffIncreasePct: 0, smp: 50 }, { selfKwh: 1e9, tariff: 200 });
-    for (const y of b.years) {
-      expect(y.self).toBeCloseTo(y.gen);
-      expect(y.excess).toBeCloseTo(0);
-    }
-  });
+describe('자가소비형 — 루모라 구독형 리스', () => {
   const leaseTerms = { hoursPerDay: 4, degradationPct: 0, subscriptionPrice: 100, tariffIncreasePct: 2, tariffIncreaseHighPct: 4, excessPrice: 50, recPrice: 30, regoPrice: 10, emissionFactor: 0.5 };
   it('구독형 리스 — 자가소비는 발전량 × 1년차 자가소비율 · 절감 = 한전요금 − 구독료 + 초과 판매', () => {
     const l = lumoraLease(100, leaseTerms, { selfKwh: 73_000, tariff: 200, usageKwh: 730_000 });
@@ -175,8 +244,17 @@ describe('조건 다듬기', () => {
     expect(() => cleanTerms('lumora-rent', { ...ok, moduleWatt: 10 })).toThrow('사이여야');
   });
   it('빠진 조건의 이름', () => {
-    expect(missingTerms('henergy-solarshare2', {})).toHaveLength(TEMPLATES['henergy-solarshare2'].terms.length);
-    expect(missingTerms('henergy-solarshare2', null)).toContain('기본 임대료');
+    expect(missingTerms('henergy-mohaet', {})).toHaveLength(TEMPLATES['henergy-mohaet'].terms.length);
+    expect(missingTerms('henergy-mohaet', null)).toContain('5년 선납 임대료(1~5년차)');
+  });
+  it('모햇 참여지원금은 0 을 받지 않는다 — 틀의 각주 · 비교표가 지원금을 전제로 쓰였다', () => {
+    const ok = Object.fromEntries(TEMPLATES['henergy-mohaet'].terms.map((f) => [f.key, f.min]));
+    expect(() => cleanTerms('henergy-mohaet', { ...ok, subsidyPerKw: 0 })).toThrow('참여지원금');
+  });
+  it('에이치에너지는 모햇 하나 — 솔라쉐어 2.0 · 솔라쉐어바로는 걷었다(한백 2026-11-09)', () => {
+    expect(PRODUCTS.filter((p) => p.company === '에이치에너지').map((p) => p.label)).toEqual(['모햇']);
+    expect(TEMPLATE_KEYS.filter((k) => TEMPLATES[k].company === '에이치에너지')).toEqual(['henergy-mohaet']);
+    expect(UPCOMING.some((u) => u.company === '에이치에너지')).toBe(false);
   });
   it('상품마다 틀이 있다', () => {
     for (const p of PRODUCTS) expect(TEMPLATES[p.template].company).toBe(p.company);
@@ -185,11 +263,9 @@ describe('조건 다듬기', () => {
     for (const u of UPCOMING) expect(PRODUCTS.some((p) => p.company === u.company && p.label === u.label)).toBe(false);
   });
   it('자가소비형 — 템플릿 · 조건은 넣을 수 있고, 고르는 상품에는 아직 없다(파워플래너 견본 받기 전)', () => {
-    for (const key of ['henergy-solarsharebaro', 'lumora-lease'] as const) {
-      expect(TEMPLATE_KEYS).toContain(key);
-      expect(PRODUCTS.some((p) => p.template === key)).toBe(false);
-    }
-    expect(UPCOMING.filter((u) => u.why.includes('파워플래너')).map((u) => u.label)).toEqual(['솔라쉐어바로', '구독형 리스']);
+    expect(TEMPLATE_KEYS).toContain('lumora-lease');
+    expect(PRODUCTS.some((p) => p.template === 'lumora-lease')).toBe(false);
+    expect(UPCOMING.filter((u) => u.why.includes('파워플래너')).map((u) => u.label)).toEqual(['구독형 리스']);
   });
 });
 

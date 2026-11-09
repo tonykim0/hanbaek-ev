@@ -4,9 +4,12 @@
  * 사용승인 연수는 오늘에 따라 바뀌어 앞머리만 본다.
  */
 import { describe, expect, it } from 'vitest';
-import type { RegisterBuilding } from '@/lib/solar/building-register';
+import { summarizeRegister, type RegisterBuilding } from '@/lib/solar/building-register';
 import type { LngLat } from '@/lib/solar/geo';
-import { FLUSH_KINDS, roofCheck, roofSetbackCheck, setbackCheck, siteCheck, terrainCheck, zoneCheck } from '@/lib/solar/site-checks';
+import { FLUSH_KINDS, roofCheck, roofSetbackCheck, setbackCheck, siteCheck, siteFactsOf, terrainCheck, zoneCheck } from '@/lib/solar/site-checks';
+
+/** 토지특성의 지목 · 면적 · 용도지역이 빈 것 — 지형 · 도로만 보는 시험에 */
+const NO_LAND = { category: null, areaM2: null, zoning: [] as string[] };
 
 const O: LngLat = [127.9, 36.97];
 const m = (x: number, y: number): LngLat => [O[0] + x / 89_000, O[1] + y / 111_320];
@@ -51,18 +54,54 @@ describe('부지(지상형)', () => {
   });
 });
 
+describe('현장의 공적 자료(제안서의 부지 검토 표)', () => {
+  const traits = { year: '2026', height: '평지', shape: null, road: null, use: null, category: '공장용지', areaM2: 15_446, zoning: ['일반공업지역'] };
+  const register = summarizeRegister([
+    { dong: '1동', main: true, archArea: 2_937, structure: null, roof: '기타지붕(판넬)', height: null, use: '공장', useApr: '20240315' },
+    { dong: '2동', main: true, archArea: 584.72, structure: null, roof: '(철근)콘크리트', height: null, use: '사무소', useApr: '20240401' },
+    { dong: '경비실', main: false, archArea: 20, structure: null, roof: null, height: null, use: '경비실', useApr: null },
+  ]);
+  const zones = { ok: true as const, value: [
+    { name: '도시지역', relation: '포함' },
+    { name: '일반공업지역', relation: '포함' },
+    { name: '가축사육제한구역', relation: '포함' },
+    { name: '자연녹지지역', relation: '접함' },
+  ] };
+  it('땅은 토지특성, 건물은 대장의 주건축물(건축면적 합 · 가장 큰 동의 주용도 · 사용승인일)', () => {
+    expect(siteFactsOf({ ok: true, value: traits }, zones, register, '2074장')).toEqual({
+      zoning: ['일반공업지역'],
+      landCategory: '공장용지',
+      landAreaM2: 15_446,
+      buildingAreaM2: 3_521.72,
+      buildingUse: '공장',
+      approvedOn: '20240315',
+    });
+  });
+  it('토지특성을 못 받으면 지목은 지번 끝 부호에서 · 용도지역은 토지이용계획에서(지구 · 접함 빼고) · 면적은 갈음하지 않는다', () => {
+    expect(siteFactsOf({ ok: false, error: '없음' }, zones, null, '2074장')).toEqual({
+      zoning: ['일반공업지역'],
+      landCategory: '공장용지',
+      landAreaM2: null,
+      buildingAreaM2: null,
+      buildingUse: null,
+      approvedOn: null,
+    });
+    expect(siteFactsOf({ ok: true, value: null }, { ok: false, error: '없음' }, null, null)).toMatchObject({ zoning: [], landCategory: null });
+  });
+});
+
 describe('경사 · 진입도로', () => {
   it('못 받음 · 자료 없음은 모름', () => {
     expect(terrainCheck({ ok: false, error: '없음' })).toMatchObject({ status: 'unknown', summary: '토지특성 못 받음 — 없음' });
     expect(terrainCheck({ ok: true, value: null })).toMatchObject({ status: 'unknown', summary: '이 필지의 토지특성 자료 없음' });
   });
   it('걸리는 것이 없으면 지형 · 도로가 결론', () => {
-    const c = terrainCheck({ ok: true, value: { year: '2026', height: '완경사', shape: '정방형', road: '세로각지(가)', use: '공업용' } });
+    const c = terrainCheck({ ok: true, value: { ...NO_LAND, year: '2026', height: '완경사', shape: '정방형', road: '세로각지(가)', use: '공업용' } });
     expect(c).toMatchObject({ status: 'ok', summary: '완경사 · 세로각지(가)' });
     expect(facts(c)).toEqual({ 지형: '완경사 · 정방형', 도로: '세로각지(가)', '지금 쓰임': '공업용' });
   });
   it('급경사 · 맹지는 둘 다 결론에', () => {
-    const c = terrainCheck({ ok: true, value: { year: '2026', height: '급경사', shape: null, road: '맹지', use: null } });
+    const c = terrainCheck({ ok: true, value: { ...NO_LAND, year: '2026', height: '급경사', shape: null, road: '맹지', use: null } });
     expect(c.status).toBe('conditional');
     expect(c.summary.split(' / ').map((s) => s.split(' — ')[0])).toEqual(['급경사', '맹지']);
     expect(facts(c)['지금 쓰임']).toBe('—');

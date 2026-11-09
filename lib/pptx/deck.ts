@@ -1,7 +1,7 @@
 /**
  * 있는 파워포인트(pptx) 고치기 — 슬라이드의 모양을 이름으로 찾아 글을 바꾸고, 그림을 갈고, 모양을 빼고 더한다.
  *
- * 사업자가 준 틀(타이런트 솔라15 · 에이치에너지 솔라쉐어 2.0)과 PDF 에서 지은 틀(루모라, lib/pptx/build)을 같은 길로 채운다.
+ * 사업자가 준 틀(타이런트 솔라15 · 에이치에너지 모햇)과 PDF 에서 지은 틀(루모라, lib/pptx/build)을 같은 길로 채운다.
  * 모양은 이름(cNvPr name)으로 찾는다 — 사업자가 틀을 바꿔 그 이름이 없으면 채우지 않고 멈춘다(엉뚱한 칸에 넣지 않게).
  * DOMParser · XMLSerializer 만 쓴다 — 브라우저에서 돈다(docx-kit 과 같다).
  */
@@ -17,6 +17,12 @@ export const PPTX_MIME = 'application/vnd.openxmlformats-officedocument.presenta
 const P14_NS = 'http://schemas.microsoft.com/office/powerpoint/2010/main';
 
 const ser = (d: Document) => new XMLSerializer().serializeToString(d);
+/** 바로 밑 자식 중 그 이름(드로잉 이름공간)의 것 — 표 칸 안에 표가 또 있지는 않지만 덩이 · 토막은 자식만 본다 */
+const kids = (el: Element, local: string): Element[] =>
+  Array.from(el.childNodes).filter((n): n is Element => n.nodeType === 1 && (n as Element).localName === local && (n as Element).namespaceURI === A_NS);
+
+/** 채워 넣는 글의 모양 — 크기(pt) · 색(「C00000」, # 없이). 안 주면 틀의 것 */
+export type RunLook = { size?: number; color?: string };
 /** 관계 파일의 줄(Relationship)들 */
 const relsIn = (d: Document | Element): Element[] => Array.from(d.getElementsByTagNameNS(PKG_REL_NS, 'Relationship'));
 /** 내용의 SHA-256(16진) — 브라우저 · node 둘 다의 Web Crypto */
@@ -99,34 +105,114 @@ export class Slide {
    * 그 모양의 글을 바꾼다 — 첫 덩이의 덩이 모양(pPr)과 첫 토막의 글자 모양(rPr)을 그대로 두고 글만. 줄바꿈(\n)마다 덩이를 나눈다.
    * 틀의 견본 글(「000 kW」)이 지닌 글꼴 · 크기 · 색이 그대로 남는다.
    */
-  setText(name: string, text: string, opts: { size?: number } = {}): void {
-    const sp = this.shape(name);
-    const body = sp.getElementsByTagNameNS(P_NS, 'txBody')[0];
+  setText(name: string, text: string, opts: RunLook = {}): void {
+    this.rewrite(this.bodyOf(name), text, opts);
+  }
+
+  /**
+   * 표(graphicFrame) 칸의 글을 바꾼다 — setText 와 같이 첫 덩이 · 첫 토막의 모양을 따른다. 행 · 열은 1부터(합쳐진 뒤쪽 칸도 센다).
+   * 사업자 틀의 견본 표(모햇 10쪽 임대료 연차표 등)를 지우고 다시 그리지 않고 칸의 글만 바꾼다 — 칸 색 · 테두리 · 줄 높이가 틀 그대로다.
+   */
+  setCell(name: string, row: number, col: number, text: string, opts: RunLook = {}): void {
+    this.rewrite(this.cellOf(name, row, col), text, opts);
+  }
+
+  /**
+   * 한 덩이의 글을 토막들로 다시 쓴다 — 토막마다 그 덩이의 like 째 토막(0부터)의 글자 모양을 따른다. 틀이 한 줄 안에서 색을 가른
+   * 자리(모햇 10쪽 머리말 — 앞은 검정, 숫자 쪽은 빨강)를 그 가름 그대로 채운다. 다른 덩이는 건드리지 않는다.
+   * at.cell 을 주면 표의 그 칸, at.para 는 몇째 덩이(0부터 · 기본 0).
+   */
+  setRuns(name: string, runs: (RunLook & { text: string; like?: number })[], at: { para?: number; cell?: { row: number; col: number } } = {}): void {
+    const body = at.cell ? this.cellOf(name, at.cell.row, at.cell.col) : this.bodyOf(name);
+    const n = at.para ?? 0;
+    const p = kids(body, 'p')[n];
+    if (!p) throw new Error(`템플릿이 바뀌었습니다 — ${this.label}의 「${name}」에 ${n + 1}째 줄이 없습니다.`);
+    const olds = kids(p, 'r');
+    const end = kids(p, 'endParaRPr')[0] ?? null;
+    for (const el of [...olds, ...kids(p, 'br'), ...kids(p, 'fld')]) p.removeChild(el);
+    for (const run of runs) {
+      const like = olds[run.like ?? 0];
+      if (!like) throw new Error(`템플릿이 바뀌었습니다 — ${this.label}의 「${name}」 ${n + 1}째 줄에 ${(run.like ?? 0) + 1}째 토막이 없습니다.`);
+      const r = this.runOf(run.text, kids(like, 'rPr')[0] ?? null, run);
+      if (end) p.insertBefore(r, end);
+      else p.appendChild(r);
+    }
+    this.dirty = true;
+  }
+
+  /** 모양 · 표 칸의 글(덩이마다 줄을 바꾼다) — 틀이 그 자리인지 볼 때 */
+  textOf(name: string, cell?: { row: number; col: number }): string {
+    const body = cell ? this.cellOf(name, cell.row, cell.col) : this.bodyOf(name);
+    return kids(body, 'p')
+      .map((p) => Array.from(p.getElementsByTagNameNS(A_NS, 't')).map((t) => t.textContent ?? '').join(''))
+      .join('\n');
+  }
+
+  /** 표의 열 너비(pt) — 칸에 드는 글자 크기를 셀 때 */
+  columnWidthPt(name: string, col: number): number {
+    const cols = Array.from(this.shape(name).getElementsByTagNameNS(A_NS, 'gridCol'));
+    const w = Number(cols[col - 1]?.getAttribute('w'));
+    if (!w) throw new Error(`템플릿이 바뀌었습니다 — ${this.label}의 「${name}」 표에 ${col}열이 없습니다.`);
+    return w / 12_700;
+  }
+
+  /** 모양의 글 몸통(p:txBody) */
+  private bodyOf(name: string): Element {
+    const body = this.shape(name).getElementsByTagNameNS(P_NS, 'txBody')[0];
     if (!body) throw new Error(`${this.label}의 「${name}」은 글을 받는 칸이 아닙니다.`);
-    const ps = Array.from(body.getElementsByTagNameNS(A_NS, 'p'));
+    return body;
+  }
+
+  /** 표 칸의 글 몸통(a:txBody) — 행 · 열은 1부터 */
+  private cellOf(name: string, row: number, col: number): Element {
+    const tr = Array.from(this.shape(name).getElementsByTagNameNS(A_NS, 'tr'))[row - 1];
+    const tc = tr ? kids(tr, 'tc')[col - 1] : undefined;
+    const body = tc ? kids(tc, 'txBody')[0] : undefined;
+    if (!body) throw new Error(`템플릿이 바뀌었습니다 — ${this.label}의 「${name}」 표에 ${row}행 ${col}열이 없습니다.`);
+    return body;
+  }
+
+  /** 글 몸통을 다시 쓴다 — 첫 덩이의 pPr · 첫 토막의 rPr(없으면 덩이 끝 모양)을 줄마다 */
+  private rewrite(body: Element, text: string, opts: RunLook): void {
+    const ps = kids(body, 'p');
     const first = ps[0];
-    const pPr = first?.getElementsByTagNameNS(A_NS, 'pPr')[0] ?? null;
-    const rPr = (first?.getElementsByTagNameNS(A_NS, 'rPr')[0] ?? first?.getElementsByTagNameNS(A_NS, 'endParaRPr')[0] ?? null) as Element | null;
+    const pPr = first ? (kids(first, 'pPr')[0] ?? null) : null;
+    const rPr = first ? (first.getElementsByTagNameNS(A_NS, 'rPr')[0] ?? kids(first, 'endParaRPr')[0] ?? null) : null;
     for (const p of ps) body.removeChild(p);
     for (const line of text.split('\n')) {
       const p = this.doc.createElementNS(A_NS, 'a:p');
       if (pPr) p.appendChild(pPr.cloneNode(true));
-      const r = this.doc.createElementNS(A_NS, 'a:r');
-      if (rPr || opts.size) {
-        const rp = this.doc.createElementNS(A_NS, 'a:rPr');
-        for (const a of Array.from(rPr?.attributes ?? [])) rp.setAttribute(a.name, a.value);
-        for (const c of Array.from(rPr?.childNodes ?? [])) rp.appendChild(c.cloneNode(true));
-        // 글이 칸보다 길면 글자를 줄여 넣는다(받는 쪽이 정한 크기 — 1/100 pt)
-        if (opts.size) rp.setAttribute('sz', String(Math.round(opts.size * 100)));
-        r.appendChild(rp);
-      }
-      const t = this.doc.createElementNS(A_NS, 'a:t');
-      t.textContent = line;
-      r.appendChild(t);
-      p.appendChild(r);
+      p.appendChild(this.runOf(line, rPr, opts));
       body.appendChild(p);
     }
     this.dirty = true;
+  }
+
+  /** 글 토막 하나 — base(rPr · endParaRPr)의 글자 모양을 옮겨 싣고, 크기 · 색만 바꿀 수 있다 */
+  private runOf(text: string, base: Element | null, look: RunLook): Element {
+    const r = this.doc.createElementNS(A_NS, 'a:r');
+    if (base || look.size || look.color) {
+      const rp = this.doc.createElementNS(A_NS, 'a:rPr');
+      for (const a of Array.from(base?.attributes ?? [])) rp.setAttribute(a.name, a.value);
+      for (const c of Array.from(base?.childNodes ?? [])) rp.appendChild(c.cloneNode(true));
+      // 글이 칸보다 길면 글자를 줄여 넣는다(받는 쪽이 정한 크기 — 1/100 pt)
+      if (look.size) rp.setAttribute('sz', String(Math.round(look.size * 100)));
+      if (look.color) {
+        // 채움은 a:ln 바로 뒤, 다른 것보다 앞(스키마 차례) — 옛 채움을 걷고 그 자리에
+        for (const tag of ['solidFill', 'noFill', 'gradFill', 'pattFill', 'grpFill']) for (const f of kids(rp, tag)) rp.removeChild(f);
+        const fill = this.doc.createElementNS(A_NS, 'a:solidFill');
+        const clr = this.doc.createElementNS(A_NS, 'a:srgbClr');
+        clr.setAttribute('val', look.color);
+        fill.appendChild(clr);
+        const ln = kids(rp, 'ln')[0];
+        rp.insertBefore(fill, ln ? ln.nextSibling : rp.firstChild);
+      }
+      r.appendChild(rp);
+    }
+    const t = this.doc.createElementNS(A_NS, 'a:t');
+    t.textContent = text;
+    r.appendChild(t);
+    return r;
   }
 
   /**
@@ -266,6 +352,20 @@ export class Deck {
     const sz = pres.getElementsByTagNameNS(P_NS, 'sldSz')[0];
     deck.size = { cx: Number(sz?.getAttribute('cx')), cy: Number(sz?.getAttribute('cy')) };
     return deck;
+  }
+
+  /**
+   * 그 이름의 모양이 있는 슬라이드 — 차례가 아니라 그 장에만 있는 모양 이름으로 찾는다(사업자가 장을 더하거나 빼 차례가 밀려도
+   * 엉뚱한 장을 채우지 않게). 없거나 여러 장에 있으면 멈춘다.
+   */
+  async slideWith(name: string): Promise<Slide> {
+    const hits: Slide[] = [];
+    for (let n = 1; n <= this.slides.length; n++) {
+      const s = await this.slide(n);
+      if (s.find(name)) hits.push(s);
+    }
+    if (hits.length !== 1) throw new Error(`템플릿이 바뀌었습니다 — 「${name}」 칸이 있는 슬라이드가 ${hits.length}장입니다(한 장이어야 합니다).`);
+    return hits[0];
   }
 
   /** n 번째 슬라이드(1부터) */

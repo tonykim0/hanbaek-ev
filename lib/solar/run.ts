@@ -12,7 +12,7 @@ import { gridNear, type GridResult } from './grid';
 import { parsePnu } from './pnu';
 import { pick, str } from './props';
 import { zonesInside } from './rules';
-import { FLUSH_KINDS, roofCheck, roofSetbackCheck, setbackCheck, siteCheck, terrainCheck, zoneCheck, type Settled } from './site-checks';
+import { FLUSH_KINDS, roofCheck, roofSetbackCheck, setbackCheck, siteCheck, siteFactsOf, terrainCheck, zoneCheck, type Settled } from './site-checks';
 import { registerTitles } from './sources/bldg';
 import { addressBuildingsIn, buildingsIn, landTraits, parcelAt, zonesOf, type Feature, type LandTraits, type Zone } from './sources/vworld';
 import { pointOfParcel, resolveTyped } from './suggest';
@@ -67,8 +67,8 @@ export async function runCheck(query: string, mode: Mode, picked?: Suggestion | 
     mode === 'roof' && parts ? settle(registerTitles(parts)) : given<RegisterBuilding[] | null>(null),
     // 도로명주소 건물 — 지도 모양이 주소를 붙일 때 그린 임시 네모인지 가른다(못 받아도 검토는 그대로)
     mode === 'roof' && bbox ? settle(addressBuildingsIn(bbox)) : given<Feature[]>([]),
-    // 토지특성 — 지상형의 경사 · 진입도로
-    mode === 'ground' && pnu ? settle(landTraits(pnu)) : given<LandTraits | null>(null),
+    // 토지특성 — 지상형의 경사 · 진입도로, 두 방식 다 지목 · 토지 면적 · 용도지역(제안서의 부지 검토 표 — Report.site)
+    pnu ? settle(landTraits(pnu)) : given<LandTraits | null>(null),
   ]);
 
   const checks: Check[] = [];
@@ -117,6 +117,7 @@ export async function runCheck(query: string, mode: Mode, picked?: Suggestion | 
     estimate: est,
     grid: gridView,
     map: siteMapOf(hit, parcelPolys, counted, addressBuildings, houses, registerSummary),
+    site: siteFactsOf(traits, zones, registerSummary, str(pick(parcel.properties, 'jibun'))),
     inputs: { sido, zones: zoneNames },
     checkedAt: new Date().toISOString(),
   };

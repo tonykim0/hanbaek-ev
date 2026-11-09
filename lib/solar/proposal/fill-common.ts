@@ -4,6 +4,7 @@
 import { formatKoreanPhone } from '@/lib/contract-form';
 import type { Slide } from '@/lib/pptx/deck';
 import { EMU_PER_PT, type Align, type Para } from '@/lib/pptx/xml';
+import type { GridView, SiteFacts } from '@/lib/solar/types';
 import type { Terms } from './products';
 
 /** 현장 사진 한 장 — 자리 비율(가로/세로)에 맞춰 이미 자른 JPEG */
@@ -24,6 +25,10 @@ export type ProposalInput = {
   shadeDeg: number;
   /** 한전 연계 여유(kW) — 모르면 null */
   gridSpareKw: number | null;
+  /** 한전 여유용량의 단계별 기록(부지 검토 그대로) — 모햇 「부지 검토」 쪽의 한전선로 칸 · 표. 모르면 null */
+  grid: GridView | null;
+  /** 현장의 공적 자료(용도지역 · 지목 · 대지면적 · 건축면적 · 주용도 · 사용승인) — 모햇 「부지 검토」 표 */
+  site: SiteFacts;
   /** 오늘(한국 날짜 'YYYY-MM-DD') — 사업 일정 · 파일 날짜 */
   today: string;
   /**

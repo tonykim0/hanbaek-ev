@@ -215,11 +215,40 @@ export async function zonesOf(pnu: string): Promise<Zone[]> {
 
 /**
  * 토지특성(개별공시지가 조사) — 지형높이(저지·평지·완경사·급경사·고지) · 지형형상 · 도로접면(광대로~세로·맹지) · 이용상황.
- * 지상형의 경사·진입도로를 본다(개발행위허가 기준). 해마다 새로 조사해 올해 것이 아직 없으면 지난해 것을 쓴다.
+ * 지상형의 경사·진입도로를 본다(개발행위허가 기준). 지목 · 토지 면적 · 용도지역은 지붕형에서도 받는다(제안서의 부지 검토 표).
+ * 해마다 새로 조사해 올해 것이 아직 없으면 지난해 것을 쓴다.
  */
-export type LandTraits = { year: string; height: string | null; shape: string | null; road: string | null; use: string | null };
+export type LandTraits = {
+  year: string;
+  height: string | null;
+  shape: string | null;
+  road: string | null;
+  use: string | null;
+  /** 지목(「공장용지」) · 토지 면적 ㎡ · 용도지역(둘까지, 「지정되지않음」 뺌) — 제안서의 부지 검토 표(2026-11-09 실응답: 충주 영덕리 2074 「공장용지」 · 15446 · 「일반공업지역」) */
+  category: string | null;
+  areaM2: number | null;
+  zoning: string[];
+};
 
-type TraitsField = { tpgrphHgCodeNm?: string; tpgrphFrmCodeNm?: string; roadSideCodeNm?: string; ladUseSittnNm?: string };
+type TraitsField = {
+  tpgrphHgCodeNm?: string;
+  tpgrphFrmCodeNm?: string;
+  roadSideCodeNm?: string;
+  ladUseSittnNm?: string;
+  lndcgrCodeNm?: string;
+  lndpclAr?: string | number;
+  prposArea1Nm?: string;
+  prposArea2Nm?: string;
+};
+
+const zoneName = (v: string | undefined): string | null => {
+  const t = v?.trim();
+  return t && !/지정되지\s*않음/.test(t) ? t : null;
+};
+const positive = (v: string | number | undefined): number | null => {
+  const n = Number(v);
+  return v !== undefined && String(v).trim() !== '' && Number.isFinite(n) && n > 0 ? n : null;
+};
 type TraitsBody = { landCharacteristicss?: { field?: TraitsField[] }; landCharacteristics?: { field?: TraitsField[] } };
 
 export async function landTraits(pnu: string, year = new Date().getFullYear()): Promise<LandTraits | null> {
@@ -235,6 +264,9 @@ export async function landTraits(pnu: string, year = new Date().getFullYear()): 
         shape: f.tpgrphFrmCodeNm?.trim() || null,
         road: f.roadSideCodeNm?.trim() || null,
         use: f.ladUseSittnNm?.trim() || null,
+        category: f.lndcgrCodeNm?.trim() || null,
+        areaM2: positive(f.lndpclAr),
+        zoning: [zoneName(f.prposArea1Nm), zoneName(f.prposArea2Nm)].filter((z): z is string => !!z),
       };
   }
   return null;

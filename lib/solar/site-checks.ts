@@ -9,6 +9,8 @@ import { areaLabel } from './estimate';
 import { areaOf, centroidOf, containsPoint, distanceBetween, type PolygonCoords } from './geo';
 import { num, pick, str } from './props';
 import {
+  isUseZone,
+  JIMOK_NAME,
   judgeBuildingAge,
   judgeLandCategory,
   judgeRoofSetback,
@@ -19,7 +21,7 @@ import {
   zonesInside,
 } from './rules';
 import type { Feature, LandTraits, Zone } from './sources/vworld';
-import type { Check, Fact, Level, Mode } from './types';
+import type { Check, Fact, Level, Mode, SiteFacts } from './types';
 import { worstLevel } from './verdict';
 
 /** 자료 하나를 받은 결과 — 못 받았으면 그 까닭(검사가 「못 받음 — …」으로 적는다) */
@@ -173,6 +175,35 @@ export function siteCheck(parcel: Feature, polys: PolygonCoords[]): { check: Che
       source: SRC_VWORLD,
     },
     area,
+  };
+}
+
+/**
+ * 현장의 공적 자료 — 제안서의 「부지 검토」 표(에이치에너지 모햇)가 그대로 적는 칸. 땅은 토지특성이 정본이고(토지대장의 지목 · 면적),
+ * 못 받으면 지목은 지번 끝 부호에서, 용도지역은 토지이용계획에서 읽는다. 면적은 갈음하지 않는다 — 지적도 도형 넓이는 토지대장과
+ * 몇 % 어긋나 「대지면적」 칸에 적을 값이 아니다. 건물은 대장의 주건축물(건축면적 합 · 가장 큰 동의 주용도 · 사용승인일).
+ */
+export function siteFactsOf(
+  traits: Settled<LandTraits | null>,
+  zones: Settled<Zone[]>,
+  register: RegisterSummary | null,
+  jibun: string | null,
+): SiteFacts {
+  const t = traits.ok ? traits.value : null;
+  const zoning = t?.zoning.length
+    ? t.zoning
+    : zones.ok
+      ? [...new Set(zonesInside(zones.value).map((z) => z.name).filter(isUseZone))]
+      : [];
+  const code = landCategoryOf(jibun);
+  return {
+    zoning,
+    landCategory: t?.category ?? (code ? (JIMOK_NAME[code] ?? null) : null),
+    landAreaM2: t?.areaM2 ?? null,
+    // 동마다의 ㎡(소수 둘째)를 더하면 3521.7200000000003 처럼 끝이 샌다 — 대장의 자리수로
+    buildingAreaM2: register && register.area > 0 ? Math.round(register.area * 100) / 100 : null,
+    buildingUse: register?.biggest?.use ?? null,
+    approvedOn: register?.biggest?.useApr ?? null,
   };
 }
 

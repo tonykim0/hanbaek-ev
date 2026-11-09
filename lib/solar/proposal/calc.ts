@@ -5,8 +5,8 @@
  *   솔라15        1~15년 임대료(기본형 kW × 임대료 · 5년 선납형 1년차 선지급 + 6~15년 kW × 임대료) → 16~35년 건물주 100%
  *                 발전수익 kW × 발전시간 × 365 × (SMP + REC × 가중치) × (1 − 열화)^(n−1). 운영비는 빼지 않는다(자료 각주 그대로).
  *                 표는 억원 소수 둘째, 합계는 안 반올린 값으로 센다(삽입용 엑셀이 그렇다).
- *   솔라쉐어 2.0  5년치 선지급 1년차 kW × (기본 + 이벤트) × 5 · 6~20년 kW × 기본 임대료 / 매년 지급 1년차 kW × (기본 + 이벤트) ·
- *                 2~20년 kW × 기본 임대료. 만원 단위 소수 한 자리(아래는 버림) · 억으로 묶는다(고객용 틀의 표기).
+ *   모햇          1년 선납 1~20년 kW × 임대료 / 5년 선납 1년차 kW × 5년 선납 단가 × 5 · 6~20년 kW × 임대료 ·
+ *                 참여지원금 kW × 단가(5년 선납 법인, 1회). 원 단위(견본의 표기).
  *   루모라 임대   kW × 단가(1 · 5 · 10년 선납 — 선납 할인 없음) · 20년. 연차표는 백만원 반올림, 합계는 실제 금액(자료 각주).
  * 값(단가 · 가정)은 저장소에 없다 — products.ts 머리말.
  */
@@ -78,38 +78,48 @@ export function solar15(kw: number, t: Terms, variant: Solar15Variant): Solar15 
 /** 억원 소수 둘째 — 「0.40」 · 「63.57」 */
 export const eok2 = (v: number): string => v.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-/* ------------------------------------------------------------- 솔라쉐어 2.0 */
+/* ------------------------------------------------------- 모햇 공유옥상 임대 */
 
-export const SHARE_YEARS = 20;
-export const SHARE_PREPAY_YEARS = 5;
+export const MOHAET_YEARS = 20;
+export const MOHAET_PREPAY_YEARS = 5;
 
-export type ShareOption = { year1: number; y2to5: number; y6to20: number; total: number };
-export type Share = { kw: number; prepay: ShareOption; annual: ShareOption };
+/** 지급 방식 하나 — 해마다 받는 돈(원 · 받는 돈이 없는 해 null) · 20년 합계 */
+export type MohaetPlan = { years: (number | null)[]; total: number };
 
-export function solarShare(kw: number, t: Terms): Share {
-  const base = kw * t.rentPerKw;
-  const prepayYear1 = kw * (t.prepayBasePerKw + t.prepayEventPerKw) * SHARE_PREPAY_YEARS;
-  const later = base * (SHARE_YEARS - SHARE_PREPAY_YEARS);
-  const annualYear1 = kw * (t.rentPerKw + t.annualEventPerKw);
-  const annual2to5 = base * (SHARE_PREPAY_YEARS - 1);
-  return {
-    kw,
-    prepay: { year1: prepayYear1, y2to5: 0, y6to20: later, total: prepayYear1 + later },
-    annual: { year1: annualYear1, y2to5: annual2to5, y6to20: later, total: annualYear1 + annual2to5 + later },
-  };
-}
+export type Mohaet = {
+  kw: number;
+  /** 한 해 임대료(원) = kW × 임대료 — 1년 선납의 해마다 · 5년 선납의 6~20년차 */
+  annual: number;
+  /** 5년 선납의 상업운전 시 일시 선지급(원) = kW × 5년 선납 단가 × 5 */
+  prepay: number;
+  /** 1년 선납 — 1~20년차 해마다 한 해 임대료 */
+  one: MohaetPlan;
+  /** 5년 선납 — 1년차 일시 선지급, 2~5년차 「-」, 6~20년차 한 해 임대료 */
+  five: MohaetPlan;
+  /** 참여지원금(원, 1회) = kW × 지원금 단가 — 5년 선납을 고른 법인 임대인만 */
+  subsidy: number;
+};
 
 /**
- * 「6,823.2 만 원」 · 「1억 1,697 만 원」 — 만원 소수 한 자리(아래는 버림), 억으로 묶는다. 고객용 틀(솔라쉐어 2.0)의 표기다.
- * 소수가 0 이면 안 적는다(「3,704 만 원」).
+ * 모햇 공유옥상 임대(에이치에너지 「03. 모햇 제안서_SAMPLE」 10 · 11쪽 — 137.15kW 견본의 숫자를 이 셈으로 원 단위까지 다시 냈다,
+ * 2026-11-09 저장소 밖에서). 금액은 해마다 원 단위로 반올림하고 합계는 반올림한 해의 합이다(표의 칸을 더하면 합계가 된다).
  */
-export function manwonText(won: number): string {
-  const tenth = Math.floor(won / 1000); // 0.1 만원 단위
-  const eok = Math.floor(tenth / 100_000);
-  const rest = (tenth - eok * 100_000) / 10;
-  const restText = rest.toLocaleString('ko-KR', { maximumFractionDigits: 1 });
-  if (eok === 0) return `${restText} 만 원`;
-  return rest === 0 ? `${eok}억 원` : `${eok}억 ${restText} 만 원`;
+export function mohaet(kw: number, t: Terms): Mohaet {
+  const annual = Math.round(kw * t.rentPerKw);
+  const prepay = Math.round(kw * t.prepay5PerKw * MOHAET_PREPAY_YEARS);
+  const one = Array.from({ length: MOHAET_YEARS }, () => annual);
+  const five = Array.from({ length: MOHAET_YEARS }, (_, i) => (i === 0 ? prepay : i < MOHAET_PREPAY_YEARS ? null : annual));
+  const plan = (years: (number | null)[]): MohaetPlan => ({ years, total: sumYears(years, 1, MOHAET_YEARS) });
+  return { kw, annual, prepay, one: plan(one), five: plan(five), subsidy: Math.round(kw * t.subsidyPerKw) };
+}
+
+/** 「5,486,000」 — 원 */
+export const wonText = (won: number): string => Math.round(won).toLocaleString('ko-KR');
+
+/** 「약 1.1억원」 · 「약 1.16억원」 · 「549만원」 — 1억 넘으면 억 소수 둘째(끝의 0 은 뗀다), 아래면 만원 반올림(모햇 견본 10쪽 머리말의 표기) */
+export function roughWonText(won: number): string {
+  if (won >= 1e8) return `${(won / 1e8).toFixed(2).replace(/\.?0+$/, '')}억원`;
+  return `${Math.round(won / 1e4).toLocaleString('ko-KR')}만원`;
 }
 
 /* --------------------------------------------------------------- 루모라 임대 */
@@ -178,15 +188,15 @@ export function eokManText(won: number): string {
 export const millionText = (won: number | null): string =>
   won === null ? '-' : (Math.round(won / 1e5) / 10).toLocaleString('ko-KR', { maximumFractionDigits: 1 });
 
-/* ------------------------------------------- 자가소비형 — 솔라쉐어바로 · 구독형 리스 */
+/* -------------------------------------------------- 자가소비형 — 루모라 구독형 리스 */
 
 /**
  * 자가소비형 — 고객이 발전량 전부를 사업자 단가(원/kWh, 20년 고정)로 사고, 자가소비한 만큼 한전 요금을 덜 내고, 남는 전기는 판다.
  * 고객 값 셋: 1년차 자가소비량(파워플래너 15분 사용량과 발전 모양을 맞대어 센다) · 한전 단가(태양광이 대체하는 시간대의 평균
  * 전력량요금 — 영업사가 요금제 이름과 함께 넣는다, 한백 2026-11-07) · 연간 사용량(파워플래너 — RE100 비율).
- * 셈의 모양은 사업자 견본 그대로다(2026-11-07 — 견본 숫자를 이 셈으로 다시 내 맞췄다):
- *   솔라쉐어바로  자가소비량은 해마다 1년차 값(발전량이 그보다 줄면 발전량) — 견본 연차표가 그렇다.
- *   구독형 리스   자가소비는 발전량 × 1년차 자가소비율 · 요금 시나리오 셋(동결 · 기본 · 인상 확대) · RE100(같은 물량의 REC 구매 대비).
+ * 셈의 모양은 사업자 견본 그대로다(2026-11-07 — 견본 숫자를 이 셈으로 다시 내 맞췄다): 자가소비는 발전량 × 1년차 자가소비율 ·
+ * 요금 시나리오 셋(동결 · 기본 · 인상 확대) · RE100(같은 물량의 REC 구매 대비).
+ * (에이치에너지 솔라쉐어바로도 같은 자리에 있었다 — 한백 2026-11-09 「에이치에너지에서 솔라쉐어는 우리가 안할거고 모햇만」으로 걷었다.)
  */
 export const SELF_USE_YEARS = 20;
 
@@ -207,38 +217,6 @@ function sumOf<T extends Record<string, number>>(rows: T[]): T {
   const out: Record<string, number> = {};
   for (const r of rows) for (const [k, v] of Object.entries(r)) out[k] = (out[k] ?? 0) + v;
   return out as T;
-}
-
-export type BaroYear = {
-  /** 발전량(kWh) */
-  gen: number;
-  /** 자가소비량(kWh) */
-  self: number;
-  /** 초과발전량(kWh) */
-  excess: number;
-  /** 전력구매비용(원) = 발전량 × 설비임대단가 */
-  cost: number;
-  /** 기존 전력량요금(원) = 자가소비량 × 한전 단가 × (1 + 인상률)^(n−1) */
-  bill: number;
-  /** 초과발전량 전기판매수익(원) = 초과발전량 × SMP */
-  sale: number;
-  /** 전기요금 연 이득(원) = 기존 전력량요금 + 판매수익 − 전력구매비용 */
-  gain: number;
-};
-export type Baro = { kw: number; years: BaroYear[]; total: BaroYear; /** 1년차 초과발전 비율(%) */ excessPct: number };
-
-export function solarShareBaro(kw: number, t: Terms, site: Pick<SelfUseSite, 'selfKwh' | 'tariff'>): Baro {
-  const years: BaroYear[] = [];
-  for (let n = 1; n <= SELF_USE_YEARS; n++) {
-    const gen = genOf(kw, t, n);
-    const self = Math.min(site.selfKwh, gen);
-    const excess = gen - self;
-    const cost = gen * t.ppaPrice;
-    const bill = self * site.tariff * grow(t.tariffIncreasePct, n);
-    const sale = excess * t.smp;
-    years.push({ gen, self, excess, cost, bill, sale, gain: bill + sale - cost });
-  }
-  return { kw, years, total: sumOf(years), excessPct: (years[0].excess / years[0].gen) * 100 };
 }
 
 export type LeaseYear = {

@@ -66,7 +66,7 @@ async function fill(product: ProductKey, args: FillArgs): Promise<Blob | Uint8Ar
       const { fillTyrant } = await import('./fill-tyrant');
       return fillTyrant(args, product === 'tyrant-solar15-prepay' ? 'prepay' : 'basic');
     }
-    case 'henergy-solarshare2': {
+    case 'henergy-mohaet': {
       const { fillHenergy } = await import('./fill-henergy');
       return fillHenergy(args);
     }

@@ -118,7 +118,7 @@ export default function ProposalMaker({ mapKey, initialQ, canManage }: { mapKey:
                   </Choice>
                 );
               })}
-              {/* 받을 것이 와야 짓는 상품(지금은 파워플래너 견본 받기 전 둘) — 못 고르는 칩(lib/solar/proposal/products UPCOMING) */}
+              {/* 받을 것이 와야 짓는 상품(지금은 파워플래너 견본 받기 전 — 루모라 구독형 리스) — 못 고르는 칩(lib/solar/proposal/products UPCOMING) */}
               {UPCOMING.filter((u) => u.company === company).map((u) => (
                 <Choice key={u.label} on={false} disabled>
                   {u.label}
@@ -258,6 +258,8 @@ function ProposalSite({
         mount: { style: plan.style, tiltDeg: lay.tiltDeg },
         shadeDeg: lay.shadeDeg,
         gridSpareKw: best?.spareKw ?? null,
+        grid: report.grid,
+        site: report.site,
         today: today(),
         seller: { company: seller.company.trim(), person: seller.person.trim(), phone: seller.phone },
         image,

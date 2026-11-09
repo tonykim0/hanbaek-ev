@@ -135,6 +135,25 @@ export type SiteMap = {
   roofStyle: LayoutStyle;
 };
 
+/**
+ * 현장의 공적 자료 몇 칸 — 판정에는 안 쓰고 제안서의 「부지 검토」 표(에이치에너지 모햇)에 그대로 적는다. 모르면 null(빈 배열).
+ * 땅은 토지특성(개별공시지가 조사 — 지목 · 토지 면적 · 용도지역), 건물은 건축물대장(주건축물).
+ */
+export type SiteFacts = {
+  /** 용도지역(국토계획법 — 지구 · 구역은 빼고). 필지가 둘에 걸치면 둘 */
+  zoning: string[];
+  /** 지목 — 「공장용지」 · 「대」 */
+  landCategory: string | null;
+  /** 토지 면적 ㎡(토지특성 — 토지대장의 면적) */
+  landAreaM2: number | null;
+  /** 건축면적 ㎡ — 주건축물 합(대장) */
+  buildingAreaM2: number | null;
+  /** 주용도 — 건축면적이 가장 큰 동 */
+  buildingUse: string | null;
+  /** 사용승인일 yyyymmdd — 건축면적이 가장 큰 동 */
+  approvedOn: string | null;
+};
+
 export type Report = {
   place: Place;
   mode: Mode;
@@ -143,6 +162,7 @@ export type Report = {
   estimate: Estimate | null;
   grid: GridView | null;
   map: SiteMap | null;
+  site: SiteFacts;
   /** 화면이 고른 지붕으로 다시 셈할 때 쓰는 값 */
   inputs: {
     sido: string | null;

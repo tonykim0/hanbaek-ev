@@ -192,8 +192,26 @@ describe('VWorld 토지이용계획 · 토지특성', () => {
 
   it('토지특성은 올해 것이 없으면 지난해 것 — 빈 칸은 null', async () => {
     const f = answer({ landCharacteristicss: { field: [] } }, { landCharacteristics: { field: [{ tpgrphHgCodeNm: ' 완경사 ', tpgrphFrmCodeNm: ' ', roadSideCodeNm: '세로각지(가)' }] } });
-    expect(await landTraits('4313041022120740000', 2026)).toEqual({ year: '2025', height: '완경사', shape: null, road: '세로각지(가)', use: null });
+    expect(await landTraits('4313041022120740000', 2026)).toEqual({
+      year: '2025',
+      height: '완경사',
+      shape: null,
+      road: '세로각지(가)',
+      use: null,
+      category: null,
+      areaM2: null,
+      zoning: [],
+    });
     expect(f.mock.calls.map((c) => new URL(c[0]).searchParams.get('stdrYear'))).toEqual(['2026', '2025']);
+  });
+
+  it('토지특성의 지목 · 토지 면적 · 용도지역(「지정되지않음」 뺌) — 2026-11-09 실응답(충주 영덕리 2074)의 모양', async () => {
+    answer({
+      landCharacteristicss: {
+        field: [{ tpgrphHgCodeNm: '평지', lndcgrCodeNm: '공장용지', lndpclAr: '15446', prposArea1Nm: '일반공업지역', prposArea2Nm: '지정되지않음' }],
+      },
+    });
+    expect(await landTraits('4313041022120740000', 2026)).toMatchObject({ category: '공장용지', areaM2: 15_446, zoning: ['일반공업지역'] });
   });
 
   it('두 해 다 없으면 null', async () => {
