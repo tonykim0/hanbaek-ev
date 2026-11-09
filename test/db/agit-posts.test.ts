@@ -1,25 +1,29 @@
 /**
- * 아지트 열린구매 글 — 연결 · 요청 담당 · 초안 · 승인의 문(app/api/agit/hook · posts/[id] · store/agit · migrations/0126).
+ * 아지트 열린구매 글 — 연결 · 요청 담당 · 초안 · 올리기 시작 · 남기기의 문(app/api/agit/hook · posts · posts/[id] · …/finish · store/agit).
  * 한백 2026-11-07 「콘솔에 있는 거래명세서 기반으로 여기에 자동적으로 글을 쓰게」 → 11-08 「정산담당 에이전트가 때가 되면 초안을
- * 올려주고, 내가 승인하면 정산담당에이전트가 아지트에 글을 올리는 구조」 · 「아지트 글에서 담당자 설정도 필요해」.
+ * 올려주고, 내가 승인하면 … 아지트에 글을 올리는 구조」 · 「아지트 글에서 담당자 설정도 필요해」 → 11-09 「evcharging bot으로 올리니까
+ * 내가 내용수정도 안되고, 첨부파일은 링크가 아니라 첨부파일로」 → 「Claude Code posts it」(글은 Claude Code 가 한백 계정으로 쓴다 —
+ * scripts/agit-post.ts · 콘솔은 앞뒤만).
  *
- * 보는 것: 관리자만 연결 · 담당 · 승인(열람 전용 · 협력사 403) · 웹훅 주소만 받고 응답 · DB · 감사기록에 주소를 싣지 않는다 ·
+ * 보는 것: 관리자만 연결 · 담당 · 찾기 · 올리기 시작 · 남기기(열람 전용 · 협력사 403) · 웹훅 주소를 응답 · DB · 감사기록에 싣지 않는다 ·
  * 요청 담당은 아지트 ID 만 · 다시 연결해도 남는다 · 초안은 결제일마다 하나(다시 지으면 같은 줄을 고친다) · 담당이 비었으면 못 올림 ·
- * ★승인 때 금액이 바뀌었으면 아지트를 부르지 않고 초안을 고쳐 둔다★ · 한 번 올린 글은 다시 못 올림 · 이미 올린 결제일은 again 으로만 새 초안 ·
- * 동시에 두 번 눌러도 한 번 · 아지트가 거절하면 「못 올림」(할 일은 그대로 · 다시 승인) · 올리면 상신 할 일이 끝나고 대화에 한 줄 ·
- * 보낸 몸에 task.assignees.
- * ★아지트는 부르지 않는다★ — fetch 를 바꿔 끼운다. 웹훅 주소는 지어낸 것이다(진짜는 그 그룹의 열쇠다).
+ * ★올리기 시작 때 금액이 바뀌었으면 거절하고 초안을 고쳐 둔다★ · 한 번 올린 글은 다시 못 올림 · 이미 올린 결제일은 again 으로만 새 초안 ·
+ * 동시에 두 번 시작해도 한 번 · 못 올렸으면 「못 올림」(할 일은 그대로 · 다시 시작) · 남긴 주소는 아지트 글 주소만 · 올리면 상신 할 일이
+ * 끝나고 대화에 한 줄. ★콘솔은 바깥(아지트 · 웹훅)을 부르지 않는다★ — fetch 를 바꿔 끼워 본다. 웹훅 주소는 지어낸 것이다.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { and, eq, gte, inArray, like, sql } from 'drizzle-orm';
 import { PUT as putHook, PATCH as patchHook, DELETE as deleteHook } from '@/app/api/agit/hook/route';
-import { POST as approve } from '@/app/api/agit/posts/[id]/route';
+import { POST as claimRoute } from '@/app/api/agit/posts/[id]/route';
+import { POST as finishRoute } from '@/app/api/agit/posts/[id]/finish/route';
+import { GET as findRoute } from '@/app/api/agit/posts/route';
 import { GET as getFiles } from '@/app/api/agit/posts/[id]/files/route';
 import JSZip from 'jszip';
 import { getRepository } from '@/lib/data';
 import { getDb } from '@/lib/db/client';
 import { agentMessages, agentTasks, agitHooks, agitPosts, auditLog, notifications } from '@/lib/db/schema';
-import { loadAgitDraft } from '@/lib/agit/load';
+import { agitUrgentFor, loadAgitDraft } from '@/lib/agit/load';
+import { AGIT_CC, AGIT_URGENT_TAG } from '@/lib/agit/post';
 import { openPurchaseKey, openPurchaseOf } from '@/lib/agents/open-purchase';
 import { runAgentReminders } from '@/lib/agents/remind-run';
 import { RUN, USERS, call, signIn } from './kit';
@@ -35,16 +39,6 @@ vi.mock('@/lib/agit/statement-pdf', () => ({
   cookiePairs: () => [],
 }));
 
-/* 승인은 엑셀 캡처 · 첨부 zip 을 Blob 에 올린다 — 시험에서는 가짜 주소만(올리지 않는다). 무엇을 올렸는지만 본다 */
-const blobPuts: string[] = [];
-vi.mock('@vercel/blob', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@vercel/blob')>()),
-  put: async (pathname: string) => {
-    blobPuts.push(pathname);
-    return { url: `https://x.public.blob.vercel-storage.com/${pathname}`, pathname };
-  },
-}));
-
 const repo = getRepository();
 const HOOK = `https://agit.io/webhook/test-${RUN}`;
 /** 아무 시험도 안 쓰는 먼 날 — 그날의 글에 이 시험의 배치만 든다. 10 · 25일이 아니라 「지급」이다 */
@@ -55,6 +49,9 @@ const D3 = '2098-03-10';
 const D3_TITLE = '열린구매 상신 — 3월 10일 정기결제';
 /** 첨부 zip 시험의 결제일 */
 const D4 = '2098-03-19';
+/** 긴급 글 시험의 결제일 */
+const D5 = '2098-03-20';
+const REASON = '세금계산서 발행 지연으로 늦은 상신';
 const AGENT = 'settlement';
 const TITLE = `[시험 ${RUN}] 열린구매 상신`;
 const started = new Date();
@@ -70,10 +67,11 @@ const stubFetch = (impl: Fetch) => {
 async function sweep() {
   const db = getDb();
   const keys = [openPurchaseKey(D), openPurchaseKey(D2), openPurchaseKey(D3)];
-  await db.delete(agitPosts).where(inArray(agitPosts.payDate, [D, D2, D3, D4]));
+  await db.delete(agitPosts).where(inArray(agitPosts.payDate, [D, D2, D3, D4, D5]));
   await db.delete(agentTasks).where(and(eq(agentTasks.agentId, AGENT), inArray(agentTasks.kind, keys)));
   await db.delete(agentMessages).where(and(eq(agentMessages.agentId, AGENT), sql`${agentMessages.meta}->>'remind' in (${keys[0]}, ${keys[1]}, ${keys[2]})`));
   await db.delete(agentMessages).where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 1_일 지급 열린구매 글을 아지트에 올렸습니다%')));
+  await db.delete(agentMessages).where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 20일 지급 열린구매 긴급 글을 아지트에 올렸습니다%')));
   await db.delete(notifications).where(and(eq(notifications.agentId, AGENT), inArray(notifications.title, [TITLE, D3_TITLE])));
   await db.delete(auditLog).where(and(inArray(auditLog.field, ['아지트', '정산 담당']), gte(auditLog.at, started)));
 }
@@ -102,26 +100,34 @@ async function remind(payDate: string): Promise<string> {
   return r.messageId!;
 }
 
-/** 크론처럼 — 그 결제일의 글을 지어 그 말 밑에 초안으로 */
-async function draftUnder(payDate: string, messageId: string | null, again = false) {
-  const d = await loadAgitDraft(admin, payDate);
+/** 크론처럼 — 그 결제일의 글을 지어 그 말 밑에 초안으로. urgent 를 주면 긴급 글(빈 글이면 보통 글로) · 안 주면 지금 초안의 모양 그대로 */
+async function draftUnder(payDate: string, messageId: string | null, again = false, urgent?: string) {
+  const d = await loadAgitDraft(admin, payDate, await agitUrgentFor(admin, payDate, urgent));
   expect(d.blocked).toBeNull();
-  return repo.draftAgitPost({ payDate, body: d.text, total: d.total, batches: d.batches, again, messageId }, admin);
+  return repo.draftAgitPost({ payDate, body: d.text, total: d.total, batches: d.batches, again, messageId, urgent: d.urgent }, admin);
 }
 
 const openTask = async (payDate: string) => (await getDb().select({ doneAt: agentTasks.doneAt }).from(agentTasks)
   .where(and(eq(agentTasks.agentId, AGENT), eq(agentTasks.kind, openPurchaseKey(payDate)))))[0];
 
-const post = (id: string, seen: unknown) => call(approve, { params: { id }, body: { seen } });
+const claim = (id: string, seen: unknown) => call(claimRoute, { params: { id }, body: seen === undefined ? {} : { seen } });
+const finish = (id: string, body: unknown) => call(finishRoute, { params: { id }, body });
+const find = (payDate: string) => findRoute(new Request(`http://test.local/api/agit/posts?payDate=${payDate}`));
+/** 올린 글 주소(지어낸 것) */
+const WALL = 'https://team-hanbaek.agit.io/g/1/wall/2';
+/** 콘솔은 바깥을 부르지 않는다 — 부르면 던진다 */
+const noFetch = () => stubFetch(async () => { throw new Error('콘솔이 바깥을 불렀다'); });
 
 describe('아지트 연결 · 요청 담당', () => {
-  it('열람 전용 · 협력사는 연결도 담당도 승인도 못 한다', async () => {
+  it('열람 전용 · 협력사는 연결도 담당도 찾기 · 올리기 시작 · 남기기도 못 한다', async () => {
     for (const u of [USERS.viewer, USERS.ecoelec]) {
       await signIn(u);
       expect((await call(putHook, { method: 'PUT', body: { url: HOOK } })).status, u.id).toBe(403);
       expect((await call(patchHook, { method: 'PATCH', body: { assignees: 'kiko.x' } })).status, u.id).toBe(403);
       expect((await call(deleteHook, { method: 'DELETE' })).status, u.id).toBe(403);
-      expect((await post('x', 'x')).status, u.id).toBe(403);
+      expect((await claim('x', 'x')).status, u.id).toBe(403);
+      expect((await finish('x', { ok: false })).status, u.id).toBe(403);
+      expect((await find(D)).status, u.id).toBe(403);
     }
   });
 
@@ -169,8 +175,8 @@ describe('아지트 연결 · 요청 담당', () => {
   });
 });
 
-describe('정산 담당의 초안 → 한백의 승인 → 아지트', () => {
-  it('초안은 결제일마다 하나 · 금액이 바뀌면 고쳐 두고 안 올림 · 승인하면 한 번 · 다시는 again 초안으로', async () => {
+describe('정산 담당의 초안 → Claude Code 가 한백 계정으로 올림 → 콘솔에 남김', () => {
+  it('초안은 결제일마다 하나 · 금액이 바뀌면 고쳐 두고 안 올림 · 올리기 시작은 한 번 · 남긴 주소로 올림 · 다시는 again 초안으로', async () => {
     await signIn(USERS.admin);
     await withPayableProject(async ({ id, org }) => {
       await repo.runPayoutBatch([{ projectId: id, kind: '영업비' }], D, admin);
@@ -180,48 +186,53 @@ describe('정산 담당의 초안 → 한백의 승인 → 아지트', () => {
       expect(made.post).toMatchObject({ status: 'draft', payDate: D, messageId: said, batches: 1, again: false });
       expect(made.post.body).toContain(`> [${org}](`); // 참고자료의 그 지급처 거래명세서 고리 — 구매 내역은 엑셀 캡처 자리뿐
       expect(made.post.body).toContain('# 구매 내역\n![구매요청간소화 엑셀](올릴 때 붙는 엑셀 캡처)');
+      expect(made.post.body).not.toMatch(/첨부 파일|\.zip/); // zip 은 글의 고리가 아니라 진짜 첨부(한백 11-09)
       expect(made.post.title).toBe('98년 2월 전기차 충전 인프라 구축사업 영업위탁 수수료 (3월 17일 지급)'); // 제목은 공사명(글은 #구매요청간소화 로 시작)
       /* 다시 지어도 같은 줄 — 같은 글이면 그대로, 다른 말 밑으로 옮기면 옮긴다 */
       expect((await draftUnder(D, said)).plan).toBe('keep');
       expect((await draftUnder(D, null)).post.id).toBe(made.post.id);
       expect((await repo.listAgitPosts(admin, [said])).map((p) => p.id)).toEqual([made.post.id]);
 
-      const WALL = 'https://team-hanbaek.agit.io/g/1/wall/2';
-      const fetcher = stubFetch(async () => new Response(JSON.stringify({ status: 'ok', id: 2, url: WALL }), { status: 200 }));
-      expect((await call(approve, { params: { id: made.post.id }, body: {} })).status).toBe(400);
+      /* 콘솔은 바깥(아지트 · 웹훅)을 부르지 않는다 — 글은 Claude Code 가 한백의 아지트 로그인으로 쓴다 */
+      const fetcher = noFetch();
+      expect((await claim(made.post.id, undefined)).status).toBe(400);
+      const found = await find(D);
+      expect(found.status).toBe(200);
+      expect(await found.json()).toMatchObject({ post: { id: made.post.id, status: 'draft' }, template: '구매요청간소화' });
 
       /* 요청 담당이 비면 못 올린다 */
       await repo.saveAgitAssignees({ assignees: '' }, admin);
-      const none = await post(made.post.id, made.post.body);
+      const none = await claim(made.post.id, made.post.body);
       expect(none.status).toBe(422);
       expect(none.json?.error).toMatch(/요청 담당 미지정/);
       await repo.saveAgitAssignees({ assignees: 'kiko.x, ella.a' }, admin);
 
-      /* 초안 뒤에 금액이 바뀐 것처럼 — 아지트를 부르지 않고 초안을 지금 글로 고쳐 둔다 */
+      /* 초안 뒤에 금액이 바뀐 것처럼 — 올리기 시작을 거절하고 초안을 지금 글로 고쳐 둔다 */
       await getDb().update(agitPosts).set({ body: `${made.post.body}\n옛 줄` }).where(eq(agitPosts.id, made.post.id));
-      const stale = await post(made.post.id, `${made.post.body}\n옛 줄`);
+      const stale = await claim(made.post.id, `${made.post.body}\n옛 줄`);
       expect(stale.status).toBe(422);
       expect(stale.json?.error).toMatch(/바뀌었습니다/);
-      expect(fetcher).not.toHaveBeenCalled();
       expect((await repo.getAgitPost(admin, made.post.id))?.body).toBe(made.post.body);
 
-      const ok = await post(made.post.id, made.post.body);
-      expect(ok.status).toBe(200);
-      expect(ok.json?.post).toMatchObject({
+      /* 올리기 시작 — 「올리는 중」 · 쓸 글 · 글양식 · 요청 담당 */
+      const start = await claim(made.post.id, made.post.body);
+      expect(start.status).toBe(200);
+      expect(start.json).toMatchObject({
+        post: { status: 'sending', body: made.post.body, assignees: ['kiko.x', 'ella.a'] }, template: '구매요청간소화', assignees: ['kiko.x', 'ella.a'],
+      });
+      expect((await claim(made.post.id, made.post.body)).json?.error).toMatch(/올리는 중/); // 그 사이 또 시작하면 걸린다
+      expect((await find(D)).status).toBe(200);
+
+      /* 남기기 — 아지트 글 주소만 */
+      expect((await finish(made.post.id, {})).status).toBe(400);
+      expect((await finish(made.post.id, { ok: true, url: 'https://evil.com/g/1/wall/2' })).status).toBe(400);
+      const done = await finish(made.post.id, { ok: true, url: `${WALL}/?x=1` });
+      expect(done.status).toBe(200);
+      expect(done.json?.post).toMatchObject({
         status: 'posted', payDate: D, batches: 1, postedBy: USERS.admin.name, assignees: ['kiko.x', 'ella.a'], agitUrl: WALL,
       });
-      expect(fetcher).toHaveBeenCalledTimes(1);
-      const [url, init] = fetcher.mock.calls[0];
-      expect(url).toBe(HOOK);
-      /* 보낸 글 = 초안의 자리 글에 올린 캡처 · zip 주소를 넣은 것 · 올린 글도 그것으로 남는다 */
-      const sent = JSON.parse(String(init.body));
-      expect(sent.task).toEqual({ template_name: '구매요청간소화', assignees: ['kiko.x', 'ella.a'] });
-      expect(made.post.body).toContain('](올릴 때 붙는 엑셀 캡처)');
-      expect(sent.text).not.toContain('올릴 때 붙는');
-      expect(sent.text).toMatch(new RegExp(`# 구매 내역\\n!\\[구매요청간소화 엑셀\\]\\(https://x\\.public\\.blob\\.vercel-storage\\.com/agit-posts/${D}/[^)]+\\.png\\)`));
-      expect(sent.text).toMatch(new RegExp(`\\.zip\\]\\(https://x\\.public\\.blob\\.vercel-storage\\.com/agit-posts/${D}/[^)]+\\.zip\\)`));
-      expect((ok.json?.post as { body?: string } | undefined)?.body).toBe(sent.text);
-      expect(blobPuts.filter((b) => b.startsWith(`agit-posts/${D}/`))).toHaveLength(2);
+      expect(fetcher).not.toHaveBeenCalled();
+      expect((await finish(made.post.id, { ok: true, url: WALL })).status).toBe(422); // 「올리는 중」이 아니다
 
       expect((await openTask(D))?.doneAt).not.toBeNull();
       const auto = await getDb().select({ body: agentMessages.body, role: agentMessages.role }).from(agentMessages)
@@ -231,15 +242,16 @@ describe('정산 담당의 초안 → 한백의 승인 → 아지트', () => {
       expect(auto[0].body).toContain(`승인 ${USERS.admin.name}`);
 
       /* 올린 글은 다시 못 올린다 · 같은 결제일의 새 초안은 again 으로만 */
-      const twice = await post(made.post.id, made.post.body);
+      const twice = await claim(made.post.id, made.post.body);
       expect(twice.status).toBe(422);
       expect(twice.json?.error).toMatch(/이미 아지트에 올린/);
+      expect(await (await find(D)).json()).toMatchObject({ post: null });
       await expect(draftUnder(D, said)).rejects.toThrow(/이미 아지트에 올린 결제일/);
       const again = await draftUnder(D, said, true);
       expect(again.plan).toBe('create');
       expect(again.post).toMatchObject({ status: 'draft', again: true });
-      expect((await post(again.post.id, again.post.body)).status).toBe(200);
-      expect(fetcher).toHaveBeenCalledTimes(2);
+      expect((await claim(again.post.id, again.post.body)).status).toBe(200);
+      expect((await finish(again.post.id, { ok: true, url: `${WALL}3` })).status).toBe(200);
       expect((await repo.listAgitPosts(admin, [said])).map((p) => p.status)).toEqual(['posted', 'posted']);
     });
   });
@@ -259,7 +271,7 @@ describe('정산 담당의 초안 → 한백의 승인 → 아지트', () => {
 
       const [said] = await getDb().select().from(agentMessages)
         .where(and(eq(agentMessages.agentId, AGENT), sql`${agentMessages.meta}->>'remind' = ${openPurchaseKey(D3)}`));
-      expect(said.body).toContain('아지트 열린구매 글 초안을 아래에 올렸습니다');
+      expect(said.body).toContain('아지트 열린구매 글 초안을 아래에 올렸습니다 — Claude Code 에 「3월 10일 열린구매 올려」');
       const cards = await repo.listAgitPosts(admin, [said.id]);
       expect(cards).toHaveLength(1);
       expect(cards[0]).toMatchObject({ status: 'draft', payDate: D3, batches: 1, postedBy: '정산 담당' });
@@ -269,7 +281,7 @@ describe('정산 담당의 초안 → 한백의 승인 → 아지트', () => {
     });
   });
 
-  it('첨부 zip — 관리자만 · 한 폴더에 구매요청간소화 엑셀과 지급처마다 거래명세서 (한백 「개별 파일로 하나의 zip으로」)', async () => {
+  it('첨부 zip — 관리자만 · 한 폴더에 구매요청간소화 엑셀 · 캡처와 지급처마다 거래명세서 (한백 「개별 파일로 하나의 zip으로」)', async () => {
     await withPayableProject(async ({ id, org }) => {
       await repo.runPayoutBatch([{ projectId: id, kind: '영업비' }], D4, admin);
       const { post: draft } = await draftUnder(D4, null);
@@ -297,33 +309,80 @@ describe('정산 담당의 초안 → 한백의 승인 → 아지트', () => {
     });
   });
 
-  it('아지트가 거절하면 못 올림이고 할 일은 그대로 · 다시 승인 · 동시에 두 번 눌러도 한 번', async () => {
+  it('긴급 글 — 사유를 주면 긴급구매요청 꼴 · 다시 지어도 모양이 남는다 · 올리기 시작은 그 사유로 다시 지어 견주고 글양식 긴급구매요청', async () => {
     await signIn(USERS.admin);
+    await repo.saveAgitAssignees({ assignees: 'kiko.x, ella.a' }, admin);
+    await withPayableProject(async ({ id, org }) => {
+      await repo.runPayoutBatch([{ projectId: id, kind: '영업비' }], D5, admin);
+      /* 보통 초안이 먼저 서 있다(크론) — 한백이 정산 담당에게 사유와 함께 긴급으로 바꾸라고 한다 */
+      const regular = await draftUnder(D5, null);
+      expect(regular.post.urgent).toBeNull();
+      const made = await draftUnder(D5, null, false, REASON);
+      expect(made.plan).toBe('refresh');
+      expect(made.post.id).toBe(regular.post.id);
+      expect(made.post.urgent).toBe(REASON);
+      expect(made.post.body.split('\n')[0]).toBe(`# [긴급] 98년 2월 전기차 충전 인프라 구축사업 영업위탁 수수료 (3월 20일 지급) ${AGIT_URGENT_TAG}`);
+      expect(made.post.body).toContain(`*3. 긴급사유 기재*\n> ${REASON}\n# 참고자료`);
+      expect(made.post.body).toContain(`> [${org}](`);
+      expect(made.post.body.endsWith(`\ncc ${AGIT_CC}`)).toBe(true);
+      expect(made.post.title).toBe('98년 2월 전기차 충전 인프라 구축사업 영업위탁 수수료 (3월 20일 지급)');
+
+      /* 사유를 안 주고 다시 지으면(크론 · 「다시 지어 줘」) 긴급 그대로 · 빈 사유는 보통 글로 · 다시 긴급으로 */
+      expect(await agitUrgentFor(admin, D5, undefined)).toBe(REASON);
+      expect((await draftUnder(D5, null)).plan).toBe('keep');
+      const back = await draftUnder(D5, null, false, '');
+      expect(back.post).toMatchObject({ urgent: null });
+      expect(back.post.body.startsWith('#구매요청간소화\n')).toBe(true);
+      expect(back.post.body).not.toContain('team.finance');
+      const urgent = (await draftUnder(D5, null, false, REASON)).post;
+      expect(urgent.body).toBe(made.post.body);
+
+      /* 금액이 바뀐 것처럼 — 고쳐 둔 초안도 긴급 그대로 */
+      const fetcher = noFetch();
+      await getDb().update(agitPosts).set({ body: `${urgent.body}\n옛 줄` }).where(eq(agitPosts.id, urgent.id));
+      expect((await claim(urgent.id, `${urgent.body}\n옛 줄`)).status).toBe(422);
+      expect(await repo.getAgitPost(admin, urgent.id)).toMatchObject({ body: urgent.body, urgent: REASON });
+
+      /* 올리기 시작 — 글양식 긴급구매요청 · 남기면 올림 */
+      const start = await claim(urgent.id, urgent.body);
+      expect(start.status).toBe(200);
+      expect(start.json).toMatchObject({ post: { status: 'sending', urgent: REASON }, template: '긴급구매요청' });
+      const done = await finish(urgent.id, { ok: true, url: WALL });
+      expect(done.json?.post).toMatchObject({ status: 'posted', urgent: REASON, agitUrl: WALL, assignees: ['kiko.x', 'ella.a'] });
+      expect(fetcher).not.toHaveBeenCalled();
+      const auto = await getDb().select({ body: agentMessages.body }).from(agentMessages)
+        .where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 20일 지급 열린구매 긴급 글을 아지트에 올렸습니다%')));
+      expect(auto).toHaveLength(1);
+      const [audit] = await getDb().select().from(auditLog)
+        .where(and(eq(auditLog.action, '아지트 글 올림'), gte(auditLog.at, started), like(auditLog.newValue, '%(3월 20일 지급) · 긴급%')));
+      expect(audit).toBeDefined();
+    });
+  });
+
+  it('Claude Code 가 못 올렸으면 못 올림이고 할 일은 그대로 · 다시 시작 · 동시에 두 번 시작해도 한 번', async () => {
+    await signIn(USERS.admin);
+    await repo.saveAgitAssignees({ assignees: 'kiko.x, ella.a' }, admin);
     await withPayableProject(async ({ id }) => {
       await repo.runPayoutBatch([{ projectId: id, kind: '영업비' }], D2, admin);
       const said = await remind(D2);
       const { post: draft } = await draftUnder(D2, said);
+      noFetch();
 
-      /* 아지트가 거절 — 200 에 못 올림, 할 일은 열린 채 */
-      const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-      stubFetch(async () => new Response('', { status: 404 }));
-      const no = await post(draft.id, draft.body);
+      /* 못 올림 — 까닭이 남고 할 일은 열린 채 */
+      expect((await claim(draft.id, draft.body)).status).toBe(200);
+      const no = await finish(draft.id, { ok: false, error: '아지트 쓰는 칸이 열리지 않았다' });
       expect(no.status).toBe(200);
-      expect(no.json?.post).toMatchObject({ status: 'failed', error: expect.stringContaining('404') });
+      expect(no.json?.post).toMatchObject({ status: 'failed', error: '아지트 쓰는 칸이 열리지 않았다' });
       expect((await openTask(D2))?.doneAt).toBeNull();
-      quiet.mockRestore();
-      /* 못 올린 것도 같은 초안 자리다 — 다시 지으면 그 줄 */
+      /* 못 올린 것도 같은 초안 자리다 — 다시 지으면 그 줄 · 찾으면 그것 */
       expect((await draftUnder(D2, said)).post.id).toBe(draft.id);
+      expect(await (await find(D2)).json()).toMatchObject({ post: { id: draft.id, status: 'failed' } });
 
-      /* 느린 아지트에 두 번 — 하나는 「올리는 중」에 걸린다 */
-      const fetcher = stubFetch(async () => {
-        await new Promise((r) => setTimeout(r, 400));
-        return new Response('{}', { status: 200 });
-      });
-      const both = await Promise.all([1, 2].map(() => post(draft.id, draft.body)));
+      /* 두 번 동시에 시작 — 하나는 「올리는 중」에 걸린다 */
+      const both = await Promise.all([1, 2].map(() => claim(draft.id, draft.body)));
       expect(both.map((r) => r.status).sort()).toEqual([200, 422]);
-      expect(String(both.find((r) => r.status === 422)?.json?.error)).toMatch(/올리는 중|이미 아지트에 올린/);
-      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(String(both.find((r) => r.status === 422)?.json?.error)).toMatch(/올리는 중/);
+      expect((await finish(draft.id, { ok: true, url: WALL })).status).toBe(200);
       expect((await openTask(D2))?.doneAt).not.toBeNull();
     });
   });

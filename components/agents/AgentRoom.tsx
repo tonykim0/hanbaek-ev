@@ -30,7 +30,8 @@
  * auto). 「자동」 꼬리표와 그 현장으로 가는 고리를 단다. 정산 담당의 열린구매 상신 알림(lib/agents/open-purchase)도 자동의 말이다 —
  * 현장 대신 「거래명세서 보기 →」(meta.link).
  * ★아지트 열린구매 글 초안★(2026-11-08 · lib/agit) — 정산 담당이 올린 초안(상신 알림 · agit_post)도 그 말 밑에 선다(AgitCard).
- * 한백이 「승인하고 올리기」를 눌러야 올라간다. 카드는 서버가 그린 목록을 그대로 쓴다 — 답 뒤의 router.refresh 가 새 카드를 싣는다.
+ * 아지트에는 한백이 Claude Code 에 시켜 한백의 계정으로 올린다(11-09 — 봇 글은 고칠 수 없고 파일을 못 붙였다). 카드는 서버가 그린 목록을
+ * 그대로 쓴다 — 답 뒤의 router.refresh 가 새 카드를 싣는다.
  */
 import Link from 'next/link';
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent, type ReactNode } from 'react';
@@ -283,7 +284,7 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
     if (a.messageId && shown.has(a.messageId)) agitOf.set(a.messageId, [...(agitOf.get(a.messageId) ?? []), a]);
   }
   const agitCard = (a: AgitPostRecord) => (
-    <AgitCard key={a.id} post={a} connected={agit?.connected ?? false} assignees={agit?.assignees ?? []} />
+    <AgitCard key={a.id} post={a} assignees={agit?.assignees ?? []} />
   );
   const pendingMails = mailList.filter((m) => m.status === 'draft' || m.status === 'failed').length;
 

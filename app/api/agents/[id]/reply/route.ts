@@ -30,7 +30,7 @@ import { pricingTableText } from '@/lib/agents/pricing-table';
 import { loadAgentBrief } from '@/lib/agents/scope';
 import { siteMailOfCpo } from '@/lib/site-mail';
 import { requestSiteMail } from '@/lib/site-mail-run';
-import { loadAgitDraft } from '@/lib/agit/load';
+import { agitUrgentFor, loadAgitDraft } from '@/lib/agit/load';
 import { payDateName } from '@/lib/agit/post';
 import { OPEN_PURCHASE_AGENT } from '@/lib/agents/open-purchase';
 import { awaitsReply, queryOf, searchText } from '@/lib/agents/memory';
@@ -144,14 +144,16 @@ async function answer(
       readFile: (id) => repo.agentFileOf(agentId, id, actor),
       /* 아지트 열린구매 글 초안 — 전기차 정산 담당만. 글은 콘솔이 거래명세서로 짓는다 */
       ...(agentId === OPEN_PURCHASE_AGENT && biz === 'ev' ? {
-        agitDraft: async (q: { payDate: string; again: boolean }) => {
-          const draft = await loadAgitDraft(actor, q.payDate);
+        agitDraft: async (q: { payDate: string; again: boolean; urgent?: string | null }) => {
+          /* 긴급사유 — 주면 긴급 글(빈 글이면 보통 글로), 안 주면 지금 초안의 모양 그대로(lib/agit/load agitUrgentFor) */
+          const draft = await loadAgitDraft(actor, q.payDate, await agitUrgentFor(actor, q.payDate, q.urgent));
           if (draft.blocked) throw new Error(`${payDateName(q.payDate)} 글을 지을 수 없다 — ${draft.blocked}`);
           const { post, plan } = await repo.draftAgitPost({
             payDate: draft.payDate, body: draft.text, total: draft.total, batches: draft.batches, again: q.again, messageId: null,
+            urgent: draft.urgent,
           }, actor);
           agitDrafted.push(post.id);
-          return { id: post.id, plan, name: payDateName(post.payDate), batches: post.batches, total: post.total };
+          return { id: post.id, plan, name: payDateName(post.payDate), batches: post.batches, total: post.total, urgent: post.urgent };
         },
       } : {}),
       ...(operatorCpo ? {

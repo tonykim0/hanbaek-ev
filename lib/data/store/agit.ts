@@ -18,6 +18,10 @@
  *
  * 올리면 정산 담당의 그 결제일 「열린구매 상신」 할 일이 끝나고(lib/agents/open-purchase 의 열쇠 — agent_tasks.kind) 그 대화에 자동의
  * 한 줄이 남는다 — 담당이 다음에 불릴 때 올렸다는 것을 안다.
+ *
+ * ★긴급 글은 줄의 긴급사유(urgent_reason · migrations/0128)가 정한다★(한백 2026-11-09 「긴급에 대한 템플릿도 따로 만들어줘」) — 승인 때
+ * 글을 다시 지을 때도 이 칸으로 짓는다(글에서 거꾸로 읽지 않는다). 초안을 다시 지으면 부른 쪽이 준 모양으로 칸을 고친다 —
+ * 모양을 그대로 두려면 부른 쪽이 openAgitPost 로 지금 칸을 읽어 그대로 준다(lib/agit/load agitUrgentFor).
  */
 import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
@@ -64,6 +68,7 @@ function recordOf(row: Row): AgitPostRecord {
     assignees: row.assignees ?? [],
     messageId: row.messageId,
     again: row.again,
+    urgent: row.urgentReason ?? null,
     agitUrl: row.agitUrl,
     createdAt: stampOf(row.createdAt),
     at: stampOf(row.status === 'draft' ? row.createdAt : row.postedAt ?? row.createdAt),
@@ -83,6 +88,9 @@ const hookInfoOf = (row: typeof agitHooks.$inferSelect | undefined): AgitHookInf
 /** 결제일 하나를 잠근다 — 초안 짓기 · 올리기가 같은 결제일에서 줄을 서게 */
 const lockPayDate = (tx: Tx, payDate: string) => tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hb_agit:${payDate}`}))`);
 
+/** 감사기록의 글 이름 — 긴급 글이면 꼬리를 단다 */
+const auditTitle = (body: string, urgent: string | null | undefined): string => `${agitTitleOf(body)}${urgent ? ' · 긴급' : ''}`;
+
 /** 같은 결제일을 지금 올리는 중인 줄(멈춘 것은 빼고) */
 async function sendingOf(tx: Tx, payDate: string, except?: string): Promise<Row | undefined> {
   const fresh = new Date(Date.now() - SENDING_STALE_MS);
@@ -95,7 +103,7 @@ async function sendingOf(tx: Tx, payDate: string, except?: string): Promise<Row 
 export const agitStore: Pick<
   ProjectRepository,
   | 'getAgitHook' | 'saveAgitHook' | 'saveAgitAssignees' | 'deleteAgitHook' | 'agitHookFor'
-  | 'listAgitPosts' | 'getAgitPost' | 'draftAgitPost' | 'linkAgitPosts' | 'claimAgitPost' | 'finishAgitPost'
+  | 'listAgitPosts' | 'getAgitPost' | 'openAgitPost' | 'draftAgitPost' | 'linkAgitPosts' | 'claimAgitPost' | 'finishAgitPost'
 > = {
   async getAgitHook(actor): Promise<AgitHookInfo> {
     assertHanbaek(actor, '아지트 연결');
@@ -179,6 +187,15 @@ export const agitStore: Pick<
     return row ? recordOf(row) : null;
   },
 
+  async openAgitPost(actor, payDate): Promise<AgitPostRecord | null> {
+    assertHanbaek(actor, '아지트 글');
+    /* 올리는 중인 것도 — Claude Code 가 쓰는 칸을 채우다 멈췄으면 다시 시킨다(멈춘 「올리는 중」은 claimAgitPost 가 다시 받는다) */
+    const [row] = await getDb().select().from(agitPosts)
+      .where(and(eq(agitPosts.payDate, payDate), inArray(agitPosts.status, [...OPEN, 'sending'])))
+      .orderBy(desc(agitPosts.createdAt)).limit(1);
+    return row ? recordOf(row) : null;
+  },
+
   async draftAgitPost(input, actor) {
     assertAdmin(actor, '아지트 글 초안');
     if (!DAY_RE.test(input.payDate)) throw new Error('결제일은 YYYY-MM-DD 로 적어주세요.');
@@ -187,21 +204,24 @@ export const agitStore: Pick<
     const { id, plan } = await db.transaction(async (tx) => {
       await lockPayDate(tx, input.payDate);
       if (await sendingOf(tx, input.payDate)) throw new Error('이 결제일 글을 올리는 중입니다 — 잠시 뒤 다시 보세요.');
-      const title = agitTitleOf(input.body);
+      const title = auditTitle(input.body, input.urgent);
       const [open] = await tx.select().from(agitPosts)
         .where(and(eq(agitPosts.payDate, input.payDate), inArray(agitPosts.status, OPEN)))
         .orderBy(desc(agitPosts.createdAt)).limit(1);
       if (open) {
-        const changed = open.body !== input.body;
+        /* 긴급 · 보통이 바뀌면 글도 바뀐다 — 그래도 사유 칸을 따로 견준다(같은 글에 사유만 다른 일이 없게) */
+        const changed = open.body !== input.body || (open.urgentReason ?? null) !== input.urgent;
         const moved = input.messageId !== null && input.messageId !== open.messageId;
         if (!changed && !moved) return { id: open.id, plan: 'keep' as const };
         await tx.update(agitPosts).set({
           body: input.body, total: input.total, batches: input.batches,
-          ...(changed ? { status: 'draft', error: null } : {}),
+          ...(changed ? { status: 'draft', error: null, urgentReason: input.urgent } : {}),
           ...(moved ? { messageId: input.messageId } : {}),
         }).where(eq(agitPosts.id, open.id));
         if (changed) {
-          await writeAudit(tx, { projectId: null, actor, action: '아지트 글 초안 고침', field: AUDIT_FIELD, oldValue: agitTitleOf(open.body), newValue: title });
+          await writeAudit(tx, {
+            projectId: null, actor, action: '아지트 글 초안 고침', field: AUDIT_FIELD, oldValue: auditTitle(open.body, open.urgentReason), newValue: title,
+          });
         }
         return { id: open.id, plan: 'refresh' as const };
       }
@@ -215,7 +235,7 @@ export const agitStore: Pick<
       const newId = crypto.randomUUID();
       await tx.insert(agitPosts).values({
         id: newId, payDate: input.payDate, status: 'draft', body: input.body, total: input.total, batches: input.batches,
-        messageId: input.messageId, again: Boolean(posted), postedBy: actor.name,
+        messageId: input.messageId, again: Boolean(posted), urgentReason: input.urgent, postedBy: actor.name,
       });
       await writeAudit(tx, { projectId: null, actor, action: '아지트 글 초안', field: AUDIT_FIELD, oldValue: null, newValue: title });
       return { id: newId, plan: 'create' as const };
@@ -252,7 +272,7 @@ export const agitStore: Pick<
       }
       await tx.update(agitPosts).set({
         status: 'sending', body: input.body, total: input.total, batches: input.batches, assignees: input.assignees,
-        error: null, postedBy: actor.name, postedAt: new Date(),
+        urgentReason: input.urgent, error: null, postedBy: actor.name, postedAt: new Date(),
       }).where(eq(agitPosts.id, row.id));
     });
     const [row] = await db.select().from(agitPosts).where(eq(agitPosts.id, input.id)).limit(1);
@@ -267,7 +287,7 @@ export const agitStore: Pick<
       const [row] = await tx.select().from(agitPosts).where(eq(agitPosts.id, input.id)).for('update');
       if (!row) throw new Error('올린 글을 찾을 수 없습니다.');
       if (row.status !== 'sending') throw new Error('올리는 중인 글이 아닙니다.');
-      const title = agitTitleOf(row.body);
+      const title = auditTitle(row.body, row.urgentReason);
       if (!input.result.ok) {
         const error = input.result.error.slice(0, 500);
         await tx.update(agitPosts).set({ status: 'failed', error }).where(eq(agitPosts.id, row.id));
@@ -294,7 +314,10 @@ export const agitStore: Pick<
       for (const t of closed) {
         await writeAudit(tx, { projectId: null, actor, action: '에이전트 할 일 끝냄', field: key, oldValue: t.title, newValue: '끝냄 — 아지트에 올림' });
       }
-      const body = agitPostedSay({ payDate: row.payDate, title, total: row.total, batches: row.batches }, actor.name);
+      const body = agitPostedSay(
+        { payDate: row.payDate, title: agitTitleOf(row.body), total: row.total, batches: row.batches, urgent: row.urgentReason },
+        actor.name
+      );
       const meta: AgentMessageMeta = { link: { href: '/statements', label: '거래명세서 보기 →' } };
       await tx.insert(agentMessages).values({ id: crypto.randomUUID(), agentId: agent.id, role: 'auto', author: agent.name, body, meta });
       await writeAudit(tx, { projectId: null, actor, action: '에이전트 자동', field: key, oldValue: null, newValue: body.slice(0, 2000) });

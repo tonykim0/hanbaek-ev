@@ -87,7 +87,7 @@ describe('담당마다 쥐는 도구', () => {
   });
 
   it('아지트 글 초안(agit_post)은 정산 담당만 — 라우트가 손을 이어 줄 때만 (한백 2026-11-08)', () => {
-    const agit = async () => ({ id: 'a', plan: 'create' as const, name: '11월 10일 정기결제', batches: 1, total: 1 });
+    const agit = async () => ({ id: 'a', plan: 'create' as const, name: '11월 10일 정기결제', batches: 1, total: 1, urgent: null });
     expect(names(toolsOf(SETTLE, { agitDraft: agit }))).toEqual(['add_task', 'complete_task', 'draft_mail', 'agit_post']);
     expect(names(toolsOf(SETTLE, {}))).not.toContain('agit_post');
     expect(names(toolsOf(NICE, { agitDraft: agit }))).not.toContain('agit_post');

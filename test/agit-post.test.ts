@@ -7,16 +7,16 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import JSZip from 'jszip';
 import {
-  agitAssigneesOf, agitDraftsOf, agitFolderOf, agitPayloadOf, agitPostOf, agitPostedSay, agitTitleOf, agitWebhookOf, assigneesLabel, badAgitIds,
-  fillAgitFiles, itemNameOf,
-  requestNameOf, upcomingPayDates, vatOf, type AgitBatch, type AgitPayee,
+  AGIT_CC, AGIT_URGENT_MAX, AGIT_URGENT_TAG,
+  agitAssigneesOf, agitDraftsOf, agitFolderOf, agitPostOf, agitPostedSay, agitTemplateOf, agitTitleOf, agitWebhookOf, assigneesLabel, badAgitIds,
+  itemNameOf,
+  requestNameOf, upcomingPayDates, urgentReasonOf, vatOf, type AgitBatch, type AgitPayee,
 } from '@/lib/agit/post';
 import { agitBundleOf, safeName } from '@/lib/agit/bundle';
 import { agitZipOf } from '@/lib/agit/bundle-zip';
 import { purchaseXlsx } from '@/lib/agit/purchase-xlsx';
 import { cookiePairs } from '@/lib/agit/statement-pdf';
 import { formatNumber, purchaseHtml } from '@/lib/agit/purchase-image';
-import { agitPostUrlOf, sendToAgit } from '@/lib/agit/send';
 import type { PayoutRow } from '@/types/project';
 
 const URL_ = 'https://hanbaek-re.vercel.app';
@@ -49,39 +49,34 @@ describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 �
     expect(post.text).toBe([
       '#구매요청간소화',
       '# 배경',
-      '> - 공사명 : 26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차',
-      '> - 상황설명 : 26년 10월 동안 진행된 전기차 충전기 설치 영업에 대한 영업위탁 수수료 1차',
+      '> *- 공사명 :* 26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차',
+      '> *- 상황설명 :* 26년 10월 동안 진행된 전기차 충전기 설치 영업에 대한 영업위탁 수수료 1차',
       '# 구매 내역',
       '![구매요청간소화 엑셀](올릴 때 붙는 엑셀 캡처)',
       '# 기한',
       '> 정기결제일 11월 10일',
-      '# 청구 금액',
+      '# *청구 금액*',
       '> 부가세 전 101,360,000',
       '> 부가세 포함 111,496,000',
       '# 참고자료',
       '> 거래명세서 내역',
       `> [에코일렉](${ECO_LINK})`,
       `> [이브이솔루션 (영업)](${URL_}/payments/statement?org=${encodeURIComponent('이브이솔루션 ')}%28${encodeURIComponent('영업')}%29&date=2026-11-10&kind=${encodeURIComponent('영업비')})`,
-      '# 첨부 파일',
-      '> 구매요청간소화 엑셀 · 거래명세서 · 세금계산서',
-      '> [26년 10월 영업위탁 수수료 1차.zip](올릴 때 붙는 첨부 zip)',
     ].join('\n'));
     expect(post.text).not.toContain('123-45-6789');
     expect(post.text).not.toContain('team.finance'); // cc 는 긴급 글에만(한백 11-08)
+    expect(post.text).not.toContain('**'); // 굵게는 별 하나 — ** 는 아지트가 글자 그대로 보인다(11-08 · 11-09 시험 글)
     expect(post).toMatchObject({
       total: 101_360_000, batches: 2, blocked: null, title: '26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차',
     });
+    expect(agitTitleOf(post.text)).toBe(post.title); // 굵은 「- 공사명 :」을 걷고 공사명
   });
 
-  it('엑셀 캡처 · 첨부 zip 자리 — 올릴 때 주소를 넣는다(괄호 · 빈칸은 고리가 안 끊기게) · 자리가 없으면 던진다', () => {
+  it('엑셀 캡처 자리 하나 · 첨부 zip 은 글에 없다(진짜 첨부 파일로 붙는다 — 한백 11-09 「첨부파일은 링크가 아니라 첨부파일로」)', () => {
     const post = agitPostOf('2026-11-10', nov10, URL_);
-    const base = 'https://x.public.blob.vercel-storage.com/agit-posts/2026-11-10/u';
-    const filled = fillAgitFiles(post.text, { image: `${base}/캡처 (1).png`, zip: `${base}/26년 10월.zip` });
-    expect(filled).toContain(`# 구매 내역\n![구매요청간소화 엑셀](${base}/캡처%20%281%29.png)\n# 기한`);
-    expect(filled).toContain(`> [26년 10월 영업위탁 수수료 1차.zip](${base}/26년%2010월.zip)`);
-    expect(filled).not.toContain('올릴 때 붙는');
-    expect(() => fillAgitFiles('# 글', { image: 'a', zip: 'b' })).toThrow(/자리가 없습니다/);
-    /* 글의 zip 이름 = 첨부 zip 의 이름 */
+    expect(post.text.split('](올릴 때 붙는 엑셀 캡처)')).toHaveLength(2);
+    expect(post.text).not.toMatch(/첨부 파일|\.zip/);
+    /* 붙는 zip 의 이름 = 첨부 zip 의 이름 */
     expect(`${agitFolderOf('2026-11-10', ['영업비'])}.zip`).toBe(agitBundleOf('2026-11-10', nov10, payeeOf).zipName);
     expect(agitFolderOf('2026-11-17', ['영업비', '시공비'])).toBe('26년 10월 영업위탁 수수료 및 시공비 11월 17일 지급');
   });
@@ -113,7 +108,7 @@ describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 �
     ], URL_);
     /* 구매 내역은 엑셀 캡처 그림만 — 품목 줄 · 현장 수 · 계산서 없음은 글에 없다(한백 11-08 · 11-09, 엑셀에 있다) */
     expect(post.text).not.toMatch(/> - 에코일렉|개 현장|\d기 ·|세금계산서 없음/);
-    expect(post.text).toContain('> [26년 10월 영업위탁 수수료 및 시공비 1차.zip](올릴 때 붙는 첨부 zip)');
+    expect(post.text).toContain('> *- 공사명 :* 26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 및 시공비 1차');
     expect(post.text).toContain('> [에코일렉 (영업비)](');
     expect(post.text).toContain('> [에코일렉 (시공비)](');
   });
@@ -162,6 +157,72 @@ describe('결제일마다 한 글 — 한백이 올려 온 양식 (2026-11-08 �
   it('올린 뒤 정산 담당 대화의 한 줄', () => {
     expect(agitPostedSay({ payDate: '2026-11-10', title: 'T', total: 101_360_000, batches: 2 }, '김정우'))
       .toBe('11월 10일 정기결제 열린구매 글을 아지트에 올렸습니다 — 지급 2건 · 공급가액 101,360,000원 (승인 김정우).\nT');
+    expect(agitPostedSay({ payDate: '2026-11-10', title: 'T', total: 1, batches: 1, urgent: '사유' }, '김정우'))
+      .toMatch(/^11월 10일 정기결제 열린구매 긴급 글을 아지트에 올렸습니다 — /);
+  });
+});
+
+describe('긴급 글 — 한백의 긴급구매요청 글 그대로 (2026-11-09 「긴급에 대한 템플릿도 따로 만들어줘」 · 26년 9월 1차 · 2차)', () => {
+  const ECO_LINK = `${URL_}/payments/statement?org=${encodeURIComponent('에코일렉')}&date=2026-11-10&kind=${encodeURIComponent('영업비')}`;
+  const REASON = '세금계산서 발행 지연으로 늦은 상신';
+  /* 제목 끝의 해시태그는 찾기 고리 — 한백의 긴급 글이 그랬다(그냥 #… 은 아지트가 작은 초록 해시태그로 그렸다, 11-09 시험 글) */
+  const TAG = '[#긴급구매요청](https://team-hanbaek.agit.io/search?q=%23%EA%B8%B4%EA%B8%89%EA%B5%AC%EB%A7%A4%EC%9A%94%EC%B2%AD)';
+
+  it('줄마다 한백의 긴급 글과 같은 꼴 — 굵게는 별 하나(*) · 엑셀 캡처는 지급요청 품목 상자 안 · 끝에 cc 재무팀', () => {
+    const post = agitPostOf('2026-11-10', nov10, URL_, REASON);
+    expect(post.text).toBe([
+      `# [긴급] 26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차 ${TAG}`,
+      '> *지급 요청일: [긴급] 2026. 11. 10 (화요일)*',
+      '*1. 구매사유*',
+      '> *- 공사명 :* 26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차',
+      '> *- 상황설명 :* 26년 10월 동안 진행된 전기차 충전기 설치 영업에 대한 영업위탁 수수료 1차',
+      '*2. 지급요청 품목*',
+      '> *부가세 전* 101,360,000 / *부가세 포함* 111,496,000',
+      '> ![구매요청간소화 엑셀](올릴 때 붙는 엑셀 캡처)',
+      '*3. 긴급사유 기재*',
+      `> ${REASON}`,
+      '# 참고자료',
+      '> 거래명세서 내역',
+      `> [에코일렉](${ECO_LINK})`,
+      `> [이브이솔루션 (영업)](${URL_}/payments/statement?org=${encodeURIComponent('이브이솔루션 ')}%28${encodeURIComponent('영업')}%29&date=2026-11-10&kind=${encodeURIComponent('영업비')})`,
+      `cc ${AGIT_CC}`,
+    ].join('\n'));
+    expect(AGIT_CC).toBe('[@@team.finance](https://team-hanbaek.agit.io/parties/13215)'); // 쓰는 칸의 멘션 고르기가 넣은 지금 팀 주소(11-09)
+    expect(AGIT_URGENT_TAG).toBe(TAG); // 한백의 긴급 글이 건 찾기 주소 그대로
+    expect(post.text).not.toContain('**'); // 아지트는 ** 를 글자 그대로 보인다(11-09 시험 글)
+    expect(post.text).not.toContain('123-45-6789');
+    expect(post).toMatchObject({
+      urgent: REASON, total: 101_360_000, batches: 2, blocked: null, title: '26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 1차',
+    });
+    expect(agitTitleOf(post.text)).toBe(post.title); // 굵게(*)를 걷고 공사명
+  });
+
+  it('사유를 다듬는다 — 앞의 > · # · 빈칸을 걷고 빈 줄은 빼고 다섯 줄 · 300자까지 · 비면 보통 글', () => {
+    expect(urgentReasonOf(null)).toBeNull();
+    expect(urgentReasonOf('  \n \n')).toBeNull();
+    expect(urgentReasonOf('> # 세금계산서   지연\n\n  - 협력사 업무 지연 ')).toBe('세금계산서 지연\n- 협력사 업무 지연');
+    expect(urgentReasonOf('1\n2\n3\n4\n5\n6')?.split('\n')).toHaveLength(5);
+    expect(urgentReasonOf('가'.repeat(400))).toHaveLength(AGIT_URGENT_MAX);
+    const two = agitPostOf('2026-11-10', nov10, URL_, '첫 줄\n둘째 줄');
+    expect(two.text).toContain('*3. 긴급사유 기재*\n> 첫 줄\n> 둘째 줄\n# 참고자료');
+    /* 빈 사유는 보통 글 — 모양이 하나도 섞이지 않는다 */
+    expect(agitPostOf('2026-11-10', nov10, URL_, '  ')).toEqual(agitPostOf('2026-11-10', nov10, URL_));
+    expect(agitPostOf('2026-11-10', nov10, URL_).urgent).toBeNull();
+  });
+
+  it('정기결제가 아닌 날 · 2차 — 제목 · 지급 요청일이 그날이다', () => {
+    const odd = agitPostOf('2026-11-17', nov10, URL_, REASON).text;
+    expect(odd.split('\n')[0]).toBe(`# [긴급] 26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 (11월 17일 지급) ${TAG}`);
+    expect(odd).toContain('> *지급 요청일: [긴급] 2026. 11. 17 (화요일)*');
+    expect(agitPostOf('2026-11-25', nov10, URL_, REASON).text.split('\n')[0]).toBe(`# [긴급] 26년 10월 전기차 충전 인프라 구축사업 영업위탁 수수료 2차 ${TAG}`);
+  });
+
+  it('엑셀 캡처 자리는 지급요청 품목 상자 안 · 글양식은 긴급구매요청', () => {
+    const text = agitPostOf('2026-11-10', nov10, URL_, REASON).text;
+    expect(text).toContain('> *부가세 전* 101,360,000 / *부가세 포함* 111,496,000\n> ![구매요청간소화 엑셀](올릴 때 붙는 엑셀 캡처)\n*3. 긴급사유 기재*');
+    expect(text).not.toMatch(/첨부 파일|\.zip/);
+    expect(agitTemplateOf(REASON)).toBe('긴급구매요청');
+    expect(agitTemplateOf(null)).toBe('구매요청간소화');
   });
 });
 
@@ -377,66 +438,7 @@ describe('요청 담당자 (한백 2026-11-08 「아지트 글에서 담당자 �
     expect(agitAssigneesOf('a b c d e f')).toBeNull();
   });
 
-  it('담당자가 있으면 요청 글(task.assignees) — 가이드의 몸 그대로', () => {
-    expect(agitPayloadOf('글', ['kiko.x', 'ella.a']))
-      .toEqual({ text: '글', task: { template_name: '구매요청간소화', assignees: ['kiko.x', 'ella.a'] } });
-    expect(agitPayloadOf('글', [])).toEqual({ text: '글' });
+  it('담당자를 보이는 글', () => {
     expect(assigneesLabel(['kiko.x', 'ella.a'])).toBe('@kiko.x · @ella.a');
-  });
-});
-
-describe('올리기', () => {
-  const HOOK = `https://agit.io/webhook/${TOKEN}`;
-  const body = (text: string) => agitPayloadOf(text, ['kiko.x']);
-
-  it('{"text", "task": {"assignees"}} 를 POST 한다 · 200 이면 올림', async () => {
-    const fetcher = vi.fn(async () => new Response('{}', { status: 200 }));
-    expect(await sendToAgit(HOOK, body('안녕\n둘째 줄'), fetcher as unknown as typeof fetch)).toEqual({ ok: true });
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    const [url, init] = fetcher.mock.calls[0] as unknown as [string, RequestInit];
-    expect(url).toBe(HOOK);
-    expect(init.method).toBe('POST');
-    expect(JSON.parse(String(init.body))).toEqual({ text: '안녕\n둘째 줄', task: { template_name: '구매요청간소화', assignees: ['kiko.x'] } });
-  });
-
-  it('404 · 그 밖의 거절 · 닿지 못함 · 시간 넘김은 사람 말로', async () => {
-    const as = (f: () => Promise<Response>) => f as unknown as typeof fetch;
-    expect(await sendToAgit(HOOK, body('x'), as(async () => new Response('', { status: 404 }))))
-      .toEqual({ ok: false, error: expect.stringContaining('웹훅을 모릅니다(404)') });
-    expect(await sendToAgit(HOOK, body('x'), as(async () => new Response('', { status: 500 }))))
-      .toEqual({ ok: false, error: '아지트가 받지 않았습니다(500).' });
-    const quiet = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-    expect(await sendToAgit(HOOK, body('x'), as(async () => { throw new TypeError('fetch failed'); })))
-      .toEqual({ ok: false, error: expect.stringContaining('닿지 못했습니다') });
-    const timeout = new Error('t');
-    timeout.name = 'TimeoutError';
-    expect(await sendToAgit(HOOK, body('x'), as(async () => { throw timeout; })))
-      .toEqual({ ok: false, error: expect.stringContaining('올라갔을 수 있으니') });
-    quiet.mockRestore();
-  });
-
-  it('아지트가 돌려준 글 id · 주소를 받는다 — 주소는 https 의 *.agit.io 만 (2026-11-08 실측 모양)', async () => {
-    const as = (f: () => Promise<Response>) => f as unknown as typeof fetch;
-    const answer = '{"status":"ok","id":365222313,"url":"https://team-hanbaek.agit.io/g/300450579/wall/365222313"}';
-    expect(await sendToAgit(HOOK, body('x'), as(async () => new Response(answer, { status: 200 }))))
-      .toEqual({ ok: true, agitId: '365222313', agitUrl: 'https://team-hanbaek.agit.io/g/300450579/wall/365222313' });
-    for (const bad of ['http://team-hanbaek.agit.io/x', 'https://evilagit.io/x', 'https://agit.io.evil.com/x', 'javascript:alert(1)', 3]) {
-      expect(agitPostUrlOf(bad), String(bad)).toBeUndefined();
-    }
-    expect(agitPostUrlOf('https://agit.io/g/1/wall/2')).toBe('https://agit.io/g/1/wall/2');
-  });
-
-  it('거절의 까닭이 짧은 글이면 붙인다 — HTML 은 안 붙인다', async () => {
-    const as = (f: () => Promise<Response>) => f as unknown as typeof fetch;
-    expect(await sendToAgit(HOOK, body('x'), as(async () => new Response('{"error":"invalid assignee"}', { status: 422 }))))
-      .toEqual({ ok: false, error: '아지트가 받지 않았습니다(422) — {"error":"invalid assignee"}' });
-    expect(await sendToAgit(HOOK, body('x'), as(async () => new Response('<!DOCTYPE html><p>x</p>', { status: 400 }))))
-      .toEqual({ ok: false, error: '아지트가 받지 않았습니다(400).' });
-  });
-
-  it('웹훅 주소가 아니면 부르지 않는다', async () => {
-    const fetcher = vi.fn();
-    expect((await sendToAgit(`https://evil.com/webhook/${TOKEN}`, body('x'), fetcher as unknown as typeof fetch)).ok).toBe(false);
-    expect(fetcher).not.toHaveBeenCalled();
   });
 });

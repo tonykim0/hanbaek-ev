@@ -11,7 +11,7 @@ import { CONSOLE_URL } from '@/lib/portal-intake';
 import { loadPartnerLines } from '@/lib/partner-lines';
 import type { Actor } from '@/lib/auth/types';
 import type { PartnerLine } from '@/lib/agents/brief';
-import { agitBatchesOf, agitDraftsOf, type AgitBatch, type AgitPayee, type AgitPostText } from './post';
+import { agitBatchesOf, agitPostOf, urgentReasonOf, type AgitBatch, type AgitPayee, type AgitPostText } from './post';
 
 /** 배치의 지급처 → 협력사 정보의 계좌 */
 export const payeeOfMap = (partners: ReadonlyMap<string, PartnerLine>) =>
@@ -30,11 +30,22 @@ async function ledger(actor: Actor) {
   return { rows, finals, invoices };
 }
 
-/** 결제일 하나의 글 — 그날 배치가 없으면 지급 0건의 글(올릴 수 없음)이 온다 */
-export async function loadAgitDraft(actor: Actor, payDate: string): Promise<AgitPostText> {
+/**
+ * 결제일 하나의 글 — 그날 배치가 없으면 지급 0건의 글(올릴 수 없음)이 온다. urgent(긴급사유)를 주면 긴급 글이다(lib/agit/post) —
+ * 승인 때는 그 줄의 긴급사유로 다시 짓는다(같은 모양이어야 견줄 수 있다).
+ */
+export async function loadAgitDraft(actor: Actor, payDate: string, urgent: string | null = null): Promise<AgitPostText> {
   const { rows, finals, invoices } = await ledger(actor);
-  const [draft] = agitDraftsOf(today(), rows, finals, invoices, CONSOLE_URL, payDate);
-  return draft;
+  return agitPostOf(payDate, agitBatchesOf(rows, finals, invoices, payDate), CONSOLE_URL, urgent);
+}
+
+/**
+ * 초안을 지을 모양 — 긴급사유를 주면 그것(빈 글이면 보통 글로 되돌림), 안 주면(undefined) 그 결제일의 열린 초안의 모양을 그대로 둔다.
+ * 크론이 아침에 다시 짓거나 한백이 「다시 지어 줘」라고만 할 때 긴급 글이 보통 글로 몰래 돌아가지 않게.
+ */
+export async function agitUrgentFor(actor: Actor, payDate: string, urgent: string | null | undefined): Promise<string | null> {
+  if (urgent !== undefined) return urgentReasonOf(urgent);
+  return (await getRepository().openAgitPost(actor, payDate))?.urgent ?? null;
 }
 
 /** 결제일 하나의 배치(계산서 파일 포함)와 지급처 계좌 — 첨부 zip 의 재료 */

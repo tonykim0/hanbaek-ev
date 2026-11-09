@@ -101,16 +101,24 @@ function roleOf(agent: Agent): string {
         + '3) 열린구매: 지급을 위해 한백 사내 아지트에 지출 글을 올리고 붙일 자료를 챙긴다. [열린구매] 자료가 재료다. '
         + '★아지트 글은 결제일마다 하나 · 콘솔이 짓는다★ — 그날 나가는 배치 전부를 콘솔이 거래명세서로 짓는다. 모양은 한백이 올려 온 '
         + '구매요청간소화 글 그대로다(마크다운): #구매요청간소화 · # 배경(공사명 · 상황설명) · # 구매 내역(엑셀 캡처 그림만 — 글자는 없다) · '
-        + '# 기한(정기결제일) · # 청구 금액(부가세 전 · 포함) · # 참고자료(지급처마다 거래명세서 고리) · # 첨부 파일(구매요청간소화 엑셀 · '
-        + '거래명세서 · 세금계산서를 묶은 zip 고리). 엑셀은 한백이 쓰던 양식을 틀로 채우고, 캡처 · zip 은 승인 때 콘솔이 지어 붙인다. '
-        + '굵게(**)는 쓰지 않는다. cc @@team.finance 는 긴급 글에만 단다 — 콘솔은 긴급 글을 짓지 않으니 늦은 상신이면 한백에게 알린다. '
+        + '# 기한(정기결제일) · # 청구 금액(부가세 전 · 포함) · # 참고자료(지급처마다 거래명세서 고리), 그리고 글 밑에 첨부 zip(구매요청간소화 '
+        + '엑셀 · 캡처 · 거래명세서 · 세금계산서)이 진짜 첨부 파일로 붙는다. 엑셀은 한백이 쓰던 양식을 틀로 채우고, 캡처 · zip 은 올릴 때 붙는다. '
+        + '★긴급 글★: 한백이 긴급으로 올리라고 하면 agit_post 의 urgent_reason 에 긴급사유를 넣는다 — 콘솔이 한백의 긴급구매요청 글 '
+        + '모양(# [긴급] 공사명 #긴급구매요청 · 지급 요청일 · 1. 구매사유 · 2. 지급요청 품목(청구 금액 · 엑셀 캡처) · 3. 긴급사유 기재 · '
+        + '참고자료 · 끝에 cc @@team.finance)으로 짓고 글양식도 긴급구매요청이 된다. 사유는 한백의 말 그대로 — 지어내지 않고, '
+        + '말하지 않았으면 묻는다. 긴급을 풀라고 하면 urgent_reason 을 빈 글("")로, 그냥 다시 지으라고 하면 urgent_reason 을 빼서 지금 모양을 '
+        + '그대로 둔다. 상신 기한(결제일 3영업일 전)이 지났다고 저절로 긴급이 아니다 — 한백이 정한다. 기한이 지났는데 한백이 말하지 않았으면 '
+        + '보통 글로 짓고 「기한이 지났으니 긴급으로 바꿀 수 있다」고 한 줄 짚는다. cc @@team.finance 는 긴급 글에만 붙는다. '
+        + '아지트 글을 네가 따로 쓸 때 굵게는 *글*(별 하나)이다 — ** 는 글자 그대로 보인다. '
         + '콘솔에 없는 지급(예: 25년 사업 잔금처럼 콘솔 밖 현장)은 글 · 엑셀 · zip 에 저절로 들어가지 않는다 — 한백이 그 거래명세서 · '
         + '세금계산서를 넘기며 이번 지급에 넣으라고 하면, 지금 콘솔 초안에는 넣을 수 없다고 말하고 Claude Code 로 더하라고 알린다. '
         + '협력사 정보에 계좌가 없는 지급처(채움에스앤시처럼 콘솔 계정이 없는 곳)는 엑셀의 은행 · 계좌가 「-」로 빈다 — 짚는다. 결제일 3영업일 전 아침에 콘솔이 네 이름으로 상신 할 일과 그 글의 초안을 이 대화에 저절로 올린다. '
         + '한백이 아지트 글을 올려 달라 · 초안을 보여 달라고 하면 agit_post(결제일)로 초안을 이 답 밑에 올린다 — 금액 · 계좌를 네가 옮겨 '
-        + '적지 않는다. 이미 올린 결제일은 한백이 다시 올리라고 할 때만 again. 너는 혼자 올리지 못한다 — 한백이 초안의 「승인하고 '
-        + '올리기」를 누르면 콘솔이 그때 금액으로 다시 지어 아지트 열린구매 그룹에 요청 글로 올리고, 요청 담당(한백이 '
-        + '「아지트 연결」 밑에 정해 둔 아지트 ID)을 붙인다. 올리면 그 결제일의 상신 할 일이 저절로 끝나고 대화에 「아지트에 올렸습니다」 한 줄이 선다. '
+        + '적지 않는다. 이미 올린 결제일은 한백이 다시 올리라고 할 때만 again. ★너도 콘솔도 아지트에 올리지 못한다★ — 아지트에는 '
+        + 'Claude Code 가 한백의 아지트 계정으로 올린다(한백 11-09: 봇 글은 한백이 고칠 수 없고 파일을 못 붙였다). 한백이 올리라고 하면 '
+        + '「Claude Code 에 『○월 ○일 열린구매 올려』라고 해 주세요」라고 답한다. Claude Code 가 그때 금액으로 다시 지어 견주고, 글양식 · '
+        + '본문 · 엑셀 캡처 · 첨부 zip · 요청 담당(한백이 「요청 담당」에 정해 둔 아지트 ID)을 넣어 올린다 — 한백이 쓴 글이라 한백이 고친다. '
+        + '올리면 그 결제일의 상신 할 일이 저절로 끝나고 대화에 「아지트에 올렸습니다」 한 줄이 선다. '
         + '한백이 따로 써 달라고 할 때만 [열린구매] 자료로 글을 쓴다. 붙일 자료는 자료 줄에 있는 것(거래명세서 주소 · 세금계산서 · '
         + '사업자등록증 · 통장사본)을 보고 없는 것은 없다고 짚는다.';
     case 'strategy':
@@ -312,8 +320,15 @@ export interface AgentHands {
    * 아지트 열린구매 글 초안 — 전기차 정산 담당만(store/agit draftAgitPost). 글을 지을 수 없거나(지급 0건 · 지급처 미정) 이미 올린
    * 결제일인데 again 이 아니면 사람 말로 던진다. plan: create 새로 · refresh 고침 · keep 같은 글
    */
-  agitDraft?(input: { payDate: string; again: boolean }): Promise<{
+  agitDraft?(input: {
+    payDate: string;
+    again: boolean;
+    /** 긴급사유 — 글이면 긴급 글 · 빈 글이면 보통 글로 되돌림 · 없으면(undefined) 지금 초안의 모양 그대로 */
+    urgent?: string;
+  }): Promise<{
     id: string; plan: 'create' | 'refresh' | 'keep'; name: string; batches: number; total: number;
+    /** 지은 글의 긴급사유 — null 이면 보통 글 */
+    urgent: string | null;
   }>;
   /** 팀장만 — 팀 목표 · 방향 올리기(id 없이) · 고치기(id). 저장소가 틀리면 사람 말로 던진다 */
   saveDirection?(input: { id: string | null; title: string; body: string }): Promise<{ id: string; title: string }>;
@@ -430,13 +445,19 @@ function draftMailTool(withBundles: boolean) {
 const AGIT_POST_TOOL = {
   name: 'agit_post',
   description: '그 결제일의 아지트 열린구매 글 초안을 이 답 밑에 올린다. 글은 콘솔이 거래명세서(그날 나가는 배치 전부)로 한백의 '
-    + '구매요청간소화 양식대로 짓는다(배경 · 구매 내역(엑셀 캡처) · 기한 · 청구 금액 · 참고자료 · 첨부 파일 — 캡처 · zip 은 승인 때 붙는다) — 너는 결제일만 준다. 같은 결제일의 승인 전 초안이 있으면 지금 금액으로 고쳐 이 답 밑으로 옮긴다. '
-    + '너는 아지트에 올리지 못한다 — 한백이 초안의 「승인하고 올리기」를 눌러야 올라간다. 이미 올린 결제일은 한백이 다시 올리라고 할 때만 again.',
+    + '구매요청간소화 양식대로 짓는다(배경 · 구매 내역(엑셀 캡처) · 기한 · 청구 금액 · 참고자료 — 캡처 · 첨부 zip 은 올릴 때 붙는다) — 너는 결제일만 준다. '
+    + 'urgent_reason 을 주면 긴급구매요청 양식(긴급사유 · cc 재무팀)으로 짓는다. 같은 결제일의 승인 전 초안이 있으면 지금 금액으로 고쳐 이 답 밑으로 옮긴다. '
+    + '너는 아지트에 올리지 못한다 — 한백이 Claude Code 에 「○월 ○일 열린구매 올려」라고 해야 한백의 계정으로 올라간다. 이미 올린 결제일은 한백이 다시 올리라고 할 때만 again.',
   input_schema: {
     type: 'object',
     properties: {
       pay_date: { type: 'string', description: '결제일 YYYY-MM-DD — 배치의 지급일([열린구매] 자료의 날짜)' },
       again: { type: 'boolean', description: '이미 올린 결제일을 다시 올리는 초안인가 — 한백이 다시 올리라고 했을 때만 true (선택)' },
+      urgent_reason: {
+        type: 'string',
+        description: '긴급 글로 지을 때의 긴급사유 — 한백이 긴급으로 올리라고 할 때만, 한백이 말한 사유 그대로(「3. 긴급사유 기재」에 들어간다, '
+          + '예: 세금계산서 발행 지연으로 늦은 상신). 빈 글("")이면 긴급을 풀고 보통 글로 되돌린다. 빼면 지금 초안의 모양(긴급 · 보통) 그대로 (선택)',
+      },
     },
     required: ['pay_date'],
   },
@@ -865,15 +886,18 @@ export async function agentReply(input: {
         const payDate = str(args.pay_date);
         if (!DAY_RE.test(payDate)) return fail('pay_date 는 YYYY-MM-DD 다.');
         if (agitDrafts.length >= 3) return fail('한 답에 아지트 글 초안은 셋까지다.');
-        const made = await hands.agitDraft({ payDate, again: args.again === true });
-        agitDrafts.push(made.name);
+        /* 긴급사유 — 칸을 주었으면(빈 글 포함) 그 모양으로, 안 주었으면 지금 초안의 모양 그대로 */
+        const urgent = typeof args.urgent_reason === 'string' ? args.urgent_reason : undefined;
+        const made = await hands.agitDraft({ payDate, again: args.again === true, ...(urgent !== undefined ? { urgent } : {}) });
+        agitDrafts.push(made.urgent ? `${made.name} (긴급)` : made.name);
         const sum = `지급 ${made.batches}건 · 공급가액 ${made.total.toLocaleString('ko-KR')}원`;
+        const shape = made.urgent ? ` · 긴급 글 — 사유 「${made.urgent.replace(/\n/g, ' / ')}」` : ' · 보통 글(구매요청간소화)';
         return {
           type: 'tool_result', tool_use_id: block.id,
-          content: (made.plan === 'create' ? `초안을 올렸다 (id=${made.id}, ${made.name} · ${sum})`
-            : made.plan === 'refresh' ? `같은 결제일의 승인 전 초안을 지금 금액으로 고쳐 이 답 밑으로 옮겼다 (id=${made.id}, ${sum})`
-              : `같은 초안이 이미 있어 이 답 밑으로 옮겼다 (id=${made.id}, ${sum})`)
-            + ' — 아직 올리지 않았다. 한백이 「승인하고 올리기」를 누르면 그때 금액으로 다시 지어 아지트에 올라간다.',
+          content: (made.plan === 'create' ? `초안을 올렸다 (id=${made.id}, ${made.name} · ${sum}${shape})`
+            : made.plan === 'refresh' ? `같은 결제일의 승인 전 초안을 지금 글로 고쳐 이 답 밑으로 옮겼다 (id=${made.id}, ${sum}${shape})`
+              : `같은 초안이 이미 있어 이 답 밑으로 옮겼다 (id=${made.id}, ${sum}${shape})`)
+            + ' — 아직 올리지 않았다. 한백이 Claude Code 에 「올려」라고 하면 그때 금액으로 다시 지어 한백의 계정으로 아지트에 올라간다.',
         };
       }
       if (block.name === 'pricing_table' && agent.kind === 'operator' && hands.pricingTable) {

@@ -926,6 +926,8 @@ export const agitPosts = pgTable('agit_posts', {
   messageId: text('message_id'),
   /** 이미 올린 결제일을 다시 올리는 초안 */
   again: boolean('again').notNull().default(false),
+  /** 긴급사유 — 있으면 긴급 글(글양식 긴급구매요청 · lib/agit/post), 없으면 보통 글(migrations/0128) */
+  urgentReason: text('urgent_reason'),
   /** 아지트가 돌려준 그 글의 id · 주소(lib/agit/send) — 카드의 「아지트에서 보기」 */
   agitId: text('agit_id'),
   agitUrl: text('agit_url'),

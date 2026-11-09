@@ -9,7 +9,7 @@
 import { getRepository } from '@/lib/data';
 import { today } from '@/lib/date';
 import { AUTO } from '@/lib/check-kit';
-import { loadAgitDraft } from '@/lib/agit/load';
+import { agitUrgentFor, loadAgitDraft } from '@/lib/agit/load';
 import type { Actor } from '@/lib/data/repository';
 import { loadScope } from './scope';
 import { OPEN_PURCHASE_AGENT, openPurchaseDue, openPurchasePlan, unknownYears } from './open-purchase';
@@ -29,7 +29,8 @@ export async function runAgentReminders(now: Date = new Date()): Promise<{
   for (const due of dues) {
     const years = unknownYears(due);
     if (years.length) console.error('[agents] 공휴일 표 없음', years.join(','), '— lib/business-days 에 그 해를 더한다');
-    const draft = await loadAgitDraft(REMIND_ACTOR, due.payDate);
+    /* 크론은 긴급을 정하지 않는다 — 한백이 먼저 긴급 초안을 시켜 두었으면 그 모양 그대로 다시 짓는다 */
+    const draft = await loadAgitDraft(REMIND_ACTOR, due.payDate, await agitUrgentFor(REMIND_ACTOR, due.payDate, undefined));
     const plan = openPurchasePlan(due, day, batches.filter((b) => b.paidAt === due.payDate), draft.blocked);
     const r = await getRepository().agentRemind({
       agentId: OPEN_PURCHASE_AGENT, key: plan.key, task: plan.task, say: plan.say, alarm: plan.alarm,
@@ -42,6 +43,7 @@ export async function runAgentReminders(now: Date = new Date()): Promise<{
     try {
       await getRepository().draftAgitPost({
         payDate: draft.payDate, body: draft.text, total: draft.total, batches: draft.batches, again: false, messageId: r.messageId,
+        urgent: draft.urgent,
       }, REMIND_ACTOR);
       drafted.push(due.payDate);
     } catch (e) {

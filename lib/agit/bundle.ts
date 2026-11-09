@@ -23,7 +23,7 @@ export interface AgitBundlePlan {
   /** zip 안의 폴더 — zip 이름에서 .zip 을 뗀 것 */
   folder: string;
   xlsxName: string;
-  /** 엑셀 캡처 — 글의 「구매 내역」에 그림으로 선다(승인 때 Blob 에 올려 주소를 넣는다 · lib/agit/post fillAgitFiles) */
+  /** 엑셀 캡처 — 글의 「구매 내역」에 그림으로 선다(올릴 때 Claude Code 가 zip 안의 이것을 쓰는 칸에 올린다 · scripts/agit-post.ts) */
   imageName: string;
   sheet: PurchaseSheet;
   /** 배치마다 거래명세서 — 콘솔 주소(경로)와 넣을 이름 */
