@@ -30,8 +30,8 @@ import {
 } from '@/lib/board';
 import type { AttrFilters, AttrKey } from '@/lib/project-filter';
 import {
-  DATE_COLS, DATE_KEYS, DEFAULT_HIDDEN, PICK_GROUPS, PICKABLE, qtyOf, restoreHidden, sortProjects, tableSheet, termsOf,
-  type ColKey, type SortKey, type TableDateField, type TableTab,
+  DATE_COLS, DATE_KEYS, DEFAULT_HIDDEN, filterAttrOf, labelOf, PICK_GROUPS, PICKABLE, qtyOf, restoreHidden, sortProjects,
+  tableSheet, termsOf, type ColKey, type SortKey, type TableDateField, type TableTab,
 } from '@/lib/project-table';
 import { today } from '@/lib/date';
 import { Badge, Blank, Btn, Err, Tag } from '@/components/ui';
@@ -77,9 +77,8 @@ export function useTableColumns(
         next.delete(key);
       } else if (!next.has(key)) {
         next.add(key);
-        // 숨긴 열에 걸려 있던 필터는 푼다 — 안 보이는 필터가 몰래 표를 거르면 안 된다
-        const def = PICKABLE.find((c) => c.key === key);
-        const attr = def && 'attr' in def ? def.attr : undefined;
+        // 숨긴 열에 걸려 있던 필터는 푼다 — 안 보이는 필터가 몰래 표를 거르면 안 된다(날짜 열의 있음 · 없음도)
+        const attr = filterAttrOf(key);
         if (attr && (filters[attr]?.length ?? 0) > 0) onFilter(attr, []);
       }
     }
@@ -224,9 +223,12 @@ export default function ProjectTable({
               {show('powerIn') && head('전력인입', { attr: 'power' })}
               {show('sales') && head('영업사', { attr: 'sales' })}
               {show('gc') && head('시공사', { attr: 'gc' })}
-              {/* 날짜 열 — 정의(무슨 값 · 어디에 저장 · 언제 해당없음)는 lib/project-table DATE_COLS 한 곳이다 */}
+              {/*
+                * 날짜 열 — 정의(무슨 값 · 어디에 저장 · 언제 해당없음)는 lib/project-table DATE_COLS 한 곳이다.
+                * 머리글에서 있음 · 없음 · 해당없음으로 거른다(한백 2026-11-10 — lib/project-filter 날짜 축).
+                */}
               {DATE_KEYS.filter(show).map((k) => (
-                <Fragment key={k}>{head(PICKABLE.find((c) => c.key === k)?.label ?? k)}</Fragment>
+                <Fragment key={k}>{head(labelOf(k), { attr: filterAttrOf(k) })}</Fragment>
               ))}
               {show('created') && head('접수일', { sort: 'created', attr: 'month' })}
             </tr>

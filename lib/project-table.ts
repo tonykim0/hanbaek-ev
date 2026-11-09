@@ -95,10 +95,12 @@ export const TABLE_ORDER: readonly ColKey[] = [
  * 페이지별 기본 열 — 사용자가 「열」에서 고르기 전의 시작점.
  * 계약 페이지에는 아직 없는 시공 일정을, 시공 페이지에는 계약 속성을 접어 둔다.
  */
-export const MILESTONE_KEYS: readonly ColKey[] = [
+export const MILESTONE_KEYS = [
   'envApproval', 'notify', 'notifyCert', 'chargerOrder', 'chargerRecv', 'preStart', 'start', 'foundation',
   'chargerInstall', 'install', 'elecApply', 'safetyCheck', 'kepcoLine', 'meter', 'useInspectApply', 'comm', 'completion',
-];
+] as const;
+/** 날짜 열의 이름 — 열 이름이자 그 열 머리글이 거는 필터 축의 이름이다(lib/project-filter) */
+export type MilestoneKey = (typeof MILESTONE_KEYS)[number];
 export const DEFAULT_HIDDEN: Record<TableTab, readonly ColKey[]> = {
   intake: MILESTONE_KEYS,
   construction: ['queue', 'biz', 'bldg', 'created'],
@@ -201,6 +203,7 @@ const noKepco = (p: ProjectSummary) => !hasKepcoWork(p.powerType);
  * 모자분리는 한전 외선공사 · 계량기 부설이 없다.
  */
 export const DATE_COLS: Partial<Record<ColKey, DateCol>> = {
+  /* 날짜 열마다 정의가 있다 — 빠지면 그 열의 필터(presenceOf)가 설 자리가 없다. satisfies 가 컴파일 때 본다 */
   envApproval: { field: 'envApprovalDate', name: '환경부 승인일', date: (p) => m(p).envApprovalDate, na: (p) => !subsidized(p.bizType) },
   notify: { field: 'notifyDate', name: '행위신고 신청일', date: (p) => m(p).notifyDate, na: (p) => m(p).notifySkipped },
   notifyCert: {
@@ -226,10 +229,42 @@ export const DATE_COLS: Partial<Record<ColKey, DateCol>> = {
   useInspectApply: { field: 'useInspectApplyDate', name: '지자체 사용검사 신청일', date: (p) => m(p).useInspectApplyDate },
   comm: { field: 'openDate', name: '개통완료일', date: (p) => m(p).openDate, done: (p) => m(p).openDone },
   completion: { name: '준공서류 제출일', date: (p) => m(p).completionSubmitAt },
-};
+} satisfies Record<MilestoneKey, DateCol>;
 
 /** 날짜 열의 차례 — 표가 이 차례로 그린다 */
-export const DATE_KEYS: readonly ColKey[] = TABLE_ORDER.filter((k) => DATE_COLS[k] !== undefined);
+export const DATE_KEYS: readonly MilestoneKey[] = TABLE_ORDER.filter(
+  (k): k is MilestoneKey => DATE_COLS[k] !== undefined
+);
+
+/** 열의 이름 — 「열」 고르기 · 표 머리글 · 그 열의 필터가 같은 이름을 쓴다 */
+export const labelOf = (key: ColKey): string => PICKABLE.find((c) => c.key === key)?.label ?? key;
+
+/**
+ * 날짜 칸이 있나 — 날짜 열 머리글의 필터가 거르는 값(한백 2026-11-10 「필터를 걸고 해당 필터 값이 있는지 없는지
+ * 해당없음인지 구분해서 또 한 번 보고싶어」). 환경부 대기번호 축과 같은 세 말이다(lib/project-filter).
+ *
+ * ★칸에 보이는 그대로 가른다★ — 해당없음은 칸의 「해당없음」(DATE_COLS na — 화면 · 엑셀과 같은 판정), 있음은 날짜가
+ * 적혔거나 날짜 없이 완료(✓)만 찍힌 옛 칸(칸에 ✓ 가 보이고 엑셀에는 「완료」로 나간다), 없음은 「—」인 칸이다.
+ * 필터로 고른 「없음」이 표에서 ✓ 칸을 보여 주면 거른 것이 틀려 보인다.
+ */
+export const PRESENCE = ['있음', '없음', '해당없음'] as const;
+export type Presence = (typeof PRESENCE)[number];
+
+export function presenceOf(key: MilestoneKey, p: ProjectSummary): Presence {
+  const col = DATE_COLS[key]!; // 날짜 열마다 정의가 있다(위 satisfies)
+  if (col.na?.(p)) return '해당없음';
+  return col.date(p) || col.done?.(p) ? '있음' : '없음';
+}
+
+/**
+ * 그 열의 머리글에서 거는 필터 축 — 없으면 거르지 않는 열(대수 등).
+ * 날짜 열은 제 이름의 축(있음 · 없음 · 해당없음)이다. 열을 숨기면 그 축의 필터를 같이 푼다(components/ProjectTable).
+ */
+export function filterAttrOf(key: ColKey): AttrKey | undefined {
+  const def = PICKABLE.find((c) => c.key === key);
+  if (def && 'attr' in def) return def.attr;
+  return (MILESTONE_KEYS as readonly ColKey[]).includes(key) ? (key as MilestoneKey) : undefined;
+}
 
 /**
  * 날짜 칸의 엑셀 값 — 날짜는 진짜 날짜, 날짜 없이 완료 선언만 있는 옛 현장은 「완료」, 아직이면 빈 칸.

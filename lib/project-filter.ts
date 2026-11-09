@@ -12,12 +12,19 @@
 import type { ProjectSummary } from '@/types/project';
 import { subsidized } from '@/types/project';
 import { boardColumnOf } from './board';
+/*
+ * 날짜 열의 정의(무슨 값 · 언제 해당없음)는 표가 쥔다 — 날짜 축은 그것을 그대로 읽는다(아래 ATTRS 끝).
+ * ★project-table 은 이 파일에서 타입만 가져간다★ — 값까지 서로 부르면 모듈이 서로를 기다려 ATTRS 를 짓다가 깨진다.
+ */
+import { DATE_KEYS, labelOf, PRESENCE, presenceOf, type MilestoneKey } from './project-table';
 
 /** 값이 비어 있는 현장을 고르는 이름. 실제 값과 겹치지 않게 괄호를 쓴다. */
 export const EMPTY = '(없음)';
 
 export type AttrKey =
-  | 'col' | 'month' | 'cpo' | 'term' | 'biz' | 'bldg' | 'power' | 'sales' | 'gc' | 'queue';
+  | 'col' | 'month' | 'cpo' | 'term' | 'biz' | 'bldg' | 'power' | 'sales' | 'gc' | 'queue'
+  /** 날짜 열마다 하나 — 있음 · 없음 · 해당없음 */
+  | MilestoneKey;
 
 export interface Attr {
   key: AttrKey;
@@ -27,6 +34,8 @@ export interface Attr {
    * 계약연수는 라인마다 다를 수 있어서 「7년 3대 + 10년 4대」 현장은 7년·10년 양쪽에 걸린다.
    */
   valuesOf: (p: ProjectSummary) => string[];
+  /** 값의 차례가 정해진 축 — 있음 · 없음 · 해당없음. 없으면 가나다 차례다 */
+  order?: readonly string[];
 }
 
 const one = (v: string | null | undefined): string[] => [v?.trim() ? v : EMPTY];
@@ -91,7 +100,24 @@ export const ATTRS: Attr[] = [
      */
     valuesOf: (p) =>
       !subsidized(p.bizType) ? ['해당없음'] : [p.envQueueNo?.trim() ? '있음' : '없음'],
+    order: PRESENCE,
   },
+  /*
+   * 날짜 열마다 한 축 — 있음 · 없음 · 해당없음 (한백 2026-11-10 「계약관리 시공관리 표에서 필터를 걸고 해당 필터 값이
+   * 있는지 없는지 해당없음인지 구분해서 또 한 번 보고싶어」). 운영사 · 시공사로 좁힌 뒤 「착공일 안 적힌 현장」 ·
+   * 「개통 안 된 현장」을 한 번 더 거른다.
+   *
+   * 날짜 하나하나로 거를 일은 없다 — 대기번호와 같은 까닭으로 「적혔나 · 아직인가 · 이 현장에는 없는 일인가」가 묻는
+   * 것이다. 해당없음을 없음과 가르는 것도 같은 까닭이다: 자체투자의 환경부 승인일이 「없음」에 섞이면 그 목록으로는
+   * 챙길 곳을 알 수 없다. 판정은 표의 칸 · 엑셀과 한 정의다(lib/project-table presenceOf).
+   * 거는 자리는 그 열의 머리글이다 — 판에는 펴 두지 않고(열일곱이다) 걸려 있을 때만 선다(panelAttrKeys).
+   */
+  ...DATE_KEYS.map((key): Attr => ({
+    key,
+    label: labelOf(key),
+    valuesOf: (p) => [presenceOf(key, p)],
+    order: PRESENCE,
+  })),
 ];
 
 export const ATTR_BY_KEY = new Map(ATTRS.map((a) => [a.key, a]));
@@ -107,7 +133,7 @@ export const ATTR_BY_KEY = new Map(ATTRS.map((a) => [a.key, a]));
  *
  * ★ATTRS 를 줄이지 않는다.★ 표의 열 머리글에서도 같은 축을 거는데(ProjectTable),
  * 거기서 걸 수 있는 것은 열이 있는 만큼이다 — 축을 지우면 그쪽에서도 사라진다.
- * 나머지 축(단계·계약연수·건축물·대기번호)은 열 머리글에 남는다.
+ * 나머지 축(단계·계약연수·건축물·대기번호 · 날짜 열마다의 있음/없음/해당없음)은 열 머리글에 남는다.
  * 거기서 걸어 둔 것은 판에도 나온다 — 걸려 있는데 보이지 않는 조건을 두지 않는다
  * (푸는 자리가 없으면 왜 이것만 나오는지 알 수 없다).
  */
@@ -132,6 +158,12 @@ export function optionsOf(projects: ProjectSummary[], key: AttrKey): string[] {
   for (const p of projects) for (const v of attr.valuesOf(p)) seen.add(v);
 
   const list = [...seen];
+  // 차례가 정해진 축은 그 차례로 — 가나다로 두면 「없음 · 있음 · 해당없음」이 된다
+  const order = attr.order;
+  if (order) {
+    const rank = (v: string) => (order.includes(v) ? order.indexOf(v) : order.length);
+    return list.sort((a, b) => rank(a) - rank(b));
+  }
   // 「(없음)」은 늘 끝으로 — 값 목록 사이에 섞이면 눈에 걸린다
   return list.sort((a, b) => {
     if (a === EMPTY) return 1;
