@@ -13,7 +13,7 @@ import {
 } from '@/lib/solar/proposal/fill-common';
 import { formatKoreanPhone } from '@/lib/contract-form';
 import { lumoraPlans } from '@/lib/solar/proposal/fill-lumora';
-import { compareCells, compareText, dateText, gridCondition, gridLines, gridNotes, gridTableRows, manText, rentTexts, siteRows } from '@/lib/solar/proposal/fill-henergy';
+import { dateText, gridCondition, gridNotes, gridTableRows, mohaetAmounts, mohaetValue } from '@/lib/solar/proposal/fill-henergy';
 import type { GridRow, GridView, SiteFacts } from '@/lib/solar/types';
 import { cleanTerms, missingTerms, PRODUCTS, TEMPLATE_KEYS, TEMPLATES, UPCOMING } from '@/lib/solar/proposal/products';
 import { paraXml, rectXml, tableXml, textBoxXml } from '@/lib/pptx/xml';
@@ -30,11 +30,11 @@ describe('용량 · 숫자 표기', () => {
     expect(kwText(1000)).toBe('1,000');
   });
   it('원 · 「약 ○억원」(억 소수 둘째, 끝 0 뗌) · 1억 아래는 만원 반올림', () => {
-    expect(wonText(5_486_000.000001)).toBe('5,486,000');
-    expect(roughWonText(109_720_000)).toBe('1.1억원');
-    expect(roughWonText(115_891_750)).toBe('1.16억원');
+    expect(wonText(1_234_000.000001)).toBe('1,234,000');
+    expect(roughWonText(120_400_000)).toBe('1.2억원');
+    expect(roughWonText(125_400_000)).toBe('1.25억원');
     expect(roughWonText(200_000_000)).toBe('2억원');
-    expect(roughWonText(5_486_000)).toBe('549만원');
+    expect(roughWonText(5_674_000)).toBe('567만원');
     expect(roughWonText(24_000_000)).toBe('2,400만원');
   });
   it('억 · 만원 반올림', () => {
@@ -89,44 +89,17 @@ describe('모햇 — 1년 선납 · 5년 선납 · 참여지원금', () => {
     expect(odd.annual).toBe(Math.round(33.33 * 12_345));
     expect(odd.one.total).toBe(odd.annual * 20);
   });
-  it('임대료 쪽 — 두 머리 · 연차 칸(5년 선납 2~5년은 견본의 「-」 그대로) · 머리말 검정/빨강 · 각주', () => {
-    const x = rentTexts(r, t);
-    expect(x.oneHead).toBe('1년 선납 (연 10,000원/kW)');
-    expect(x.fiveHead).toBe('5년 선납 (1~5년차 연 9,000원/kW)');
-    expect(x.years.map(([n]) => n)).toEqual([1, 2, 3, 4, 5, 6, 7, 20]);
-    expect(x.years[0]).toEqual([1, '1,005,000 원', '4,522,500 원']);
-    expect(x.years[1][2]).toBeNull();
-    expect(x.years[5]).toEqual([6, '1,005,000 원', '1,005,000 원']);
-    expect(x.oneTotal).toBe('20,100,000 원');
-    expect(x.headBlack).toBe('100.5kW 기준 예상 임대수익: ');
-    expect(x.headRed).toBe('20년간 약 2,010만원 (연 평균 약 101만원), 5년 선납 법인은 참여지원금 포함 약 2,161만원');
-    expect(x.note).toContain('참여지원금 20,000원/kW(100.5kW 기준 2,010,000원, 1회)');
-    expect(x.note).toContain(`20년 총 수령액은 ${wonText(r.five.total + r.subsidy)}원입니다.`);
-  });
-  it('비교표 — 최종본의 말 그대로: 지원금은 공사계획신고 후 · 초기 수령액 둘로 · 개인사업자는 지원금 없이, 법인은 지원금 포함', () => {
-    const cells = new Map(compareCells(r, t).map(([row, col, text]) => [`${row},${col}`, text]));
-    expect(cells.get('4,1')).toBe('100.5kW 기준 지급액');
-    expect(cells.get('5,3')).toBe('20,000원/kW → 2,010,000원 (1회, 공사계획신고 후 지급)');
-    expect(cells.get('6,2')).toBe('1,005,000원 (상업운전 시)');
-    expect(cells.get('6,3')).toBe('4,522,500원 (상업운전 시) + 법인 지원금 2,010,000원 (공사계획신고 후)');
-    expect(cells.get('8,2')).toBe(`개인사업자는 1년 선납이 ${wonText(r.one.total - r.five.total)}원 많음`);
-    expect(cells.get('8,3')).toBe(`법인은 5년 선납이 ${wonText(r.five.total + r.subsidy - r.one.total)}원 많음 (지원금 포함)`);
-    expect(compareText('개인사업자는', 10, 10)).toBe('개인사업자는 두 방식이 같음');
-  });
-  it('비교표 — 견본(137.15kW · 4만 · 3.5만 · 7만)의 칸과 글자까지 같다', () => {
-    const sample = { moduleWatt: 650, rentPerKw: 40_000, prepay5PerKw: 35_000, subsidyPerKw: 70_000 };
-    const cells = new Map(compareCells(mohaet(137.15, sample), sample).map(([row, col, text]) => [`${row},${col}`, text]));
-    expect(cells.get('5,3')).toBe('70,000원/kW → 9,600,500원 (1회, 공사계획신고 후 지급)');
-    expect(cells.get('6,2')).toBe('5,486,000원 (상업운전 시)');
-    expect(cells.get('6,3')).toBe('24,001,250원 (상업운전 시) + 법인 지원금 9,600,500원 (공사계획신고 후)');
-    expect(cells.get('7,3')).toBe('106,291,250원 (법인: 지원금 포함 115,891,750원)');
-    expect(cells.get('8,2')).toBe('개인사업자는 1년 선납이 3,428,750원 많음');
-    expect(cells.get('8,3')).toBe('법인은 5년 선납이 6,171,750원 많음 (지원금 포함)');
-  });
-  it('공유옥상 구조 그림의 임대료 — 만원으로 떨어지면 만원', () => {
-    expect(manText(40_000)).toBe('4만원');
-    expect(manText(35_000)).toBe('3.5만원');
-    expect(manText(42_500)).toBe('42,500원');
+  it('견본 금액들 — 예시 용량 · 이 현장 용량으로 같은 셈을 해 견본 숫자를 바꾼다(차는 늘 양수)', () => {
+    const a = mohaetAmounts(100.5, t);
+    expect(a.annual).toBe(1_005_000);
+    expect(a.prepay).toBe(4_522_500);
+    expect(a.subsidy).toBe(2_010_000);
+    expect(a.oneTotal).toBe(20_100_000);
+    expect(a.fiveTotal).toBe(4_522_500 + 15 * 1_005_000);
+    expect(a.fiveWithSubsidy).toBe(a.fiveTotal + 2_010_000);
+    expect(a.prepayWithSubsidy).toBe(4_522_500 + 2_010_000);
+    expect(a.gapPersonal).toBe(20_100_000 - a.fiveTotal);
+    expect(a.gapCorporate).toBe(a.fiveWithSubsidy - 20_100_000);
   });
 });
 
@@ -139,18 +112,23 @@ describe('모햇 부지 검토 — 공적 자료 · 한전 여유용량', () => 
   const row = (spare: number | null, l = layers(8_392, 9_726, 3_597)): GridRow => ({ substation: '북충주', transformer: '3', feeder: '영덕', spareKw: spare, layers: l });
   const view = (r: GridRow, basis: GridView['basis'] = { kind: 'own' }, region: string | null = null): GridView => ({ rows: [r], best: 0, basis, capacityKw: null, region });
   const site: SiteFacts = { zoning: ['일반공업지역'], landCategory: '공장용지', landAreaM2: 15_446, buildingAreaM2: 3_521.72, buildingUse: '공장', approvedOn: '20240315' };
-  it('표 일곱 칸 — 모르는 칸은 「-」 · 한전선로는 두 줄', () => {
-    expect(siteRows('충북 충주시 산척면 동충주산단4길 17', site, view(row(3_597)), 500)).toEqual([
-      '충북 충주시 산척면 동충주산단4길 17',
-      '일반공업지역',
-      '공장용지',
-      '15,446 ㎡',
-      '3,521.72 ㎡',
-      '2024.03.15',
-      '북충주 변전소 여유용량\n8.39MW (접속 가능)',
-    ]);
+  it('빈칸 값 — 견본이 단위를 적었으면(「[    ] ㎡」) 숫자만, 아니면 단위까지 · 모르는 값은 null(그 칸 「-」)', () => {
+    const input = { customer: '(주)가나', address: '충북 충주시 산척면 동충주산단4길 17', site, grid: view(row(3_597)), panels: 1_234, mount: { style: 'tilted' as const, tiltDeg: 15 } };
+    const v = mohaetValue(input, 500);
+    expect(v('address', '')).toBe('충북 충주시 산척면 동충주산단4길 17');
+    expect(v('zoning', '')).toBe('일반공업지역');
+    expect(v('landArea', '㎡')).toBe('15,446');
+    expect(v('landArea', '')).toBe('15,446 ㎡');
+    expect(v('buildingArea', '㎡')).toBe('3,521.72');
+    expect(v('approvedOn', '')).toBe('2024.03.15');
+    expect([v('substation', ''), v('spareMw', 'MW'), v('gridCondition', '')]).toEqual(['북충주', '8.39', '접속 가능']);
+    expect([v('capacity', 'kW'), v('panels', 'EA'), v('panels', ''), v('tilt', '도')]).toEqual(['500', '1,234', '1,234장', '15']);
+    expect(mohaetValue({ ...input, mount: { style: 'flush', tiltDeg: 0 } }, 500)('tilt', '도')).toEqual({ text: '지붕면 부착', eatUnit: true });
     const blank: SiteFacts = { zoning: [], landCategory: null, landAreaM2: null, buildingAreaM2: null, buildingUse: null, approvedOn: null };
-    expect(siteRows('주소', blank, null, 500)).toEqual(['주소', '-', '-', '-', '-', '-', '-']);
+    const none = mohaetValue({ ...input, site: blank, grid: null }, 500);
+    expect(['zoning', 'landCategory', 'landArea', 'buildingArea', 'buildingUse', 'approvedOn', 'substation', 'spareMw', 'gridCondition'].map((k) => none(k as never, ''))).toEqual(Array(9).fill(null));
+    // 변전소 여유를 모르면 그 자리는 「-」(뒤의 MW 까지 먹는다)
+    expect(mohaetValue({ ...input, grid: view(row(3_597, layers(null, 9_726, 3_597))) }, 500)('spareMw', 'MW')).toEqual({ text: '-', eatUnit: true });
     expect(dateText('2024')).toBe('2024');
   });
   it('접속 조건 — 여유 0 이면 보강 뒤 · 용량보다 작으면 협의 · 이 번지 기록이 아니거나 지역 사정이 있으면 한전 확인', () => {
@@ -161,7 +139,6 @@ describe('모햇 부지 검토 — 공적 자료 · 한전 여유용량', () => 
     expect(gridCondition(view(row(3_597), { kind: 'dong', dong: '산척면 영덕리' }), 500)).toBe('접속 선로 한전 확인');
     expect(gridCondition(view(row(3_597), { kind: 'own' }, '호남 접수 제한'), 500)).toBe('계통 제약 지역 — 한전 확인');
     expect(gridCondition(view(row(null)), 500)).toBe('한전 확인 필요');
-    expect(gridLines(null, 500)).toBeNull();
   });
   it('한전 표 — 단계마다 접속기준 · 접수 · 여유(MW) · 출처와 어느 번지의 기록인지', () => {
     expect(gridTableRows(view(row(3_597)))).toEqual([

@@ -113,10 +113,10 @@ export function mohaet(kw: number, t: Terms): Mohaet {
   return { kw, annual, prepay, one: plan(one), five: plan(five), subsidy: Math.round(kw * t.subsidyPerKw) };
 }
 
-/** 「5,486,000」 — 원 */
+/** 「1,234,000」 — 원 */
 export const wonText = (won: number): string => Math.round(won).toLocaleString('ko-KR');
 
-/** 「약 1.1억원」 · 「약 1.16억원」 · 「549만원」 — 1억 넘으면 억 소수 둘째(끝의 0 은 뗀다), 아래면 만원 반올림(모햇 견본 10쪽 머리말의 표기) */
+/** 「1.2억원」 · 「1.25억원」 · 「567만원」 — 1억 넘으면 억 소수 둘째(끝의 0 은 뗀다), 아래면 만원 반올림(모햇 견본 임대료 쪽 머리말의 표기 — 견본 숫자를 찾을 때도 이 꼴로 찾는다) */
 export function roughWonText(won: number): string {
   if (won >= 1e8) return `${(won / 1e8).toFixed(2).replace(/\.?0+$/, '')}억원`;
   return `${Math.round(won / 1e4).toLocaleString('ko-KR')}만원`;
