@@ -103,13 +103,25 @@ describe('모햇 — 1년 선납 · 5년 선납 · 참여지원금', () => {
     expect(x.note).toContain('참여지원금 20,000원/kW(100.5kW 기준 2,010,000원, 1회)');
     expect(x.note).toContain(`20년 총 수령액은 ${wonText(r.five.total + r.subsidy)}원입니다.`);
   });
-  it('비교표 — 20년 총액이 큰 쪽과 차(개인은 지원금 없이 · 법인은 지원금 포함)', () => {
+  it('비교표 — 최종본의 말 그대로: 지원금은 공사계획신고 후 · 초기 수령액 둘로 · 개인사업자는 지원금 없이, 법인은 지원금 포함', () => {
     const cells = new Map(compareCells(r, t).map(([row, col, text]) => [`${row},${col}`, text]));
     expect(cells.get('4,1')).toBe('100.5kW 기준 지급액');
-    expect(cells.get('5,3')).toBe('20,000원/kW → 2,010,000원 (1회)');
-    expect(cells.get('8,2')).toBe(`개인 임대인은 1년 선납이 ${wonText(r.one.total - r.five.total)}원 많음`);
-    expect(cells.get('8,3')).toBe(`법인 임대인은 5년 선납이 ${wonText(r.five.total + r.subsidy - r.one.total)}원 많음`);
-    expect(compareText('개인', 10, 10)).toBe('개인 임대인은 두 방식이 같음');
+    expect(cells.get('5,3')).toBe('20,000원/kW → 2,010,000원 (1회, 공사계획신고 후 지급)');
+    expect(cells.get('6,2')).toBe('1,005,000원 (상업운전 시)');
+    expect(cells.get('6,3')).toBe('4,522,500원 (상업운전 시) + 법인 지원금 2,010,000원 (공사계획신고 후)');
+    expect(cells.get('8,2')).toBe(`개인사업자는 1년 선납이 ${wonText(r.one.total - r.five.total)}원 많음`);
+    expect(cells.get('8,3')).toBe(`법인은 5년 선납이 ${wonText(r.five.total + r.subsidy - r.one.total)}원 많음 (지원금 포함)`);
+    expect(compareText('개인사업자는', 10, 10)).toBe('개인사업자는 두 방식이 같음');
+  });
+  it('비교표 — 견본(137.15kW · 4만 · 3.5만 · 7만)의 칸과 글자까지 같다', () => {
+    const sample = { moduleWatt: 650, rentPerKw: 40_000, prepay5PerKw: 35_000, subsidyPerKw: 70_000 };
+    const cells = new Map(compareCells(mohaet(137.15, sample), sample).map(([row, col, text]) => [`${row},${col}`, text]));
+    expect(cells.get('5,3')).toBe('70,000원/kW → 9,600,500원 (1회, 공사계획신고 후 지급)');
+    expect(cells.get('6,2')).toBe('5,486,000원 (상업운전 시)');
+    expect(cells.get('6,3')).toBe('24,001,250원 (상업운전 시) + 법인 지원금 9,600,500원 (공사계획신고 후)');
+    expect(cells.get('7,3')).toBe('106,291,250원 (법인: 지원금 포함 115,891,750원)');
+    expect(cells.get('8,2')).toBe('개인사업자는 1년 선납이 3,428,750원 많음');
+    expect(cells.get('8,3')).toBe('법인은 5년 선납이 6,171,750원 많음 (지원금 포함)');
   });
   it('공유옥상 구조 그림의 임대료 — 만원으로 떨어지면 만원', () => {
     expect(manText(40_000)).toBe('4만원');

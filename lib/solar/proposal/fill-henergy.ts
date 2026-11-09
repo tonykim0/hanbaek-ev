@@ -1,6 +1,8 @@
 /**
- * 에이치에너지 모햇 제안서 — 「03. 모햇 제안서_SAMPLE」(22장 · 「HENERGY 사업제안서」 · 공유옥상 임대사업)에 현장 칸을 채운다. [브라우저]
- * (한백 2026-11-09 「에이치에너지에서 솔라쉐어는 우리가 안할거고 모햇만 할 예정」 · 「템플릿 이거에 맞춰줘」 — 그전의 솔라쉐어 2.0 생성기는 걷었다)
+ * 에이치에너지 모햇 제안서 — 「03. 모햇 제안서_SAMPLE_최종」(23장 · 「HENERGY 사업제안서」 · 공유옥상 임대사업)에 현장 칸을 채운다. [브라우저]
+ * (한백 2026-11-09 「에이치에너지에서 솔라쉐어는 우리가 안할거고 모햇만 할 예정」 · 「템플릿 이거에 맞춰줘」 — 그전의 솔라쉐어 2.0 생성기는 걷었다.
+ *  같은 날 저녁 「…_최종.pptx 확인해서 이걸로 적용해줘」 — 「복구됨」(22장)과 칸 이름 · 표 자리는 같고, 임대계약 주요 조건이 두 장으로
+ *  갈렸고, 비교표의 말이 바뀌었다(compareCells))
  *
  * 견본에서 바뀌는 자리는 여섯 장이다(나머지는 회사 · 상품 · FAQ 의 고정 글):
  *   표지          「[(주)고객사명] ([현장 주소])」 → 고객명 (주소) · 그 밑에 제안하는 영업사 한 줄
@@ -304,13 +306,17 @@ function fillRent(s: Slide, r: Mohaet, terms: Terms): void {
 
 /* ------------------------------------------------------------------ 비교 */
 
-/** 「개인 임대인은 1년 선납이 3,428,750원 많음」 — 20년 총액이 큰 쪽과 그 차 */
-export function compareText(who: string, one: number, five: number): string {
-  if (one === five) return `${who} 임대인은 두 방식이 같음`;
-  return `${who} 임대인은 ${one > five ? '1년' : '5년'} 선납이 ${wonText(Math.abs(one - five))}원 많음`;
+/** 「개인사업자는 1년 선납이 3,428,750원 많음」 — 20년 총액이 큰 쪽과 그 차. who 는 조사까지(「개인사업자는」 · 「법인은」), tail 은 끝의 괄호 */
+export function compareText(who: string, one: number, five: number, tail = ''): string {
+  if (one === five) return `${who} 두 방식이 같음${tail}`;
+  return `${who} ${one > five ? '1년' : '5년'} 선납이 ${wonText(Math.abs(one - five))}원 많음${tail}`;
 }
 
-/** 비교표의 칸 — [행, 열, 글](행 · 열은 1부터). 견본의 지급 방식 · 중도 해지 줄은 고정 글이라 그대로 둔다 */
+/**
+ * 비교표의 칸 — [행, 열, 글](행 · 열은 1부터). 견본의 지급 방식 · 중도 해지 줄은 고정 글이라 그대로 둔다.
+ * 말은 「03. 모햇 제안서_SAMPLE_최종」(2026-11-09 저녁) 그대로다 — 참여지원금은 공사계획신고 뒤, 임대료는 상업운전 때 받으므로
+ * 초기 수령액을 둘로 나눠 적고, 임대인은 「개인사업자」 · 「법인」이다(임대료 세금계산서 때문에 사업자등록이 필수가 됐다).
+ */
 export function compareCells(r: Mohaet, terms: Terms): [number, number, string][] {
   const w = wonText;
   const sub = r.subsidy;
@@ -320,13 +326,13 @@ export function compareCells(r: Mohaet, terms: Terms): [number, number, string][
     [4, 1, `${kwText(r.kw)}kW 기준 지급액`],
     [4, 2, `매년 ${w(r.annual)}원`],
     [4, 3, `상업운전 시 ${w(r.prepay)}원, 6년차부터 매년 ${w(r.annual)}원`],
-    [5, 3, `${w(terms.subsidyPerKw)}원/kW → ${w(sub)}원 (1회)`],
-    [6, 2, `${w(r.one.years[0]!)}원`],
-    [6, 3, `${w(r.prepay)}원 (법인: 지원금 포함 ${w(r.prepay + sub)}원)`],
+    [5, 3, `${w(terms.subsidyPerKw)}원/kW → ${w(sub)}원 (1회, 공사계획신고 후 지급)`],
+    [6, 2, `${w(r.one.years[0]!)}원 (상업운전 시)`],
+    [6, 3, `${w(r.prepay)}원 (상업운전 시) + 법인 지원금 ${w(sub)}원 (공사계획신고 후)`],
     [7, 2, `${w(r.one.total)}원`],
     [7, 3, `${w(r.five.total)}원 (법인: 지원금 포함 ${w(r.five.total + sub)}원)`],
-    [8, 2, compareText('개인', r.one.total, r.five.total)],
-    [8, 3, compareText('법인', r.one.total, r.five.total + sub)],
+    [8, 2, compareText('개인사업자는', r.one.total, r.five.total)],
+    [8, 3, compareText('법인은', r.one.total, r.five.total + sub, ' (지원금 포함)')],
   ];
 }
 
@@ -334,7 +340,8 @@ function fillCompare(s: Slide, r: Mohaet, terms: Terms): void {
   const T = COMPARE.table;
   mustSay(s, T, { row: 1, col: 2 }, '1년 선납');
   mustSay(s, T, { row: 1, col: 3 }, '5년 선납');
-  for (const [row, word] of [[3, 'kW당'], [4, '기준 지급액'], [5, '참여지원금'], [6, '1년차'], [7, '20년 총'], [8, '비교']] as const) mustSay(s, T, { row, col: 1 }, word);
+  // 6행은 최종본의 「초기 수령액」 · 그전 「복구됨」의 「1년차 수령액」 둘 다 받는다 — 운영의 틀을 바꾸는 사이에 생성이 멈추지 않게
+  for (const [row, word] of [[3, 'kW당'], [4, '기준 지급액'], [5, '참여지원금'], [6, '수령액'], [7, '20년 총'], [8, '비교']] as const) mustSay(s, T, { row, col: 1 }, word);
   s.setText(COMPARE.title, `1년 선납 vs 5년 선납 비교 (${kwText(r.kw)}kW 기준, VAT 별도)`);
   for (const [row, col, text] of compareCells(r, terms)) s.setCell(T, row, col, text);
 }
