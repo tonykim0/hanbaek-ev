@@ -3,8 +3,9 @@
  * (한백 2026-11-07 「콘솔에 있는 거래명세서 기반으로 여기에 자동적으로 글을 쓰게 하고싶어」 — 글을 짓는 것은 lib/agit/post)
  *
  * ★정산 담당이 초안을 올리고 한백이 승인하면 올린다★(한백 2026-11-08 「정산담당 에이전트가 때가 되면 초안을 올려주고, 내가 승인하면
- * 정산담당에이전트가 아지트에 글을 올리는 구조」 — 메일 초안과 같은 길). 초안은 결제일마다 하나다: 다시 지으면(크론 · 담당의 agit_post ·
- * 승인 때 금액이 바뀌었을 때) 같은 줄을 지금 글로 고친다. 이미 올린 결제일은 again 으로만 새 초안이 선다.
+ * 정산담당에이전트가 아지트에 글을 올리는 구조」 — 메일 초안과 같은 길). 초안은 결제일 × 구분(영업비 · 시공비)마다 하나다(migrations/0129 —
+ * 한백 2026-11-09 「seperate post … 영업위탁수수료 -> 시공비」): 다시 지으면(크론 · 담당의 agit_post · 올릴 때 금액이 바뀌었을 때) 같은 줄을
+ * 지금 글로 고친다. 이미 올린 결제일 · 구분은 again 으로만 새 초안이 선다. 잠금도 결제일 · 구분마다다 — 영업비 글과 시공비 글은 서로 막지 않는다.
  *
  * ★웹훅 주소가 곧 열쇠다★ — 그 주소만 있으면 누구든 그 그룹에 글을 쓴다. 그래서 잠가 두고(lib/agents/secret-box — 메일 앱 비밀번호와
  * 같은 열쇠) 화면 · 응답 · 감사기록에 싣지 않는다. 풀어 쓰는 것은 올리는 그 순간(agitHookFor)뿐이다.
@@ -16,8 +17,8 @@
  * ★두 번 올리지 않는다★ — 올리기는 두 걸음이다(메일과 같은 모양): claimAgitPost 가 결제일 잠금 안에서 초안을 「올리는 중」으로 세우고,
  * 라우트가 아지트에 보낸 뒤 finishAgitPost 가 결과를 적는다. 그 사이에 또 누르면 「올리는 중」에 걸린다.
  *
- * 올리면 정산 담당의 그 결제일 「열린구매 상신」 할 일이 끝나고(lib/agents/open-purchase 의 열쇠 — agent_tasks.kind) 그 대화에 자동의
- * 한 줄이 남는다 — 담당이 다음에 불릴 때 올렸다는 것을 안다.
+ * 올리면 그 대화에 자동의 한 줄이 남고(담당이 다음에 불릴 때 올렸다는 것을 안다), 그 결제일에 나가는 구분의 글이 다 올라갔으면 정산 담당의
+ * 그 결제일 「열린구매 상신」 할 일이 끝난다(lib/agents/open-purchase 의 열쇠 — agent_tasks.kind · 할 일은 결제일마다 하나다).
  *
  * ★긴급 글은 줄의 긴급사유(urgent_reason · migrations/0128)가 정한다★(한백 2026-11-09 「긴급에 대한 템플릿도 따로 만들어줘」) — 승인 때
  * 글을 다시 지을 때도 이 칸으로 짓는다(글에서 거꾸로 읽지 않는다). 초안을 다시 지으면 부른 쪽이 준 모양으로 칸을 고친다 —
@@ -33,9 +34,10 @@ import { seal, unseal } from '@/lib/agents/secret-box';
 import { OPEN_PURCHASE_AGENT, openPurchaseKey } from '@/lib/agents/open-purchase';
 import { agentAuditKey, type AgentMessageMeta } from '@/types/agents';
 import {
-  AGIT_MAX_ASSIGNEES, AGIT_POST_STATUSES, agitAssigneesOf, agitPostedSay, agitTitleOf, agitWebhookOf, badAgitIds,
-  type AgitHookInfo, type AgitPostRecord, type AgitPostStatus,
+  AGIT_KINDS, AGIT_MAX_ASSIGNEES, AGIT_POST_STATUSES, agitAssigneesOf, agitKindOf, agitPostedSay, agitPostName, agitTitleOf, agitWebhookOf,
+  badAgitIds, type AgitHookInfo, type AgitPostRecord, type AgitPostStatus,
 } from '@/lib/agit/post';
+import type { PayoutKind } from '@/types/project';
 import type { ProjectRepository } from '../repository';
 import { assertAdmin, assertHanbaek } from './shared';
 
@@ -58,6 +60,7 @@ function recordOf(row: Row): AgitPostRecord {
   return {
     id: row.id,
     payDate: row.payDate,
+    kind: agitKindOf(row.kind),
     status: statusOf(row.status),
     title: agitTitleOf(row.body),
     body: row.body,
@@ -85,17 +88,21 @@ const hookInfoOf = (row: typeof agitHooks.$inferSelect | undefined): AgitHookInf
   };
 };
 
-/** 결제일 하나를 잠근다 — 초안 짓기 · 올리기가 같은 결제일에서 줄을 서게 */
-const lockPayDate = (tx: Tx, payDate: string) => tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hb_agit:${payDate}`}))`);
+/** 결제일 · 구분 하나를 잠근다 — 초안 짓기 · 올리기가 같은 글에서 줄을 서게(영업비 글과 시공비 글은 서로 안 막는다) */
+const lockPost = (tx: Tx, payDate: string, kind: PayoutKind) =>
+  tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hb_agit:${payDate}:${kind}`}))`);
+
+/** 결제일 · 구분의 줄 */
+const ofPost = (payDate: string, kind: PayoutKind) => and(eq(agitPosts.payDate, payDate), eq(agitPosts.kind, kind));
 
 /** 감사기록의 글 이름 — 긴급 글이면 꼬리를 단다 */
 const auditTitle = (body: string, urgent: string | null | undefined): string => `${agitTitleOf(body)}${urgent ? ' · 긴급' : ''}`;
 
-/** 같은 결제일을 지금 올리는 중인 줄(멈춘 것은 빼고) */
-async function sendingOf(tx: Tx, payDate: string, except?: string): Promise<Row | undefined> {
+/** 같은 결제일 · 구분을 지금 올리는 중인 줄(멈춘 것은 빼고) */
+async function sendingOf(tx: Tx, payDate: string, kind: PayoutKind, except?: string): Promise<Row | undefined> {
   const fresh = new Date(Date.now() - SENDING_STALE_MS);
   const rows = await tx.select().from(agitPosts).where(and(
-    eq(agitPosts.payDate, payDate), eq(agitPosts.status, 'sending'), gt(agitPosts.postedAt, fresh),
+    ofPost(payDate, kind), eq(agitPosts.status, 'sending'), gt(agitPosts.postedAt, fresh),
   ));
   return rows.find((r) => r.id !== except);
 }
@@ -103,7 +110,8 @@ async function sendingOf(tx: Tx, payDate: string, except?: string): Promise<Row 
 export const agitStore: Pick<
   ProjectRepository,
   | 'getAgitHook' | 'saveAgitHook' | 'saveAgitAssignees' | 'deleteAgitHook' | 'agitHookFor'
-  | 'listAgitPosts' | 'getAgitPost' | 'openAgitPost' | 'draftAgitPost' | 'linkAgitPosts' | 'claimAgitPost' | 'finishAgitPost'
+  | 'listAgitPosts' | 'getAgitPost' | 'openAgitPost' | 'openAgitPosts' | 'postedAgitKinds' | 'draftAgitPost' | 'linkAgitPosts'
+  | 'claimAgitPost' | 'finishAgitPost'
 > = {
   async getAgitHook(actor): Promise<AgitHookInfo> {
     assertHanbaek(actor, '아지트 연결');
@@ -187,26 +195,47 @@ export const agitStore: Pick<
     return row ? recordOf(row) : null;
   },
 
-  async openAgitPost(actor, payDate): Promise<AgitPostRecord | null> {
+  async openAgitPost(actor, payDate, kind): Promise<AgitPostRecord | null> {
     assertHanbaek(actor, '아지트 글');
     /* 올리는 중인 것도 — Claude Code 가 쓰는 칸을 채우다 멈췄으면 다시 시킨다(멈춘 「올리는 중」은 claimAgitPost 가 다시 받는다) */
     const [row] = await getDb().select().from(agitPosts)
-      .where(and(eq(agitPosts.payDate, payDate), inArray(agitPosts.status, [...OPEN, 'sending'])))
+      .where(and(ofPost(payDate, kind), inArray(agitPosts.status, [...OPEN, 'sending'])))
       .orderBy(desc(agitPosts.createdAt)).limit(1);
     return row ? recordOf(row) : null;
+  },
+
+  async openAgitPosts(actor, payDate): Promise<AgitPostRecord[]> {
+    assertHanbaek(actor, '아지트 글');
+    const rows = await getDb().select().from(agitPosts)
+      .where(and(eq(agitPosts.payDate, payDate), inArray(agitPosts.status, [...OPEN, 'sending'])))
+      .orderBy(desc(agitPosts.createdAt));
+    /* 구분마다 가장 새 것 하나 — 영업비 먼저 */
+    return AGIT_KINDS.flatMap((k) => {
+      const row = rows.find((r) => agitKindOf(r.kind) === k);
+      return row ? [recordOf(row)] : [];
+    });
+  },
+
+  async postedAgitKinds(actor, payDate): Promise<PayoutKind[]> {
+    assertHanbaek(actor, '아지트 글');
+    const rows = await getDb().select({ kind: agitPosts.kind }).from(agitPosts)
+      .where(and(eq(agitPosts.payDate, payDate), eq(agitPosts.status, 'posted')));
+    return AGIT_KINDS.filter((k) => rows.some((r) => agitKindOf(r.kind) === k));
   },
 
   async draftAgitPost(input, actor) {
     assertAdmin(actor, '아지트 글 초안');
     if (!DAY_RE.test(input.payDate)) throw new Error('결제일은 YYYY-MM-DD 로 적어주세요.');
+    if (!(AGIT_KINDS as readonly string[]).includes(input.kind)) throw new Error('구분은 영업비 · 시공비 중 하나입니다.');
     if (!input.body.trim()) throw new Error('올릴 글이 비었습니다.');
     const db = getDb();
+    const name = agitPostName(input);
     const { id, plan } = await db.transaction(async (tx) => {
-      await lockPayDate(tx, input.payDate);
-      if (await sendingOf(tx, input.payDate)) throw new Error('이 결제일 글을 올리는 중입니다 — 잠시 뒤 다시 보세요.');
+      await lockPost(tx, input.payDate, input.kind);
+      if (await sendingOf(tx, input.payDate, input.kind)) throw new Error(`${name} 글을 올리는 중입니다 — 잠시 뒤 다시 보세요.`);
       const title = auditTitle(input.body, input.urgent);
       const [open] = await tx.select().from(agitPosts)
-        .where(and(eq(agitPosts.payDate, input.payDate), inArray(agitPosts.status, OPEN)))
+        .where(and(ofPost(input.payDate, input.kind), inArray(agitPosts.status, OPEN)))
         .orderBy(desc(agitPosts.createdAt)).limit(1);
       if (open) {
         /* 긴급 · 보통이 바뀌면 글도 바뀐다 — 그래도 사유 칸을 따로 견준다(같은 글에 사유만 다른 일이 없게) */
@@ -226,15 +255,15 @@ export const agitStore: Pick<
         return { id: open.id, plan: 'refresh' as const };
       }
       const [posted] = await tx.select().from(agitPosts)
-        .where(and(eq(agitPosts.payDate, input.payDate), eq(agitPosts.status, 'posted')))
+        .where(and(ofPost(input.payDate, input.kind), eq(agitPosts.status, 'posted')))
         .orderBy(desc(agitPosts.postedAt)).limit(1);
       if (posted && !input.again) {
-        throw new Error(`이미 아지트에 올린 결제일입니다(${stampOf(posted.postedAt ?? posted.createdAt)} · 승인 ${posted.postedBy}) — `
+        throw new Error(`이미 아지트에 올린 ${name} 글입니다(${stampOf(posted.postedAt ?? posted.createdAt)} · ${posted.postedBy}) — `
           + '다시 올리려면 다시 올리라고 말해 주세요.');
       }
       const newId = crypto.randomUUID();
       await tx.insert(agitPosts).values({
-        id: newId, payDate: input.payDate, status: 'draft', body: input.body, total: input.total, batches: input.batches,
+        id: newId, payDate: input.payDate, kind: input.kind, status: 'draft', body: input.body, total: input.total, batches: input.batches,
         messageId: input.messageId, again: Boolean(posted), urgentReason: input.urgent, postedBy: actor.name,
       });
       await writeAudit(tx, { projectId: null, actor, action: '아지트 글 초안', field: AUDIT_FIELD, oldValue: null, newValue: title });
@@ -255,20 +284,23 @@ export const agitStore: Pick<
     assertAdmin(actor, '아지트 올리기');
     if (!input.body.trim()) throw new Error('올릴 글이 비었습니다.');
     const db = getDb();
-    const [first] = await db.select({ payDate: agitPosts.payDate }).from(agitPosts).where(eq(agitPosts.id, input.id)).limit(1);
+    const [first] = await db.select({ payDate: agitPosts.payDate, kind: agitPosts.kind }).from(agitPosts)
+      .where(eq(agitPosts.id, input.id)).limit(1);
     if (!first) throw new Error('아지트 글 초안을 찾을 수 없습니다.');
+    const kind = agitKindOf(first.kind);
+    const name = agitPostName({ payDate: first.payDate, kind });
     await db.transaction(async (tx) => {
-      await lockPayDate(tx, first.payDate);
+      await lockPost(tx, first.payDate, kind);
       const [row] = await tx.select().from(agitPosts).where(eq(agitPosts.id, input.id)).for('update');
       if (!row) throw new Error('아지트 글 초안을 찾을 수 없습니다.');
       const stale = row.status === 'sending' && (!row.postedAt || row.postedAt.getTime() < Date.now() - SENDING_STALE_MS);
       if (row.status === 'posted') throw new Error('이미 아지트에 올린 글입니다.');
       if (row.status === 'sending' && !stale) throw new Error('이 글을 올리는 중입니다 — 잠시 뒤 다시 보세요.');
-      if (await sendingOf(tx, row.payDate, row.id)) throw new Error('이 결제일 글을 올리는 중입니다 — 잠시 뒤 다시 보세요.');
+      if (await sendingOf(tx, row.payDate, kind, row.id)) throw new Error(`${name} 글을 올리는 중입니다 — 잠시 뒤 다시 보세요.`);
       if (!row.again) {
         const [posted] = await tx.select({ id: agitPosts.id }).from(agitPosts)
-          .where(and(eq(agitPosts.payDate, row.payDate), eq(agitPosts.status, 'posted'))).limit(1);
-        if (posted) throw new Error('이미 아지트에 올린 결제일입니다 — 다시 올리려면 정산 담당에게 다시 올리라고 말해 주세요.');
+          .where(and(ofPost(row.payDate, kind), eq(agitPosts.status, 'posted'))).limit(1);
+        if (posted) throw new Error(`이미 아지트에 올린 ${name} 글입니다 — 다시 올리려면 정산 담당에게 다시 올리라고 말해 주세요.`);
       }
       await tx.update(agitPosts).set({
         status: 'sending', body: input.body, total: input.total, batches: input.batches, assignees: input.assignees,
@@ -303,21 +335,29 @@ export const agitStore: Pick<
         newValue: `${title}${row.assignees?.length ? ` · 담당 ${row.assignees.join(', ')}` : ''}`,
       });
 
-      /* 정산 담당 — 그 결제일의 상신 할 일을 끝내고 대화에 한 줄. 담당이 없는 DB(옛 개발 DB)면 건너뛴다 */
+      /* 정산 담당 — 대화에 한 줄 · 그 결제일에 나가는 구분(input.kinds)의 글이 다 올라갔으면 상신 할 일을 끝낸다(할 일은 결제일마다
+       * 하나 — 영업비 글만 올리고 시공비 글이 남았으면 할 일은 열린 채). 담당이 없는 DB(옛 개발 DB)면 건너뛴다 */
       const [agent] = await tx.select({ id: agents.id, name: agents.name, biz: agents.biz }).from(agents)
         .where(eq(agents.id, OPEN_PURCHASE_AGENT)).limit(1);
       if (!agent) return;
       const key = agentAuditKey(agent);
-      const closed = await tx.update(agentTasks).set({ doneAt: new Date() }).where(and(
+      const postedKinds = new Set((await tx.select({ kind: agitPosts.kind }).from(agitPosts)
+        .where(and(eq(agitPosts.payDate, row.payDate), eq(agitPosts.status, 'posted')))).map((r) => agitKindOf(r.kind)));
+      const left = (input.kinds ?? [agitKindOf(row.kind)]).filter((k) => !postedKinds.has(k));
+      const closed = left.length ? [] : await tx.update(agentTasks).set({ doneAt: new Date() }).where(and(
         eq(agentTasks.agentId, agent.id), eq(agentTasks.kind, openPurchaseKey(row.payDate)), isNull(agentTasks.doneAt),
       )).returning({ title: agentTasks.title });
       for (const t of closed) {
         await writeAudit(tx, { projectId: null, actor, action: '에이전트 할 일 끝냄', field: key, oldValue: t.title, newValue: '끝냄 — 아지트에 올림' });
       }
-      const body = agitPostedSay(
-        { payDate: row.payDate, title: agitTitleOf(row.body), total: row.total, batches: row.batches, urgent: row.urgentReason },
+      const said = agitPostedSay(
+        {
+          payDate: row.payDate, kind: agitKindOf(row.kind), title: agitTitleOf(row.body), total: row.total, batches: row.batches,
+          urgent: row.urgentReason,
+        },
         actor.name
       );
+      const body = left.length ? `${said}\n남은 글: ${left.join(' · ')} — 다 올리면 상신 할 일이 끝납니다.` : said;
       const meta: AgentMessageMeta = { link: { href: '/statements', label: '거래명세서 보기 →' } };
       await tx.insert(agentMessages).values({ id: crypto.randomUUID(), agentId: agent.id, role: 'auto', author: agent.name, body, meta });
       await writeAudit(tx, { projectId: null, actor, action: '에이전트 자동', field: key, oldValue: null, newValue: body.slice(0, 2000) });

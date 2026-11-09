@@ -3,7 +3,7 @@
  * (한백 2026-11-07 「콘솔에 있는 거래명세서 기반으로 여기에 자동적으로 글을 쓰게 하고싶어」 — team-hanbaek.agit.io)
  *
  * 한백이 고른 것(같은 날, 미리보기를 보고):
- *   · 글 하나 = 결제일 하나 — 그날 나가는 배치(지급처 × 구분) 전부가 한 글의 줄이 된다.
+ *   · 글 하나 = 결제일 × 구분 하나 — 그날 나가는 그 구분의 배치(지급처) 전부가 한 글의 줄이 된다. ★시공비는 따로 올린다★(아래 AGIT_KINDS).
  *   · 올리는 때 = 한백이 시킬 때. ★그때 콘솔의 지금 금액으로 다시 짓는다★ — 초안 뒤에 금액이 바뀌었으면 올리지 않고 초안을
  *     새 금액으로 고친다(store/agit · app/api/agit/posts/[id]). 11-05 아침 상신 알림이 에코일렉 89,040,000원을 적은 뒤
  *     같은 날 대당 +10만으로 96,460,000원이 됐다 — 아침에 저절로 올렸다면 옛 금액이 아지트에 남았다.
@@ -46,7 +46,7 @@
  */
 import { won } from '@/lib/format';
 import { batchesOf, batchKey, REGULAR_PAY_DAYS } from '@/lib/payout-board';
-import type { BatchFinal, PayoutKind, PayoutRow, TaxInvoice } from '@/types/project';
+import { PAYOUT_KINDS, type BatchFinal, type PayoutKind, type PayoutRow, type TaxInvoice } from '@/types/project';
 
 /** 지급처의 계좌 — 협력사 정보(/settings · /admin/partners)의 값 */
 export interface AgitPayee {
@@ -105,8 +105,18 @@ export function urgentReasonOf(raw: string | null | undefined): string | null {
   return text || null;
 }
 
+/**
+ * ★글은 결제일 × 구분(영업비 · 시공비)마다 하나다★(한백 2026-11-09 「seperate post, same format but different terms such as
+ * 영업위탁수수료 -> 시공비」) — 같은 날 나가도 시공비는 따로 올린다. 모양은 같고 말만 바뀐다(requestNameOf — 「영업위탁 수수료」 ↔
+ * 「시공비」 · 엑셀 내용 칸 · zip 이름). 차례는 영업비 먼저.
+ */
+export const AGIT_KINDS = PAYOUT_KINDS;
+export const agitKindOf = (v: unknown): PayoutKind => (v === '시공비' ? '시공비' : '영업비');
+
 export interface AgitPostText {
   payDate: string;
+  /** 구분 — 이 글에 든 배치의 구분(영업비 · 시공비) */
+  kind: PayoutKind;
   /** 글의 공사명 — 화면의 목록에도 쓴다 */
   title: string;
   text: string;
@@ -194,19 +204,22 @@ export const statementPathOf = (payDate: string, org: string, kind: PayoutKind):
   `/payments/statement?org=${encodeURIComponent(org)}&date=${payDate}&kind=${encodeURIComponent(kind)}`;
 
 /**
- * 결제일 하나의 글. batches 는 그 결제일의 배치만 넘긴다. 배치 차례는 지급처 가나다 · 영업비 먼저 — 거래명세서 목록과 같다.
+ * 결제일 · 구분 하나의 글. batches 는 그 결제일 · 구분의 배치만 넘긴다(agitBatchesOf 의 kind). 배치 차례는 지급처 가나다 — 거래명세서
+ * 목록과 같다. 다른 구분의 배치가 섞여 오면 짓지 않는다(글 하나에 계산서 두 갈래가 섞인다).
  * urgent(긴급사유)를 주면 긴급 글(긴급구매요청), 없으면 보통 글(구매요청간소화) — 둘 다 한백의 지난 글 그대로다(머리말).
  */
 export function agitPostOf(
   payDate: string,
   batches: readonly AgitBatch[],
   consoleUrl: string,
-  urgent: string | null = null
+  urgent: string | null = null,
+  kind: PayoutKind = batches[0]?.kind ?? '영업비'
 ): AgitPostText {
+  if (batches.some((b) => b.kind !== kind)) throw new Error(`아지트 글 하나에 다른 구분의 배치가 섞였습니다 — ${kind} 글`);
   const sorted = sortBatches(batches);
   const total = sorted.reduce((n, b) => n + b.total, 0);
   const vat = sorted.reduce((n, b) => n + vatOf(b.total), 0);
-  const name = requestNameOf(payDate, sorted.map((b) => b.kind));
+  const name = requestNameOf(payDate, [kind]);
   const reason = urgentReasonOf(urgent);
   const links = sorted.filter((b) => b.org).map((b) => {
     const label = `${b.org}${sorted.filter((x) => x.org === b.org).length > 1 ? ` (${b.kind})` : ''}`;
@@ -226,7 +239,7 @@ export function agitPostOf(
     : sorted.some((b) => !b.org)
       ? '지급처 미정 배치 — 올릴 수 없음'
       : null;
-  return { payDate, title, text, total, batches: sorted.length, urgent: reason, blocked };
+  return { payDate, kind, title, text, total, batches: sorted.length, urgent: reason, blocked };
 }
 
 type RequestName = ReturnType<typeof requestNameOf>;
@@ -332,38 +345,50 @@ export function agitWebhookOf(raw: string): string | null {
 }
 
 /**
- * 앞으로 올 결제일마다 한 글 — 거래명세서 화면과 같은 재료(원장 줄 · 확정 · 계산서)로 짓는다. 배치를 묶는 규칙은 lib/payout-board
- * batchesOf 한 곳이고(거래명세서 목록 · 할 일과 같다), 회차의 현장 · 대수는 원장 줄에서 센다.
+ * 결제일(과 구분)의 배치 — 거래명세서 화면과 같은 재료(원장 줄 · 확정 · 계산서)로 짓는다. 배치를 묶는 규칙은 lib/payout-board
+ * batchesOf 한 곳이고(거래명세서 목록 · 할 일과 같다), 회차의 현장 · 대수는 원장 줄에서 센다. kind 를 주면 그 구분만.
  */
 export function agitBatchesOf(
   rows: readonly PayoutRow[],
   finals: readonly BatchFinal[],
   invoices: readonly TaxInvoice[],
-  payDate: string
+  payDate: string,
+  kind?: PayoutKind
 ): AgitBatch[] {
   const lines = new Map<string, AgitLine[]>();
   for (const r of rows) {
-    if (r.paidAt !== payDate) continue;
+    if (r.paidAt !== payDate || (kind && r.kind !== kind)) continue;
     const key = batchKey(r.paidAt, r.org, r.kind);
     lines.set(key, [...(lines.get(key) ?? []), { projectId: r.projectId, label: r.label, amount: r.amount, qty: r.site.qty }]);
   }
-  return batchesOf([...rows], [...finals], [...invoices]).filter((b) => b.paidAt === payDate).map((b) => ({
+  return batchesOf([...rows], [...finals], [...invoices]).filter((b) => b.paidAt === payDate && (!kind || b.kind === kind)).map((b) => ({
     org: b.org, kind: b.kind, total: b.total, invoice: Boolean(b.invoice),
     invoiceFile: b.invoice ? { url: b.invoice.blobUrl, name: b.invoice.filename } : null,
     lines: lines.get(batchKey(b.paidAt, b.org, b.kind)) ?? [],
   }));
 }
 
+/** 그 결제일에 배치가 있는 구분 — 영업비 먼저. 하나도 없으면 [영업비](지급 0건의 글 하나 — 올릴 수 없음으로 선다) */
+export function agitKindsOn(batches: readonly { kind: PayoutKind }[]): PayoutKind[] {
+  const kinds = AGIT_KINDS.filter((k) => batches.some((b) => b.kind === k));
+  return kinds.length ? kinds : ['영업비'];
+}
+
+/** 앞으로 올 결제일 × 구분마다 한 글(only 를 주면 그 결제일만 · onlyKind 를 주면 그 구분만) — 결제일 이른 것 · 영업비 먼저 */
 export function agitDraftsOf(
   today: string,
   rows: readonly PayoutRow[],
   finals: readonly BatchFinal[],
   invoices: readonly TaxInvoice[],
   consoleUrl: string,
-  only?: string
+  only?: string,
+  onlyKind?: PayoutKind
 ): AgitPostText[] {
   const days = only ? [only] : upcomingPayDates(today, batchesOf([...rows], [...finals], [...invoices]).map((b) => b.paidAt));
-  return days.map((day) => agitPostOf(day, agitBatchesOf(rows, finals, invoices, day), consoleUrl));
+  return days.flatMap((day) => {
+    const kinds = onlyKind ? [onlyKind] : agitKindsOn(agitBatchesOf(rows, finals, invoices, day));
+    return kinds.map((kind) => agitPostOf(day, agitBatchesOf(rows, finals, invoices, day, kind), consoleUrl, null, kind));
+  });
 }
 
 /** 아지트 연결 — 주소(열쇠)는 싣지 않는다 */
@@ -427,6 +452,8 @@ export type AgitPostStatus = (typeof AGIT_POST_STATUSES)[number];
 export interface AgitPostRecord {
   id: string;
   payDate: string;
+  /** 구분 — 영업비 · 시공비(글은 결제일 × 구분마다 하나) */
+  kind: PayoutKind;
   status: AgitPostStatus;
   title: string;
   /** 아지트에 갈(간) 글 그대로 */
@@ -458,13 +485,16 @@ export function payDateName(payDate: string): string {
   return `${m}월 ${d}일 ${isRegular(payDate) ? '정기결제' : '지급'}`;
 }
 
-/** 올린 뒤 정산 담당 대화에 남는 한 줄(자동) — by 는 승인한 사람 */
+/** 결제일 · 구분의 이름 — 「11월 10일 정기결제 시공비」 */
+export const agitPostName = (post: { payDate: string; kind: PayoutKind }): string => `${payDateName(post.payDate)} ${post.kind}`;
+
+/** 올린 뒤 정산 담당 대화에 남는 한 줄(자동) — by 는 올리라고 한 사람 */
 export function agitPostedSay(
-  post: Pick<AgitPostText, 'payDate' | 'title' | 'total' | 'batches'> & { urgent?: string | null },
+  post: Pick<AgitPostText, 'payDate' | 'kind' | 'title' | 'total' | 'batches'> & { urgent?: string | null },
   by: string
 ): string {
   return [
-    `${payDateName(post.payDate)} 열린구매 ${post.urgent ? '긴급 글' : '글'}을 아지트에 올렸습니다 — 지급 ${post.batches}건 · `
+    `${agitPostName(post)} 열린구매 ${post.urgent ? '긴급 글' : '글'}을 아지트에 올렸습니다 — 지급 ${post.batches}건 · `
       + `공급가액 ${won(post.total)}원 (승인 ${by}).`,
     post.title,
   ].join('\n');

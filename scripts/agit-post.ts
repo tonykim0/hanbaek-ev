@@ -4,7 +4,10 @@
  *  「Claude Code posts it」 — 봇(그룹 웹훅) 글은 한백이 고칠 수 없고 파일을 붙일 수 없다. 콘솔 서버는 한백의 아지트 로그인을 쥐지 않는다)
  *
  * 한백이 Claude Code 에 「11월 25일 열린구매 올려」라고 하면:
- *   npx tsx scripts/agit-post.ts 2026-11-25
+ *   npx tsx scripts/agit-post.ts 2026-11-25            (그날의 글 전부 — 영업비 · 시공비 따로, 영업비 먼저)
+ *   npx tsx scripts/agit-post.ts 2026-11-25 시공비     (한 구분만 — 「시공비 글만 올려」)
+ * ★글은 결제일 × 구분마다 하나다★(한백 2026-11-09 「seperate post, same format but different terms such as 영업위탁수수료 -> 시공비」) —
+ * 아래 2~5 를 글마다 한다. 한 글이 금액이 바뀌었거나 못 올라가도 다음 글은 올린다(끝에 모아 말한다).
  * 1. 전용 크롬 창(프로필 ~/hanbaek-backups/agit-browser · 9335 포트 — 떠 있으면 붙고 없으면 띄운다)에서 콘솔과 아지트에 로그인돼 있는지 본다.
  *    안 돼 있으면 한백이 그 창에서 로그인할 때까지 기다린다(★비밀번호는 Claude 가 받지 않는다★).
  * 2. 콘솔(한백의 로그인)에서 그 결제일의 초안을 찾고(GET /api/agit/posts?payDate=) 「올리는 중」으로 세운다(POST /api/agit/posts/[id] —
@@ -15,6 +18,8 @@
  *    멘션 고르기로 넣는다 → zip 을 첨부 파일로 → 요청 담당을 콘솔의 「요청 담당」 그대로 → 다 맞는지 대 보고 「작성하기」.
  * 5. 새 글의 주소를 콘솔에 남긴다(POST …/finish — 카드가 「올림」 · 상신 할 일이 끝나고 대화에 한 줄). 못 올렸으면 까닭을 남긴다(「못 올림」).
  *
+ * 종료: 0 다 올림 · 2 금액이 바뀐 글이 있음(콘솔이 초안을 고쳐 둠 — 한백에게 새 금액을 말하고 다시 시키게) · 3 초안이 없는 구분이 있음(정산 담당에게
+ *       초안을 시키게) · 1 못 올린 글이 있음(까닭 — 「작성하기를 누른 뒤 멈춤」이면 아지트에 올라갔는지 먼저 본다). 여럿이면 1 > 2 > 3.
  * 옵션: --dry 쓰는 칸만 채우고 올리지 않는다(콘솔도 「올리는 중」으로 세우지 않는다 · 쓰는 칸은 그대로 둔다) · --console <주소>(기본 운영) ·
  *       --cdp <주소>(이미 떠 있는 브라우저에 붙는다) · --mark <글>(시험 표시를 첫 줄 끝에) · --no-cc(긴급 글의 cc 멘션을 넣지 않는다 — 시험).
  * ★시험할 때 재무팀을 부르지 않는다★(한백 「Skip the finance mention」) — 긴급 글 시험은 --no-cc 나 --dry 로.
@@ -50,17 +55,24 @@ const SEL = {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-interface Args { payDate: string; dry: boolean; console: string; cdp: string | null; mark: string | null; noCc: boolean }
+type Kind = '영업비' | '시공비';
+
+interface Args {
+  payDate: string; kind: Kind | null; dry: boolean; console: string; cdp: string | null; mark: string | null; noCc: boolean;
+}
 
 function argsOf(argv: string[]): Args {
   const payDate = argv.find((a) => /^\d{4}-\d{2}-\d{2}$/.test(a));
-  if (!payDate) throw new Error('사용: npx tsx scripts/agit-post.ts <결제일 YYYY-MM-DD> [--dry] [--console 주소] [--cdp 주소] [--mark 글] [--no-cc]');
+  if (!payDate) {
+    throw new Error('사용: npx tsx scripts/agit-post.ts <결제일 YYYY-MM-DD> [영업비|시공비] [--dry] [--console 주소] [--cdp 주소] [--mark 글] [--no-cc]');
+  }
+  const kind = (argv.find((a) => a === '영업비' || a === '시공비') as Kind | undefined) ?? null;
   const val = (name: string) => {
     const i = argv.indexOf(name);
     return i >= 0 && argv[i + 1] ? argv[i + 1] : null;
   };
   return {
-    payDate, dry: argv.includes('--dry'), console: (val('--console') ?? 'https://hanbaek-re.vercel.app').replace(/\/+$/, ''),
+    payDate, kind, dry: argv.includes('--dry'), console: (val('--console') ?? 'https://hanbaek-re.vercel.app').replace(/\/+$/, ''),
     cdp: val('--cdp'), mark: val('--mark'), noCc: argv.includes('--no-cc'),
   };
 }
@@ -244,26 +256,24 @@ async function checkCompose(page: Page, want: { template: string; assignees: str
   return { ...got, assignees, bad: bad as string[] };
 }
 
-async function main() {
-  const a = argsOf(process.argv.slice(2));
-  const dir = join(tmpdir(), 'agit-post', a.payDate);
+interface Draft { id: string; kind: Kind; body: string; title: string; status: string; urgent: string | null }
+
+/** 글 하나의 끝 — 올림(주소) · 금액 바뀜 · 시험(--dry) · 못 올림(까닭) */
+type Outcome =
+  | { kind: Kind; ok: true; url: string; tab: Page }
+  | { kind: Kind; ok: false; changed: true; why: string }
+  | { kind: Kind; ok: false; dry: true; tab: Page }
+  | { kind: Kind; ok: false; why: string };
+
+/** 글 하나를 올린다 — 「올리는 중」 → zip → 쓰는 칸 → 작성하기 → 콘솔에 주소. 아지트 탭은 새로 연다(한백이 보던 탭은 건드리지 않는다) */
+async function postOne(a: Args, browser: Browser, consoleTab: Page, draft: Draft, found: { template: string; assignees: string[] }): Promise<Outcome> {
+  const dir = join(tmpdir(), 'agit-post', `${a.payDate}-${draft.kind}`);
   mkdirSync(dir, { recursive: true });
-  const browser = await browserOf(a.cdp);
-  const consoleTab = await tabOf(browser);
-  await openSignedIn(consoleTab, `${a.console}/admin/agents/settlement`, '콘솔');
+  console.log(`\n[초안] ${draft.kind} · ${draft.title}${draft.urgent ? ' · 긴급' : ''} · ${draft.status}`);
 
-  /* 1. 올릴 초안 */
-  const found = await api<{ post: { id: string; body: string; title: string; status: string; urgent: string | null } | null; template: string | null; assignees: string[]; error?: string }>(
-    consoleTab, `/api/agit/posts?payDate=${a.payDate}`
-  );
-  if (found.status !== 200) throw new Error(`초안을 찾지 못했다 — ${found.json.error ?? found.status}`);
-  const draft = found.json.post;
-  if (!draft) throw new Error(`${a.payDate} 의 아지트 글 초안이 없다 — 정산 담당에게 초안을 올려 달라고 해 주세요`);
-  console.log(`[초안] ${draft.title}${draft.urgent ? ' · 긴급' : ''} · ${draft.status}`);
-
-  /* 2. 「올리는 중」 — 그때 금액으로 다시 지어 견준다(다르면 콘솔이 초안을 고쳐 두고 422) */
-  let template = found.json.template ?? '구매요청간소화';
-  let assignees = found.json.assignees;
+  /* 「올리는 중」 — 그때 금액으로 다시 지어 견준다(다르면 콘솔이 초안을 고쳐 두고 422) */
+  let template = found.template;
+  let assignees = found.assignees;
   let text = draft.body;
   let claimed = false;
   let submitted = false;
@@ -272,12 +282,10 @@ async function main() {
       consoleTab, `/api/agit/posts/${draft.id}`, { seen: draft.body }
     );
     if (c.status === 422 && /바뀌었습니다/.test(c.json.error ?? '')) {
-      console.log(`[멈춤] ${c.json.error} — 카드의 고친 글을 한백에게 보이고 다시 시킨다`);
-      process.exitCode = 2;
-      await browser.disconnect();
-      return;
+      console.log(`[멈춤] ${draft.kind} — ${c.json.error} — 카드의 고친 글을 한백에게 보이고 다시 시킨다`);
+      return { kind: draft.kind, ok: false, changed: true, why: c.json.error ?? '금액이 바뀌었습니다' };
     }
-    if (c.status !== 200 || !c.json.post) throw new Error(`올리기 시작을 못 했다 — ${c.json.error ?? c.status}`);
+    if (c.status !== 200 || !c.json.post) return { kind: draft.kind, ok: false, why: `올리기 시작을 못 했다 — ${c.json.error ?? c.status}` };
     claimed = true;
     template = c.json.template ?? template;
     assignees = c.json.assignees ?? assignees;
@@ -286,7 +294,7 @@ async function main() {
 
   try {
     if (assignees.length === 0) throw new Error('요청 담당 미지정 — 콘솔 정산 담당 화면의 「요청 담당」에 아지트 ID 를 넣어 주세요');
-    /* 3. 첨부 zip · 그 안의 캡처 */
+    /* 첨부 zip · 그 안의 캡처 */
     const zip = await zipOf(consoleTab, draft.id);
     const zipPath = join(dir, zip.name);
     writeFileSync(zipPath, zip.bytes);
@@ -297,7 +305,7 @@ async function main() {
     const pngName = pngEntry.name.split('/').pop()!;
     console.log(`[파일] ${zip.name} (${Math.round(zip.bytes.length / 1024)}KB) · 캡처 ${pngName}`);
 
-    /* 4. 아지트 쓰는 칸 */
+    /* 아지트 쓰는 칸 */
     const agit = await tabOf(browser);
     agit.on('dialog', (d) => { void d.accept(); });
     await openSignedIn(agit, `${GROUP}/wall`, '아지트');
@@ -353,9 +361,8 @@ async function main() {
       + ` · 그림 ${check.images.length} · zip ${check.zip ? '붙음' : '없음'}${doc.cc ? ` · cc 멘션 ${check.mention ? '있음' : '없음'}` : ''} · 화면 ${join(dir, 'compose.png')}`);
     if (check.bad.length) throw new Error(`쓰는 칸이 맞지 않아 올리지 않았다 — ${check.bad.join(' · ')}`);
     if (a.dry) {
-      console.log('[시험] --dry — 올리지 않았다(쓰는 칸은 그대로 둔다)');
-      await browser.disconnect();
-      return;
+      console.log(`[시험] --dry — ${draft.kind} 글은 올리지 않았다(쓰는 칸은 그대로 둔다)`);
+      return { kind: draft.kind, ok: false, dry: true, tab: agit };
     }
 
     const before = new Set(await agit.evaluate(() => [...document.querySelectorAll('a[href*="/wall/"]')]
@@ -374,26 +381,69 @@ async function main() {
       return null;
     }, { timeout: 60_000, polling: 1000 }, [...before], draft.title)).jsonValue() as string;
     const url = `${GROUP}/wall/${newId}`;
-    console.log(`[올림] ${url}`);
+    console.log(`[올림] ${draft.kind} — ${url}`);
 
-    /* 5. 콘솔에 남긴다 */
+    /* 콘솔에 남긴다 */
     const done = await api<{ post?: { status: string }; error?: string }>(consoleTab, `/api/agit/posts/${draft.id}/finish`, { ok: true, url });
     claimed = false;
     if (done.status !== 200) throw new Error(`아지트에는 올렸는데 콘솔에 남기지 못했다(${url}) — ${done.json.error ?? done.status}`);
-    console.log('[콘솔] 올림으로 남김 — 상신 할 일 끝남');
-    /* 한백이 바로 보게 — 올린 글을 그 탭에 연다. 콘솔 탭은 닫는다 */
-    await agit.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => undefined);
-    await consoleTab.close().catch(() => undefined);
-    await browser.disconnect();
+    console.log(`[콘솔] ${draft.kind} 글 올림으로 남김`);
+    return { kind: draft.kind, ok: true, url, tab: agit };
   } catch (e) {
     /* 「작성하기」를 누른 뒤에 멈췄으면 올라갔을 수 있다 — 다시 시키기 전에 아지트를 먼저 본다(두 번 올리지 않게) */
     const why = `${submitted ? '「작성하기」를 누른 뒤 멈춤 — 아지트에 올라갔는지 먼저 확인 · ' : ''}${e instanceof Error ? e.message : String(e)}`;
     if (claimed) {
       await api(consoleTab, `/api/agit/posts/${draft.id}/finish`, { ok: false, error: why.slice(0, 400) }).catch(() => undefined);
     }
-    await browser.disconnect();
-    throw new Error(why);
+    console.error(`[못 올림] ${draft.kind} — ${why}`);
+    return { kind: draft.kind, ok: false, why };
   }
+}
+
+async function main() {
+  const a = argsOf(process.argv.slice(2));
+  const browser = await browserOf(a.cdp);
+  const consoleTab = await tabOf(browser);
+  await openSignedIn(consoleTab, `${a.console}/admin/agents/settlement`, '콘솔');
+
+  /* 올릴 초안 — 구분마다 하나(영업비 먼저) · 초안이 없는 구분(missing) */
+  const found = await api<{
+    posts?: { post: Draft; template: string }[]; missing?: Kind[]; assignees?: string[]; error?: string;
+  }>(consoleTab, `/api/agit/posts?payDate=${a.payDate}${a.kind ? `&kind=${encodeURIComponent(a.kind)}` : ''}`);
+  if (found.status !== 200) throw new Error(`초안을 찾지 못했다 — ${found.json.error ?? found.status}`);
+  const posts = found.json.posts ?? [];
+  const missing = found.json.missing ?? [];
+  for (const k of missing) console.log(`[빠짐] ${a.payDate} ${k} 글 초안이 없다 — 정산 담당에게 「${k} 열린구매 초안」을 올려 달라고 한 뒤 다시 시킨다`);
+  if (posts.length === 0) {
+    await browser.disconnect();
+    if (missing.length) {
+      process.exitCode = 3;
+      return;
+    }
+    throw new Error(`${a.payDate}${a.kind ? ` ${a.kind}` : ''} 의 올릴 아지트 글이 없다(이미 올렸거나 지급이 없다)`);
+  }
+
+  const outs: Outcome[] = [];
+  for (const { post, template } of posts) {
+    outs.push(await postOne(a, browser, consoleTab, post, { template, assignees: found.json.assignees ?? [] }));
+  }
+
+  /* 한백이 바로 보게 — 올린 글을 그 탭에 연다(마지막 탭만 남기고 앞의 아지트 탭은 닫는다). --dry 면 쓰는 칸들을 그대로 둔다 */
+  const shown = outs.filter((o): o is Extract<Outcome, { url: string }> => o.ok);
+  for (const o of shown.slice(0, -1)) await o.tab.close().catch(() => undefined);
+  const last = shown.at(-1);
+  if (last) await last.tab.goto(last.url, { waitUntil: 'domcontentloaded' }).catch(() => undefined);
+  if (!a.dry) await consoleTab.close().catch(() => undefined);
+  await browser.disconnect();
+
+  console.log('\n[끝]');
+  for (const o of outs) {
+    console.log(`  ${o.kind}: ${o.ok ? `올림 ${o.url}` : 'dry' in o ? '시험(올리지 않음)' : 'changed' in o ? `멈춤 — ${o.why}` : `못 올림 — ${o.why}`}`);
+  }
+  for (const k of missing) console.log(`  ${k}: 초안 없음`);
+  const failed = outs.some((o) => !o.ok && !('dry' in o) && !('changed' in o));
+  const changed = outs.some((o) => 'changed' in o);
+  process.exitCode = failed ? 1 : changed ? 2 : missing.length ? 3 : 0;
 }
 
 main().catch((e) => {

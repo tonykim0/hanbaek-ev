@@ -30,8 +30,10 @@ import { pricingTableText } from '@/lib/agents/pricing-table';
 import { loadAgentBrief } from '@/lib/agents/scope';
 import { siteMailOfCpo } from '@/lib/site-mail';
 import { requestSiteMail } from '@/lib/site-mail-run';
-import { agitUrgentFor, loadAgitDraft } from '@/lib/agit/load';
-import { payDateName } from '@/lib/agit/post';
+import { agitUrgentFor, draftKindsOf, loadAgitDraft, loadAgitKinds } from '@/lib/agit/load';
+import { agitPostName, payDateName } from '@/lib/agit/post';
+import { isUnexpectedError } from '@/lib/api/errors';
+import type { PayoutKind } from '@/types/project';
 import { OPEN_PURCHASE_AGENT } from '@/lib/agents/open-purchase';
 import { awaitsReply, queryOf, searchText } from '@/lib/agents/memory';
 import { bundleFileOf, bundleSiteDocs } from '@/lib/agents/bundle-run';
@@ -144,16 +146,36 @@ async function answer(
       readFile: (id) => repo.agentFileOf(agentId, id, actor),
       /* 아지트 열린구매 글 초안 — 전기차 정산 담당만. 글은 콘솔이 거래명세서로 짓는다 */
       ...(agentId === OPEN_PURCHASE_AGENT && biz === 'ev' ? {
-        agitDraft: async (q: { payDate: string; again: boolean; urgent?: string | null }) => {
-          /* 긴급사유 — 주면 긴급 글(빈 글이면 보통 글로), 안 주면 지금 초안의 모양 그대로(lib/agit/load agitUrgentFor) */
-          const draft = await loadAgitDraft(actor, q.payDate, await agitUrgentFor(actor, q.payDate, q.urgent));
-          if (draft.blocked) throw new Error(`${payDateName(q.payDate)} 글을 지을 수 없다 — ${draft.blocked}`);
-          const { post, plan } = await repo.draftAgitPost({
-            payDate: draft.payDate, body: draft.text, total: draft.total, batches: draft.batches, again: q.again, messageId: null,
-            urgent: draft.urgent,
-          }, actor);
-          agitDrafted.push(post.id);
-          return { id: post.id, plan, name: payDateName(post.payDate), batches: post.batches, total: post.total, urgent: post.urgent };
+        /* 구분(영업비 · 시공비)마다 한 글 — kind 를 빼면 그날 나가는 구분마다(lib/agit/post). 한 구분이 막혀도 다른 구분은 짓는다 */
+        agitDraft: async (q: { payDate: string; again: boolean; urgent?: string | null; kind?: PayoutKind }) => {
+          const kinds = q.kind ? [q.kind] : draftKindsOf(await loadAgitKinds(actor, q.payDate));
+          const made: { id: string; plan: 'create' | 'refresh' | 'keep'; name: string; kind: PayoutKind; batches: number; total: number; urgent: string | null }[] = [];
+          const skipped: { kind: PayoutKind; why: string }[] = [];
+          for (const kind of kinds) {
+            /* 긴급사유 — 주면 긴급 글(빈 글이면 보통 글로), 안 주면 지금 초안의 모양 그대로(lib/agit/load agitUrgentFor) */
+            const draft = await loadAgitDraft(actor, q.payDate, kind, await agitUrgentFor(actor, q.payDate, kind, q.urgent));
+            if (draft.blocked) {
+              skipped.push({ kind, why: draft.blocked });
+              continue;
+            }
+            try {
+              const { post, plan } = await repo.draftAgitPost({
+                payDate: draft.payDate, kind, body: draft.text, total: draft.total, batches: draft.batches, again: q.again, messageId: null,
+                urgent: draft.urgent,
+              }, actor);
+              agitDrafted.push(post.id);
+              made.push({
+                id: post.id, plan, name: agitPostName(post), kind, batches: post.batches, total: post.total, urgent: post.urgent,
+              });
+            } catch (e) {
+              if (isUnexpectedError(e)) throw e;
+              skipped.push({ kind, why: e instanceof Error ? e.message : String(e) });
+            }
+          }
+          if (made.length === 0) {
+            throw new Error(`${payDateName(q.payDate)} 글을 지을 수 없다 — ${skipped.map((k) => `${k.kind}: ${k.why}`).join(' / ')}`);
+          }
+          return { made, skipped };
         },
       } : {}),
       ...(operatorCpo ? {

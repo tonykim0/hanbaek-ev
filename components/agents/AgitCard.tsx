@@ -13,6 +13,7 @@
  * ★첨부 파일 받기★(한백 2026-11-08 「개별 파일로 하나의 zip으로」) — 올릴 때 붙는 것과 같은 zip(구매요청간소화 엑셀 · 캡처 · 거래명세서 PDF ·
  * 세금계산서)을 손에 받아 본다(app/api/agit/posts/[id]/files — 거래명세서를 서버가 그려 10~20초).
  * ★긴급 글★(한백 2026-11-09) — 머리에 「긴급」 꼬리표. 긴급으로 바꾸는 것은 정산 담당에게 사유와 함께 말한다(agit_post urgent_reason).
+ * ★구분★(같은 날 「seperate post … 영업위탁수수료 -> 시공비」) — 글은 결제일 × 구분마다 하나라 같은 날 영업비 · 시공비 카드가 따로 선다.
  */
 import { useState } from 'react';
 import { won } from '@/lib/format';
@@ -85,6 +86,8 @@ export function AgitCard({ post, assignees }: {
       <dl className="mt-2 grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 gap-y-1">
         <dt className={TEXT.label}>결제일</dt>
         <dd className="text-small font-bold text-slate-900 tabular-nums">{payDateName(post.payDate)} · {sum}</dd>
+        <dt className={TEXT.label}>구분</dt>
+        <dd className="text-small font-semibold text-slate-800">{post.kind}</dd>
         <dt className={TEXT.label}>요청 담당</dt>
         <dd className="text-small font-semibold text-slate-800">{who.length ? assigneesLabel(who) : <Tag tone="warn">미지정</Tag>}</dd>
       </dl>

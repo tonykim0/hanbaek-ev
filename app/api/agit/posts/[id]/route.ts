@@ -8,7 +8,7 @@
  * 않는다★ — 초안을 지금 글로 고쳐 두고 422(카드가 새 글로 다시 그려지고 한백이 보고 다시 시킨다). 같으면 결제일 잠금 안에서 「올리는 중」으로
  * 세우고(두 번 올리지 않게) 쓸 글 · 글양식(구매요청간소화 · 긴급구매요청) · 요청 담당(「요청 담당」에 정해 둔 아지트 ID)을 준다.
  * 첨부 zip(엑셀 · 캡처 · 거래명세서 · 계산서)은 …/files, 다 올린 뒤의 아지트 주소(또는 못 올린 까닭)는 …/finish 가 남긴다.
- * 긴급 글은 줄의 긴급사유로 다시 지어 견준다(모양이 같아야 견준다).
+ * 긴급 글은 줄의 긴급사유로, 시공비 글은 시공비 배치로 다시 지어 견준다(모양이 같아야 견준다 — 글은 결제일 × 구분마다 하나).
  */
 import { adminWrite, BadRequest } from '@/lib/api/write-route';
 import { getRepository } from '@/lib/data';
@@ -25,13 +25,13 @@ export const POST = adminWrite<{ id: string }, { seen?: unknown }>(
     if (post.status === 'posted') throw new Error('이미 아지트에 올린 글입니다.');
     const { assignees } = await repo.getAgitHook(actor);
     if (assignees.length === 0) throw new Error('아지트 요청 담당 미지정 — 「요청 담당」에서 아지트 ID 를 넣어 주세요.');
-    const draft = await loadAgitDraft(actor, post.payDate, post.urgent);
+    const draft = await loadAgitDraft(actor, post.payDate, post.kind, post.urgent);
     if (draft.blocked) throw new Error(draft.blocked);
     if (draft.text !== body.seen) {
       /* 초안을 지금 글로 고쳐 둔다 — 카드가 새 글을 보이고 한백이 다시 시킨다 */
       await repo.draftAgitPost(
         {
-          payDate: post.payDate, body: draft.text, total: draft.total, batches: draft.batches, again: post.again, messageId: null,
+          payDate: post.payDate, kind: post.kind, body: draft.text, total: draft.total, batches: draft.batches, again: post.again, messageId: null,
           urgent: draft.urgent,
         },
         actor

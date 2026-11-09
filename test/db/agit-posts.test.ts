@@ -6,7 +6,8 @@
  * scripts/agit-post.ts · 콘솔은 앞뒤만).
  *
  * 보는 것: 관리자만 연결 · 담당 · 찾기 · 올리기 시작 · 남기기(열람 전용 · 협력사 403) · 웹훅 주소를 응답 · DB · 감사기록에 싣지 않는다 ·
- * 요청 담당은 아지트 ID 만 · 다시 연결해도 남는다 · 초안은 결제일마다 하나(다시 지으면 같은 줄을 고친다) · 담당이 비었으면 못 올림 ·
+ * 요청 담당은 아지트 ID 만 · 다시 연결해도 남는다 · 초안은 결제일 × 구분마다 하나(다시 지으면 같은 줄을 고친다 · 시공비는 따로 —
+ * 한백 11-09 「seperate post … 영업위탁수수료 -> 시공비」) · 담당이 비었으면 못 올림 ·
  * ★올리기 시작 때 금액이 바뀌었으면 거절하고 초안을 고쳐 둔다★ · 한 번 올린 글은 다시 못 올림 · 이미 올린 결제일은 again 으로만 새 초안 ·
  * 동시에 두 번 시작해도 한 번 · 못 올렸으면 「못 올림」(할 일은 그대로 · 다시 시작) · 남긴 주소는 아지트 글 주소만 · 올리면 상신 할 일이
  * 끝나고 대화에 한 줄. ★콘솔은 바깥(아지트 · 웹훅)을 부르지 않는다★ — fetch 를 바꿔 끼워 본다. 웹훅 주소는 지어낸 것이다.
@@ -21,7 +22,9 @@ import { GET as getFiles } from '@/app/api/agit/posts/[id]/files/route';
 import JSZip from 'jszip';
 import { getRepository } from '@/lib/data';
 import { getDb } from '@/lib/db/client';
-import { agentMessages, agentTasks, agitHooks, agitPosts, auditLog, notifications } from '@/lib/db/schema';
+import { agentMessages, agentTasks, agitHooks, agitPosts, auditLog, notifications, payoutEntries } from '@/lib/db/schema';
+import { stampOf } from '@/lib/date';
+import type { PayoutKind } from '@/types/project';
 import { agitUrgentFor, loadAgitDraft } from '@/lib/agit/load';
 import { AGIT_CC, AGIT_URGENT_TAG } from '@/lib/agit/post';
 import { openPurchaseKey, openPurchaseOf } from '@/lib/agents/open-purchase';
@@ -52,6 +55,9 @@ const D4 = '2098-03-19';
 /** 긴급 글 시험의 결제일 */
 const D5 = '2098-03-20';
 const REASON = '세금계산서 발행 지연으로 늦은 상신';
+/** 영업비 · 시공비가 같은 날 나가는 결제일 — 글이 둘 · 초안이 없는 구분을 짚는 날 */
+const D6 = '2098-03-24';
+const D7 = '2098-03-25';
 const AGENT = 'settlement';
 const TITLE = `[시험 ${RUN}] 열린구매 상신`;
 const started = new Date();
@@ -66,12 +72,11 @@ const stubFetch = (impl: Fetch) => {
 
 async function sweep() {
   const db = getDb();
-  const keys = [openPurchaseKey(D), openPurchaseKey(D2), openPurchaseKey(D3)];
-  await db.delete(agitPosts).where(inArray(agitPosts.payDate, [D, D2, D3, D4, D5]));
+  const keys = [openPurchaseKey(D), openPurchaseKey(D2), openPurchaseKey(D3), openPurchaseKey(D6)];
+  await db.delete(agitPosts).where(inArray(agitPosts.payDate, [D, D2, D3, D4, D5, D6, D7]));
   await db.delete(agentTasks).where(and(eq(agentTasks.agentId, AGENT), inArray(agentTasks.kind, keys)));
-  await db.delete(agentMessages).where(and(eq(agentMessages.agentId, AGENT), sql`${agentMessages.meta}->>'remind' in (${keys[0]}, ${keys[1]}, ${keys[2]})`));
-  await db.delete(agentMessages).where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 1_일 지급 열린구매 글을 아지트에 올렸습니다%')));
-  await db.delete(agentMessages).where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 20일 지급 열린구매 긴급 글을 아지트에 올렸습니다%')));
+  await db.delete(agentMessages).where(and(eq(agentMessages.agentId, AGENT), sql`${agentMessages.meta}->>'remind' in (${sql.join(keys.map((k) => sql`${k}`), sql`, `)})`));
+  await db.delete(agentMessages).where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 __일 지급 %열린구매 %글을 아지트에 올렸습니다%')));
   await db.delete(notifications).where(and(eq(notifications.agentId, AGENT), inArray(notifications.title, [TITLE, D3_TITLE])));
   await db.delete(auditLog).where(and(inArray(auditLog.field, ['아지트', '정산 담당']), gte(auditLog.at, started)));
 }
@@ -100,11 +105,11 @@ async function remind(payDate: string): Promise<string> {
   return r.messageId!;
 }
 
-/** 크론처럼 — 그 결제일의 글을 지어 그 말 밑에 초안으로. urgent 를 주면 긴급 글(빈 글이면 보통 글로) · 안 주면 지금 초안의 모양 그대로 */
-async function draftUnder(payDate: string, messageId: string | null, again = false, urgent?: string) {
-  const d = await loadAgitDraft(admin, payDate, await agitUrgentFor(admin, payDate, urgent));
+/** 크론처럼 — 그 결제일 · 구분의 글을 지어 그 말 밑에 초안으로. urgent 를 주면 긴급 글(빈 글이면 보통 글로) · 안 주면 지금 초안의 모양 그대로 */
+async function draftUnder(payDate: string, messageId: string | null, again = false, urgent?: string, kind: PayoutKind = '영업비') {
+  const d = await loadAgitDraft(admin, payDate, kind, await agitUrgentFor(admin, payDate, kind, urgent));
   expect(d.blocked).toBeNull();
-  return repo.draftAgitPost({ payDate, body: d.text, total: d.total, batches: d.batches, again, messageId, urgent: d.urgent }, admin);
+  return repo.draftAgitPost({ payDate, kind, body: d.text, total: d.total, batches: d.batches, again, messageId, urgent: d.urgent }, admin);
 }
 
 const openTask = async (payDate: string) => (await getDb().select({ doneAt: agentTasks.doneAt }).from(agentTasks)
@@ -112,7 +117,8 @@ const openTask = async (payDate: string) => (await getDb().select({ doneAt: agen
 
 const claim = (id: string, seen: unknown) => call(claimRoute, { params: { id }, body: seen === undefined ? {} : { seen } });
 const finish = (id: string, body: unknown) => call(finishRoute, { params: { id }, body });
-const find = (payDate: string) => findRoute(new Request(`http://test.local/api/agit/posts?payDate=${payDate}`));
+const find = (payDate: string, kind?: PayoutKind) =>
+  findRoute(new Request(`http://test.local/api/agit/posts?payDate=${payDate}${kind ? `&kind=${encodeURIComponent(kind)}` : ''}`));
 /** 올린 글 주소(지어낸 것) */
 const WALL = 'https://team-hanbaek.agit.io/g/1/wall/2';
 /** 콘솔은 바깥을 부르지 않는다 — 부르면 던진다 */
@@ -198,7 +204,9 @@ describe('정산 담당의 초안 → Claude Code 가 한백 계정으로 올림
       expect((await claim(made.post.id, undefined)).status).toBe(400);
       const found = await find(D);
       expect(found.status).toBe(200);
-      expect(await found.json()).toMatchObject({ post: { id: made.post.id, status: 'draft' }, template: '구매요청간소화' });
+      expect(await found.json()).toMatchObject({
+        posts: [{ post: { id: made.post.id, status: 'draft', kind: '영업비' }, template: '구매요청간소화' }], missing: [],
+      });
 
       /* 요청 담당이 비면 못 올린다 */
       await repo.saveAgitAssignees({ assignees: '' }, admin);
@@ -236,7 +244,7 @@ describe('정산 담당의 초안 → Claude Code 가 한백 계정으로 올림
 
       expect((await openTask(D))?.doneAt).not.toBeNull();
       const auto = await getDb().select({ body: agentMessages.body, role: agentMessages.role }).from(agentMessages)
-        .where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 17일 지급 열린구매 글을 아지트에 올렸습니다%')));
+        .where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 17일 지급 영업비 열린구매 글을 아지트에 올렸습니다%')));
       expect(auto).toHaveLength(1);
       expect(auto[0].role).toBe('auto');
       expect(auto[0].body).toContain(`승인 ${USERS.admin.name}`);
@@ -245,8 +253,8 @@ describe('정산 담당의 초안 → Claude Code 가 한백 계정으로 올림
       const twice = await claim(made.post.id, made.post.body);
       expect(twice.status).toBe(422);
       expect(twice.json?.error).toMatch(/이미 아지트에 올린/);
-      expect(await (await find(D)).json()).toMatchObject({ post: null });
-      await expect(draftUnder(D, said)).rejects.toThrow(/이미 아지트에 올린 결제일/);
+      expect(await (await find(D)).json()).toMatchObject({ posts: [], missing: [] }); // 올린 구분은 빠진 게 아니다
+      await expect(draftUnder(D, said)).rejects.toThrow(/이미 아지트에 올린 3월 17일 지급 영업비 글/);
       const again = await draftUnder(D, said, true);
       expect(again.plan).toBe('create');
       expect(again.post).toMatchObject({ status: 'draft', again: true });
@@ -265,13 +273,13 @@ describe('정산 담당의 초안 → Claude Code 가 한백 계정으로 올림
       const morning = new Date(`${openPurchaseOf(D3).deadline}T00:00:00Z`); // 한국 시각 오전 9시
       const ran = await runAgentReminders(morning);
       expect(ran.reminded).toContain(D3);
-      expect(ran.drafted).toContain(D3);
+      expect(ran.drafted).toContain(`${D3} 영업비`);
       expect((await runAgentReminders(morning)).drafted).toEqual([]);
       quiet.mockRestore();
 
       const [said] = await getDb().select().from(agentMessages)
         .where(and(eq(agentMessages.agentId, AGENT), sql`${agentMessages.meta}->>'remind' = ${openPurchaseKey(D3)}`));
-      expect(said.body).toContain('아지트 열린구매 글 초안을 아래에 올렸습니다 — Claude Code 에 「3월 10일 열린구매 올려」');
+      expect(said.body).toContain('아지트 열린구매 영업비 글 초안을 아래에 올렸습니다 — Claude Code 에 「3월 10일 열린구매 올려」');
       const cards = await repo.listAgitPosts(admin, [said.id]);
       expect(cards).toHaveLength(1);
       expect(cards[0]).toMatchObject({ status: 'draft', payDate: D3, batches: 1, postedBy: '정산 담당' });
@@ -328,7 +336,8 @@ describe('정산 담당의 초안 → Claude Code 가 한백 계정으로 올림
       expect(made.post.title).toBe('98년 2월 전기차 충전 인프라 구축사업 영업위탁 수수료 (3월 20일 지급)');
 
       /* 사유를 안 주고 다시 지으면(크론 · 「다시 지어 줘」) 긴급 그대로 · 빈 사유는 보통 글로 · 다시 긴급으로 */
-      expect(await agitUrgentFor(admin, D5, undefined)).toBe(REASON);
+      expect(await agitUrgentFor(admin, D5, '영업비', undefined)).toBe(REASON);
+      expect(await agitUrgentFor(admin, D5, '시공비', undefined)).toBeNull(); // 긴급은 그 구분의 글에만
       expect((await draftUnder(D5, null)).plan).toBe('keep');
       const back = await draftUnder(D5, null, false, '');
       expect(back.post).toMatchObject({ urgent: null });
@@ -351,7 +360,7 @@ describe('정산 담당의 초안 → Claude Code 가 한백 계정으로 올림
       expect(done.json?.post).toMatchObject({ status: 'posted', urgent: REASON, agitUrl: WALL, assignees: ['kiko.x', 'ella.a'] });
       expect(fetcher).not.toHaveBeenCalled();
       const auto = await getDb().select({ body: agentMessages.body }).from(agentMessages)
-        .where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 20일 지급 열린구매 긴급 글을 아지트에 올렸습니다%')));
+        .where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 20일 지급 영업비 열린구매 긴급 글을 아지트에 올렸습니다%')));
       expect(auto).toHaveLength(1);
       const [audit] = await getDb().select().from(auditLog)
         .where(and(eq(auditLog.action, '아지트 글 올림'), gte(auditLog.at, started), like(auditLog.newValue, '%(3월 20일 지급) · 긴급%')));
@@ -376,7 +385,7 @@ describe('정산 담당의 초안 → Claude Code 가 한백 계정으로 올림
       expect((await openTask(D2))?.doneAt).toBeNull();
       /* 못 올린 것도 같은 초안 자리다 — 다시 지으면 그 줄 · 찾으면 그것 */
       expect((await draftUnder(D2, said)).post.id).toBe(draft.id);
-      expect(await (await find(D2)).json()).toMatchObject({ post: { id: draft.id, status: 'failed' } });
+      expect(await (await find(D2)).json()).toMatchObject({ posts: [{ post: { id: draft.id, status: 'failed' } }] });
 
       /* 두 번 동시에 시작 — 하나는 「올리는 중」에 걸린다 */
       const both = await Promise.all([1, 2].map(() => claim(draft.id, draft.body)));
@@ -384,6 +393,78 @@ describe('정산 담당의 초안 → Claude Code 가 한백 계정으로 올림
       expect(String(both.find((r) => r.status === 422)?.json?.error)).toMatch(/올리는 중/);
       expect((await finish(draft.id, { ok: true, url: WALL })).status).toBe(200);
       expect((await openTask(D2))?.doneAt).not.toBeNull();
+    });
+  });
+
+  it('시공비는 따로 — 같은 날 영업비 · 시공비 글이 둘 · 각자 올리고 둘 다 올려야 상신 할 일이 끝난다 · 초안이 없는 구분을 짚는다', async () => {
+    await signIn(USERS.admin);
+    await repo.saveAgitAssignees({ assignees: 'kiko.x, ella.a' }, admin);
+    await withPayableProject(async ({ id, org }) => {
+      await repo.runPayoutBatch([{ projectId: id, kind: '영업비' }], D6, admin);
+      /* 시공비 1차 — 설치완료까지 밀지 않고 원장 줄을 바로 넣는다(지급 줄은 저장소가 사람 손을 안 받는다 · 줄은 dropFixture 가 걷는다) */
+      const cons = `시험시공사-${RUN}`;
+      await getDb().insert(payoutEntries).values({
+        id: crypto.randomUUID(), projectId: id, kind: '시공비', category: '1차', amount: 3_000_000, step: 1, at: D6, note: null,
+        createdAt: stampOf(new Date()),
+      });
+      const said = await remind(D6);
+      const sales = (await draftUnder(D6, said)).post;
+      const build = (await draftUnder(D6, said, false, undefined, '시공비')).post;
+      expect(build.id).not.toBe(sales.id);
+      expect(sales).toMatchObject({ kind: '영업비', batches: 1, title: '98년 2월 전기차 충전 인프라 구축사업 영업위탁 수수료 (3월 24일 지급)' });
+      expect(build).toMatchObject({ kind: '시공비', batches: 1, total: 3_000_000, title: '98년 2월 전기차 충전 인프라 구축사업 시공비 (3월 24일 지급)' });
+      expect(build.body).toContain('> *- 상황설명 :* 98년 2월 동안 진행된 전기차 충전기 설치 시공에 대한 시공비 (3월 24일 지급)');
+      expect(build.body).not.toContain('영업위탁');
+      expect(build.body).toContain(`> [${cons}](`);
+      expect(build.body).not.toContain(`> [${org}](`);
+      expect(sales.body).not.toContain(`> [${cons}](`);
+      /* 같은 구분을 다시 지으면 그 줄 — 다른 구분의 줄은 그대로 */
+      expect((await draftUnder(D6, said, false, undefined, '시공비')).post.id).toBe(build.id);
+      expect((await repo.listAgitPosts(admin, [said])).map((p) => p.kind)).toEqual(['영업비', '시공비']);
+
+      /* 찾기 — 구분마다 하나 · 영업비 먼저 · kind 로 하나만 */
+      const fetcher = noFetch();
+      expect(await (await find(D6)).json()).toMatchObject({
+        posts: [{ post: { id: sales.id, kind: '영업비' } }, { post: { id: build.id, kind: '시공비' } }], missing: [],
+      });
+      expect(await (await find(D6, '시공비')).json()).toMatchObject({ posts: [{ post: { id: build.id } }], missing: [] });
+      expect((await findRoute(new Request(`http://test.local/api/agit/posts?payDate=${D6}&kind=x`))).status).toBe(400);
+
+      /* 첨부 zip — 시공비 글은 시공비 이름 · 시공비 거래명세서만 */
+      pdfCalls.length = 0;
+      const res = await getFiles(new Request('http://test.local/x'), { params: { id: build.id } });
+      expect(res.status).toBe(200);
+      expect(res.headers.get('Content-Disposition')).toContain(encodeURIComponent('98년 2월 시공비 3월 24일 지급.zip'));
+      expect(pdfCalls).toEqual([[`/payments/statement?org=${encodeURIComponent(cons)}&date=${D6}&kind=${encodeURIComponent('시공비')}`]]);
+
+      /* 둘을 같이 시작해도 서로 안 막는다(잠금은 결제일 · 구분마다) */
+      const both = await Promise.all([claim(sales.id, sales.body), claim(build.id, build.body)]);
+      expect(both.map((r) => r.status)).toEqual([200, 200]);
+
+      /* 영업비만 올리면 할 일은 열린 채 · 대화에 남은 글을 말한다 */
+      expect((await finish(sales.id, { ok: true, url: WALL })).status).toBe(200);
+      expect((await openTask(D6))?.doneAt).toBeNull();
+      const [first] = await getDb().select({ body: agentMessages.body }).from(agentMessages)
+        .where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 24일 지급 영업비 열린구매 글을 아지트에 올렸습니다%')));
+      expect(first.body).toContain('남은 글: 시공비 — 다 올리면 상신 할 일이 끝납니다.');
+      expect(await (await find(D6)).json()).toMatchObject({ posts: [{ post: { id: build.id, status: 'sending' } }], missing: [] });
+
+      /* 시공비까지 올리면 끝난다 */
+      expect((await finish(build.id, { ok: true, url: `${WALL}3` })).status).toBe(200);
+      expect((await openTask(D6))?.doneAt).not.toBeNull();
+      const [second] = await getDb().select({ body: agentMessages.body }).from(agentMessages)
+        .where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 24일 지급 시공비 열린구매 글을 아지트에 올렸습니다%')));
+      expect(second.body).not.toContain('남은 글');
+      expect(await (await find(D6)).json()).toMatchObject({ posts: [], missing: [] });
+      expect(fetcher).not.toHaveBeenCalled();
+
+      /* 초안이 없는 구분 — 시공비만 나가는 날에 초안을 안 지었으면 missing 으로 짚는다 */
+      await getDb().insert(payoutEntries).values({
+        id: crypto.randomUUID(), projectId: id, kind: '시공비', category: '2차', amount: 1_000, step: 2, at: D7, note: null,
+        createdAt: stampOf(new Date()),
+      });
+      expect(await (await find(D7)).json()).toMatchObject({ posts: [], missing: ['시공비'] });
+      expect(await (await find(D7, '영업비')).json()).toMatchObject({ posts: [], missing: [] });
     });
   });
 });

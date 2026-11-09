@@ -636,34 +636,43 @@ export interface ProjectRepository {
   /** 글 한 줄 — 없으면 null */
   getAgitPost(actor: Actor, id: string): Promise<AgitPostRecord | null>;
   /**
-   * 그 결제일의 아직 안 올린 글(초안 · 못 올림 · 올리는 중) — 없으면 null. 다시 지을 때 모양(긴급 · 보통)을 그대로 두려고, Claude Code 가
-   * 올릴 글을 찾으려고(GET /api/agit/posts?payDate=) 읽는다
+   * 그 결제일 · 구분의 아직 안 올린 글(초안 · 못 올림 · 올리는 중) — 없으면 null. 다시 지을 때 모양(긴급 · 보통)을 그대로 두려고 읽는다.
+   * 글은 결제일 × 구분(영업비 · 시공비)마다 하나다
    */
-  openAgitPost(actor: Actor, payDate: string): Promise<AgitPostRecord | null>;
+  openAgitPost(actor: Actor, payDate: string, kind: PayoutKind): Promise<AgitPostRecord | null>;
+  /** 그 결제일의 아직 안 올린 글 전부 — 구분마다 하나씩, 영업비 먼저. Claude Code 가 올릴 글을 찾는다(GET /api/agit/posts?payDate=) */
+  openAgitPosts(actor: Actor, payDate: string): Promise<AgitPostRecord[]>;
+  /** 그 결제일에 이미 올린 구분 — 영업비 먼저 */
+  postedAgitKinds(actor: Actor, payDate: string): Promise<PayoutKind[]>;
   /**
-   * 초안 — 그 결제일의 열린 초안(초안 · 못 올림)이 있으면 지금 글로 고치고(messageId 를 주면 그 말 밑으로 옮긴다), 없으면 새로.
+   * 초안 — 그 결제일 · 구분의 열린 초안(초안 · 못 올림)이 있으면 지금 글로 고치고(messageId 를 주면 그 말 밑으로 옮긴다), 없으면 새로.
    * urgent 는 그 글의 긴급사유(null 이면 보통 글) — body 를 지은 모양과 같아야 한다(lib/agit/post agitPostOf 가 돌려준 urgent).
-   * 올리는 중이면 · 이미 올린 결제일인데 again 이 아니면 사람 말로 던진다. plan: create 새로 · refresh 고침 · keep 같은 글
+   * 올리는 중이면 · 이미 올린 결제일 · 구분인데 again 이 아니면 사람 말로 던진다. plan: create 새로 · refresh 고침 · keep 같은 글
    */
   draftAgitPost(
     input: {
-      payDate: string; body: string; total: number; batches: number; again: boolean; messageId: string | null; urgent: string | null;
+      payDate: string; kind: PayoutKind; body: string; total: number; batches: number; again: boolean; messageId: string | null;
+      urgent: string | null;
     },
     actor: Actor
   ): Promise<{ post: AgitPostRecord; plan: 'create' | 'refresh' | 'keep' }>;
   /** 초안을 그 말 밑으로 — 담당의 답이 남은 뒤(답 라우트) */
   linkAgitPosts(input: { ids: string[]; messageId: string }, actor: Actor): Promise<void>;
   /**
-   * 올리기 첫 걸음(한백의 승인) — 결제일 잠금 안에서 그 초안을 「올리는 중」으로 세우고 지금 글 · 담당자를 적는다. 초안 · 못 올림이
+   * 올리기 첫 걸음(한백의 승인) — 결제일 · 구분 잠금 안에서 그 초안을 「올리는 중」으로 세우고 지금 글 · 담당자를 적는다. 초안 · 못 올림이
    * 아니면 · 같은 결제일을 올리는 중이면 던진다
    */
   claimAgitPost(
     input: { id: string; body: string; total: number; batches: number; assignees: string[]; urgent: string | null },
     actor: Actor
   ): Promise<AgitPostRecord>;
-  /** 올리기 끝 — 결과를 적는다. 올렸으면 정산 담당의 그 결제일 상신 할 일을 끝내고 대화에 한 줄 · body 가 오면 올린 글(엑셀 캡처 · zip 주소가 든 것)로 바꿔 둔다 */
+  /** 올리기 끝 — 결과를 적는다. 올렸으면 대화에 한 줄 · 그 결제일에 안 올린 글(다른 구분)이 없으면 정산 담당의 상신 할 일을 끝낸다 · body 가 오면 올린 글(엑셀 캡처 · zip 주소가 든 것)로 바꿔 둔다 */
   finishAgitPost(
-    input: { id: string; result: { ok: true; agitId?: string; agitUrl?: string } | { ok: false; error: string }; body?: string },
+    input: {
+      id: string; result: { ok: true; agitId?: string; agitUrl?: string } | { ok: false; error: string }; body?: string;
+      /** 그 결제일에 나가는 구분 — 다 올라갔을 때만 상신 할 일을 끝낸다. 빼면 이 글의 구분 하나 */
+      kinds?: PayoutKind[];
+    },
     actor: Actor
   ): Promise<AgitPostRecord>;
   /** 보낼 때만 — 풀어 둔 앱 비밀번호와 주소. 연결이 없거나 풀 수 없으면 사람 말로 던진다 */

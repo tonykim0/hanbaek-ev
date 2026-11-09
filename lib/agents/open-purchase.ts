@@ -17,6 +17,7 @@
  * (store/agit finishAgitPost 가 이 열쇠로 찾는다). 글을 지을 수 없으면(지급 0건 · 지급처 미정) 그 까닭을 적는다.
  */
 import { REGULAR_PAY_DAYS, type Batch } from '@/lib/payout-board';
+import { PAYOUT_KINDS, type PayoutKind } from '@/types/project';
 import {
   WEEKDAYS, businessDayOnOrBefore, businessDaysBefore, dayLabel, holidayOf, holidaysKnown, weekdayOf,
 } from '@/lib/business-days';
@@ -83,6 +84,34 @@ export interface RemindPlan {
   alarm: { title: string; body: string };
 }
 
+/** 배치가 있는 구분 — 영업비 먼저 */
+const kindsIn = (batches: readonly { kind: PayoutKind }[]): PayoutKind[] =>
+  PAYOUT_KINDS.filter((k) => batches.some((b) => b.kind === k));
+
+/**
+ * 아지트 글 초안의 줄 — 올린 것 한 줄 · 못 지은 구분마다 한 줄. 글은 결제일 × 구분마다 하나라(한백 2026-11-09 「seperate post … 영업위탁수수료
+ * -> 시공비」) 둘이면 둘 다 올려야 할 일이 끝난다. 배치가 하나도 없으면 구분을 말하지 않는다(지급 0건의 글은 어느 구분도 아니다).
+ */
+function agitLines(
+  due: OpenPurchaseDue,
+  batches: readonly Batch[],
+  agit: readonly { kind: PayoutKind; blocked: string | null }[]
+): string[] {
+  const ok = agit.filter((a) => !a.blocked).map((a) => a.kind);
+  const say = `Claude Code 에 「${monthDay(due.payDate)} 열린구매 올려」라고 하면 그때 금액으로 다시 지어 한백 계정으로 올립니다.`;
+  const posted = ok.length === 0
+    ? ''
+    : ok.length === 1
+      ? `아지트 열린구매 ${ok[0]} 글 초안을 아래에 올렸습니다 — ${say} 올리면 이 할 일이 저절로 끝납니다.`
+      : `아지트 열린구매 글 초안 ${ok.length}개(${ok.join(' · ')} — 구분마다 따로)를 아래에 올렸습니다 — ${say} 다 올리면 이 할 일이 저절로 끝납니다.`;
+  const named = batches.length > 0;
+  return [
+    posted,
+    ...agit.filter((a) => a.blocked).map((a) =>
+      `아지트 열린구매 ${named ? `${a.kind} ` : ''}글 초안은 올리지 않았습니다(${a.blocked}) — 배치가 서면 초안을 올려 달라고 말해 주세요.`),
+  ];
+}
+
 /**
  * 그날 남길 것 — 할 일 · 대화의 말 · 알림. batches 는 그 결제일의 배치(가확정 · 확정)만 넘긴다.
  * 나가기 전이라 상태는 둘뿐이다 — 확정했으면 「확정」, 아니면 「가확정」(lib/payout-board batchStateOf 의 앞날 쪽).
@@ -91,8 +120,11 @@ export function openPurchasePlan(
   due: OpenPurchaseDue,
   today: string,
   batches: readonly Batch[],
-  /** 아지트 글 초안을 지을 수 없는 까닭(lib/agit/post AgitPostText.blocked) — null 이면 초안을 이 말 밑에 올린다 */
-  agitBlocked: string | null = null
+  /**
+   * 아지트 글 초안 — 구분(영업비 · 시공비)마다 하나(lib/agit/post). blocked 는 지을 수 없는 까닭(AgitPostText.blocked)이고 null 이면 이 말 밑에
+   * 올린다. 빼면 배치가 있는 구분마다 올린 것으로 본다
+   */
+  agit: readonly { kind: PayoutKind; blocked: string | null }[] = kindsIn(batches).map((kind) => ({ kind, blocked: null }))
 ): RemindPlan {
   const title = `열린구매 상신 — ${monthDay(due.payDate)} 정기결제`;
   const total = batches.reduce((n, b) => n + b.total, 0);
@@ -118,10 +150,7 @@ export function openPurchasePlan(
     years.length ? `${years.join(' · ')}년 공휴일 표가 없어 주말만 빼고 셌습니다.` : '',
     batches.length ? `그날 ${sum}` : '그날 지급할 배치가 0건입니다 — 가확정한 지급이 없습니다.',
     ...rows,
-    agitBlocked
-      ? `아지트 열린구매 글 초안은 올리지 않았습니다(${agitBlocked}) — 배치가 서면 초안을 올려 달라고 말해 주세요.`
-      : `아지트 열린구매 글 초안을 아래에 올렸습니다 — Claude Code 에 「${monthDay(due.payDate)} 열린구매 올려」라고 하면 그때 금액으로 다시 지어 `
-        + '한백 계정으로 올립니다. 올리면 이 할 일이 저절로 끝납니다.',
+    ...agitLines(due, batches, agit),
   ].filter(Boolean).join('\n');
 
   return {

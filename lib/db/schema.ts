@@ -915,6 +915,8 @@ export const agitHooks = pgTable('agit_hooks', {
 export const agitPosts = pgTable('agit_posts', {
   id: text('id').primaryKey(),
   payDate: text('pay_date').notNull(),
+  /** 구분 — 영업비 · 시공비. 글은 결제일 × 구분마다 하나다(migrations/0129) */
+  kind: text('kind').notNull().default('영업비'),
   status: text('status').notNull(),
   body: text('body').notNull(),
   total: bigint('total', { mode: 'number' }).notNull(),
@@ -938,5 +940,6 @@ export const agitPosts = pgTable('agit_posts', {
   postedAt: timestamp('posted_at', { withTimezone: true }),
 }, (t) => ({
   byPayDate: index('agit_posts_pay_date_idx').on(t.payDate, t.createdAt),
+  byPayDateKind: index('agit_posts_pay_date_kind_idx').on(t.payDate, t.kind, t.createdAt),
   byMessage: index('agit_posts_message_idx').on(t.messageId),
 }));
