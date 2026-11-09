@@ -181,7 +181,7 @@ describe('조건 다듬기', () => {
   it('상품마다 틀이 있다', () => {
     for (const p of PRODUCTS) expect(TEMPLATES[p.template].company).toBe(p.company);
   });
-  it('틀 받기 전 상품(모햇)은 고르는 상품에 없다 — 이름이 겹치지 않는다', () => {
+  it('못 고르는 칩의 상품은 고르는 상품에 없다 — 이름이 겹치지 않는다', () => {
     for (const u of UPCOMING) expect(PRODUCTS.some((p) => p.company === u.company && p.label === u.label)).toBe(false);
   });
   it('자가소비형 — 템플릿 · 조건은 넣을 수 있고, 고르는 상품에는 아직 없다(파워플래너 견본 받기 전)', () => {

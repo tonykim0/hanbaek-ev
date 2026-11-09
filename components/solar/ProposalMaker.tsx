@@ -118,7 +118,7 @@ export default function ProposalMaker({ mapKey, initialQ, canManage }: { mapKey:
                   </Choice>
                 );
               })}
-              {/* 템플릿을 아직 못 받은 상품 · 파워플래너 견본 받기 전 — 못 고르는 칩(lib/solar/proposal/products UPCOMING) */}
+              {/* 받을 것이 와야 짓는 상품(지금은 파워플래너 견본 받기 전 둘) — 못 고르는 칩(lib/solar/proposal/products UPCOMING) */}
               {UPCOMING.filter((u) => u.company === company).map((u) => (
                 <Choice key={u.label} on={false} disabled>
                   {u.label}
