@@ -14,6 +14,7 @@ import { won } from '@/lib/format';
 import { formatAccountNo } from '@/lib/bank-account';
 import { normalizeOrg } from '@/lib/roles';
 import { CONSOLE_URL } from '@/lib/portal-intake';
+import { agitPostName, type AgitHookInfo, type AgitPostRecord } from '@/lib/agit/post';
 import type { CpoName, ProjectSummary } from '@/types/project';
 import { CPO_NAMES } from '@/types/project';
 import type { Agent, AgentHeadline } from '@/types/agents';
@@ -49,6 +50,8 @@ export interface ScopeData {
   partners?: Map<string, PartnerLine>;
   /** 배치 열쇠(lib/payout-board batchKey) → 현장 몫. 정산 담당을 부를 때만 채운다 */
   batchLines?: Map<string, BatchLine[]>;
+  /** 아지트 계정 · 글(결제일 from 이후와 안 올린 것 전부 — store recentAgitPosts). 정산 담당을 부를 때만 채운다 */
+  agit?: { account: AgitHookInfo; posts: AgitPostRecord[]; from: string };
 }
 
 /** 운영사 현장 한 줄 — 보드가 세운 칸과 차례를 그대로 쓴다 */
@@ -143,6 +146,41 @@ function daysBefore(day: string, n: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** 지난 아지트 글은 이만큼만 — 결제일이 그 뒤인 글(안 올린 글은 날짜 상관없이 다) */
+const AGIT_LOOKBACK_DAYS = 14;
+export const agitFromOf = (today: string): string => daysBefore(today, AGIT_LOOKBACK_DAYS);
+
+/** 아지트 글 하나의 지금 — 카드와 같은 말 */
+function agitStateOf(p: AgitPostRecord): string {
+  if (p.status === 'draft') return '초안(승인 전)';
+  if (p.status === 'sending') return p.stalled ? '올리는 중에 멈춤 — 다시 올리기 전에 아지트에 올라갔는지 한백에게 먼저 확인' : '올리는 중';
+  if (p.status === 'posted') return `올림 ${p.at}${p.agitUrl ? ` ${p.agitUrl}` : ''}`;
+  return `못 올림 — ${p.error ?? '까닭 없음'}`;
+}
+
+/**
+ * 아지트 계정과 글 — 지금 콘솔에 있는 그대로. 담당은 이것이 없으면 지난 대화의 초안 금액을 지금 것으로 알고 「초안과 금액이 다르다」고
+ * 했다(2026-11-10 시험 — 그 금액은 전날 시험의 것이었다). 공급가액은 그 글을 지을(올린) 때의 것이다 — 올릴 때 콘솔이 다시 지어 견준다.
+ */
+export function agitLines(agit: NonNullable<ScopeData['agit']>): string[] {
+  const { account: a } = agit;
+  const state = a.expired
+    ? '로그인 풀림 — 한백이 정산 담당 화면의 「아지트 계정」에서 다시 연결해야 올린다'
+    : a.connected ? `연결됨(로그인 ${a.until ?? '-'}까지)` : '연결 전 — 한백이 정산 담당 화면의 「아지트 계정」에서 연결해야 올린다';
+  const out = [
+    `[아지트 열린구매 글 — 지금 콘솔의 초안 · 올린 글(결제일 ${agit.from} 이후, 안 올린 것은 다). 올렸는지 · 금액은 지난 대화가 아니라 이것으로 말한다]`,
+    `아지트 계정 ${state} · 요청 담당 ${a.assignees.length ? `${a.assignees.length}명` : '미지정 — 올릴 수 없음'}`,
+  ];
+  if (agit.posts.length === 0) out.push('- 없음');
+  for (const p of agit.posts) {
+    out.push(`- ${[
+      `${p.payDate} ${agitPostName(p)}`, agitStateOf(p), `지급 ${p.batches}건 · 공급가액 ${won(p.total)}원`,
+      p.urgent && `긴급(사유: ${p.urgent})`, p.again && '다시 올리는 초안',
+    ].filter(Boolean).join(' · ')}`);
+  }
+  return out;
+}
+
 /** 배치 하나의 거래명세서 — 콘솔 주소(로그인한 한백이 연다). 지출 글에 붙일 자료의 첫째다 */
 export function statementUrl(b: Pick<Batch, 'org' | 'paidAt' | 'kind'>): string {
   return `${CONSOLE_URL}/payments/statement?org=${encodeURIComponent(b.org ?? '')}&date=${b.paidAt}&kind=${encodeURIComponent(b.kind)}`;
@@ -214,6 +252,7 @@ function settlementBrief(data: ScopeData): string {
       partner ? (partner.hasBankbook ? '통장사본 있음' : '통장사본 없음') : null,
     ].filter(Boolean).join(' · ')}`);
   }
+  if (data.agit) out.push('', ...agitLines(data.agit));
   return out.join('\n');
 }
 

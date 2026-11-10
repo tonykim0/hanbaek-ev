@@ -654,6 +654,11 @@ export interface ProjectRepository {
   /** 그 결제일에 이미 올린 구분 — 영업비 먼저 */
   postedAgitKinds(actor: Actor, payDate: string): Promise<PayoutKind[]>;
   /**
+   * 정산 담당이 부를 때 읽는 글 — 결제일이 fromDay 이후인 글과 아직 안 올린 글(초안 · 못 올림 · 올리는 중) 전부. 결제일 · 구분(영업비 먼저) 차례,
+   * 같은 자리는 새 것 먼저 · 40줄까지. 담당이 지난 대화의 금액 · 상태를 지금 것으로 알지 않게(lib/agents/brief)
+   */
+  recentAgitPosts(actor: Actor, fromDay: string): Promise<AgitPostRecord[]>;
+  /**
    * 초안 — 그 결제일 · 구분의 열린 초안(초안 · 못 올림)이 있으면 지금 글로 고치고(messageId 를 주면 그 말 밑으로 옮긴다), 없으면 새로.
    * urgent 는 그 글의 긴급사유(null 이면 보통 글) — body 를 지은 모양과 같아야 한다(lib/agit/post agitPostOf 가 돌려준 urgent).
    * 올리는 중이면 · 이미 올린 결제일 · 구분인데 again 이 아니면 사람 말로 던진다. plan: create 새로 · refresh 고침 · keep 같은 글

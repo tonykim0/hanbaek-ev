@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { briefOf, headlineOf, siteLinesOf, SITE_LIMIT, type ScopeData } from '@/lib/agents/brief';
 import { toMessages, withContext } from '@/lib/agents/brain';
 import type { Batch } from '@/lib/payout-board';
+import type { AgitPostRecord } from '@/lib/agit/post';
 import { today } from '@/lib/date';
 import type { ProjectSummary } from '@/types/project';
 import type { Agent, AgentMessage } from '@/types/agents';
@@ -155,6 +156,41 @@ describe('정산 담당이 읽는 것 — 기성관리 · 지급관리 · 열린
     expect(buy).toContain('지급처: 협력사 정보 미등록');   // 에코일렉 — 정보가 아예 없다
     expect(buy).toContain(`/payments/statement?org=${encodeURIComponent('대상전력')}&date=${shift(7)}&kind=${encodeURIComponent('영업비')}`);
     expect(buy).toContain('세금계산서 없음(협력사 발행 대기) · 사업자등록증 있음 · 통장사본 없음');
+    expect(text).not.toContain('[아지트 열린구매 글');   // 정산 담당을 부를 때만 읽는다(scope withPayees)
+  });
+
+  it('아지트 글 — 지금 콘솔의 초안 · 올린 글 · 계정(지난 대화의 금액으로 말하지 않게)', () => {
+    const post = (over: Partial<AgitPostRecord>): AgitPostRecord => ({
+      id: 'p', payDate: '2026-11-10', kind: '영업비', status: 'draft', title: '공사명', body: '', total: 1_200_000, batches: 1, error: null,
+      postedBy: '정산 담당', assignees: [], messageId: null, again: false, urgent: null, agitUrl: null, createdAt: '2026-11-07 08:00',
+      at: '2026-11-07 08:00', stalled: false, ...over,
+    });
+    const account = { connected: true, login: 'x', connectedBy: '한백 관리자', connectedAt: '2026-11-10 16:57', until: '2027-02-10', expired: null, assignees: ['a', 'b'] };
+    const text = briefOf(SETTLE, data({
+      agit: {
+        from: '2026-10-27',
+        account,
+        posts: [
+          post({}),
+          post({ id: 'q', kind: '시공비', status: 'posted', at: '2026-11-10 17:01', agitUrl: 'https://team-hanbaek.agit.io/g/1/wall/2', total: 9_545_000, batches: 2 }),
+          post({ id: 'r', payDate: '2026-11-12', kind: '시공비', status: 'failed', error: '아지트 로그인이 풀렸습니다', urgent: '세금계산서 발행 지연' }),
+          post({ id: 's', payDate: '2026-11-25', status: 'sending', stalled: true }),
+        ],
+      },
+    }));
+    const agit = text.slice(text.indexOf('[아지트 열린구매 글'));
+    expect(agit).toContain('결제일 2026-10-27 이후');
+    expect(agit).toContain('아지트 계정 연결됨(로그인 2027-02-10까지) · 요청 담당 2명');
+    expect(agit).toContain('- 2026-11-10 11월 10일 정기결제 영업비 · 초안(승인 전) · 지급 1건 · 공급가액 1,200,000원');
+    expect(agit).toContain('- 2026-11-10 11월 10일 정기결제 시공비 · 올림 2026-11-10 17:01 https://team-hanbaek.agit.io/g/1/wall/2 · 지급 2건 · 공급가액 9,545,000원');
+    expect(agit).toContain('못 올림 — 아지트 로그인이 풀렸습니다 · 지급 1건 · 공급가액 1,200,000원 · 긴급(사유: 세금계산서 발행 지연)');
+    expect(agit).toContain('올리는 중에 멈춤 — 다시 올리기 전에 아지트에 올라갔는지 한백에게 먼저 확인');
+
+    const off = briefOf(SETTLE, data({ agit: { from: '2026-10-27', account: { ...account, connected: false, until: null, assignees: [] }, posts: [] } }));
+    expect(off).toContain('아지트 계정 연결 전 — 한백이 정산 담당 화면의 「아지트 계정」에서 연결해야 올린다 · 요청 담당 미지정 — 올릴 수 없음');
+    expect(off).toContain('- 없음');
+    const gone = briefOf(SETTLE, data({ agit: { from: '2026-10-27', account: { ...account, connected: false, expired: '아지트 로그인이 풀렸습니다' }, posts: [] } }));
+    expect(gone).toContain('아지트 계정 로그인 풀림 — 한백이 정산 담당 화면의 「아지트 계정」에서 다시 연결해야 올린다');
   });
 });
 

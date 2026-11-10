@@ -14,7 +14,7 @@ import { OVERDUE_DAYS } from '@/lib/todo-types';
 import type { Biz } from '@/lib/biz';
 import type { Actor } from '@/lib/auth/types';
 import type { Agent, AgentHeadline } from '@/types/agents';
-import { briefOf, headlineOf, siteLinesOf, type BatchLine, type ScopeData } from './brief';
+import { agitFromOf, briefOf, headlineOf, siteLinesOf, type BatchLine, type ScopeData } from './brief';
 import { solarBriefOf, solarHeadlineOf, type SolarScopeData } from './solar-brief';
 
 /** 조직도 · 담당 화면이 읽는 셈 — 사업마다 재료가 달라(전기차 현장 · 지급 · 기성 / 태양광 상담 현장) 한 모양으로 감싼다 */
@@ -115,5 +115,8 @@ export async function loadScope(actor: Actor, withPayees = false): Promise<Scope
     const line = { no: noOf.get(r.projectId) ?? r.projectId, projectName: r.projectName, label: r.label, amount: r.amount };
     lines.set(key, [...(lines.get(key) ?? []), line]);
   }
-  return { ...data, partners, batchLines: lines };
+  /* 아지트 계정 · 글 — 올렸는지 · 금액을 지난 대화가 아니라 지금 콘솔로 말하게(lib/agents/brief agitLines) */
+  const from = agitFromOf(data.today);
+  const agit = { account: await repo.getAgitHook(actor), posts: await repo.recentAgitPosts(actor, from), from };
+  return { ...data, partners, batchLines: lines, agit };
 }

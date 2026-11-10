@@ -531,6 +531,10 @@ describe('정산 담당의 초안 → (예비 길) Claude Code 가 한백 계정
         .where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 24일 지급 영업비 열린구매 글을 아지트에 올렸습니다%')));
       expect(first.body).toContain('남은 글: 시공비 — 다 올리면 상신 할 일이 끝납니다.');
       expect(await (await find(D6)).json()).toMatchObject({ posts: [{ post: { id: build.id, status: 'sending' } }], missing: [] });
+      /* 정산 담당이 부를 때 읽는 글(lib/agents/brief agitLines) — 영업비 먼저 · 안 올린 글은 결제일이 from 앞이어도 */
+      expect((await repo.recentAgitPosts(admin, D6)).filter((p) => p.payDate === D6).map((p) => [p.kind, p.status]))
+        .toEqual([['영업비', 'posted'], ['시공비', 'sending']]);
+      expect((await repo.recentAgitPosts(admin, D7)).filter((p) => p.payDate === D6).map((p) => p.kind)).toEqual(['시공비']);
 
       /* 시공비까지 올리면 끝난다 */
       expect((await finish(build.id, { ok: true, url: `${WALL}3` })).status).toBe(200);
@@ -539,6 +543,8 @@ describe('정산 담당의 초안 → (예비 길) Claude Code 가 한백 계정
         .where(and(eq(agentMessages.agentId, AGENT), like(agentMessages.body, '3월 24일 지급 시공비 열린구매 글을 아지트에 올렸습니다%')));
       expect(second.body).not.toContain('남은 글');
       expect(await (await find(D6)).json()).toMatchObject({ posts: [], missing: [] });
+      /* 다 올린 지난 글은 from 앞이면 빠진다 */
+      expect((await repo.recentAgitPosts(admin, D7)).some((p) => p.payDate === D6)).toBe(false);
       expect(fetcher).not.toHaveBeenCalled();
 
       /* 초안이 없는 구분 — 시공비만 나가는 날에 초안을 안 지었으면 missing 으로 짚는다 */

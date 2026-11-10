@@ -26,7 +26,7 @@
  * 글을 다시 지을 때도 이 칸으로 짓는다(글에서 거꾸로 읽지 않는다). 초안을 다시 지으면 부른 쪽이 준 모양으로 칸을 고친다 —
  * 모양을 그대로 두려면 부른 쪽이 openAgitPost 로 지금 칸을 읽어 그대로 준다(lib/agit/load agitUrgentFor).
  */
-import { and, asc, desc, eq, gt, inArray, isNotNull, isNull, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
 import { agentMessages, agents, agentTasks, agitHooks, agitPosts } from '@/lib/db/schema';
@@ -117,7 +117,7 @@ async function sendingOf(tx: Tx, payDate: string, kind: PayoutKind, except?: str
 export const agitStore: Pick<
   ProjectRepository,
   | 'getAgitHook' | 'saveAgitSession' | 'saveAgitAssignees' | 'deleteAgitSession' | 'agitSessionFor' | 'touchAgitSession' | 'expireAgitSession'
-  | 'listAgitPosts' | 'getAgitPost' | 'openAgitPost' | 'openAgitPosts' | 'postedAgitKinds' | 'draftAgitPost' | 'linkAgitPosts'
+  | 'listAgitPosts' | 'getAgitPost' | 'openAgitPost' | 'openAgitPosts' | 'postedAgitKinds' | 'recentAgitPosts' | 'draftAgitPost' | 'linkAgitPosts'
   | 'claimAgitPost' | 'finishAgitPost'
 > = {
   async getAgitHook(actor): Promise<AgitHookInfo> {
@@ -258,6 +258,20 @@ export const agitStore: Pick<
     const rows = await getDb().select({ kind: agitPosts.kind }).from(agitPosts)
       .where(and(eq(agitPosts.payDate, payDate), eq(agitPosts.status, 'posted')));
     return AGIT_KINDS.filter((k) => rows.some((r) => agitKindOf(r.kind) === k));
+  },
+
+  async recentAgitPosts(actor, fromDay): Promise<AgitPostRecord[]> {
+    assertHanbaek(actor, '아지트 글');
+    if (!DAY_RE.test(fromDay)) throw new Error('결제일은 YYYY-MM-DD 로 적어주세요.');
+    const rows = await getDb().select().from(agitPosts)
+      .where(or(gte(agitPosts.payDate, fromDay), inArray(agitPosts.status, [...OPEN, 'sending'])))
+      .orderBy(asc(agitPosts.payDate), desc(agitPosts.createdAt))
+      .limit(40);
+    /* 같은 결제일 안에서는 영업비 먼저(글자 차례로는 시공비가 앞선다) — 정렬은 안정이라 새 것 먼저가 남는다 */
+    const kindAt = (k: string) => AGIT_KINDS.indexOf(agitKindOf(k));
+    return rows
+      .sort((a, b) => a.payDate.localeCompare(b.payDate) || kindAt(a.kind) - kindAt(b.kind))
+      .map(recordOf);
   },
 
   async draftAgitPost(input, actor) {
