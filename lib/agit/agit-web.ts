@@ -66,7 +66,8 @@ export async function agitLogin(input: { login: string; password: string }): Pro
     ]);
     await sleep(1500);
     if (onAgitLogin(page)) {
-      const said = await loginErrorOf(page).catch(() => '');
+      /* 아지트의 말은 마침표로 끝난다(「…잘못되었습니다.」 — 11-10 프리뷰) — 우리 마침표와 겹치지 않게 뗀다 */
+      const said = (await loginErrorOf(page).catch(() => '')).replace(/[.。\s]+$/, '');
       throw new Error(`아지트에 로그인하지 못했습니다 — ${said || '이메일(아지트 ID)과 비밀번호를 확인해 주세요'}.`);
     }
     /* 열린구매 그룹에 글을 쓸 수 있는 계정인지 — 쓰는 칸이 열려야 한다 */
