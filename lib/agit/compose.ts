@@ -169,6 +169,11 @@ export interface ComposeCheck {
   bold: number;
   zip: boolean;
   mention: boolean;
+  /**
+   * 「작성하기」가 눌리는 꼴인가(보이는 크기 · 꺼지지 않음) — 누르는 것은 마우스(page.click)라 칸이 있어야 한다. 서버(리눅스) 브라우저에는
+   * 한글 글꼴이 없어 글자가 안 그려진다 — 시험(dry)이 거기서도 단추가 눌리는 꼴인지 미리 본다.
+   */
+  submit: boolean;
   /** 틀린 것 — 하나라도 있으면 올리지 않는다 */
   bad: string[];
 }
@@ -190,6 +195,11 @@ async function checkCompose(page: Page, want: { template: string; assignees: rea
       h1: pm.querySelectorAll('h1').length,
       quotes: pm.querySelectorAll('blockquote').length,
       bold: pm.querySelectorAll('strong').length,
+      submit: (() => {
+        const b = document.querySelector(s.submit) as HTMLButtonElement | null;
+        const r = b?.getBoundingClientRect();
+        return Boolean(b && r && r.width > 0 && r.height > 0 && !b.disabled);
+      })(),
     };
   }, SEL, { subject: want.subject, zip: want.zip }, [IMG_MARK, CC_MARK]);
   const assignees = await assigneesNow(page);
@@ -201,9 +211,11 @@ async function checkCompose(page: Page, want: { template: string; assignees: rea
     !got.zip && '첨부 zip 이 안 붙었다',
     got.marks && '자리 표가 남았다',
     want.cc && !got.mention && 'cc 멘션이 없다',
+    !got.submit && '「작성하기」 단추가 안 보이거나 꺼져 있다',
   ].filter((x): x is string => Boolean(x));
   return {
-    template: got.template, assignees, images: got.images, h1: got.h1, quotes: got.quotes, bold: got.bold, zip: got.zip, mention: got.mention, bad,
+    template: got.template, assignees, images: got.images, h1: got.h1, quotes: got.quotes, bold: got.bold, zip: got.zip, mention: got.mention,
+    submit: got.submit, bad,
   };
 }
 
