@@ -198,7 +198,7 @@ describe('workOf — 계약중단 현장은 지급하지 않는다', () => {
     ledger: [null, null], unpriced: 0, holdState: null, passThrough: false,
     milestones: { contractSubmittedAt: '2026-07-01', installCompletedAt: null, completedAt: null },
     payoutDocsMissing: [], docsRejected: 0,
-    step1At: null, step2At: null, step1EntryId: null, step2EntryId: null,
+    step1At: null, step2At: null, step1EntryId: null, step2EntryId: null, crossOffset: 0,
     ...over,
   });
 

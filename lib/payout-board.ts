@@ -13,8 +13,8 @@ import type {
   ProjectDetail, TaxInvoice,
 } from '@/types/project';
 import {
-  isPassThroughSite, payoutMilestonesOf, payoutPrerequisiteBlockersOf, payoutReleaseOf,
-  payoutSideOf, payoutStepsOf, payoutUnitOf,
+  isPassThroughSite, isTurnkeySite, payoutMilestonesOf, payoutPrerequisiteBlockersOf, payoutReleaseOf,
+  payoutSidesOf, payoutStepsOf, payoutUnitOf,
 } from '@/lib/settlement';
 import { today } from '@/lib/date';
 import { canWrite, isHanbaek, normalizeOrg, type Role, type Visibility } from '@/lib/roles';
@@ -35,11 +35,25 @@ export function payoutsOfDetail(d: ProjectDetail, vis: Visibility): PayoutRowInp
   const stepEntry = (kind: PayoutKind, cat: '1차' | '2차') =>
     d.payoutEntries.find((e: PayoutEntry) => e.kind === kind && e.category === cat) ?? null;
 
+  /* 패스스루 현장은 시공비 줄에 마진이 얹혀 총액이 턴키가 된다 (lib/settlement) */
+  const pass = isPassThroughSite(d.project);
+  const unitOf = (l: ProjectDetail['lines'][number], kind: PayoutKind) => payoutUnitOf(l.rule, kind, pass);
+  const planOf = (kind: PayoutKind) => d.lines.reduce((n, l) => n + (unitOf(l, kind) ?? 0) * l.qty, 0);
+  const pricedOf = (kind: PayoutKind) => d.lines.every((l) => unitOf(l, kind) !== null);
+  /*
+   * ★두 쪽을 같이 센다★ — 턴키 현장은 영업비 초과를 시공비 잔금에서 뺀다(한백 지시 2026-11-10). 한 쪽만 세면
+   * 시공비 줄이 영업비가 얼마나 넘쳤는지 모른다. 확정(store/payouts openStepFor)도 같은 함수를 거친다.
+   * 패스스루 현장은 회차가 없어 뺄 잔금이 없다 — 상계도 세우지 않는다.
+   */
+  const sides = payoutSidesOf(d.payoutEntries, {
+    turnkey: isTurnkeySite(d.project) && !pass,
+    salesPlan: pricedOf('영업비') ? planOf('영업비') : null,
+    consPlan: pricedOf('시공비') ? planOf('시공비') : null,
+  });
+
   const build = (kind: PayoutKind): PayoutRowInput => {
-    const side = payoutSideOf(d.payoutEntries, kind);
-    /* 패스스루 현장은 시공비 줄에 마진이 얹혀 총액이 턴키가 된다 (lib/settlement) */
-    const pass = isPassThroughSite(d.project);
-    const unit = (l: ProjectDetail['lines'][number]) => payoutUnitOf(l.rule, kind, pass);
+    const side = sides[kind];
+    const unit = (l: ProjectDetail['lines'][number]) => unitOf(l, kind);
     return {
       key: `${d.project.id}|${kind}`,
       projectId: d.project.id,
@@ -47,7 +61,7 @@ export function payoutsOfDetail(d: ProjectDetail, vis: Visibility): PayoutRowInp
       cpo: d.project.cpo,
       kind,
       org: kind === '영업비' ? d.project.salesOrg : d.project.gcOrg,
-      plan: d.lines.reduce((n, l) => n + (unit(l) ?? 0) * l.qty, 0),
+      plan: planOf(kind),
       adjust: side.adjust,
       adjustBy: side.adjustBy,
       confirmed: side.paid,
@@ -64,6 +78,7 @@ export function payoutsOfDetail(d: ProjectDetail, vis: Visibility): PayoutRowInp
       step2At: stepEntry(kind, '2차')?.at ?? null,
       step1EntryId: stepEntry(kind, '1차')?.id ?? null,
       step2EntryId: stepEntry(kind, '2차')?.id ?? null,
+      crossOffset: side.offset,
     };
   };
 

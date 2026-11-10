@@ -19,9 +19,9 @@ import { stampOf, today } from '@/lib/date';
 import { isHanbaek } from '@/lib/roles';
 import { asProcessStatus, stepsOf } from '@/lib/process';
 import {
-  checkPayoutEntry, checkSafetyFee, entryTypeOf, isPassThroughSite, payoutUnitOf,
+  checkPayoutEntry, checkSafetyFee, entryTypeOf, isPassThroughSite, isTurnkeySite, payoutUnitOf,
   payoutPrerequisiteBlockersOf, payoutReleaseOf,
-  payoutSideOf, payoutStepsOf, safetyFeeApplies, safetyFeeStateOf, siteRuleOf,
+  payoutSidesOf, payoutStepsOf, safetyFeeApplies, safetyFeeStateOf, siteRuleOf,
   stepClaimBlock, stepCollectBlock,
 } from '@/lib/settlement';
 import {
@@ -1063,12 +1063,21 @@ function openStepFor(
   if (pass) {
     throw new Error(`${name} — 받은 만큼 내려주는 현장입니다. 회차 지급 방식이 정해지면 풀립니다.`);
   }
-  const plan = r.lines.reduce((n, l) => {
-    // 현장 대당 금액까지 — 표(assemble toDetail)와 같은 값이어야 확정이 표의 금액을 박는다
-    const rule = siteRuleOf(l.pricingRuleId ? rules.get(l.pricingRuleId) ?? null : null, r.project);
-    return n + (payoutUnitOf(rule, kind, pass) ?? 0) * l.qty;
-  }, 0);
-  const { open } = payoutStepsOf(plan, payoutSideOf(r.payoutEntries ?? [], kind));
+  // 현장 대당 금액까지 — 표(assemble toDetail)와 같은 값이어야 확정이 표의 금액을 박는다
+  const unitOf = (l: ProjectRecord['lines'][number], k: PayoutKind) =>
+    payoutUnitOf(siteRuleOf(l.pricingRuleId ? rules.get(l.pricingRuleId) ?? null : null, r.project), k, pass);
+  const planOf = (k: PayoutKind) => r.lines.reduce((n, l) => n + (unitOf(l, k) ?? 0) * l.qty, 0);
+  const pricedOf = (k: PayoutKind) => r.lines.every((l) => unitOf(l, k) !== null);
+  /*
+   * ★두 쪽을 같이 센다★ — 턴키 현장은 영업비 초과를 시공비 잔금에서 뺀다(한백 지시 2026-11-10). 표(payout-board
+   * payoutsOfDetail)와 같은 함수다 — 여기만 한 쪽을 세면 표에는 깎인 잔금이 보이는데 원장에는 깎이지 않은 금액이 박힌다.
+   */
+  const sides = payoutSidesOf(r.payoutEntries ?? [], {
+    turnkey: isTurnkeySite(r.project),
+    salesPlan: pricedOf('영업비') ? planOf('영업비') : null,
+    consPlan: pricedOf('시공비') ? planOf('시공비') : null,
+  });
+  const { open } = payoutStepsOf(planOf(kind), sides[kind]);
   if (!open) throw new Error(`${name} ${kind} — 확정할 회차가 없습니다 (잔액 0 이거나 이미 확정됐습니다).`);
 
   const release = payoutReleaseOf(kind, open.no, payoutMilestonesFor(r));

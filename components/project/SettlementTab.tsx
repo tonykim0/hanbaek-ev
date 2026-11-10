@@ -18,7 +18,7 @@ import type {
 } from '@/types/project';
 import { PAYOUT_CATEGORIES, replLabel } from '@/types/project';
 import {
-  adjustEntriesOf, collectionRate, distributionUnit, entryTypeOf, payoutSideOf, payoutStepsOf,
+  adjustEntriesOf, collectionRate, distributionUnit, entryTypeOf, manualAdjustOf, payoutSidesOf, payoutStepsOf,
   STEP_LABEL, STEP_TONE, triggerLabel, triggerSource, turnkeyUnit,
   claimMonthLabel, safetyFeeApplies, safetyFeeDue, safetyFeeReceiptState, safetyFeeStateOf,
 } from '@/lib/settlement';
@@ -34,7 +34,7 @@ import {
 } from '@/components/ui';
 import { DatePicker } from '@/components/DatePicker';
 import { payoutStepStateOf } from '@/lib/payout-board';
-import { isPassThroughSite, payoutUnitOf } from '@/lib/settlement';
+import { isPassThroughSite, isTurnkeySite, payoutUnitOf } from '@/lib/settlement';
 /* 반려 사유는 어디에 적히든 한 모양이다 (한백 지시 2026-09-04) */
 import { RejectReason } from '@/components/project/parts';
 import { fileHref } from '@/lib/blob/path';
@@ -979,6 +979,13 @@ function PaymentSection({
   const passThrough = isPassThroughSite({ salesOrg, gcOrg });
   const planOf = (kind: PayoutKind) =>
     lines.reduce((s, l) => s + (payoutUnitOf(l.rule, kind, passThrough) ?? 0) * l.qty, 0);
+  const pricedOf = (kind: PayoutKind) => lines.every((l) => payoutUnitOf(l.rule, kind, passThrough) !== null);
+  /* 지급관리 표 · 확정과 같은 셈이다 — 턴키 현장은 영업비 초과를 시공비 잔금에서 뺀다(lib/settlement payoutSidesOf) */
+  const sums = payoutSidesOf(entries, {
+    turnkey: isTurnkeySite({ salesOrg, gcOrg }) && !passThrough,
+    salesPlan: pricedOf('영업비') ? planOf('영업비') : null,
+    consPlan: pricedOf('시공비') ? planOf('시공비') : null,
+  });
   const sides = ([
     { kind: '영업비' as PayoutKind, org: salesOrg, show: vis.sales, plan: planOf('영업비') },
     { kind: '시공비' as PayoutKind, org: gcOrg, show: vis.cons, plan: planOf('시공비') },
@@ -1021,9 +1028,11 @@ function PaymentSection({
           return uniq.length === 1 ? uniq[0] : ('mixed' as const);
         };
         const rows = sides.map((side) => {
-          const sideSum = payoutSideOf(entries, side.kind);
+          const sideSum = sums[side.kind];
           const { adjust, paid } = sideSum;
           const steps = payoutStepsOf(side.plan, sideSum);
+          /* 사람이 적은 조정만 — 턴키 상계(offset)는 따로 한 줄로 말한다 */
+          const manual = manualAdjustOf({ kind: side.kind, adjust, adjustBy: sideSum.adjustBy, offset: sideSum.offset });
           return {
             ...side,
             /*
@@ -1033,8 +1042,14 @@ function PaymentSection({
              */
             unit: unitOf((r) => payoutUnitOf(r, side.kind, passThrough)),
             adjust, steps, paid,
-            /** 회차에 붙은 조정 — [미귀속, 1차분, 2차분]. 회차 칸이 「왜 계획이 움직였나」를 적는다 */
-            adjustBy: sideSum.adjustBy,
+            /**
+             * 회차에 붙은 조정 — [미귀속, 1차분, 2차분]. 회차 칸이 「왜 계획이 움직였나」를 적는다.
+             * ★사람이 적은 것만★ — 턴키 상계는 offset 이 따로 말한다(같은 돈을 「조정」으로 두 번 적지 않게).
+             */
+            adjustBy: manual.adjustBy,
+            manualAdjust: manual.adjust,
+            /** 턴키 상계 — 영업비 +(더 나간 만큼 시공비로 넘김) · 시공비 −(잔금에서 뺌) · 없으면 0 */
+            offset: sideSum.offset,
             /*
              * ★계획보다 더 나간 돈.★ 표가 계획(계획+조정)과 회차 금액만 보여 줘서, 실제로
              * 얼마가 나갔는지는 어디에도 없었다 — 단가를 잘못 알고 더 준 현장이 「1차
@@ -1103,9 +1118,23 @@ function PaymentSection({
                   </Td>
                   <Td money className="whitespace-nowrap font-black text-slate-900">
                     {won(r.steps.due)}
-                    {r.adjust !== 0 && (
+                    {r.manualAdjust !== 0 && (
                       <span className="block text-tiny font-semibold text-slate-400">
-                        조정 {r.adjust > 0 ? '+' : ''}{won(r.adjust)} 포함
+                        조정 {r.manualAdjust > 0 ? '+' : ''}{won(r.manualAdjust)} 포함
+                      </span>
+                    )}
+                    {/*
+                      * 턴키 상계(한백 지시 2026-11-10) — 원장에 적은 줄이 아니라 콘솔이 센 것이라 조정 내역에는 없다.
+                      * 그래서 여기서 말한다: 영업비 쪽은 실제 나간 돈과 초과분, 시공비 쪽은 잔금에서 뺀 금액.
+                      */}
+                    {r.offset > 0 && (
+                      <span className="mt-0.5 block text-tiny font-semibold text-slate-500">
+                        실지급 {won(r.paid)} · 초과 {won(r.offset)} → 시공비 잔금에서 뺌
+                      </span>
+                    )}
+                    {r.offset < 0 && (
+                      <span className="mt-0.5 block text-tiny font-semibold text-slate-500">
+                        영업비 초과 −{won(-r.offset)} · 잔금에서 뺌
                       </span>
                     )}
                     {r.over > 0 && (
@@ -1165,6 +1194,12 @@ function PaymentSection({
                                 이 회차에서 이미 빠졌으므로 상계할 것이 없다.
                               */}
                               {adjAfter !== 0 && no === 1 && <span className="text-slate-400"> · 2차에서 상계</span>}
+                            </span>
+                          )}
+                          {/* 턴키 상계는 시공비 잔금에 얹힌다(payoutSidesOf) — 잔금 칸이 왜 30% 보다 작은지 그 자리에서 말한다 */}
+                          {no === 2 && r.offset < 0 && (
+                            <span className="block text-tiny font-semibold text-slate-500">
+                              영업비 초과 −{won(-r.offset)}
                             </span>
                           )}
                           {gap && (

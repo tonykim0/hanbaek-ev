@@ -34,13 +34,14 @@ async function pickRule(): Promise<PricingRule> {
  */
 export async function withPayableProject<T>(
   fn: (p: PayableProject) => Promise<T>,
-  opts: { confirm?: boolean } = {}
+  /** turnkey — 영업사가 시공도 맡는다(같은 지급처). 턴키 상계(lib/settlement payoutSidesOf)를 보는 시험이 쓴다 */
+  opts: { confirm?: boolean; turnkey?: boolean } = {}
 ): Promise<T> {
   const repo = getRepository();
   const org = `시험영업사-${RUN}-${++seq}`;
   const rule = await pickRule();
   const id = await repo.createProject(draft({
-    salesOrg: org, gcOrg: `시험시공사-${RUN}`,
+    salesOrg: org, gcOrg: opts.turnkey ? org : `시험시공사-${RUN}`,
     bizType: '자체투자', powerType: '모자분리', replType: '자체투자 (제자리교체)', bldgType: '공동주택',
     lines: [{ termYears: 7, qty: 2, powerType: '모자분리', replType: '자체투자 (제자리교체)', memo: null }],
   }), admin);

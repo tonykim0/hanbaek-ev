@@ -31,8 +31,8 @@ import type {
 import { bizTypeOfRepl } from '@/types/project';
 import { buildDocContext, DOC_KEYS, evaluateDocs, PROCESS_DOCS, submittedOnOf } from '@/lib/doc-rules';
 import {
-  isPassThroughSite, payoutMilestonesOf, payoutUnitOf,
-  entryTypeOf, payoutSideOf, safetyFeeApplies, safetyFeeCollected, settlementForProject, siteRuleOf,
+  isPassThroughSite, isTurnkeySite, payoutMilestonesOf, payoutUnitOf,
+  entryTypeOf, payoutSidesOf, safetyFeeApplies, safetyFeeCollected, settlementForProject, siteRuleOf,
 } from '@/lib/settlement';
 import { contractStateOf, deriveStage, docsOutsideConsole, stalledDaysSince } from '@/lib/stage';
 import { canEnter, entryOkOf, gateContextOf, nextStatusOf, type GateContext } from '@/lib/process';
@@ -442,8 +442,13 @@ export function settlementSummaryOf(r: ProjectRecord, rules: RuleMap, settles: S
     safetyFeeClaimedAt: applies ? admin.safetyFeeClaimedAt : null,
     safetyFeeCollectedAt: applies ? admin.safetyFeeCollectedAt : null,
   };
-  const sales = payoutSideOf(d.payoutEntries, '영업비');
-  const cons = payoutSideOf(d.payoutEntries, '시공비');
+  /* 지급관리 표와 같은 셈이다 — 턴키 현장은 영업비 초과를 시공비 잔금에서 뺀다(lib/settlement payoutSidesOf) */
+  const pricedOf = (kind: PayoutKind) => d.lines.every((l) => payoutUnitOf(l.rule, kind, pass) !== null);
+  const { 영업비: sales, 시공비: cons } = payoutSidesOf(d.payoutEntries, {
+    turnkey: isTurnkeySite(d.project) && !pass,
+    salesPlan: pricedOf('영업비') ? planOf('영업비') : null,
+    consPlan: pricedOf('시공비') ? planOf('시공비') : null,
+  });
   return {
     id: d.project.id,
     name: d.project.name,

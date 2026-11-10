@@ -953,6 +953,89 @@ export function payoutSideOf(entries: PayoutEntry[], kind: PayoutKind): {
   };
 }
 
+/** 한 쪽(영업비/시공비)의 원장 합 — 턴키 상계가 얹힌 뒤의 값이다(payoutSidesOf) */
+export type PayoutSide = ReturnType<typeof payoutSideOf> & {
+  /**
+   * 턴키 상계로 이 쪽에 얹힌 금액 — 영업비는 +(더 나간 만큼 총액을 실제 나간 돈에 맞춘다), 시공비는 −(같은 금액을
+   * 잔금에서 뺀다). 없으면 0. ★adjust · adjustBy 에 이미 들어 있다★ — 화면이 「사람이 적은 조정」과 가를 때만 쓴다.
+   */
+  offset: number;
+};
+
+/** 영업사와 시공사가 같은 회사인 현장 — 턴키 상계는 여기서만 선다(이름의 사소한 차이는 normalizeOrg 가 흡수한다) */
+export function isTurnkeySite(p: { salesOrg: string | null; gcOrg: string | null }): boolean {
+  const sales = normalizeOrg(p.salesOrg);
+  return sales !== null && sales === normalizeOrg(p.gcOrg);
+}
+
+/**
+ * 사람이 적은 조정만 — 턴키 상계를 뺀 adjust · adjustBy. 화면이 「조정 N 포함」과 「영업비 초과 상계」를 갈라 적는다.
+ * 상계가 어느 칸에 얹히는지(영업비 미귀속 · 시공비 2차분)는 payoutSidesOf 가 정하고 여기만 그것을 안다.
+ */
+export function manualAdjustOf(p: {
+  kind: PayoutKind; adjust: number; adjustBy: readonly [number, number, number]; offset: number;
+}): { adjust: number; adjustBy: [number, number, number] } {
+  const [a0, a1, a2] = p.adjustBy;
+  return p.kind === '영업비'
+    ? { adjust: p.adjust - p.offset, adjustBy: [a0 - p.offset, a1, a2] }
+    : { adjust: p.adjust - p.offset, adjustBy: [a0, a1, a2 - p.offset] };
+}
+
+/**
+ * 한 현장의 두 쪽 — ★턴키 현장의 영업비 초과는 시공비 잔금에서 뺀다★ (한백 지시 2026-11-10 「턴키업체일 경우, 영업비
+ * 초과가 될 경우, 앞으로 시공비에서 차감해」).
+ *
+ * 영업사와 시공사가 같은 회사면 영업비로 더 나간 돈을 그 현장 시공비에서 빼도 회사 밖으로 오갈 돈이 없다. 사람이 원장에
+ * 손으로 적어 왔는데 셋 다 어긋났다(운영 2026-11-10): 반달마을푸르지오는 8/28 에 정해 놓고 안 적혀 시공비 1차가 깎이지
+ * 않고 나갔고, 파크밸리동일하이빌(자투)은 9/30 에 초과 176만을 적었는데 10/28 단가가 바뀌어 초과가 396만이 됐고,
+ * 신정이펜하우스3단지는 10/2 단가가 바뀌며 생긴 초과 40만을 아무도 몰랐다. 그래서 적지 않고 ★센다★ — 규칙으로 정해지는
+ * 금액은 사람이 적지 않는다. 계획이 다시 바뀌면 상계도 따라 바뀐다.
+ *
+ * 모양은 사람이 적던 두 줄과 같다(화진금봉5차 scripts/fix-hwajin-qty.ts): 영업비는 더 나간 만큼 총액을 올리고(미귀속 —
+ * 「초과」가 사라진다), 시공비는 같은 금액을 2차분에서 뺀다(잔금 — 한백이 화진금봉5차에서 고른 자리). 잔금보다 크면
+ * payoutStepsOf 가 넘친 몫을 1차에서 뺀다. ★상계하지 않는 때★ — 그때 영업비는 「초과」로 남아 사람이 회수 · 다른 현장
+ * 차감을 정한다:
+ *   · 턴키가 아님 — 시공비는 딴 회사의 돈이다
+ *   · 어느 쪽이든 단가 미지정(plan null) — 계획을 모르면 초과도 모른다
+ *   · 시공비가 잔금까지 다 나갔다 — 뺄 돈이 없다
+ *   · 시공비에 남은 돈보다 크다 — 남은 만큼만 뺀다
+ * 사람이 원장에 두 줄을 적어 초과를 0 으로 만든 현장은 여기서 뺄 것이 없다 — 겹쳐 빠지지 않는다. ★한 줄만 적으면 겹친다★
+ * (시공비 차감만 적고 영업비 재정산을 안 적으면 영업비는 여전히 초과라 한 번 더 뺀다) — 그래서 이제 손으로 적지 않는다.
+ *
+ * ★지급을 세는 자리는 모두 이것을 거친다★ — 지급관리 표(payout-board) · 확정(store/payouts openStepFor) · 현장 상세
+ * (SettlementTab) · 정산 요약(assemble). 한 곳만 빠지면 표의 금액과 원장에 박히는 금액이 갈린다.
+ */
+export function payoutSidesOf(
+  entries: PayoutEntry[],
+  ctx: { turnkey: boolean; salesPlan: number | null; consPlan: number | null },
+): Record<PayoutKind, PayoutSide> {
+  const sales = payoutSideOf(entries, '영업비');
+  const cons = payoutSideOf(entries, '시공비');
+  const plain = { 영업비: { ...sales, offset: 0 }, 시공비: { ...cons, offset: 0 } };
+  if (!ctx.turnkey || ctx.salesPlan === null || ctx.consPlan === null) return plain;
+  const over = sales.paid - (ctx.salesPlan + sales.adjust);
+  if (over <= 0) return plain;
+  /*
+   * 뺄 자리는 시공비에 아직 남은 돈이다(계획 + 조정 − 나감). ★원장의 2차 줄로 가르지 않는다★ — 상계해서 깎인 잔금이
+   * 나간 뒤에도 남은 돈은 「뺀 만큼」으로 남아 상계가 그대로 서고(안 그러면 잔금이 나가는 순간 영업비가 다시 「초과」로
+   * 뜬다), 상계 전에 잔금까지 다 나간 현장은 남은 돈이 0 이라 뺄 것이 없다.
+   */
+  const offset = Math.min(over, Math.max(ctx.consPlan + cons.adjust - cons.paid, 0));
+  if (offset <= 0) return plain;
+  return {
+    영업비: {
+      ...sales, offset,
+      adjust: sales.adjust + offset,
+      adjustBy: [sales.adjustBy[0] + offset, sales.adjustBy[1], sales.adjustBy[2]],
+    },
+    시공비: {
+      ...cons, offset: -offset,
+      adjust: cons.adjust - offset,
+      adjustBy: [cons.adjustBy[0], cons.adjustBy[1], cons.adjustBy[2] - offset],
+    },
+  };
+}
+
 /**
  * 수금률 = 차수 수금액 ÷ 차수 계획총액 × 100.
  *

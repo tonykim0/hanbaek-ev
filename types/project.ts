@@ -1187,6 +1187,12 @@ export interface PayoutPlanRow {
   /** 회차 원장 항목 id — 표에서 가확정을 취소(원장 삭제)할 때 가리킨다 */
   step1EntryId: string | null;
   step2EntryId: string | null;
+  /**
+   * 턴키 상계 — 영업비로 더 나간 돈을 시공비 잔금에서 뺀 금액(lib/settlement payoutSidesOf, 한백 지시 2026-11-10).
+   * 영업비 줄은 +, 시공비 줄은 −, 없으면 0. ★adjust · adjustBy 에 이미 들어 있다★ — 화면이 사람이 적은 조정과
+   * 갈라 적을 때만 쓴다.
+   */
+  crossOffset: number;
 }
 
 // ── 하도급사 지급 원장 ───────────────────────────────────────────

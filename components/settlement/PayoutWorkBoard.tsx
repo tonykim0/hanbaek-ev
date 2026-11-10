@@ -30,7 +30,7 @@ import { Fragment, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { PAYOUT_KINDS, type BatchFinal, type PayoutKind } from '@/types/project';
-import { payoutReleaseOf } from '@/lib/settlement';
+import { manualAdjustOf, payoutReleaseOf } from '@/lib/settlement';
 import {
   batchKey, batchStateOf, isPayoutSubject, payDateChoiceLabel, payDateChoices, workGroupOf, workOf,
   type PayoutRowInput, type PayoutWork, type WorkGroup,
@@ -434,6 +434,8 @@ export default function PayoutWorkBoard({
               /* 지급처가 바뀌는 자리에 굵은 선 — 어느 정렬에서도 「여기부터 다른 회사」가 맞다 */
               const newOrg = i > 0 && shown[i - 1].org !== p.org;
               const rule = i === 0 ? '' : newOrg ? 'border-t-2 border-t-slate-200' : 'border-t border-t-slate-100';
+              /* 사람이 적은 조정만 — 턴키 상계는 따로 한 줄로 말한다 */
+              const manual = manualAdjustOf({ kind: p.kind, adjust: p.adjust, adjustBy: p.adjustBy, offset: p.crossOffset });
               return (
               <tr
                 key={p.key}
@@ -489,19 +491,30 @@ export default function PayoutWorkBoard({
                     * 더 준 현장이 「확정 완료」로만 보여서, 전 현장을 훑어도 초과가 안 잡혔다.
                     * 돌려받든 잔금에서 빼든 사람이 처리해야 하는 자리라 눈에 띄어야 한다.
                     */}
-                  {p.adjust !== 0 && (
+                  {manual.adjust !== 0 && (
                     <p className="whitespace-nowrap text-tiny font-semibold text-slate-400">
-                      조정 {p.adjust > 0 ? '+' : ''}{won(p.adjust)} 포함
+                      조정 {manual.adjust > 0 ? '+' : ''}{won(manual.adjust)} 포함
                       {/* 회차에 붙은 몫은 어느 회차인지 적는다 — 총액만으로는 어디서 빠지는지 모른다 */}
-                      {(p.adjustBy[1] !== 0 || p.adjustBy[2] !== 0) && (
+                      {(manual.adjustBy[1] !== 0 || manual.adjustBy[2] !== 0) && (
                         <span className="text-slate-400">
                           {' ('}
-                          {[1, 2].filter((n) => p.adjustBy[n] !== 0)
-                            .map((n) => `${n}차 ${p.adjustBy[n] > 0 ? '+' : '-'}${won(Math.abs(p.adjustBy[n]))}`)
+                          {[1, 2].filter((n) => manual.adjustBy[n] !== 0)
+                            .map((n) => `${n}차 ${manual.adjustBy[n] > 0 ? '+' : '-'}${won(Math.abs(manual.adjustBy[n]))}`)
                             .join(' · ')}
                           {')'}
                         </span>
                       )}
+                    </p>
+                  )}
+                  {/* 턴키 상계(한백 지시 2026-11-10) — 원장의 조정이 아니라 콘솔이 센 것이라 따로 적는다(lib/settlement payoutSidesOf) */}
+                  {p.crossOffset > 0 && (
+                    <p className="whitespace-nowrap text-tiny font-semibold text-slate-500">
+                      초과 {won(p.crossOffset)} → 시공비 잔금에서 뺌
+                    </p>
+                  )}
+                  {p.crossOffset < 0 && (
+                    <p className="whitespace-nowrap text-tiny font-semibold text-slate-500">
+                      영업비 초과 −{won(-p.crossOffset)} · 잔금에서 뺌
                     </p>
                   )}
                   {p.confirmed > p.plan + p.adjust && (
