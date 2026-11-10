@@ -12,7 +12,8 @@ import { proposalBlocker } from '@/lib/solar/proposal/blocker';
 import { buildProposal, fetchProposalTemplates } from '@/lib/solar/proposal/client';
 import { proposalFileName, storedSeller, type ProposalInput, type Seller } from '@/lib/solar/proposal/fill-common';
 import { proposalLayout, type ProposalLayout } from '@/lib/solar/proposal/layout-rule';
-import { missingTerms, PRODUCTS, productOf, UPCOMING, type ProductKey, type TemplateKey, type Terms } from '@/lib/solar/proposal/products';
+import { PARTIES, PARTY_LABEL, type Party } from '@/lib/solar/proposal/party';
+import { missingTerms, PRODUCTS, productOf, termOf, UPCOMING, type ProductKey, type TemplateKey, type Terms } from '@/lib/solar/proposal/products';
 import type { Report } from '@/lib/solar/types';
 import { SearchBox } from './Checker';
 import { siteImager } from './proposal-image';
@@ -190,6 +191,8 @@ function ProposalSite({
   const { place } = report;
   const [customer, setCustomer] = useState(place.buildingName ?? '');
   const [address, setAddress] = useState(place.roadAddress ?? place.jibunAddress ?? place.query);
+  // 계약자 구분 — 그것을 받는 상품(모햇)만. 고객마다라 현장을 바꾸면 다시 고른다
+  const [party, setParty] = useState<Party | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
   const [busy, setBusy] = useState(false);
   const [step, setStep] = useState('');
@@ -222,6 +225,8 @@ function ProposalSite({
         }`
       : null;
 
+  const partyNeeded = chosen?.party === true;
+
   // 못 짓는 까닭 — 화면 위에서부터(2 상품 → 3 배치 → 4 고객 · 영업사) 처음 걸리는 것 하나를 단추에 적는다
   const blocker = proposalBlocker({
     templatesLoaded: !!templates,
@@ -232,8 +237,12 @@ function ProposalSite({
     aiBusy,
     roofs: plan?.roofs.length ?? 0,
     selected: plan?.selected.size ?? 0,
+    kw: preview && chosenTerms ? capacityKw(preview.count, chosenTerms.moduleWatt) : null,
+    minKw: termOf(chosenTerms, 'minKw'),
     customer,
     address,
+    partyNeeded,
+    party,
     seller,
   });
 
@@ -260,6 +269,7 @@ function ProposalSite({
         gridSpareKw: best?.spareKw ?? null,
         grid: report.grid,
         site: report.site,
+        party: partyNeeded ? party : null,
         today: today(),
         seller: { company: seller.company.trim(), person: seller.person.trim(), phone: seller.phone },
         image,
@@ -313,6 +323,17 @@ function ProposalSite({
             <input value={address} onChange={(e) => setAddress(e.target.value)} maxLength={200} className={`mt-1 ${FIELD}`} />
           </label>
         </div>
+        {/* 계약자 구분 — 견본이 두 계약자를 한 판에 함께 쓰는 상품(모햇 — 참여지원금은 법인에게만)은 고른 계약자의 글만 남긴다 */}
+        {partyNeeded && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className={`w-16 shrink-0 ${TEXT.label}`}>계약자</span>
+            {PARTIES.map((x) => (
+              <Choice key={x} on={party === x} onClick={() => setParty(x)}>
+                {PARTY_LABEL[x]}
+              </Choice>
+            ))}
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-3">
           <label className="block">
             <span className={TEXT.label}>영업사</span>

@@ -30,6 +30,8 @@ export type TermField = {
   max: number;
   /** 0 이 「콘솔 기본을 쓴다」인 칸 — 그때 화면에 보일 말 */
   zeroText?: string;
+  /** 비워 둬도 되는 칸 — 비면 0(zeroText)과 같다. 사업자 자료에 있을 때만 넣는 조건(참여 최소 용량 등) */
+  optional?: true;
 };
 
 export type TemplateDef = {
@@ -53,6 +55,11 @@ const TILT: TermField = { key: 'tiltDeg', label: '모듈 경사각', unit: '°',
 const SHADE: TermField = { key: 'shadeAngleDeg', label: '줄 간격 기준 태양 고도', unit: '°', min: 0, max: 60, zeroText: '동지 10~14시 그림자' };
 /** 모듈 방위각 한도 — 정남에서 동 · 서로 몇 도까지(0 이면 건물 변을 따라 45° 까지) */
 const AZIMUTH: TermField = { key: 'azimuthLimitDeg', label: '모듈 방위각 한도(정남 ±)', unit: '°', min: 0, max: 45, zeroText: '제한 없음' };
+/**
+ * 참여 최소 용량 — 사업자 자료가 「최소 몇 kW 이상」을 정한 상품(2026-11-10 조건 대조 — 타이런트 템플릿의 참여 자격 · 루모라 투자가이드의
+ * 최소용량). 이 용량에 못 미치는 배치면 만들기 단추가 「…kW 미만(참여 최소 용량)」으로 막힌다(blocker). 비우면 막지 않는다.
+ */
+const MIN_KW: TermField = { key: 'minKw', label: '참여 최소 용량', unit: 'kW', min: 0, max: 100_000, zeroText: '제한 없음', optional: true };
 
 export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
   'tyrant-solar15': {
@@ -74,12 +81,19 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
       { key: 'rec', label: 'REC', unit: '원/kWh', min: 0, max: 1_000 },
       { key: 'recWeight', label: 'REC 가중치', unit: '배', min: 0, max: 5 },
       { key: 'degradationPct', label: '모듈 열화율', unit: '%/년', min: 0, max: 5 },
+      MIN_KW,
+      /**
+       * 작은 발전소는 한전 계통연계비용을 건물주의 미래 임대수익에서 뺀다(템플릿의 고정 장에 적힌 조건 — 2026-11-10 조건 대조). 얼마인지는
+       * 한전 비용이라 미리 모른다 — 이 용량 미만이면 Cash Flow 표 밑에 「표는 차감 전 금액」 각주를 단다(fill-tyrant). 비우면 달지 않는다.
+       */
+      { key: 'gridCostBelowKw', label: '계통연계비 차감(이 용량 미만)', unit: 'kW', min: 0, max: 100_000, zeroText: '없음', optional: true },
     ],
   },
   /**
    * 모햇 공유옥상 임대 — 지붕을 모햇 협동조합에 20년 빌려주고 임대료를 받는다. 1년 선납(해마다 1년치) · 5년 선납(상업운전 때 5년치를
    * 낮은 단가로 한 번에, 6년차부터 해마다 1년치) 둘을 나란히 보이고, 5년 선납을 고른 법인 임대인에게는 참여지원금이 한 번 더 간다.
    * 참여지원금이 0 인 조건은 받지 않는다 — 틀의 각주 · 비교표가 지원금을 전제로 쓰였다(지원금이 없어지면 에이치에너지가 틀을 바꾼다).
+   * 개인사업자는 참여지원금을 받지 않는다 — 계약자 구분을 받아 견본의 그 계약자 글만 남긴다(PRODUCTS 의 party · lib/solar/proposal/party).
    */
   'henergy-mohaet': {
     key: 'henergy-mohaet',
@@ -111,6 +125,7 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
       { key: 'price1', label: '1년 선납 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
       { key: 'price5', label: '5년 선납 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
       { key: 'price10', label: '10년 선납 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
+      MIN_KW,
     ],
   },
   /** 자가소비형 — 구독료(원/kWh)로 발전량을 사고 한전 요금을 대체한다. 요금 시나리오 셋(동결 · 기본 · 인상 확대)과 RE100(REC 구매 대비) */
@@ -138,13 +153,23 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
   },
 };
 
-export type ProductDef = { key: ProductKey; template: TemplateKey; company: string; label: string };
+export type ProductDef = {
+  key: ProductKey;
+  template: TemplateKey;
+  company: string;
+  label: string;
+  /**
+   * 계약자 구분(개인사업자 · 법인)을 받는 상품 — 견본이 두 계약자를 한 판에 함께 써서, 그 계약자의 글만 남긴다(한백 2026-11-10
+   * 「에이치에너지는 개인은 참여지원금을 안줘서 … 미리 필터링이 필요해」). 고르기 전에는 만들기가 막힌다(blocker)
+   */
+  party?: true;
+};
 
 /** 화면의 차례 — 사업자마다 묶인다 */
 export const PRODUCTS: ProductDef[] = [
   { key: 'tyrant-solar15-basic', template: 'tyrant-solar15', company: '타이런트아이', label: '솔라15 기본형' },
   { key: 'tyrant-solar15-prepay', template: 'tyrant-solar15', company: '타이런트아이', label: '솔라15 5년 선납형' },
-  { key: 'henergy-mohaet', template: 'henergy-mohaet', company: '에이치에너지', label: '모햇' },
+  { key: 'henergy-mohaet', template: 'henergy-mohaet', company: '에이치에너지', label: '모햇', party: true },
   { key: 'lumora-rent', template: 'lumora-rent', company: '루모라', label: '지붕임대' },
 ];
 
@@ -164,13 +189,15 @@ export type Terms = Record<string, number>;
 
 /**
  * 받은 조건을 다듬는다 — 그 틀의 칸만, 숫자만, 울타리 안만. 틀리면 그 칸의 말로 던진다(라우트에서 400).
- * 빈 칸은 두지 않는다 — 다 있어야 제안서를 짓는다(빠진 칸은 missingTerms 가 짚는다).
+ * 빈 칸은 두지 않는다 — 다 있어야 제안서를 짓는다(빠진 칸은 missingTerms 가 짚는다). 비워 둬도 되는 칸(optional)만 비면 뺀다.
  */
 export function cleanTerms(template: TemplateKey, raw: unknown): Terms {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   const out: Terms = {};
   for (const f of TEMPLATES[template].terms) {
-    const v = typeof r[f.key] === 'string' ? Number(String(r[f.key]).replace(/,/g, '')) : r[f.key];
+    const given = r[f.key];
+    if (f.optional && (given === undefined || given === null || (typeof given === 'string' && !given.trim()))) continue;
+    const v = typeof given === 'string' ? Number(given.replace(/,/g, '')) : given;
     if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${f.label}을(를) 숫자로 넣어 주세요.`);
     if (v < f.min || v > f.max) throw new Error(`${f.label}은(는) ${f.min.toLocaleString()}~${f.max.toLocaleString()} ${f.unit} 사이여야 합니다.`);
     out[f.key] = v;
@@ -178,7 +205,10 @@ export function cleanTerms(template: TemplateKey, raw: unknown): Terms {
   return out;
 }
 
-/** 아직 안 넣은 조건 칸의 이름 — 하나라도 있으면 그 틀의 제안서를 짓지 않는다 */
+/** 아직 안 넣은 조건 칸의 이름 — 하나라도 있으면 그 틀의 제안서를 짓지 않는다(비워 둬도 되는 칸은 빼고) */
 export function missingTerms(template: TemplateKey, terms: Partial<Terms> | null | undefined): string[] {
-  return TEMPLATES[template].terms.filter((f) => typeof terms?.[f.key] !== 'number').map((f) => f.label);
+  return TEMPLATES[template].terms.filter((f) => !f.optional && typeof terms?.[f.key] !== 'number').map((f) => f.label);
 }
+
+/** 조건 칸의 값 — 비워 둔 칸(optional)은 0 */
+export const termOf = (terms: Partial<Terms> | null | undefined, key: string): number => (typeof terms?.[key] === 'number' ? terms[key]! : 0);

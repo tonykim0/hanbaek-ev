@@ -8,9 +8,12 @@ import { saveProposalTerms, uploadProposalTemplate } from '@/lib/solar/proposal/
 import { missingTerms, TEMPLATE_KEYS, TEMPLATES, type TermField } from '@/lib/solar/proposal/products';
 import { PANEL, TEXT } from './ui';
 
-/** 조건 한 칸의 글 — 없으면 「—」, 0 이 콘솔 기본인 칸은 그 말 */
-const termText = (f: TermField, v: unknown): string =>
-  typeof v !== 'number' ? '—' : v === 0 && f.zeroText ? f.zeroText : `${v.toLocaleString('ko-KR', { maximumFractionDigits: 4 })}${f.unit}`;
+/** 조건 한 칸의 글 — 없으면 「—」, 0 이 콘솔 기본인 칸은 그 말(비워 둬도 되는 칸이 비면 0 과 같다) */
+const termText = (f: TermField, v: unknown): string => {
+  const n = typeof v === 'number' ? v : f.optional ? 0 : null;
+  if (n === null) return '—';
+  return n === 0 && f.zeroText ? f.zeroText : `${n.toLocaleString('ko-KR', { maximumFractionDigits: 4 })}${f.unit}`;
+};
 
 /**
  * 템플릿 · 조건 — 한백 관리자. 제안서를 짓는 흐름 밖, 제안서 생성 화면 맨 아래의 접힌 판이다(한백 2026-11-08 「UXUI도 best practice인지
@@ -100,7 +103,7 @@ function TemplateRow({ template, onChange }: { template: ProposalTemplate; onCha
       </div>
       {!editing && (
         <p className={`mt-1 ${TEXT.body}`}>
-          {missing.length === def.terms.length ? (
+          {missing.length === def.terms.filter((f) => !f.optional).length ? (
             <Tag tone="warn">조건 미지정</Tag>
           ) : (
             def.terms.map((f) => `${f.label} ${termText(f, template.terms[f.key])}`).join(' · ')
@@ -113,7 +116,7 @@ function TemplateRow({ template, onChange }: { template: ProposalTemplate; onCha
             <label key={f.key} className="block">
               <span className={TEXT.label}>
                 {f.label} ({f.unit}
-                {f.zeroText ? ` · 0 = ${f.zeroText}` : ''})
+                {f.zeroText ? ` · ${f.optional ? '비우거나 ' : ''}0 = ${f.zeroText}` : ''})
               </span>
               <input
                 inputMode="decimal"

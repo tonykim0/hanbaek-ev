@@ -10,6 +10,7 @@
  */
 import type { Deck, Paragraph, Slide, TextEdit } from '@/lib/pptx/deck';
 import { estWidthPt, FIT_SAFE } from './fill-common';
+import { markerOf, PARTY_LABEL, partyEdits, partyOf, type Party } from './party';
 import { blankEdit, blanksIn, exampleEdits, exampleKwOf, FIELD_LABEL, fieldOf, swapTableOf, wattsIn, type Amounts, type Blank, type FieldKey, type FieldValue } from './sample';
 
 export type { FieldValue };
@@ -51,6 +52,53 @@ export async function fillSample(deck: Deck, spec: SampleSpec): Promise<FilledBo
   const swaps = planExamples(slides, spec);
   const blanks = planBlanks(slides, spec);
   return apply(swaps, blanks);
+}
+
+/**
+ * 계약자 구분으로 견본의 글을 거른다(lib/solar/proposal/party) — 채우기 전에. 다른 계약자의 표 줄(줄 이름으로)은 줄째, 문장 · 구절 ·
+ * 괄호는 그 글만 걷는다. 표 칸이 다 걷히면 「-」, 글상자의 덩이가 다 걷히면 덩이째 빼고 머리 표(「※ 」)는 이어 쓴 다음 덩이(앞이
+ * 빈칸으로 들여 쓴 덩이)로 옮긴다 — 글상자가 통째로 걷히면 모양째. 거른 뒤에도 다른 계약자의 글이 남으면(줄바꿈을 걸친 글처럼 못
+ * 걷은 글) 틀린 제안서를 내지 않고 멈춘다.
+ */
+export async function filterParty(deck: Deck, keep: Party): Promise<void> {
+  const other: Party = keep === 'personal' ? 'corporate' : 'personal';
+  const left: string[] = [];
+  for (let n = 1; n <= deck.slides.length; n++) {
+    const slide = await deck.slide(n);
+    const rows = new Set<Element>();
+    for (const p of slide.paragraphs()) if (p.cell && partyOf(p.cell.rowLabel) === other) rows.add(slide.rowOf(p.body)!);
+    for (const tr of rows) slide.removeRow(tr);
+
+    const bodies = new Map<Element, Paragraph[]>();
+    for (const p of slide.paragraphs()) bodies.set(p.body, [...(bodies.get(p.body) ?? []), p]);
+    for (const [body, ps] of bodies) {
+      const plans = ps.map((p) => ({ p, ...partyEdits(p.text, keep) }));
+      if (!plans.some((x) => x.edits.length)) continue;
+      if (plans.every((x) => x.empty || !x.p.text.trim())) {
+        if (ps[0].cell) slide.rewriteBody(body, '-');
+        else slide.removeEl(ps[0].shape);
+        continue;
+      }
+      let carry: string | null = null;
+      for (const { p, edits, empty } of plans) {
+        const pending: string | null = carry;
+        carry = null;
+        if (empty) {
+          slide.removeEl(p.el);
+          carry = pending ?? markerOf(p.text).trim();
+          continue;
+        }
+        const es = [...edits];
+        const lead = markerOf(p.text);
+        // 이어 쓴 덩이(앞을 빈칸으로 들여 썼다) — 걷힌 앞 덩이의 머리 표를 받는다
+        if (pending && lead.length && !lead.trim()) es.push({ start: 0, end: lead.length, text: `${pending} ` });
+        slide.editParagraph(p.el, es);
+      }
+    }
+    for (const p of slide.paragraphs())
+      if ((p.cell && partyOf(p.cell.rowLabel) === other) || partyEdits(p.text, keep).edits.length) left.push(`${slide.label} 「${p.text.trim().slice(0, 30)}」`);
+  }
+  if (left.length) throw new Error(`템플릿에 ${PARTY_LABEL[other]} 글이 남았습니다 — ${listOf(left)}. 계약자 구분(${PARTY_LABEL[keep]})으로 거르도록 생성기를 고쳐야 합니다.`);
 }
 
 /** 그 장에서 글이 pattern 인 글상자(표 아닌 · 40자 안) — 그림 · 표를 얹을 자리(「가배치 도면」 · 「한전ON … 조회 화면」) */

@@ -16,7 +16,7 @@ import { buildPptx, type BuildSlide } from '@/lib/pptx/build';
 import { Deck } from '@/lib/pptx/deck';
 import { EMU_PER_PT, paras, pictureXml, rectXml, tableXml, textBoxXml, type Align, type Cell, type Para, type Run } from '@/lib/pptx/xml';
 import { capacityKw, eokManText, kwText, LUMORA_PREPAYS, lumoraRent, millionText, monthAfter, type Lumora, type LumoraOption } from './calc';
-import { fitText, sellerContact, sellerCover, type FillArgs, type ProposalInput, type Seller } from './fill-common';
+import { bestGridRow, fitText, gridCondition, sellerContact, sellerCover, type FillArgs, type ProposalInput, type Seller } from './fill-common';
 
 const PT = EMU_PER_PT;
 const PAGES = 23;
@@ -117,8 +117,11 @@ function backgroundPage({ r, o1, o5, o10, kw }: Ctx): PagePlan {
   };
 }
 
-/** 4 사업개요 — 머리 문장 · 표 칸 · 사진 · 각주 */
-function overviewPage({ input, o1, o5, o10, kw, yy, mm }: Ctx): PagePlan {
+/**
+ * 4 사업개요 — 머리 문장 · 표 칸 · 사진 · 각주. 한전연계 칸은 두 줄(잔여용량 · 붙는가의 한 마디)을 글머리 점째 다시 쓴다 — 견본의 둘째 줄은
+ * 견본 현장의 계통 조건이라 지운다(2026-11-10 조건 대조 전에는 첫 줄만 지워 견본 현장의 조건이 모든 제안서에 남았다).
+ */
+function overviewPage({ r, input, o1, o5, o10, kw, yy, mm }: Ctx): PagePlan {
   const plus = (n: number) => {
     const m = monthAfter(yy, mm, 1 + n);
     return `${m.year}년 ${String(m.month).padStart(2, '0')}월`;
@@ -127,12 +130,14 @@ function overviewPage({ input, o1, o5, o10, kw, yy, mm }: Ctx): PagePlan {
     input.gridSpareKw === null
       ? '연계가능 잔여용량 : 한전 확인 필요'
       : `연계가능 잔여용량 : ${input.gridSpareKw >= 1000 ? `${(input.gridSpareKw / 1000).toLocaleString('ko-KR', { maximumFractionDigits: 1 })}MW` : `${Math.round(input.gridSpareKw).toLocaleString('ko-KR')}kW`} (${String(yy).slice(2)}년 ${String(mm).padStart(2, '0')}월 조회)`;
+  // 붙는가의 한 마디 — 모햇 한전선로 칸과 같은 말(fill-common gridCondition). 한전 기록이 없으면 첫 줄이 「한전 확인 필요」라 한 줄만
+  const grid = input.grid && bestGridRow(input.grid) ? gridCondition(input.grid, r.kw) : null;
   // 머리 문장 — 쪽 폭을 거의 다 쓰는 긴 줄이라 칸의 90% 에 들게(fitText) 글자를 줄인다
   const head = [`${kw}kW 규모 발전소를 SPC가 투자 · 운영하고, 임대인은 `, `20년간 최대 ${eokManText(o1.total)}의 임대료 수령`];
   const headSize = fitText(head.join(''), 16, 764, 12);
   return {
-    // 여러 줄 칸(연간 임대료 · 사업 일정)은 글머리 점까지 지우고 다시 찍는다 — 원본 점과 새 줄이 어긋나지 않게(줄 높이는 원본 15.9pt)
-    masks: [[34, 85, 760, 112], [140, 165, 414, 186], [140, 197, 414, 217], [128, 292, 414, 391], [140, 404, 414, 423], [128, 451, 414, 517], [34, 553, 700, 569]],
+    // 여러 줄 칸(연간 임대료 · 한전연계 · 사업 일정)은 글머리 점까지 지우고 다시 찍는다 — 원본 점과 새 줄이 어긋나지 않게(줄 높이는 원본 15.9pt)
+    masks: [[34, 85, 760, 112], [140, 165, 414, 186], [140, 197, 414, 217], [128, 292, 414, 391], [128, 404, 414, 438], [128, 451, 414, 517], [34, 553, 700, 569]],
     overlays: [
       {
         name: '머리 문장',
@@ -154,7 +159,13 @@ function overviewPage({ input, o1, o5, o10, kw, yy, mm }: Ctx): PagePlan {
           { runs: [body(`- 최초 10년 ${eokManText(o10.upfront)} · 이후 매년 ${eokManText(o10.annual)}`)], indentPt: 13.5 },
         ].map((q) => ({ ...q, lineSpacingPt: 15.9 })),
       },
-      { name: '한전연계', rect: [146.7, 404, 414, 423], paras: [line([body(spare)])] },
+      {
+        name: '한전연계',
+        // 원본 첫 줄 위 408.1 · 둘째 줄 424.0 — 연간 임대료 칸처럼 글상자 위를 2pt 올린다
+        rect: [133.2, 406.1, 414, 440],
+        anchor: 't',
+        paras: [spare, ...(grid ? [grid] : [])].map((t) => ({ runs: [body(t)], bullet: '•', lineSpacingPt: 15.9 })),
+      },
       {
         name: '사업 일정',
         rect: [133.2, 452.7, 414, 518],

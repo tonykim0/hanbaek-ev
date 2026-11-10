@@ -5,6 +5,7 @@ import { formatKoreanPhone } from '@/lib/contract-form';
 import type { Slide } from '@/lib/pptx/deck';
 import { EMU_PER_PT, type Align, type Para } from '@/lib/pptx/xml';
 import type { GridView, SiteFacts } from '@/lib/solar/types';
+import type { Party } from './party';
 import type { Terms } from './products';
 
 /** 현장 사진 한 장 — 자리 비율(가로/세로)에 맞춰 이미 자른 JPEG */
@@ -29,6 +30,8 @@ export type ProposalInput = {
   grid: GridView | null;
   /** 현장의 공적 자료(용도지역 · 지목 · 대지면적 · 건축면적 · 주용도 · 사용승인) — 모햇 「부지 검토」 표 */
   site: SiteFacts;
+  /** 계약자 구분(개인사업자 · 법인) — 그것을 받는 상품(products 의 party — 모햇)만. 견본의 그 계약자 글만 남긴다 */
+  party?: Party | null;
   /** 오늘(한국 날짜 'YYYY-MM-DD') — 사업 일정 · 파일 날짜 */
   today: string;
   /**
@@ -180,3 +183,22 @@ export const fileSafe = (s: string): string => s.replace(/[\\/:*?"<>|]/g, ' ').r
 /** 받는 파일 이름 — 「(주)OO_타이런트아이 솔라15 기본형_제안서_261106.pptx」 */
 export const proposalFileName = (customer: string, product: string, today: string): string =>
   `${fileSafe(customer) || '고객'}_${fileSafe(product)}_제안서_${today.slice(2).replace(/-/g, '')}.pptx`;
+
+/** 한전 여유용량 기록 중 이 현장에 가장 맞는 줄(부지 검토가 고른 것) — 없으면 null */
+export const bestGridRow = (grid: GridView | null) => (grid && grid.best !== null ? (grid.rows[grid.best] ?? null) : null);
+
+/**
+ * 이 용량(kw)이 붙을 수 있는가의 한 마디 — 모햇 한전선로 칸의 괄호 · 루모라 한전연계 칸의 둘째 줄. 셋(변전소 · 주변압기 · 배전선로) 중
+ * 가장 작은 여유가 0 이면 보강 뒤, 용량보다 작으면 여유 부족, 지역 계통 사정이 있거나 이 번지의 기록이 아니면(옆 번지 · 같은 동)
+ * 한전 확인, 그 밖에는 접속 가능. 판정의 말(lib/solar/rules judgeGrid)을 제안서의 짧은 말로 옮겼다.
+ */
+export function gridCondition(grid: GridView, kw: number): string {
+  const row = bestGridRow(grid);
+  if (!row || row.spareKw === null) return '한전 확인 필요';
+  const spare = row.spareKw;
+  if (spare <= 0) return row.layers.substation.spareKw! <= 0 || row.layers.transformer.spareKw! <= 0 ? '한전 보강 후 접속' : '선로 보강 후 접속';
+  if (spare < kw) return '여유 부족 — 용량 협의';
+  if (grid.region) return '계통 제약 지역 — 한전 확인';
+  if (grid.basis.kind !== 'own') return '접속 선로 한전 확인';
+  return '접속 가능';
+}

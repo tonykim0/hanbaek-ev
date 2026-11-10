@@ -9,13 +9,14 @@ import {
   capacityKw, eok2, eokManText, kwText, lumoraLease, lumoraRent, millionText, mohaet, monthAfter, profileAngleDeg, roughWonText, solar15, wonText,
 } from '@/lib/solar/proposal/calc';
 import {
-  estWidthPt, fitSizePt, fitText, mountText, PHONE_DIGITS, phoneDigitsOf, proposalFileName, sellerBlock, sellerContact, sellerCover, splitAddress, storedSeller,
+  estWidthPt, fitSizePt, fitText, gridCondition, mountText, PHONE_DIGITS, phoneDigitsOf, proposalFileName, sellerBlock, sellerContact, sellerCover, splitAddress, storedSeller,
+  type ProposalInput,
 } from '@/lib/solar/proposal/fill-common';
 import { formatKoreanPhone } from '@/lib/contract-form';
 import { lumoraPlans } from '@/lib/solar/proposal/fill-lumora';
-import { dateText, gridCondition, gridNotes, gridTableRows, mohaetAmounts, mohaetValue } from '@/lib/solar/proposal/fill-henergy';
+import { dateText, gridNotes, gridTableRows, mohaetAmounts, mohaetValue } from '@/lib/solar/proposal/fill-henergy';
 import type { GridRow, GridView, SiteFacts } from '@/lib/solar/types';
-import { cleanTerms, missingTerms, PRODUCTS, TEMPLATE_KEYS, TEMPLATES, UPCOMING } from '@/lib/solar/proposal/products';
+import { cleanTerms, missingTerms, PRODUCTS, TEMPLATE_KEYS, TEMPLATES, termOf, UPCOMING } from '@/lib/solar/proposal/products';
 import { paraXml, rectXml, tableXml, textBoxXml } from '@/lib/pptx/xml';
 import { orphansOf, sha256Hex } from '@/lib/pptx/deck';
 import { unprojector, type LngLat } from '@/lib/solar/geo';
@@ -173,7 +174,7 @@ describe('루모라 임대 — 세 선납 안', () => {
 
 describe('루모라 제안서 — 바뀌는 쪽의 칸 계획', () => {
   const t = { moduleWatt: 600, price1: 10_000, price5: 9_000, price10: 7_000 };
-  const plan = lumoraPlans(lumoraRent(120, t), {
+  const plan4Input: ProposalInput = {
     customer: '(주)가나',
     address: '충청북도 충주시 산척면 동충주산단4길 17',
     panels: 200,
@@ -185,7 +186,8 @@ describe('루모라 제안서 — 바뀌는 쪽의 칸 계획', () => {
     today: '2026-11-08',
     seller: { company: '(주)가나에너지', person: '홍길동', phone: '010-0000-0000' },
     image: async () => ({ bytes: new Uint8Array(), width: 1, height: 1 }),
-  }, 600);
+  };
+  const plan = lumoraPlans(lumoraRent(120, t), plan4Input, 600);
   it('바뀌는 쪽은 표지 · 3 · 4 · 7 · 8 · 마지막(23) — 사진 자리는 4쪽(항공사진) · 8쪽(가배치)', () => {
     expect(Object.keys(plan).map(Number)).toEqual([1, 3, 4, 7, 8, 23]);
     expect(plan[4].picture?.withPanels).toBe(false);
@@ -194,6 +196,21 @@ describe('루모라 제안서 — 바뀌는 쪽의 칸 계획', () => {
   it('7쪽 연차표 — 세 안 × (20년 + 합계) 칸마다 지우고 다시 쓴다', () => {
     expect(plan[7].overlays.filter((o) => o.name === '연차표 칸')).toHaveLength(63);
     expect(plan[7].masks).toHaveLength(8 + 63);
+  });
+  it('4쪽 한전연계 — 견본의 두 줄(둘째 줄은 견본 현장의 계통 조건)을 다 지우고 이 현장의 잔여용량 · 붙는가의 한 마디를 쓴다', () => {
+    // 견본 둘째 줄의 자리(424~436.3pt)까지 지운다
+    expect(plan[4].masks.some(([x0, y0, , y1]) => x0 <= 133 && y0 <= 408 && y1 >= 437)).toBe(true);
+    const texts = (p: typeof plan) => p[4].overlays.find((o) => o.name === '한전연계')!.paras.map((q) => q.runs.map((r) => r.text).join(''));
+    expect(texts(plan)).toEqual(['연계가능 잔여용량 : 한전 확인 필요']);
+    const grid: GridView = {
+      rows: [{ substation: '가', transformer: '1', feeder: '나', spareKw: 3_000, layers: { substation: { spareKw: 9_000, acceptedKw: 1, limitKw: 2 }, transformer: { spareKw: 5_000, acceptedKw: 1, limitKw: 2 }, feeder: { spareKw: 3_000, acceptedKw: 1, limitKw: 2 } } }],
+      best: 0,
+      basis: { kind: 'own' },
+      capacityKw: null,
+      region: null,
+    };
+    const withGrid = lumoraPlans(lumoraRent(120, t), { ...plan4Input, gridSpareKw: 3_000, grid }, 600);
+    expect(texts(withGrid)).toEqual(['연계가능 잔여용량 : 3MW (26년 11월 조회)', '접속 가능']);
   });
 });
 
@@ -236,6 +253,18 @@ describe('조건 다듬기', () => {
     expect(missingTerms('henergy-mohaet', {})).toHaveLength(TEMPLATES['henergy-mohaet'].terms.length);
     expect(missingTerms('henergy-mohaet', null)).toContain('5년 선납 임대료(1~5년차)');
   });
+  it('비워 둬도 되는 칸(참여 최소 용량 · 계통연계비 차감) — 비면 빼고 · 있으면 울타리 안 · 빠져도 「조건 미지정」이 아니다 · 값은 0', () => {
+    const required = Object.fromEntries(TEMPLATES['tyrant-solar15'].terms.filter((f) => !f.optional).map((f) => [f.key, f.min]));
+    const t = cleanTerms('tyrant-solar15', { ...required, minKw: '' });
+    expect('minKw' in t || 'gridCostBelowKw' in t).toBe(false);
+    expect(missingTerms('tyrant-solar15', t)).toEqual([]);
+    expect([termOf(t, 'minKw'), termOf(t, 'gridCostBelowKw'), termOf(undefined, 'minKw')]).toEqual([0, 0, 0]);
+    expect(cleanTerms('tyrant-solar15', { ...required, minKw: '1,234', gridCostBelowKw: 567 })).toMatchObject({ minKw: 1_234, gridCostBelowKw: 567 });
+    expect(() => cleanTerms('tyrant-solar15', { ...required, minKw: -1 })).toThrow('참여 최소 용량');
+    expect(TEMPLATES['lumora-rent'].terms.filter((f) => f.optional).map((f) => f.key)).toEqual(['minKw']);
+    expect(TEMPLATES['henergy-mohaet'].terms.some((f) => f.optional)).toBe(false);
+  });
+  it('계약자 구분은 모햇만 받는다', () => expect(PRODUCTS.filter((p) => p.party).map((p) => p.key)).toEqual(['henergy-mohaet']));
   it('모햇 참여지원금은 0 을 받지 않는다 — 틀의 각주 · 비교표가 지원금을 전제로 쓰였다', () => {
     const ok = Object.fromEntries(TEMPLATES['henergy-mohaet'].terms.map((f) => [f.key, f.min]));
     expect(() => cleanTerms('henergy-mohaet', { ...ok, subsidyPerKw: 0 })).toThrow('참여지원금');

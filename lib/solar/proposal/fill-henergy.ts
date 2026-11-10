@@ -8,6 +8,8 @@
  *            (「[건물용도]」 · 「[    ] kW」 · 「[   ]EA」 · 「[  ]도」) — 값은 부지 검토가 받은 공적 자료(Report.site · grid)와 배치(mohaetValue)
  *   예시 숫자  임대료 · 비교 쪽 — 견본이 예시 용량으로 셈해 적은 금액을 같은 셈(mohaetAmounts)으로 이 현장 금액으로 바꾼다. 문장은 견본
  *            그대로라 사업자가 문구를 고쳐 와도(그날 「복구됨」 → 「_최종」의 비교표처럼) 생성기를 안 고친다.
+ *   계약자    견본은 개인사업자 · 법인을 한 판에 함께 쓴다 — 참여지원금은 법인에게만 가므로(사업자 영업정책) 고른 계약자의 글만 남긴다
+ *            (한백 2026-11-10 — lib/solar/proposal/party · sample-fill filterParty). 채우기 전에 거른다.
  * 견본에 글로 없는 것만 여기서 한다:
  *   「가배치 도면」 자리         그 현장의 가배치 그림(패널을 그린 항공사진)
  *   「한전ON … 조회 화면」 자리   같은 한전 공개 자료의 단계별 표(변전소 · 주변압기 · 배전선로) — 자료가 없으면 자리를 그대로 둔다
@@ -18,10 +20,10 @@ import { Deck } from '@/lib/pptx/deck';
 import { EMU_PER_PT, pictureXml, tableXml, textBoxXml, type Cell } from '@/lib/pptx/xml';
 import type { GridLayerKey, GridView } from '@/lib/solar/types';
 import { capacityKw, kwText, mohaet } from './calc';
-import { sellerBlock, sellerCover, type FillArgs, type ProposalInput } from './fill-common';
+import { bestGridRow, gridCondition, sellerBlock, sellerCover, type FillArgs, type ProposalInput } from './fill-common';
 import type { Terms } from './products';
 import type { Amounts, FieldKey } from './sample';
-import { fillSample, findSlot, fitTo, type FieldValue, type FilledBody } from './sample-fill';
+import { fillSample, filterParty, findSlot, fitTo, type FieldValue, type FilledBody } from './sample-fill';
 
 const PT = EMU_PER_PT;
 /** 틀의 글꼴(테마 Arial — 한글은 받는 컴퓨터의 고딕으로) · 표 머리 남색 · 칸 테두리 하늘 · 본문 회색 */
@@ -34,8 +36,11 @@ const DRAWING_SLOT = /배치\s*도면/;
 const GRID_SLOT = /여유\s*용량\s*조회/;
 
 export async function fillHenergy({ template, terms, input }: FillArgs): Promise<Blob | Uint8Array> {
+  if (!input.party) throw new Error('계약자 구분(개인사업자 · 법인)을 고르세요 — 참여지원금은 법인에게만 갑니다.');
   const deck = await Deck.open(template);
   const kw = capacityKw(input.panels, terms.moduleWatt);
+  // 견본은 두 계약자를 한 판에 함께 쓴다 — 이 계약자의 글만 남기고 채운다(lib/solar/proposal/party)
+  await filterParty(deck, input.party);
   const filled = await fillSample(deck, {
     kw,
     moduleWatt: terms.moduleWatt,
@@ -90,7 +95,7 @@ export function mohaetAmounts(kw: number, terms: Terms): Amounts {
  */
 export function mohaetValue(input: Pick<ProposalInput, 'customer' | 'address' | 'site' | 'grid' | 'panels' | 'mount'>, kw: number) {
   const { site, grid } = input;
-  const best = bestOf(grid);
+  const best = bestGridRow(grid);
   return (key: FieldKey, unit: string): FieldValue | null | undefined => {
     const withUnit = (v: string, u: string) => (unit ? v : `${v}${u}`);
     switch (key) {
@@ -144,24 +149,6 @@ export function dateText(yyyymmdd: string | null): string {
 export const mwNumber = (kw: number): string => (kw / 1000).toLocaleString('ko-KR', { maximumFractionDigits: 2 });
 export const mwText = (kw: number): string => `${mwNumber(kw)}MW`;
 
-const bestOf = (grid: GridView | null) => (grid && grid.best !== null ? (grid.rows[grid.best] ?? null) : null);
-
-/**
- * 한전선로 칸 괄호의 한 마디 — 이 용량(kw)이 붙을 수 있는가. 셋(변전소 · 주변압기 · 배전선로) 중 가장 작은 여유가 0 이면 보강 뒤,
- * 용량보다 작으면 여유 부족, 지역 계통 사정이 있거나 이 번지의 기록이 아니면(옆 번지 · 같은 동) 한전 확인, 그 밖에는 접속 가능.
- * 판정의 말(lib/solar/rules judgeGrid)을 제안서의 짧은 말로 옮겼다.
- */
-export function gridCondition(grid: GridView, kw: number): string {
-  const row = bestOf(grid)!;
-  const spare = row.spareKw;
-  if (spare === null) return '한전 확인 필요';
-  if (spare <= 0) return row.layers.substation.spareKw! <= 0 || row.layers.transformer.spareKw! <= 0 ? '한전 보강 후 접속' : '선로 보강 후 접속';
-  if (spare < kw) return '여유 부족 — 용량 협의';
-  if (grid.region) return '계통 제약 지역 — 한전 확인';
-  if (grid.basis.kind !== 'own') return '접속 선로 한전 확인';
-  return '접속 가능';
-}
-
 const LAYER: { key: GridLayerKey; label: string }[] = [
   { key: 'substation', label: '변전소' },
   { key: 'transformer', label: '주변압기' },
@@ -170,7 +157,7 @@ const LAYER: { key: GridLayerKey; label: string }[] = [
 
 /** 한전 표의 줄 — 단계 · 이름 · 접속기준용량 · 접수기준 접속용량 · 여유용량(MW) */
 export function gridTableRows(grid: GridView | null): string[][] | null {
-  const row = bestOf(grid);
+  const row = bestGridRow(grid);
   if (!row) return null;
   const mw = (v: number | null) => (v === null ? '-' : mwNumber(v));
   const name: Record<GridLayerKey, string> = { substation: row.substation, transformer: row.transformer ? `#${row.transformer}` : '-', feeder: row.feeder };
@@ -220,7 +207,7 @@ async function fillGrid(deck: Deck, input: ProposalInput): Promise<void> {
   s.removeEl(slot.shape);
   let id = s.nextId();
   const head = (text: string): Cell => ({ text, fill: C.head, color: C.text, bold: true, size: 10.5 });
-  const best = bestOf(input.grid)!;
+  const best = bestGridRow(input.grid)!;
   const table: Cell[][] = [
     [{ text: '한전 배전선로 여유용량', fill: C.navy, color: 'FFFFFF', bold: true, size: 14, span: 5 }],
     [head('단계'), head('이름'), head('접속기준용량'), head('접수기준 접속용량'), head('여유용량')],

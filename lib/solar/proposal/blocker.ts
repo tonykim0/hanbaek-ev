@@ -2,7 +2,9 @@
  * 제안서를 못 짓는 까닭 — 화면 위에서부터(2 상품 → 3 패널 배치 → 4 고객 · 영업사) 처음 걸리는 것 하나. 만들기 단추에 「… — 제안서 불가」로
  * 적는다(화면 규칙 3). 없으면 null. [순수]
  */
+import { kwText } from './calc';
 import { PHONE_DIGITS, phoneDigitsOf, type Seller } from './fill-common';
+import type { Party } from './party';
 
 export type ProposalReadiness = {
   /** 템플릿 목록을 받았는가 */
@@ -17,8 +19,15 @@ export type ProposalReadiness = {
   /** AI 가 딴 지붕 수 · 그중 고른 수 */
   roofs: number;
   selected: number;
+  /** 고른 상품의 사업자 기준으로 깐 배치의 용량(kW) — 아직 모르면 null */
+  kw: number | null;
+  /** 그 상품의 참여 최소 용량(kW · 「템플릿 · 조건」) — 0 이면 막지 않는다 */
+  minKw: number;
   customer: string;
   address: string;
+  /** 계약자 구분을 받는 상품인가(products 의 party — 모햇) · 고른 구분 */
+  partyNeeded: boolean;
+  party: Party | null;
   seller: Seller;
 };
 
@@ -32,8 +41,11 @@ export function proposalBlocker(s: ProposalReadiness): string | null {
     [s.aiBusy, 'AI 패널 배치 중'],
     [!s.roofs, '패널 배치 전'],
     [!s.selected, '고른 지붕 없음'],
+    // 사업자의 참여 자격(최소 용량) — 그 상품의 기준으로 깐 용량으로 본다
+    [s.minKw > 0 && s.kw !== null && s.kw < s.minKw, `${kwText(s.minKw)}kW 미만(참여 최소 용량)`],
     [!s.customer.trim(), '고객명 없음'],
     [!s.address.trim(), '주소 없음'],
+    [s.partyNeeded && !s.party, '계약자 구분 미지정'],
     [!s.seller.company.trim(), '영업사 없음'],
     [!s.seller.person.trim(), '담당자명 없음'],
     [!s.seller.phone, '연락처 없음'],

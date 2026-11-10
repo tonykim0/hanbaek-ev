@@ -13,7 +13,7 @@ import { Deck, type Slide } from '@/lib/pptx/deck';
 import { EMU_PER_PT, paras, pictureXml, tableXml, tagXml, textBoxXml, type Cell } from '@/lib/pptx/xml';
 import { capacityKw, eok2, kwText, solar15, SOLAR15_RENT_YEARS, type Solar15, type Solar15Variant } from './calc';
 import { mountText, sellerBlock, sellerCover, setFittedText, splitAddress, type FillArgs, type ProposalInput, type Seller } from './fill-common';
-import type { Terms } from './products';
+import { termOf, type Terms } from './products';
 
 const FONT = 'Pretendard';
 const PT = EMU_PER_PT;
@@ -181,6 +181,23 @@ function fillCashFlow(s3: Slide, kw: number, cf: Solar15, terms: Terms, variant:
   xml.push(tagXml(id++, '지분 양도', { x: x0 + head + col * 15 - tagW / 2, y: t1Top - 18 * PT, w: tagW, h: 15 * PT }, '지분 양도', { fillColor: C.tag, color: C.text, size: 9, font: FONT }));
   const t2Top = t1Top + rowH * 2 + 10 * PT;
   xml.push(tableXml(id++, '이익배분 21~35년', { x: x0, y: t2Top, w: head + col * 15, h: rowH * 2 }, [head, ...Array(15).fill(col)], [rowH, rowH], rowsFor(21, 35), tableOpts));
+  /*
+   * 작은 발전소의 계통연계비 — 사업자 조건(「템플릿 · 조건」의 계통연계비 차감 용량)보다 작으면 한전 계통연계비용을 건물주의 미래 임대수익에서
+   * 뺀다(템플릿 고정 장의 조건). 얼마인지는 한전 비용이라 표에 못 넣는다 — 표가 차감 전 금액임을 21~35년 표 밑 한 줄에 적는다(흰 판 안 —
+   * 표 오른쪽 빈자리는 열을 넓게 그리는 렌더러에서 표에 닿았다).
+   */
+  const gridCostKw = termOf(terms, 'gridCostBelowKw');
+  if (gridCostKw > 0 && kw < gridCostKw) {
+    xml.push(
+      textBoxXml(
+        id++,
+        '계통연계비 각주',
+        { x: x0, y: t2Top + rowH * 2 + 6 * PT, w: shareW, h: 14 * PT },
+        paras(`※ ${kwText(gridCostKw)}kW 미만 발전소는 한전 계통연계비용을 미래 임대수익에서 차감합니다 — 표는 차감 전 금액입니다.`, { size: 9, bold: true, color: C.brand, font: FONT }),
+        { anchor: 't', wrap: false },
+      ),
+    );
+  }
   // 제목 곁 — 어느 상품 · 몇 kW 의 표인가(상품설명서의 「Cash Flow (1MW, 기본형 기준)」 자리). 제목은 바탕 그림의 (88~242pt, 55~88pt)
   xml.push(
     textBoxXml(id++, '표 기준', { x: 250 * PT, y: 60 * PT, w: 300 * PT, h: 24 * PT }, paras(`(${kwText(kw)}kW, ${variant === 'basic' ? '기본형' : '5년 선납형'} 기준)`, { size: 15, bold: true, color: C.text, font: FONT }), {

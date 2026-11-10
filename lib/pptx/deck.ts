@@ -389,6 +389,23 @@ export class Slide {
     return el;
   }
 
+  /** 표 칸의 글 몸통이 든 줄(a:tr) — 표 칸이 아니면 null */
+  rowOf(body: Element): Element | null {
+    const tc = body.parentNode as Element | null;
+    const tr = tc?.parentNode as Element | null;
+    return tc?.localName === 'tc' && tr?.localName === 'tr' ? tr : null;
+  }
+
+  /** 표의 줄을 뺀다 — 표 틀(graphicFrame)의 높이도 그 줄만큼 줄인다(남은 줄이 틀에 맞춰 늘어 그려지지 않게) */
+  removeRow(tr: Element): void {
+    const frame = shapeAbove(tr);
+    const h = Number(tr.getAttribute('h') ?? 0);
+    this.removeEl(tr);
+    if (!frame || !(h > 0)) return;
+    const { ext } = this.xfrmOfEl(frame);
+    ext.setAttribute('cy', String(Math.max(0, Number(ext.getAttribute('cy') ?? 0) - h)));
+  }
+
   /** 그 모양 글의 크기(pt) — 첫 토막(없으면 덩이 끝)의 sz. 적힌 것이 없으면 null(물려받는 크기) */
   fontSizeOf(name: string): number | null {
     const sp = this.shape(name);
