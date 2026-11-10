@@ -113,14 +113,21 @@ function roleOf(agent: Agent): string {
         + '보통 글로 짓고 「기한이 지났으니 긴급으로 바꿀 수 있다」고 한 줄 짚는다. cc @@team.finance 는 긴급 글에만 붙는다. '
         + '아지트 글을 네가 따로 쓸 때 굵게는 *글*(별 하나)이다 — ** 는 글자 그대로 보인다. '
         + '콘솔에 없는 지급(예: 25년 사업 잔금처럼 콘솔 밖 현장)은 글 · 엑셀 · zip 에 저절로 들어가지 않는다 — 한백이 그 거래명세서 · '
-        + '세금계산서를 넘기며 이번 지급에 넣으라고 하면, 지금 콘솔 초안에는 넣을 수 없다고 말하고 Claude Code 로 더하라고 알린다. '
+        + '세금계산서를 넘기며 이번 지급에 넣으라고 하면, 콘솔 초안에는 넣을 수 없다고 말하고 그 글은 agit_publish 로 올리지 말고 Claude Code 로 '
+        + '더해 올리라고 알린다. '
         + '협력사 정보에 계좌가 없는 지급처(채움에스앤시처럼 콘솔 계정이 없는 곳)는 엑셀의 은행 · 계좌가 「-」로 빈다 — 짚는다. 결제일 3영업일 전 아침에 콘솔이 네 이름으로 상신 할 일과 그 글의 초안을 이 대화에 저절로 올린다. '
-        + '한백이 아지트 글을 올려 달라 · 초안을 보여 달라고 하면 agit_post(결제일)로 초안을 이 답 밑에 올린다 — 그날 나가는 구분마다 '
-        + '하나씩 선다(한 구분만이면 kind). 금액 · 계좌를 네가 옮겨 적지 않는다. 이미 올린 결제일 · 구분은 한백이 다시 올리라고 할 때만 again. ★너도 콘솔도 아지트에 올리지 못한다★ — 아지트에는 '
-        + 'Claude Code 가 한백의 아지트 계정으로 올린다(한백 11-09: 봇 글은 한백이 고칠 수 없고 파일을 못 붙였다). 한백이 올리라고 하면 '
-        + '「Claude Code 에 『○월 ○일 열린구매 올려』라고 해 주세요」라고 답한다. Claude Code 가 그때 금액으로 다시 지어 견주고, 글양식 · '
-        + '본문 · 엑셀 캡처 · 첨부 zip · 요청 담당(한백이 「요청 담당」에 정해 둔 아지트 ID)을 넣어 올린다 — 한백이 쓴 글이라 한백이 고친다. '
-        + '올리면 그 결제일의 상신 할 일이 저절로 끝나고 대화에 「아지트에 올렸습니다」 한 줄이 선다. '
+        + '한백이 초안을 보여 달라 · 지어 달라고 하면 agit_post(결제일)로 초안을 이 답 밑에 올린다 — 그날 나가는 구분마다 '
+        + '하나씩 선다(한 구분만이면 kind). 금액 · 계좌를 네가 옮겨 적지 않는다. 이미 올린 결제일 · 구분은 한백이 다시 올리라고 할 때만 again. '
+        + '★아지트에는 네가 올린다 — agit_publish★(한백 11-10 「에이전트가 직접 하게끔 하고싶어」): 한백이 이번 말에서 아지트에 올리라고 분명히 '
+        + '말했으면(「○월 ○일 열린구매 올려」 · 「올려줘」 · 「아지트에 게시해」) 그 결제일로 agit_publish 를 부른다(한 구분만이면 kind) — 그날의 '
+        + '초안이 없으면 같은 답에서 agit_post 로 먼저 짓고 부른다. 초안을 보여 달라 · 다시 지어 달라 · 긴급으로 바꿔 달라 · 「상신했어」는 올리라는 '
+        + '말이 아니다 — 망설여지면 부르지 말고 묻는다. 콘솔이 한백의 아지트 계정(정산 담당 화면의 「아지트 계정」에 연결한 로그인)으로 '
+        + '글양식 · 본문 · 엑셀 캡처 · 첨부 zip(진짜 첨부) · 요청 담당을 넣어 올린다 — 한백이 쓴 글이라 한백이 아지트에서 고친다. 올리기 전에 '
+        + '그때 금액으로 다시 지어 초안과 다르면 올리지 않고 초안을 고쳐 둔다 — 그러면 새 금액을 한백에게 말하고 다시 올리라고 할 때까지 기다린다. '
+        + '올리기는 1~2분 걸린다 — 시작했으면 「올리는 중」이라고만 답한다(다 됐다고 하지 않는다). 끝나면 이 대화에 「아지트에 올렸습니다」 한 줄이 '
+        + '저절로 서고 그 결제일의 상신 할 일이 끝난다(나가는 구분의 글이 다 올라가야). 「아지트 계정 연결 전」 · 「로그인이 풀렸습니다」로 못 '
+        + '올리면 한백에게 정산 담당 화면 머리말의 「아지트 계정」에서 연결해 달라고 한다. 카드의 「승인하고 올리기」를 눌러도 같다. 콘솔이 아예 '
+        + '못 올리는 날(아지트가 막는 등)에만 예비 길 — Claude Code 에 「○월 ○일 열린구매 올려」 — 을 알려 준다. '
         + '한백이 따로 써 달라고 할 때만 [열린구매] 자료로 글을 쓴다. 붙일 자료는 자료 줄에 있는 것(거래명세서 주소 · 세금계산서 · '
         + '사업자등록증 · 통장사본)을 보고 없는 것은 없다고 짚는다.';
     case 'strategy':
@@ -338,6 +345,15 @@ export interface AgentHands {
     }[];
     skipped: { kind: PayoutKind; why: string }[];
   }>;
+  /**
+   * 아지트 열린구매 글 올리기 — 전기차 정산 담당만(lib/agit/publish). 그 결제일(kind 를 주면 그 구분)의 승인 전 초안을 한백의 아지트 계정으로
+   * 올리기 시작한다(끝은 응답 뒤 — 대화에 한 줄이 저절로 선다). 시작 못 한 글은 skipped(changed 면 초안을 지금 금액으로 고쳐 두었다).
+   * 올릴 초안이 하나도 없거나 연결이 없으면 사람 말로 던진다
+   */
+  agitPublish?(input: { payDate: string; kind?: PayoutKind }): Promise<{
+    started: { id: string; name: string; kind: PayoutKind; batches: number; total: number; urgent: string | null }[];
+    skipped: { kind: PayoutKind; why: string; changed: boolean; total: number; batches: number }[];
+  }>;
   /** 팀장만 — 팀 목표 · 방향 올리기(id 없이) · 고치기(id). 저장소가 틀리면 사람 말로 던진다 */
   saveDirection?(input: { id: string | null; title: string; body: string }): Promise<{ id: string; title: string }>;
   /** 팀장만 — 팀 목표 · 방향 지우기. 지운 줄의 이름을 돌려준다 */
@@ -457,7 +473,7 @@ const AGIT_POST_TOOL = {
     + '구매요청간소화 양식대로 짓는다(배경 · 구매 내역(엑셀 캡처) · 기한 · 청구 금액 · 참고자료 — 캡처 · 첨부 zip 은 올릴 때 붙는다) — 너는 결제일만 준다. '
     + '시공비 글은 같은 모양에 말만 「시공비」다. '
     + 'urgent_reason 을 주면 긴급구매요청 양식(긴급사유 · cc 재무팀)으로 짓는다. 같은 결제일 · 구분의 승인 전 초안이 있으면 지금 금액으로 고쳐 이 답 밑으로 옮긴다. '
-    + '너는 아지트에 올리지 못한다 — 한백이 Claude Code 에 「○월 ○일 열린구매 올려」라고 해야 한백의 계정으로 올라간다. 이미 올린 결제일 · 구분은 한백이 다시 올리라고 할 때만 again.',
+    + '짓기만 한다 — 올리는 것은 agit_publish(한백이 올리라고 했을 때만). 이미 올린 결제일 · 구분은 한백이 다시 올리라고 할 때만 again.',
   input_schema: {
     type: 'object',
     properties: {
@@ -471,6 +487,32 @@ const AGIT_POST_TOOL = {
         type: 'string',
         description: '긴급 글로 지을 때의 긴급사유 — 한백이 긴급으로 올리라고 할 때만, 한백이 말한 사유 그대로(「3. 긴급사유 기재」에 들어간다, '
           + '예: 세금계산서 발행 지연으로 늦은 상신). 빈 글("")이면 긴급을 풀고 보통 글로 되돌린다. 빼면 지금 초안의 모양(긴급 · 보통) 그대로 (선택)',
+      },
+    },
+    required: ['pay_date'],
+  },
+};
+
+/**
+ * 아지트 열린구매 글을 올린다 — 전기차 정산 담당만(라우트가 손을 이어 줄 때). 콘솔이 한백의 아지트 계정(연결한 로그인)으로 올린다
+ * (한백 2026-11-10 「에이전트가 직접 하게끔 하고싶어」 — 그전에는 Claude Code 가 한백의 맥에서 올렸다). 한백이 올리라고 했을 때만.
+ * 올리기 전에 콘솔이 그때 금액으로 다시 지어 초안과 다르면 올리지 않고 초안을 고쳐 둔다.
+ */
+const AGIT_PUBLISH_TOOL = {
+  name: 'agit_publish',
+  description: '그 결제일의 아지트 열린구매 글(승인 전 초안)을 한백의 아지트 계정으로 올린다 — 구분마다 한 글, 영업비 먼저. '
+    + '★한백이 이번 말에서 아지트에 올리라고 분명히 말했을 때만 부른다★(「○월 ○일 열린구매 올려」 · 「올려줘」 · 「아지트에 게시해」 · 네가 올릴까 '
+    + '물었고 한백이 그러라고 함). 초안을 보여 달라 · 다시 지어 달라 · 긴급으로 바꿔 달라 · 「상신했어」는 올리라는 말이 아니다. 그날의 초안이 '
+    + '없으면 먼저 agit_post 로 짓고 같은 답에서 부른다. 콘솔이 그때 금액으로 다시 지어 초안과 다르면 그 글은 올리지 않고 초안을 고쳐 둔다 — '
+    + '그러면 새 금액을 한백에게 말하고 다시 올리라고 할 때까지 기다린다. 올리기는 1~2분 걸리고 끝나면 이 대화에 「아지트에 올렸습니다」 한 줄이 '
+    + '저절로 선다 — 너는 「올리는 중」이라고만 답한다.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      pay_date: { type: 'string', description: '결제일 YYYY-MM-DD — 올릴 초안의 결제일' },
+      kind: {
+        type: 'string', enum: ['영업비', '시공비'],
+        description: '그 구분의 글만 — 한백이 한쪽만 올리라고 했을 때. 빼면 그날의 승인 전 초안 전부 (선택)',
       },
     },
     required: ['pay_date'],
@@ -692,7 +734,8 @@ const LEAD_TOOLS = [
 export function toolsOf(
   agent: Agent,
   hands: Pick<
-    AgentHands, 'siteMail' | 'pricingTable' | 'saveDirection' | 'tellTeammate' | 'saveMemo' | 'saveDuty' | 'bundleSiteDocs' | 'agitDraft'
+    AgentHands,
+    'siteMail' | 'pricingTable' | 'saveDirection' | 'tellTeammate' | 'saveMemo' | 'saveDuty' | 'bundleSiteDocs' | 'agitDraft' | 'agitPublish'
   >,
 ): unknown[] {
   const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
@@ -702,6 +745,7 @@ export function toolsOf(
     draftMailTool(Boolean(hands.bundleSiteDocs)),
     ...(hands.bundleSiteDocs ? [BUNDLE_TOOL] : []),
     ...(agent.kind === 'settlement' && hands.agitDraft ? [AGIT_POST_TOOL] : []),
+    ...(agent.kind === 'settlement' && hands.agitPublish ? [AGIT_PUBLISH_TOOL] : []),
     ...(siteSpec ? [siteMailTool(siteSpec)] : []),
     ...(agent.kind === 'operator' && hands.pricingTable ? [PRICING_TOOL] : []),
     ...(hands.saveDuty ? DUTY_TOOLS : []),
@@ -800,6 +844,8 @@ export async function agentReply(input: {
   const done: string[] = [];
   const mails: string[] = [];
   const agitDrafts: string[] = [];
+  /** 이 답에서 아지트에 올리기 시작한 글 — 답 밑의 한 줄 */
+  const agitPublished: string[] = [];
   const directions: string[] = [];
   const told: string[] = [];
   const memoed: string[] = [];
@@ -919,7 +965,30 @@ export async function agentReply(input: {
           content: [
             ...lines,
             ...skipped.map((k) => `${k.kind} 글은 짓지 않았다 — ${k.why}`),
-            '아직 올리지 않았다. 한백이 Claude Code 에 「올려」라고 하면 그때 금액으로 다시 지어 한백의 계정으로 아지트에 올라간다(구분마다 한 글).',
+            '아직 올리지 않았다 — 한백이 이번 말에서 올리라고 했으면 이제 agit_publish, 아니면 한백이 올리라고 할 때(카드의 「승인하고 올리기」도 같다).',
+          ].join('\n'),
+        };
+      }
+      if (block.name === 'agit_publish' && agent.kind === 'settlement' && hands.agitPublish) {
+        const payDate = str(args.pay_date);
+        if (!DAY_RE.test(payDate)) return fail('pay_date 는 YYYY-MM-DD 다.');
+        if (agitPublished.length >= 4) return fail('한 답에 아지트 글 올리기는 넷까지다.');
+        const kind = args.kind === '영업비' || args.kind === '시공비' ? args.kind : undefined;
+        const { started, skipped } = await hands.agitPublish({ payDate, ...(kind ? { kind } : {}) });
+        const won = (n: number) => n.toLocaleString('ko-KR');
+        const lines = started.map((s) => {
+          agitPublished.push(s.urgent ? `${s.name} (긴급)` : s.name);
+          return `${s.name} 글을 올리기 시작했다 (id=${s.id}, 지급 ${s.batches}건 · 공급가액 ${won(s.total)}원${s.urgent ? ' · 긴급' : ''}) — `
+            + '1~2분 뒤 이 대화에 「아지트에 올렸습니다」 한 줄이 저절로 선다. 아직 다 된 것이 아니다.';
+        });
+        return {
+          type: 'tool_result', tool_use_id: block.id,
+          content: [
+            ...lines,
+            ...skipped.map((k) => (k.changed
+              ? `${k.kind} 글은 올리지 않았다 — 초안 뒤에 금액이 바뀌어 초안을 지금 글로 고쳐 두었다(지급 ${k.batches}건 · 공급가액 ${won(k.total)}원). `
+                + '한백에게 새 금액을 말하고, 다시 올리라고 하면 그때 agit_publish.'
+              : `${k.kind} 글은 올리지 않았다 — ${k.why}`)),
           ].join('\n'),
         };
       }
@@ -1141,6 +1210,7 @@ export async function agentReply(input: {
     ...(done.length ? { done } : {}),
     ...(mails.length ? { mails } : {}),
     ...(agitDrafts.length ? { agit: agitDrafts } : {}),
+    ...(agitPublished.length ? { agitPublished } : {}),
     ...(directions.length ? { directions } : {}),
     ...(told.length ? { told } : {}),
     ...(memoed.length ? { memos: memoed } : {}),
@@ -1150,13 +1220,15 @@ export async function agentReply(input: {
   };
   if (!text) {
     // 할 일 · 메일 초안은 이미 남았을 수 있다 — 그 사실은 남긴다
-    if (added.length || done.length || mails.length || agitDrafts.length || directions.length || told.length || memoed.length || dutied.length) {
+    if (added.length || done.length || mails.length || agitDrafts.length || agitPublished.length || directions.length || told.length
+      || memoed.length || dutied.length) {
       return {
         text: [
           added.length ? `할 일을 적었습니다: ${added.join(' · ')}` : '',
           done.length ? `끝냈습니다: ${done.join(' · ')}` : '',
           mails.length ? `메일 초안을 올렸습니다: ${mails.join(' · ')}` : '',
           agitDrafts.length ? `아지트 글 초안을 올렸습니다: ${agitDrafts.join(' · ')}` : '',
+          agitPublished.length ? `아지트에 올리는 중입니다: ${agitPublished.join(' · ')}` : '',
           directions.length ? `목표 · 방향을 고쳤습니다: ${directions.join(' · ')}` : '',
           told.length ? `팀원에게 남겼습니다: ${told.join(' · ')}` : '',
           memoed.length ? `메모를 적었습니다: ${memoed.join(' · ')}` : '',

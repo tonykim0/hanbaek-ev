@@ -54,6 +54,10 @@ const nextConfig = {
     // 크로미움 압축본(bin/*.br)은 코드에서 import 하지 않아 추적에서 빠진다 — 그 라우트에만 싣는다
     outputFileTracingIncludes: {
       '/api/agit/posts/[id]/files': ['./node_modules/@sparticuz/chromium/bin/**', './lib/agit/purchase-template.xlsx'],
+      /* 정산 담당이 한백의 아지트 계정으로 올린다 — 첨부 zip 을 짓고 쓰는 칸을 채우는 서버 브라우저(lib/agit/publish · agit-web) */
+      '/api/agit/publish': ['./node_modules/@sparticuz/chromium/bin/**', './lib/agit/purchase-template.xlsx'],
+      /* 아지트 계정 연결 — 서버 브라우저가 로그인 화면에 넣어 본다 */
+      '/api/agit/account': ['./node_modules/@sparticuz/chromium/bin/**'],
     },
   },
   async redirects() {

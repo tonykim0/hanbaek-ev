@@ -328,23 +328,6 @@ export function upcomingPayDates(today: string, payDates: readonly string[]): st
 }
 
 /**
- * 아지트 웹훅 주소인가 — https://agit.io/webhook/<토큰> 하나뿐이다. 맞으면 다듬은 주소, 아니면 null.
- * 서버가 이 주소로 요청을 보내므로 다른 곳(우리 망 안 · 다른 누리집)을 부르게 두지 않는다.
- */
-export function agitWebhookOf(raw: string): string | null {
-  let url: URL;
-  try {
-    url = new URL(raw.trim());
-  } catch {
-    return null;
-  }
-  if (url.protocol !== 'https:' || url.hostname !== 'agit.io' || url.port || url.username || url.password) return null;
-  if (url.search || url.hash) return null;
-  if (!/^\/webhook\/[A-Za-z0-9-]{8,80}$/.test(url.pathname)) return null;
-  return `https://agit.io${url.pathname}`;
-}
-
-/**
  * 결제일(과 구분)의 배치 — 거래명세서 화면과 같은 재료(원장 줄 · 확정 · 계산서)로 짓는다. 배치를 묶는 규칙은 lib/payout-board
  * batchesOf 한 곳이고(거래명세서 목록 · 할 일과 같다), 회차의 현장 · 대수는 원장 줄에서 센다. kind 를 주면 그 구분만.
  */
@@ -391,13 +374,22 @@ export function agitDraftsOf(
   });
 }
 
-/** 아지트 연결 — 주소(열쇠)는 싣지 않는다 */
+/**
+ * 아지트 연결 — 한백의 아지트 계정(로그인 쿠키는 싣지 않는다)과 요청 담당. ★콘솔이 이 계정으로 올린다★(한백 2026-11-10 「에이전트가 직접
+ * 하게끔 하고싶어」 — store/agit · migrations/0130). 11-08 의 웹훅 연결은 걷었다(봇 글은 고칠 수 없고 파일을 못 붙였다).
+ */
 export interface AgitHookInfo {
-  /** 웹훅이 연결돼 있는가 */
+  /** 아지트 계정의 로그인을 쥐고 있는가 — 풀린 것을 알았으면(expired) false */
   connected: boolean;
-  /** 연결한 사람 · 때 — 연결 전이면 null */
+  /** 연결한 아지트 ID(또는 이메일) — 로그인 화면에 넣은 그대로. 연결한 적이 없으면 null */
+  login: string | null;
+  /** 연결한 사람 · 때 — 연결한 적이 없으면 null */
   connectedBy: string | null;
   connectedAt: string | null;
+  /** 로그인이 풀리는 날 'YYYY-MM-DD'(아지트 로그인 쿠키의 만료) — 모르면 null */
+  until: string | null;
+  /** 올리다가 로그인이 풀린 것을 알았으면 그 까닭 — 다시 연결하면 지운다 */
+  expired: string | null;
   /**
    * 요청 글의 담당자 — 아지트 ID. 비면 올리지 못한다(「요청 담당 미지정」). ★연결과 따로다★ — 연결 전에 미리 넣어 두고, 끊어도 남는다
    * (한백 2026-11-08 「담당자는 미리 넣어둘수없나」)
@@ -442,8 +434,8 @@ export const agitTemplateOf = (urgent: string | null): string => (urgent ? AGIT_
 export const assigneesLabel = (ids: readonly string[]): string => ids.map((s) => `@${s}`).join(' · ');
 
 /**
- * 글 한 줄의 자리 — 정산 담당이 초안을 올리고(draft) 한백이 Claude Code 에 올리라고 하면 올리는 중(sending — Claude Code 가 쓰는 칸을
- * 채우는 동안) → 올림(posted) · 못 올림(failed). 못 올린 것은 다시 시켜 올린다(초안과 같은 자리).
+ * 글 한 줄의 자리 — 정산 담당이 초안을 올리고(draft) 한백이 승인하면(카드의 「승인하고 올리기」 · 대화의 「올려」) 올리는 중(sending — 서버
+ * 브라우저가 쓰는 칸을 채우는 동안 · 맥의 예비 길이면 Claude Code 가) → 올림(posted) · 못 올림(failed). 못 올린 것은 다시 승인해 올린다.
  */
 export const AGIT_POST_STATUSES = ['draft', 'sending', 'posted', 'failed'] as const;
 export type AgitPostStatus = (typeof AGIT_POST_STATUSES)[number];
@@ -477,6 +469,11 @@ export interface AgitPostRecord {
   createdAt: string;
   /** 올린 때(못 올렸으면 누른 때) — 초안이면 만든 때 */
   at: string;
+  /**
+   * 올리는 중인데 너무 오래됐다(서버 함수가 끝까지 못 갔다) — 다시 올릴 수 있다. 「작성하기」까지 갔을 수 있어 카드가 「아지트에 올라갔는지
+   * 먼저 확인」을 같이 말한다(store/agit SENDING_STALE_MS)
+   */
+  stalled: boolean;
 }
 
 /** 결제일의 이름 — 「11월 10일 정기결제」 · 「3월 17일 지급」 */

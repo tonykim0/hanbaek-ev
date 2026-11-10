@@ -1,7 +1,7 @@
 /**
- * 아지트 열린구매 글(lib/agit/post · send) — 한백 2026-11-07 「콘솔에 있는 거래명세서 기반으로 여기에 자동적으로 글을 쓰게」.
+ * 아지트 열린구매 글(lib/agit/post · session) — 한백 2026-11-07 「콘솔에 있는 거래명세서 기반으로 여기에 자동적으로 글을 쓰게」.
  * 글의 모양은 한백이 고른 미리보기(결제일마다 한 글)다. 금액은 11-10 실제 결제일의 것을 본떴다(에코일렉 · 이브이솔루션).
- * ★웹훅 주소는 지어낸 것이다★ — 진짜 주소는 그 그룹에 글을 쓰는 열쇠라 공개 저장소에 적지 않는다.
+ * ★로그인 쿠키 값은 지어낸 것이다★ — 진짜 값은 한백의 이름으로 아지트에 글을 쓰는 열쇠라 공개 저장소에 적지 않는다.
  */
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -9,18 +9,20 @@ import JSZip from 'jszip';
 import {
   AGIT_CC, AGIT_URGENT_MAX, AGIT_URGENT_TAG,
   agitAssigneesOf, agitBatchesOf, agitDraftsOf, agitFolderOf, agitKindOf, agitKindsOn, agitPostOf, agitPostedSay, agitTemplateOf, agitTitleOf,
-  agitWebhookOf, assigneesLabel, badAgitIds, itemNameOf,
+  assigneesLabel, badAgitIds, itemNameOf,
   requestNameOf, upcomingPayDates, urgentReasonOf, vatOf, type AgitBatch, type AgitPayee,
 } from '@/lib/agit/post';
 import { agitBundleOf, safeName } from '@/lib/agit/bundle';
 import { agitZipOf } from '@/lib/agit/bundle-zip';
 import { purchaseXlsx } from '@/lib/agit/purchase-xlsx';
 import { cookiePairs } from '@/lib/agit/statement-pdf';
+import {
+  agitCookiesOf, agitLoginOf, agitPasswordOf, agitSessionUntil, cookieParamsOf, mergeAgitCookies,
+} from '@/lib/agit/session';
 import { formatNumber, purchaseHtml } from '@/lib/agit/purchase-image';
 import type { PayoutRow } from '@/types/project';
 
 const URL_ = 'https://hanbaek-re.vercel.app';
-const TOKEN = '00000000-0000-4000-8000-000000000000';
 const ECO: AgitPayee = { bankName: '국민은행', bankAccountNo: '123-45-6789', bankHolder: '에코일렉' };
 const payees: Record<string, AgitPayee> = { 에코일렉: ECO };
 const payeeOf = (org: string | null) => (org ? payees[org] : undefined);
@@ -478,23 +480,62 @@ describe('첨부 zip — 한백이 올려 온 zip 모양 (26년 9월 2차)', () 
   });
 });
 
-describe('웹훅 주소', () => {
-  it('https://agit.io/webhook/<토큰> 하나만', () => {
-    expect(agitWebhookOf(` https://agit.io/webhook/${TOKEN} `)).toBe(`https://agit.io/webhook/${TOKEN}`);
-    for (const bad of [
-      `http://agit.io/webhook/${TOKEN}`,
-      `https://agit.io.evil.com/webhook/${TOKEN}`,
-      `https://evil.com/webhook/${TOKEN}`,
-      `https://team-hanbaek.agit.io/webhook/${TOKEN}`,
-      `https://agit.io/webhook/${TOKEN}?x=1`,
-      `https://agit.io/webhook/${TOKEN}#a`,
-      'https://agit.io/webhook/../admin',
-      'https://agit.io/webhook/abc',
-      `https://u:p@agit.io/webhook/${TOKEN}`,
-      `https://agit.io:8443/webhook/${TOKEN}`,
-      `agit.io/webhook/${TOKEN}`,
-      '',
-    ]) expect(agitWebhookOf(bad), bad).toBeNull();
+describe('아지트 로그인 쿠키 (한백 2026-11-10 「에이전트가 직접 하게끔 하고싶어」 — lib/agit/session)', () => {
+  /* 이름 · 만료는 11-10 전용 크롬 프로필에서 읽은 모양 그대로 · 값은 지어낸 것 */
+  const browserCookies = [
+    { name: '_ga', value: 'GA1', domain: '.agit.io', path: '/', expires: 1828927016, httpOnly: false, secure: false },
+    { name: '_gid', value: 'GA2', domain: '.agit.io', path: '/', expires: 1794283016, httpOnly: false, secure: false },
+    { name: 'buid', value: 'b-1', domain: '.agit.io', path: '/', expires: 1828851198, httpOnly: true, secure: true },
+    { name: '_kpl', value: 'k-1', domain: '.agit.io', path: '/', expires: 1802209181, httpOnly: false, secure: true },
+    { name: '_uac_v1', value: 'u-1', domain: '.team-hanbaek.agit.io', path: '/', expires: 1802155392, httpOnly: true, secure: true, sameSite: 'Lax' },
+    { name: '_venice_webapp2_session', value: 's-1', domain: 'team-hanbaek.agit.io', path: '/', expires: -1, httpOnly: true, secure: true },
+    { name: 'hb_session', value: 'console', domain: 'hanbaek-re.vercel.app', path: '/', expires: -1, httpOnly: true, secure: true },
+    { name: 'x', value: 'evil', domain: 'agit.io.evil.com', path: '/', expires: -1, httpOnly: false, secure: false },
+  ];
+
+  it('아지트 쿠키만 쥔다 — 분석 쿠키 · 다른 곳(콘솔 · 비슷한 이름) 쿠키는 버린다', () => {
+    const kept = agitCookiesOf(browserCookies);
+    expect(kept.map((c) => c.name)).toEqual(['buid', '_kpl', '_uac_v1', '_venice_webapp2_session']);
+    expect(kept.find((c) => c.name === '_venice_webapp2_session')?.expires).toBe(-1);
+    expect(kept.find((c) => c.name === '_uac_v1')).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax' });
+  });
+
+  it('로그인이 풀리는 때는 _uac_v1 의 만료 — 없으면 null · 세션 쿠키로만 왔으면 하루', () => {
+    const kept = agitCookiesOf(browserCookies);
+    expect(agitSessionUntil(kept)?.toISOString()).toBe(new Date(1802155392 * 1000).toISOString());
+    expect(agitSessionUntil(kept.filter((c) => c.name !== '_uac_v1'))).toBeNull();
+    const day = agitSessionUntil([{ ...kept.find((c) => c.name === '_uac_v1')!, expires: -1 }])!;
+    expect(day.getTime() - Date.now()).toBeGreaterThan(23 * 3600_000);
+  });
+
+  it('다시 심을 때 세션 쿠키는 만료를 뺀다', () => {
+    const params = cookieParamsOf(agitCookiesOf(browserCookies));
+    expect(params.find((c) => c.name === '_venice_webapp2_session')).not.toHaveProperty('expires');
+    expect(params.find((c) => c.name === '_uac_v1')).toHaveProperty('expires', 1802155392);
+  });
+
+  it('올린 뒤의 쿠키로 새로 — 아지트가 바꿔 준 것만 바뀌고 · 로그인이 풀린 채 끝났으면 그대로', () => {
+    const held = agitCookiesOf(browserCookies);
+    const fresh = [
+      { ...held.find((c) => c.name === '_uac_v1')! },
+      { ...held.find((c) => c.name === '_venice_webapp2_session')!, value: 's-2' },
+    ];
+    const merged = mergeAgitCookies(held, fresh);
+    expect(merged).toHaveLength(held.length);
+    expect(merged.find((c) => c.name === '_venice_webapp2_session')?.value).toBe('s-2');
+    expect(merged.find((c) => c.name === 'buid')?.value).toBe('b-1');
+    expect(mergeAgitCookies(held, [{ ...fresh[1] }])).toEqual(held);
+  });
+
+  it('로그인 칸 — 아지트 ID(영문 · 숫자 · 점 20자) 또는 이메일 · 비밀번호는 그대로(앞뒤 빈칸도)', () => {
+    expect(agitLoginOf(' kiko.x ')).toBe('kiko.x');
+    expect(agitLoginOf('@kiko.x')).toBe('kiko.x');
+    expect(agitLoginOf('someone@hanbaek.co')).toBe('someone@hanbaek.co');
+    for (const bad of ['', '김정우', 'a b', 'x'.repeat(21), 'no@at', 3, null]) expect(agitLoginOf(bad), String(bad)).toBeNull();
+    expect(agitPasswordOf(' pw ')).toBe(' pw ');
+    expect(agitPasswordOf('')).toBeNull();
+    expect(agitPasswordOf('x'.repeat(201))).toBeNull();
+    expect(agitPasswordOf(3)).toBeNull();
   });
 });
 

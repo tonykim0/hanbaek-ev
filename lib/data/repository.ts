@@ -16,6 +16,7 @@ import type { DocCheck, DraftPlan } from '@/lib/site-mail';
 import type { RetouchLog } from '@/lib/retouch/types';
 import type { ConsultDup } from '@/lib/consult-dup';
 import type { AgitHookInfo, AgitPostRecord } from '@/lib/agit/post';
+import type { AgitCookie } from '@/lib/agit/session';
 import type {
   AgentDetail, AgentFile, AgentMail, AgentMemos, AgentMessage, AgentMessageMeta, AgentMessageRole, AgentSummary, AgentTeam, AgentUsage, MailAccountInfo, MemoScope, TeamMemberLog,
 } from '@/types/agents';
@@ -618,19 +619,27 @@ export interface ProjectRepository {
   /** 연결 끊기 — 없었으면 null */
   deleteMailAccount(actor: Actor, biz?: Biz): Promise<{ email: string } | null>;
   /*
-   * 아지트 열린구매 글 (store/agit · migrations/0126) — 결제일마다 한 글을 거래명세서로 짓고(lib/agit/post) 정산 담당이 초안을
-   * 올리면 한백이 승인해 올린다. 웹훅 주소는 잠가 두고 올릴 때만 agitHookFor 가 푼다. 모두 관리자(에이전트 화면이 관리자만이다).
+   * 아지트 열린구매 글 (store/agit · migrations/0126 · 0130) — 결제일 × 구분마다 한 글을 거래명세서로 짓고(lib/agit/post) 정산 담당이 초안을
+   * 올리면 한백이 승인해 ★콘솔이 한백의 아지트 계정으로★ 올린다(lib/agit/publish). 그 로그인(쿠키)은 잠가 두고 올릴 때만 agitSessionFor 가
+   * 푼다. 모두 관리자(에이전트 화면이 관리자만이다).
    */
-  /** 아지트 연결 · 요청 담당 — 아무것도 없으면 연결 전 · 담당 0명. 주소는 싣지 않는다 */
+  /** 아지트 연결 · 요청 담당 — 아무것도 없으면 연결 전 · 담당 0명. 로그인 쿠키는 싣지 않는다 */
   getAgitHook(actor: Actor): Promise<AgitHookInfo>;
-  /** 연결 — 웹훅 주소를 잠가 둔다(한 줄 — 다시 연결하면 주소만 갈아 끼우고 담당자는 남는다) */
-  saveAgitHook(input: { url: string }, actor: Actor): Promise<AgitHookInfo>;
+  /**
+   * 아지트 계정 연결 — 라우트가 서버 브라우저로 로그인해 본 뒤에 그 쿠키를 잠가 둔다(한 줄 — 다시 연결하면 갈아 끼우고 담당자는 남는다).
+   * 비밀번호는 오지 않는다
+   */
+  saveAgitSession(input: { login: string; cookies: AgitCookie[] }, actor: Actor): Promise<AgitHookInfo>;
   /** 요청 담당자 — 아지트 ID 를 쉼표 · 띄어쓰기로(빈 글이면 비운다). 연결 전에도 넣는다. ID 가 틀리면 사람 말로 던진다 */
   saveAgitAssignees(input: { assignees: string }, actor: Actor): Promise<AgitHookInfo>;
-  /** 끊기 — 주소만 비운다(요청 담당은 남는다). 연결돼 있지 않았으면 false */
-  deleteAgitHook(actor: Actor): Promise<boolean>;
-  /** 올릴 때만 — 풀어 둔 웹훅 주소와 담당자. 연결이 없거나 풀 수 없으면 사람 말로 던진다 */
-  agitHookFor(actor: Actor): Promise<{ url: string; assignees: string[] }>;
+  /** 끊기 — 로그인만 비운다(요청 담당은 남는다). 연결한 적이 없으면 false */
+  deleteAgitSession(actor: Actor): Promise<boolean>;
+  /** 올릴 때만 — 풀어 둔 로그인 쿠키(at = 연결한 때 · 아래 둘이 그 연결인지 견준다). 연결 전 · 풀림 · 풀 수 없으면 사람 말로 던진다 */
+  agitSessionFor(actor: Actor): Promise<{ cookies: AgitCookie[]; login: string; at: Date }>;
+  /** 올린 뒤 — 아지트가 바꿔 준 쿠키를 이어 쥔다(그사이 다시 연결했으면 덮지 않는다) */
+  touchAgitSession(input: { cookies: AgitCookie[]; at: Date }, actor: Actor): Promise<void>;
+  /** 올리다가 아지트가 로그인 화면으로 보냈다 — 쿠키를 버리고 까닭을 남긴다(카드 · 연결 줄이 「다시 연결」을 말한다) */
+  expireAgitSession(input: { why: string; at: Date }, actor: Actor): Promise<void>;
   /** 그 대화의 말들 밑에 선 글 — 만든 차례 */
   listAgitPosts(actor: Actor, messageIds: string[]): Promise<AgitPostRecord[]>;
   /** 글 한 줄 — 없으면 null */

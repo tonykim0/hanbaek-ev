@@ -21,7 +21,8 @@
  * (draft_mail attach_bundle_ids · lib/agents/bundle-run — 한백 2026-11-05 「프로젝트마다 저장되어있는 파일을 한꺼번에 불러와서
  * 압축해서 이메일로」 · 「B로하자」 — 첨부로만).
  * 전기차 정산 담당은 agit_post 로 결제일의 아지트 열린구매 글 초안을 올린다(lib/agit — 글은 콘솔이 짓는다 · 한백 2026-11-08 「내가
- * 승인하면 정산담당에이전트가 아지트에 글을 올리는 구조」). 그 초안도 이 답 밑에 서고, 한백이 승인해야 올라간다(app/api/agit/posts/[id]).
+ * 승인하면 정산담당에이전트가 아지트에 글을 올리는 구조」). 그 초안도 이 답 밑에 선다. ★한백이 올리라고 하면 agit_publish 로 한백의 아지트
+ * 계정으로 올린다★(한백 2026-11-10 「에이전트가 직접 하게끔 하고싶어」 — 승인 라우트 app/api/agit/publish 를 이 요청의 로그인으로 부른다).
  */
 import { getRepository } from '@/lib/data';
 import { adminWrite } from '@/lib/api/write-route';
@@ -32,6 +33,7 @@ import { siteMailOfCpo } from '@/lib/site-mail';
 import { requestSiteMail } from '@/lib/site-mail-run';
 import { agitUrgentFor, draftKindsOf, loadAgitDraft, loadAgitKinds } from '@/lib/agit/load';
 import { agitPostName, payDateName } from '@/lib/agit/post';
+import { requestAgitPublish } from '@/lib/agit/publish';
 import { isUnexpectedError } from '@/lib/api/errors';
 import type { PayoutKind } from '@/types/project';
 import { OPEN_PURCHASE_AGENT } from '@/lib/agents/open-purchase';
@@ -50,7 +52,7 @@ export const maxDuration = 300;
 
 export const POST = adminWrite<{ id: string }, undefined>(
   '에이전트는 한백 관리자만 부를 수 있습니다.',
-  async ({ params, actor }) => {
+  async ({ params, actor, request }) => {
     const repo = getRepository();
     const detail = await repo.getAgent(params.id, actor);
     const agentId = detail.agent.id;
@@ -62,7 +64,7 @@ export const POST = adminWrite<{ id: string }, undefined>(
     const claim = await repo.claimAgentReply(agentId, actor);
     if (!claim) throw new Error('이 담당이 이미 답하는 중입니다 — 답이 오면 대화에 섭니다. 잠시 뒤 새로 고쳐 보세요.');
     try {
-      return await answer(repo, detail, actor);
+      return await answer(repo, detail, actor, { origin: new URL(request.url).origin, cookie: request.headers.get('cookie') });
     } finally {
       await repo.releaseAgentReply(agentId, claim, actor);
     }
@@ -74,6 +76,8 @@ async function answer(
   repo: ReturnType<typeof getRepository>,
   detail: Awaited<ReturnType<ReturnType<typeof getRepository>['getAgent']>>,
   actor: Actor,
+  /** 이 요청의 콘솔 주소 · 한백의 로그인 — 정산 담당이 아지트에 올릴 때 승인 라우트를 그 로그인으로 부른다(agit_publish) */
+  caller: { origin: string; cookie: string | null },
 ) {
   const agentId = detail.agent.id;
   const recent = await repo.agentRecent(agentId, actor);
@@ -176,6 +180,34 @@ async function answer(
             throw new Error(`${payDateName(q.payDate)} 글을 지을 수 없다 — ${skipped.map((k) => `${k.kind}: ${k.why}`).join(' / ')}`);
           }
           return { made, skipped };
+        },
+        /*
+         * 아지트에 올리기 — 한백이 올리라고 했을 때(lib/agit/publish). 서버 브라우저는 승인 라우트(크로미움을 실은 함수)에서만 띄우므로 그
+         * 라우트를 한백의 로그인으로 부른다(카드의 「승인하고 올리기」와 같은 문). seen 은 지금 초안 그대로 — 그때 금액이 다르면 올리지 않는다
+         */
+        agitPublish: async (q: { payDate: string; kind?: PayoutKind }) => {
+          const open = (await repo.openAgitPosts(actor, q.payDate)).filter((p) => !q.kind || p.kind === q.kind);
+          if (open.length === 0) {
+            throw new Error(`${payDateName(q.payDate)}${q.kind ? ` ${q.kind}` : ''} 의 올릴 초안이 없다 — 이미 올렸거나 초안 전이다(agit_post 로 먼저 짓는다).`);
+          }
+          const res = await requestAgitPublish(caller, open.map((p) => ({ id: p.id, seen: p.body })));
+          if (res.error) throw new Error(res.error);
+          /* 올리기 시작한 글 · 고쳐 둔 초안은 이 답 밑으로 — 카드가 「올리는 중」 → 「올림」을 이 자리에서 보인다 */
+          agitDrafted.push(...res.started.map((p) => p.id), ...res.skipped.filter((s) => s.changed).map((s) => s.id));
+          const fresh = new Map((await repo.openAgitPosts(actor, q.payDate)).map((p) => [p.id, p]));
+          return {
+            started: res.started.map((p) => ({
+              id: p.id, name: agitPostName(p), kind: p.kind, batches: p.batches, total: p.total, urgent: p.urgent,
+            })),
+            skipped: res.skipped.map((s) => {
+              const post = open.find((p) => p.id === s.id);
+              /* 금액이 바뀌었으면 고쳐 둔 초안의 새 금액을 말한다 */
+              const now = fresh.get(s.id) ?? post;
+              return {
+                kind: post?.kind ?? '영업비', why: s.why, changed: s.changed, total: now?.total ?? 0, batches: now?.batches ?? 0,
+              };
+            }),
+          };
         },
       } : {}),
       ...(operatorCpo ? {

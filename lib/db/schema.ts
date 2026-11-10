@@ -905,6 +905,17 @@ export const agitHooks = pgTable('agit_hooks', {
   assignees: jsonb('assignees').$type<string[]>().notNull().default([]),
   connectedBy: text('connected_by'),
   connectedAt: timestamp('connected_at', { withTimezone: true }),
+  /**
+   * 한백의 아지트 로그인(migrations/0130) — 잠근 쿠키 JSON(lib/agit/session · secret-box). 콘솔이 이 로그인으로 글을 올린다.
+   * 비밀번호는 없다 — 연결할 때 로그인에 한 번 쓰고 버린다. session_until 은 로그인 쿠키가 끝나는 때, session_error 는 올리다가 로그인이
+   * 풀린 것을 알았을 때의 까닭(다시 연결하면 지운다)
+   */
+  session: text('session'),
+  sessionLogin: text('session_login'),
+  sessionBy: text('session_by'),
+  sessionAt: timestamp('session_at', { withTimezone: true }),
+  sessionUntil: timestamp('session_until', { withTimezone: true }),
+  sessionError: text('session_error'),
 });
 
 /**

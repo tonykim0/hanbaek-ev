@@ -10,9 +10,8 @@
  * 같은 브라우저로 구매요청간소화 엑셀의 캡처(PNG)도 찍는다(lib/agit/purchase-image 의 HTML — 한백 「중간에 엑셀파일 스크린샷 찍은것도
  * 파일로 올려야해」). 띄우는 데 몇 초라 한 번 띄워 둘 다 짓는다.
  */
-import type { Browser } from 'puppeteer-core';
+import { launchChromium } from './chromium';
 
-const LOCAL_CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 const PAGE_TIMEOUT_MS = 30_000;
 
 /** 쿠키 머리 → 이름 · 값 쌍 */
@@ -24,15 +23,6 @@ export function cookiePairs(header: string | null | undefined): Array<{ name: st
   }).filter((p): p is { name: string; value: string } => Boolean(p?.name));
 }
 
-async function launch(): Promise<Browser> {
-  const puppeteer = (await import('puppeteer-core')).default;
-  if (process.platform === 'linux') {
-    const chromium = (await import('@sparticuz/chromium')).default;
-    return puppeteer.launch({ args: chromium.args, executablePath: await chromium.executablePath(), headless: true });
-  }
-  return puppeteer.launch({ executablePath: process.env.CHROME_PATH || LOCAL_CHROME, headless: true });
-}
-
 /**
  * 거래명세서 여러 장과 엑셀 캡처 — paths 는 콘솔 안의 경로(statementPathOf), origin 은 지금 요청이 온 콘솔 주소, html 은 캡처할 표.
  * 브라우저는 한 번 띄워 차례로 연다(띄우는 데 몇 초 — 장마다 띄우지 않는다).
@@ -42,7 +32,7 @@ export async function renderAgitFiles(input: {
 }): Promise<{ pdfs: Uint8Array[]; image: Uint8Array | null }> {
   if (input.paths.length === 0 && !input.html) return { pdfs: [], image: null };
   const origin = new URL(input.origin);
-  const browser = await launch();
+  const browser = await launchChromium();
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1240, height: 1754 });

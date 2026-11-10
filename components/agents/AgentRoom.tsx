@@ -42,7 +42,7 @@ import { AGENT_FILE_MAX_BYTES, AGENT_FILES_PER_MESSAGE, sizeLabel } from '@/lib/
 import { shiftDay, weekRange } from '@/lib/agents/weeks';
 import { AgentMark, Clip, FileChip, LINK, Spark } from './kit';
 import { MailCard } from './MailCard';
-import { AgitCard } from './AgitCard';
+import { AgitCard, type AgitAccountState } from './AgitCard';
 import type { AgitPostRecord } from '@/lib/agit/post';
 
 type Phase = 'idle' | 'sending' | 'thinking';
@@ -93,8 +93,8 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
   /** 한 주를 골랐을 때 — 그 주와, 대화 사이에 끼는 일 */
   week: { start: string; end: string; events: AgentEvent[] } | null;
   today: string;
-  /** 정산 담당(전기차)만 — 실린 말에 딸린 아지트 글 초안 · 아지트 연결 · 요청 담당 */
-  agit?: { posts: AgitPostRecord[]; connected: boolean; assignees: string[] };
+  /** 정산 담당(전기차)만 — 실린 말에 딸린 아지트 글 초안 · 아지트 계정(로그인을 쥐었나 · 풀렸나) · 요청 담당 */
+  agit?: { posts: AgitPostRecord[]; account: AgitAccountState; assignees: string[] };
 }) {
   const router = useRouter();
   const [list, setList] = useState(messages);
@@ -284,7 +284,7 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
     if (a.messageId && shown.has(a.messageId)) agitOf.set(a.messageId, [...(agitOf.get(a.messageId) ?? []), a]);
   }
   const agitCard = (a: AgitPostRecord) => (
-    <AgitCard key={a.id} post={a} assignees={agit?.assignees ?? []} />
+    <AgitCard key={a.id} post={a} assignees={agit?.assignees ?? []} account={agit?.account ?? { connected: false, expired: null }} />
   );
   const pendingMails = mailList.filter((m) => m.status === 'draft' || m.status === 'failed').length;
 
@@ -560,6 +560,7 @@ function Said({ message: m, team }: { message: AgentMessage; team: string }) {
     m.meta?.done?.length ? `할 일 ${m.meta.done.length}건 끝냄` : null,
     m.meta?.mails?.length ? `메일 초안 ${m.meta.mails.length}통` : null,
     m.meta?.agit?.length ? `아지트 글 초안 ${m.meta.agit.length}건` : null,
+    m.meta?.agitPublished?.length ? `아지트에 올리기 시작 ${m.meta.agitPublished.length}건` : null,
     m.meta?.directions?.length ? `목표 · 방향 ${m.meta.directions.length}건 고침` : null,
     m.meta?.duties?.length ? `업무 정의 ${m.meta.duties.length}건 고침` : null,
     m.meta?.memos?.length ? `메모 ${m.meta.memos.length}건 적음` : null,

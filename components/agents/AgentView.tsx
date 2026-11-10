@@ -136,7 +136,11 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
             connected={account !== null}
             week={detail.week}
             today={side.today}
-            agit={withAgit ? { posts: agitPosts, connected: agitHook?.connected ?? false, assignees: agitHook?.assignees ?? [] } : undefined}
+            agit={withAgit ? {
+              posts: agitPosts,
+              account: { connected: agitHook?.connected ?? false, expired: agitHook?.expired ?? null },
+              assignees: agitHook?.assignees ?? [],
+            } : undefined}
           />
         </div>
         {/*

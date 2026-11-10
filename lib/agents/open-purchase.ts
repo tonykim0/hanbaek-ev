@@ -12,8 +12,9 @@
  *   나가는 날이 되면 말하지 않는다 — 그때의 상신 알림은 소음이다.
  * 그날 나갈 배치(지급처 × 구분)와 합계를 같이 적는다 — 상신할 것이 그것이다. ★아지트 열린구매 글 초안을 같이 올린다★(한백 2026-11-08
  * 「정산담당 에이전트가 때가 되면 초안을 올려주고, 내가 승인하면 정산담당에이전트가 아지트에 글을 올리는 구조」 — lib/agit ·
- * lib/agents/remind-run): 이 말 밑에 카드가 서고 한백이 Claude Code 에 「올려」라고 하면 한백의 계정으로 올라간다(scripts/agit-post.ts —
- * 2026-11-09 봇에서 바꿨다) — 올리면 이 할 일이 저절로 끝난다
+ * lib/agents/remind-run): 이 말 밑에 카드가 서고 한백이 카드의 「승인하고 올리기」를 누르거나 정산 담당에게 「올려」라고 하면 콘솔이 한백의
+ * 아지트 계정으로 올린다(lib/agit/publish — 2026-11-10 「에이전트가 직접 하게끔 하고싶어」 · 11-09 의 Claude Code 길은 예비로 남았다) — 올리면
+ * 이 할 일이 저절로 끝난다
  * (store/agit finishAgitPost 가 이 열쇠로 찾는다). 글을 지을 수 없으면(지급 0건 · 지급처 미정) 그 까닭을 적는다.
  */
 import { REGULAR_PAY_DAYS, type Batch } from '@/lib/payout-board';
@@ -98,7 +99,7 @@ function agitLines(
   agit: readonly { kind: PayoutKind; blocked: string | null }[]
 ): string[] {
   const ok = agit.filter((a) => !a.blocked).map((a) => a.kind);
-  const say = `Claude Code 에 「${monthDay(due.payDate)} 열린구매 올려」라고 하면 그때 금액으로 다시 지어 한백 계정으로 올립니다.`;
+  const say = `「승인하고 올리기」를 누르거나 「${monthDay(due.payDate)} 열린구매 올려」라고 하시면 그때 금액으로 다시 지어 한백 아지트 계정으로 올립니다.`;
   const posted = ok.length === 0
     ? ''
     : ok.length === 1

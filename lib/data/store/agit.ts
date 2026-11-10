@@ -1,5 +1,5 @@
 /**
- * 아지트 열린구매 글 저장소 (migrations/0126) — 웹훅 연결 한 줄(과 요청 담당자)과 글(초안 · 올림).
+ * 아지트 열린구매 글 저장소 (migrations/0126 · 0130) — 연결 한 줄(한백의 아지트 계정 로그인과 요청 담당자)과 글(초안 · 올림).
  * (한백 2026-11-07 「콘솔에 있는 거래명세서 기반으로 여기에 자동적으로 글을 쓰게 하고싶어」 — 글을 짓는 것은 lib/agit/post)
  *
  * ★정산 담당이 초안을 올리고 한백이 승인하면 올린다★(한백 2026-11-08 「정산담당 에이전트가 때가 되면 초안을 올려주고, 내가 승인하면
@@ -7,8 +7,10 @@
  * 한백 2026-11-09 「seperate post … 영업위탁수수료 -> 시공비」): 다시 지으면(크론 · 담당의 agit_post · 올릴 때 금액이 바뀌었을 때) 같은 줄을
  * 지금 글로 고친다. 이미 올린 결제일 · 구분은 again 으로만 새 초안이 선다. 잠금도 결제일 · 구분마다다 — 영업비 글과 시공비 글은 서로 막지 않는다.
  *
- * ★웹훅 주소가 곧 열쇠다★ — 그 주소만 있으면 누구든 그 그룹에 글을 쓴다. 그래서 잠가 두고(lib/agents/secret-box — 메일 앱 비밀번호와
- * 같은 열쇠) 화면 · 응답 · 감사기록에 싣지 않는다. 풀어 쓰는 것은 올리는 그 순간(agitHookFor)뿐이다.
+ * ★한백의 아지트 로그인이 곧 열쇠다★(migrations/0130 — 한백 2026-11-10 「에이전트가 직접 하게끔 하고싶어」) — 그 쿠키만 있으면 한백의
+ * 이름으로 아지트에 글을 쓴다. 그래서 잠가 두고(lib/agents/secret-box — 메일 앱 비밀번호와 같은 열쇠) 화면 · 응답 · 감사기록에 싣지 않는다.
+ * 풀어 쓰는 것은 올리는 그 순간(agitSessionFor)뿐이다. 비밀번호는 여기 오지 않는다(라우트가 로그인에 한 번 쓰고 버린다 · lib/agit/agit-web).
+ * 11-08 의 웹훅(token)은 걷었다 — 칸은 남았고 읽는 곳이 없다.
  *
  * ★요청 담당자는 한 번 정해 둔다★(한백 2026-11-08 「아지트 글에서 담당자 설정도 필요해」 → 요청 글 담당자 칸 · 한 번 정해 두기) —
  * 아지트 ID 배열(assignees). ★연결과 따로다★(같은 날 「담당자는 미리 넣어둘수없나」) — 같은 줄에 두되 연결 전에도 넣고(token 이 빈 줄),
@@ -34,9 +36,10 @@ import { seal, unseal } from '@/lib/agents/secret-box';
 import { OPEN_PURCHASE_AGENT, openPurchaseKey } from '@/lib/agents/open-purchase';
 import { agentAuditKey, type AgentMessageMeta } from '@/types/agents';
 import {
-  AGIT_KINDS, AGIT_MAX_ASSIGNEES, AGIT_POST_STATUSES, agitAssigneesOf, agitKindOf, agitPostedSay, agitPostName, agitTitleOf, agitWebhookOf,
+  AGIT_KINDS, AGIT_MAX_ASSIGNEES, AGIT_POST_STATUSES, agitAssigneesOf, agitKindOf, agitPostedSay, agitPostName, agitTitleOf,
   badAgitIds, type AgitHookInfo, type AgitPostRecord, type AgitPostStatus,
 } from '@/lib/agit/post';
+import { agitLoginOf, agitSessionUntil, type AgitCookie } from '@/lib/agit/session';
 import type { PayoutKind } from '@/types/project';
 import type { ProjectRepository } from '../repository';
 import { assertAdmin, assertHanbaek } from './shared';
@@ -44,8 +47,11 @@ import { assertAdmin, assertHanbaek } from './shared';
 const HOOK_ID = 'agit';
 /** 감사기록의 칸 이름 */
 const AUDIT_FIELD = '아지트';
-/** 「올리는 중」이 이보다 오래면 멈춘 것으로 본다(보내기는 10초 안에 끝난다 — lib/agit/send) */
-const SENDING_STALE_MS = 2 * 60_000;
+/**
+ * 「올리는 중」이 이보다 오래면 멈춘 것으로 본다 — 서버가 올리는 일(첨부 zip 짓기 · 쓰는 칸 채우기 · 작성하기)은 한 함수 안에서 끝나고 그 함수는
+ * 300초까지 산다(app/api/agit/publish). 그보다 넉넉히 — 그 전에 다시 누르면 두 번 올라갈 수 있다
+ */
+const SENDING_STALE_MS = 6 * 60_000;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 /** 승인을 기다리는 줄 — 초안과 못 올린 것(다시 승인한다) */
 const OPEN: AgitPostStatus[] = ['draft', 'failed'];
@@ -75,18 +81,19 @@ function recordOf(row: Row): AgitPostRecord {
     agitUrl: row.agitUrl,
     createdAt: stampOf(row.createdAt),
     at: stampOf(row.status === 'draft' ? row.createdAt : row.postedAt ?? row.createdAt),
+    stalled: row.status === 'sending' && (!row.postedAt || row.postedAt.getTime() < Date.now() - SENDING_STALE_MS),
   };
 }
 
-const hookInfoOf = (row: typeof agitHooks.$inferSelect | undefined): AgitHookInfo => {
-  const connected = Boolean(row?.token);
-  return {
-    connected,
-    connectedBy: connected ? row?.connectedBy ?? null : null,
-    connectedAt: connected && row?.connectedAt ? stampOf(row.connectedAt) : null,
-    assignees: row?.assignees ?? [],
-  };
-};
+const hookInfoOf = (row: typeof agitHooks.$inferSelect | undefined): AgitHookInfo => ({
+  connected: Boolean(row?.session) && !row?.sessionError,
+  login: row?.sessionLogin ?? null,
+  connectedBy: row?.sessionLogin ? row.sessionBy ?? null : null,
+  connectedAt: row?.sessionLogin && row.sessionAt ? stampOf(row.sessionAt) : null,
+  until: row?.session && row.sessionUntil ? stampOf(row.sessionUntil).slice(0, 10) : null,
+  expired: row?.sessionError ?? null,
+  assignees: row?.assignees ?? [],
+});
 
 /** 결제일 · 구분 하나를 잠근다 — 초안 짓기 · 올리기가 같은 글에서 줄을 서게(영업비 글과 시공비 글은 서로 안 막는다) */
 const lockPost = (tx: Tx, payDate: string, kind: PayoutKind) =>
@@ -109,7 +116,7 @@ async function sendingOf(tx: Tx, payDate: string, kind: PayoutKind, except?: str
 
 export const agitStore: Pick<
   ProjectRepository,
-  | 'getAgitHook' | 'saveAgitHook' | 'saveAgitAssignees' | 'deleteAgitHook' | 'agitHookFor'
+  | 'getAgitHook' | 'saveAgitSession' | 'saveAgitAssignees' | 'deleteAgitSession' | 'agitSessionFor' | 'touchAgitSession' | 'expireAgitSession'
   | 'listAgitPosts' | 'getAgitPost' | 'openAgitPost' | 'openAgitPosts' | 'postedAgitKinds' | 'draftAgitPost' | 'linkAgitPosts'
   | 'claimAgitPost' | 'finishAgitPost'
 > = {
@@ -119,19 +126,20 @@ export const agitStore: Pick<
     return hookInfoOf(row);
   },
 
-  async saveAgitHook(input, actor): Promise<AgitHookInfo> {
+  async saveAgitSession(input, actor): Promise<AgitHookInfo> {
     assertAdmin(actor, '아지트 연결');
-    const url = agitWebhookOf(input.url);
-    if (!url) throw new Error('아지트 웹훅 주소가 아닙니다 — https://agit.io/webhook/… 를 그대로 붙여 넣어 주세요.');
-    const token = seal(url, getSecret());
+    const login = agitLoginOf(input.login);
+    if (!login) throw new Error('아지트 ID 나 이메일이 아닙니다.');
+    if (input.cookies.length === 0) throw new Error('아지트 로그인 쿠키가 없습니다 — 다시 연결해 주세요.');
+    const session = seal(JSON.stringify(input.cookies), getSecret());
+    const until = agitSessionUntil(input.cookies);
     await getDb().transaction(async (tx) => {
-      const [old] = await tx.select({ token: agitHooks.token }).from(agitHooks).where(eq(agitHooks.id, HOOK_ID)).for('update');
-      const at = new Date();
-      await tx.insert(agitHooks).values({ id: HOOK_ID, token, connectedBy: actor.name, connectedAt: at })
-        .onConflictDoUpdate({ target: agitHooks.id, set: { token, connectedBy: actor.name, connectedAt: at } });
-      /* 주소는 적지 않는다 — 감사기록을 읽는 사람이 그 그룹에 글을 쓸 수 있게 된다 */
+      const [old] = await tx.select({ login: agitHooks.sessionLogin }).from(agitHooks).where(eq(agitHooks.id, HOOK_ID)).for('update');
+      const set = { session, sessionLogin: login, sessionBy: actor.name, sessionAt: new Date(), sessionUntil: until, sessionError: null };
+      await tx.insert(agitHooks).values({ id: HOOK_ID, ...set }).onConflictDoUpdate({ target: agitHooks.id, set });
+      /* 쿠키는 적지 않는다 — 감사기록을 읽는 사람이 한백의 이름으로 아지트에 글을 쓰게 된다 */
       await writeAudit(tx, {
-        projectId: null, actor, action: '아지트 연결', field: AUDIT_FIELD, oldValue: old?.token ? '연결됨' : null, newValue: '웹훅 연결',
+        projectId: null, actor, action: '아지트 계정 연결', field: AUDIT_FIELD, oldValue: old?.login ?? null, newValue: login,
       });
     });
     return agitStore.getAgitHook(actor);
@@ -159,26 +167,55 @@ export const agitStore: Pick<
     return agitStore.getAgitHook(actor);
   },
 
-  async deleteAgitHook(actor): Promise<boolean> {
+  async deleteAgitSession(actor): Promise<boolean> {
     assertAdmin(actor, '아지트 연결');
     return getDb().transaction(async (tx) => {
-      /* 주소만 비운다 — 요청 담당은 남는다(다시 연결하면 그대로 쓴다) */
-      const gone = await tx.update(agitHooks).set({ token: null, connectedBy: null, connectedAt: null })
-        .where(and(eq(agitHooks.id, HOOK_ID), isNotNull(agitHooks.token))).returning({ id: agitHooks.id });
+      /* 로그인만 비운다 — 요청 담당은 남는다(다시 연결하면 그대로 쓴다) */
+      const gone = await tx.update(agitHooks)
+        .set({ session: null, sessionLogin: null, sessionBy: null, sessionAt: null, sessionUntil: null, sessionError: null })
+        .where(and(eq(agitHooks.id, HOOK_ID), isNotNull(agitHooks.sessionLogin))).returning({ login: agitHooks.sessionLogin });
       if (!gone.length) return false;
-      await writeAudit(tx, { projectId: null, actor, action: '아지트 연결 끊음', field: AUDIT_FIELD, oldValue: '연결됨', newValue: null });
+      await writeAudit(tx, {
+        projectId: null, actor, action: '아지트 연결 끊음', field: AUDIT_FIELD, oldValue: gone[0].login, newValue: null,
+      });
       return true;
     });
   },
 
-  async agitHookFor(actor): Promise<{ url: string; assignees: string[] }> {
+  async agitSessionFor(actor): Promise<{ cookies: AgitCookie[]; login: string; at: Date }> {
     assertAdmin(actor, '아지트 올리기');
-    const [row] = await getDb().select({ token: agitHooks.token, assignees: agitHooks.assignees }).from(agitHooks)
-      .where(eq(agitHooks.id, HOOK_ID)).limit(1);
-    if (!row?.token) throw new Error('아지트 미연결 — 정산 담당 화면의 「아지트 연결」에서 웹훅 주소를 넣어 주세요.');
-    const url = unseal(row.token, getSecret());
-    if (!url) throw new Error('아지트 연결을 풀 수 없습니다(서버 열쇠가 바뀜) — 다시 연결해 주세요.');
-    return { url, assignees: row.assignees ?? [] };
+    const [row] = await getDb().select().from(agitHooks).where(eq(agitHooks.id, HOOK_ID)).limit(1);
+    if (row?.sessionError) throw new Error(`${row.sessionError}`);
+    if (!row?.session || !row.sessionLogin || !row.sessionAt) {
+      throw new Error('아지트 계정 연결 전 — 정산 담당 화면의 「아지트 계정」에서 한백의 아지트 계정을 연결해 주세요.');
+    }
+    const plain = unseal(row.session, getSecret());
+    const cookies = plain ? (JSON.parse(plain) as AgitCookie[]) : null;
+    if (!cookies?.length) throw new Error('아지트 연결을 풀 수 없습니다(서버 열쇠가 바뀜) — 「아지트 계정」에서 다시 연결해 주세요.');
+    return { cookies, login: row.sessionLogin, at: row.sessionAt };
+  },
+
+  async touchAgitSession(input, actor): Promise<void> {
+    assertAdmin(actor, '아지트 올리기');
+    if (input.cookies.length === 0) return;
+    /* 그사이 다시 연결했으면(새 로그인) 덮지 않는다 — 읽은 연결(at)일 때만 */
+    await getDb().update(agitHooks)
+      .set({ session: seal(JSON.stringify(input.cookies), getSecret()), sessionUntil: agitSessionUntil(input.cookies) })
+      .where(and(eq(agitHooks.id, HOOK_ID), eq(agitHooks.sessionAt, input.at), isNull(agitHooks.sessionError)));
+  },
+
+  async expireAgitSession(input, actor): Promise<void> {
+    assertAdmin(actor, '아지트 올리기');
+    await getDb().transaction(async (tx) => {
+      /* 풀린 쿠키는 버린다 — 누가 연결했는지는 남겨 「다시 연결」로 보인다 */
+      const gone = await tx.update(agitHooks).set({ session: null, sessionUntil: null, sessionError: input.why.slice(0, 300) })
+        .where(and(eq(agitHooks.id, HOOK_ID), eq(agitHooks.sessionAt, input.at), isNull(agitHooks.sessionError)))
+        .returning({ login: agitHooks.sessionLogin });
+      if (!gone.length) return;
+      await writeAudit(tx, {
+        projectId: null, actor, action: '아지트 로그인 풀림', field: AUDIT_FIELD, oldValue: gone[0].login, newValue: input.why.slice(0, 300),
+      });
+    });
   },
 
   async listAgitPosts(actor, messageIds): Promise<AgitPostRecord[]> {
