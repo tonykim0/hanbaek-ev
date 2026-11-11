@@ -229,7 +229,7 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
     setList((l) => [...l, r.message]);
     // 이미 있던 초안(같은 양식 초안을 그대로 둔 것)은 이 답 밑으로 옮겨 온다 — 같은 카드가 둘 서지 않게 id 로 갈아 끼운다
     if (r.mails.length) setMailList((l) => [...l.filter((m) => !r.mails.some((x) => x.id === m.id)), ...r.mails]);
-    router.refresh(); // 에이전트가 할 일을 적었을 수 있다 — 오른쪽 할 일과 머리말을 다시 그린다
+    router.refresh(); // 에이전트가 할 일 · 업무 정의 · 메모를 적었을 수 있다 — 머리말(지금 하는 일)과 오른쪽을 다시 그린다
   }
 
   /* 초안 하나가 바뀌면(보냄 · 고침 · 버림) 그 자리만 갈고, 머리말의 승인 대기 셈을 다시 그린다 */

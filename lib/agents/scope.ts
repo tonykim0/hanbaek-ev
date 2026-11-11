@@ -24,15 +24,13 @@ export interface AgentSide {
   headline(agent: Agent): AgentHeadline;
   /** 조직도의 부서 칸(운영사 담당 · 사업자 담당)의 한 줄 */
   dept(counterparts: Agent[]): AgentHeadline;
-  /** 할 일에 고를 현장 — 전기차 운영사 담당만(그 운영사의 진행 중 현장). 태양광 현장은 할 일에 붙일 자리가 아직 없다 */
-  taskSites(agent: Agent): Array<{ id: string; label: string }>;
 }
 
 export async function loadAgentSide(biz: Biz, actor: Actor): Promise<AgentSide> {
   if (biz === 'solar') {
     const data = await loadSolarScope(actor);
     /* 사업자 담당 부서는 셀 것이 없다 — 현장이 어느 사업자의 것인지 콘솔이 모른다(lib/agents/solar-brief) */
-    return { today: data.today, headline: (a) => solarHeadlineOf(a, data), dept: () => ({ counts: [] }), taskSites: () => [] };
+    return { today: data.today, headline: (a) => solarHeadlineOf(a, data), dept: () => ({ counts: [] }) };
   }
   const data = await loadScope(actor);
   return {
@@ -51,11 +49,6 @@ export async function loadAgentSide(biz: Biz, actor: Actor): Promise<AgentSide> 
         ],
       };
     },
-    taskSites: (a) => (a.kind === 'operator' && a.cpo
-      ? siteLinesOf(data.projects, a.cpo).live
-        .map((s) => ({ id: s.id, label: `${s.no} ${s.name}` }))
-        .sort((x, y) => x.label.localeCompare(y.label, 'ko'))
-      : []),
   };
 }
 

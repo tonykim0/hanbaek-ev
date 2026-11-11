@@ -11,8 +11,6 @@ import { HeadlineCounts } from '@/components/agents/HeadlineCounts';
 import { AgentRoom } from '@/components/agents/AgentRoom';
 import { AgentDuties } from '@/components/agents/AgentDuties';
 import { AgentMemos } from '@/components/agents/AgentMemos';
-import { AgentDirections } from '@/components/agents/AgentDirections';
-import { AgentTasks } from '@/components/agents/AgentTasks';
 import { AgentWeeks } from '@/components/agents/AgentWeeks';
 import { AgentMark } from '@/components/agents/kit';
 import { MailAccount } from '@/components/agents/MailAccount';
@@ -23,8 +21,8 @@ import { roleLineOf, stateOf } from '@/components/agents/status';
 import { NowLine, StateBadge } from '@/components/agents/AgentState';
 
 /**
- * 담당 하나 [한백 관리자] — 왼쪽은 대화(지시 · 기록 · 에이전트의 답 · 넘긴 파일이 로그처럼 남는다), 오른쪽은 할 일 ·
- * 업무 정의 · 목표 · 방향 · 주간 기록. 주간 기록에서 한 주를 고르면(?week=그 주 월요일) 왼쪽이 그 주의 말과 일로 바뀐다.
+ * 담당 하나 [한백 관리자] — 왼쪽은 대화(지시 · 기록 · 에이전트의 답 · 넘긴 파일이 로그처럼 남는다), 오른쪽은 업무 정의 ·
+ * 메모 · 주간 기록. 주간 기록에서 한 주를 고르면(?week=그 주 월요일) 왼쪽이 그 주의 말과 일로 바뀐다.
  * (한백 지시 2026-11-02 「각 운영사별로 해야 할 업무들과 각 담당자와의 커뮤니케이션을 기록해야해 · 그 업무들에 대한 정의도
  * 내가 담당자별로 지정할거야」 · 「주단위로 뭐했는지도 과거 이력 조회」 · 「파일업로드 기능도」 — 모양은 components/agents/kit)
  * 담당이 올린 메일 초안은 대화의 그 답 밑에 서고 한백이 승인해야 나간다 — 보내는 메일(한백의 다음 메일)은 머리말 밑 한 줄이다(MailAccount).
@@ -33,9 +31,12 @@ import { NowLine, StateBadge } from '@/components/agents/AgentState';
  * 사업마다의 팀 화면 밑에 선다(/admin/agents/[id] 전기차 · /solar/agents/[id] 태양광 — 2026-11-04). 다른 사업의 주소로 열면 제
  * 사업의 주소로 보낸다(알림 줄 · 옛 링크가 사업을 모르고 열어도 제 틀 · 제 팀으로 간다).
  *
- * ★팀에서의 자리★(한백 2026-11-04 「전략 및 기획담당이 팀장이고 그 운영사/사업자 담당자는 실무자들이야」) — 머리말에 팀장 · 실무자,
- * 오른쪽에 팀 목표 · 방향: 팀장은 고치고, 실무자는 읽기만 한다(그 실무자가 부를 때마다 읽는 것 — 팀장 화면으로 가는 고리).
+ * ★팀에서의 자리★(한백 2026-11-04 「전략 및 기획담당이 팀장이고 그 운영사/사업자 담당자는 실무자들이야」) — 머리말에 팀장 · 실무자.
  * 머리말의 상태 배지 · 지금 하는 일은 현황의 그 줄과 같은 판정이다(components/agents/status · AgentState).
+ *
+ * ★오른쪽에 할 일 · 목표 · 방향 · 팀 공용 메모를 두지 않는다★(한백 2026-11-11 「에이전트에서 할일, 목표 방향 팀 공용메모, 지워줘.
+ * 업무정의는 위로 올려주고」) — 화면에서만 뺐다. 담당은 그대로 할 일을 적고(열린구매 상신 · 양식 메일 — 맨 앞의 것이 머리말
+ * 「지금 하는 일」에 선다) 목표 · 방향과 팀 공용 메모를 읽고 적는다. 목표 · 방향은 팀 현황 표 밑에서 고친다(AgentsTeam).
  */
 export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week: string | null }) {
   const page = `${BIZ_AGENTS[biz]}/${id}`;
@@ -52,9 +53,8 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
   /* redirect 는 던져서 멈춘다 — 위 try 밖에서 */
   if (agent.biz !== biz) redirect(`${BIZ_AGENTS[agent.biz]}/${agent.id}${week ? `?week=${encodeURIComponent(week)}` : ''}`);
   const home = `${BIZ_AGENTS[agent.biz]}/${agent.id}`;
-  const [side, account, team, memos] = await Promise.all([
-    loadAgentSide(biz, actor), getRepository().getMailAccount(actor, biz), getRepository().agentTeam(actor, biz),
-    getRepository().agentMemos(actor, agent.id),
+  const [side, account, memos] = await Promise.all([
+    loadAgentSide(biz, actor), getRepository().getMailAccount(actor, biz), getRepository().agentMemos(actor, agent.id),
   ]);
   /* 아지트 열린구매 글 — 전기차 정산 담당만. 실린 말 밑의 초안과 연결 · 요청 담당 */
   const withAgit = agent.id === OPEN_PURCHASE_AGENT && agent.biz === 'ev';
@@ -146,24 +146,12 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
           />
         </div>
         {/*
-          오른쪽은 손이 자주 가는 차례다(2026-11-05 「뒤죽박죽」): 할 일 → 업무 정의 → 팀 목표 · 방향(세 줄까지, 펼치기) → 메모 → 주간 기록.
-          그전에는 주간 기록 밑에 목표 · 방향 전문이 길게 서서 할 일이 화면 밖으로 밀렸다.
+          오른쪽은 업무 정의가 맨 위다 → 메모 → 주간 기록(2026-11-11 — 할 일 · 목표 · 방향 · 팀 공용 메모를 뺐다, 머리말 주석).
         */}
         <div className="flex flex-col gap-4">
-          {/* 할 일에 고를 현장 — 전기차 운영사 담당은 그 운영사의 진행 중인 현장만. 태양광은 아직 없다(loadAgentSide) */}
-          <AgentTasks agentId={agent.id} agentName={agent.name} tasks={detail.tasks} sites={side.taskSites(agent)} today={side.today} />
           <AgentDuties agentId={agent.id} duties={detail.duties} />
-          {/* 팀 목표 · 방향 — 팀장은 고치고, 실무자는 읽기만(팀장 화면으로 가는 고리) */}
-          {team.lead && (
-            <AgentDirections
-              leadId={team.lead.id}
-              directions={team.directions}
-              leadLink={lead ? undefined : { href: `${BIZ_AGENTS[biz]}/${team.lead.id}`, name: team.lead.name }}
-              clamp
-            />
-          )}
           {/* 메모장 — 담당이 대화 중에 적고 한백이 고친다. 담당은 제목만 늘 읽고 내용은 그때그때 꺼내 쓴다 */}
-          <AgentMemos agentId={agent.id} memos={memos} />
+          <AgentMemos agentId={agent.id} memos={memos.mine} />
           <AgentWeeks home={home} weeks={detail.weeks} selected={detail.week?.start ?? null} today={side.today} />
         </div>
       </div>
