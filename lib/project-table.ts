@@ -19,6 +19,11 @@ import type { XlsxCell, XlsxColumn } from '@/lib/xlsx-write';
  */
 export const PICKABLE = [
   { key: 'stage', label: '단계', attr: 'col', group: '기본' },
+  /*
+   * 진행단계 — 단계 안에서 실제로 어디까지 왔나(한백 2026-11-11 「계약관리 시공관리 표에 진행단계도 표시해줘」 → 「단계 안의
+   * 세부 진행」). 아래 progressOf. 두 페이지 다 기본으로 선다 — 옛 「열」 저장의 seen 에 없어 페이지 기본을 따른다(restoreHidden).
+   */
+  { key: 'progress', label: '진행단계', attr: 'progress', group: '기본' },
   { key: 'qty', label: '대수', group: '기본' },
   { key: 'term', label: '계약연수', attr: 'term', group: '기본' },
   { key: 'cpo', label: '운영사', attr: 'cpo', group: '기본' },
@@ -85,7 +90,7 @@ export type TableTab = 'intake' | 'construction';
  * 고르기는 기본·영업·시공으로 묶어 보이고, 표는 운영사 옆에 영업 속성을, 끝에 접수일을 둔다.
  */
 export const TABLE_ORDER: readonly ColKey[] = [
-  'stage', 'qty', 'term', 'cpo', 'queue', 'biz', 'bldg', 'powerIn', 'sales', 'gc',
+  'stage', 'progress', 'qty', 'term', 'cpo', 'queue', 'biz', 'bldg', 'powerIn', 'sales', 'gc',
   'envApproval', 'notify', 'notifyCert', 'chargerOrder', 'chargerRecv', 'preStart', 'start', 'foundation',
   'chargerInstall', 'install', 'elecApply', 'safetyCheck', 'kepcoLine', 'meter', 'useInspectApply', 'comm', 'completion',
   'created',
@@ -128,7 +133,7 @@ export function restoreHidden(saved: unknown, defaults: readonly ColKey[]): Set<
   return hidden;
 }
 
-export type SortKey = 'name' | 'stage' | 'qty' | 'term' | 'created';
+export type SortKey = 'name' | 'stage' | 'progress' | 'qty' | 'term' | 'created';
 
 const COLUMN_ORDER = new Map(BOARD_COLUMNS.map((c, i) => [c.key, i]));
 export const qtyOf = (p: ProjectSummary): number => p.lines.reduce((s, l) => s + l.qty, 0);
@@ -150,6 +155,8 @@ export function sortProjects(projects: ProjectSummary[], sort: SortKey, desc: bo
     switch (sort) {
       case 'name': return p.name;
       case 'stage': return COLUMN_ORDER.get(boardColumnOf(p)) ?? 0;
+      // 일의 차례 → 같은 일이면 그 날(먼저 한 현장이 앞) — 「착공 단계 중 어디까지」를 줄 세운다
+      case 'progress': return progressRankOf(p);
       case 'qty': return qtyOf(p);
       case 'term': return maxTermOf(p);
       case 'created': return p.createdAt;
@@ -186,6 +193,8 @@ export interface DateCol {
   field?: TableDateField;
   /** 칸의 온 이름 — 달력의 읽는 이름 · 엑셀 머리(엑셀에는 칸 모양이 없어 날짜인지 이름이 말한다) */
   name: string;
+  /** 진행단계에서 부르는 일 이름 — 없으면 열 이름(labelOf). 열 이름이 일 이름이 아닌 둘(「환경부 승인일」 · 「준공서류」)만 적는다 */
+  step?: string;
   date: (p: ProjectSummary) => string | null;
   /** 완료 선언 — 날짜 옆 ✓ · 날짜 없이 선언만 있으면 엑셀에 「완료」 */
   done?: (p: ProjectSummary) => boolean;
@@ -204,7 +213,10 @@ const noKepco = (p: ProjectSummary) => !hasKepcoWork(p.powerType);
  */
 export const DATE_COLS: Partial<Record<ColKey, DateCol>> = {
   /* 날짜 열마다 정의가 있다 — 빠지면 그 열의 필터(presenceOf)가 설 자리가 없다. satisfies 가 컴파일 때 본다 */
-  envApproval: { field: 'envApprovalDate', name: '환경부 승인일', date: (p) => m(p).envApprovalDate, na: (p) => !subsidized(p.bizType) },
+  envApproval: {
+    field: 'envApprovalDate', name: '환경부 승인일', step: '환경부 승인', date: (p) => m(p).envApprovalDate,
+    na: (p) => !subsidized(p.bizType),
+  },
   notify: { field: 'notifyDate', name: '행위신고 신청일', date: (p) => m(p).notifyDate, na: (p) => m(p).notifySkipped },
   notifyCert: {
     field: 'notifyCertDate', name: '행위신고 완료일', date: (p) => m(p).notifyCertDate,
@@ -228,7 +240,7 @@ export const DATE_COLS: Partial<Record<ColKey, DateCol>> = {
   meter: { field: 'meterDate', name: '계량기 부설일', date: (p) => m(p).meterDate, na: noKepco },
   useInspectApply: { field: 'useInspectApplyDate', name: '지자체 사용검사 신청일', date: (p) => m(p).useInspectApplyDate },
   comm: { field: 'openDate', name: '개통완료일', date: (p) => m(p).openDate, done: (p) => m(p).openDone },
-  completion: { name: '준공서류 제출일', date: (p) => m(p).completionSubmitAt },
+  completion: { name: '준공서류 제출일', step: '준공서류 제출', date: (p) => m(p).completionSubmitAt },
 } satisfies Record<MilestoneKey, DateCol>;
 
 /** 날짜 열의 차례 — 표가 이 차례로 그린다 */
@@ -254,6 +266,47 @@ export function presenceOf(key: MilestoneKey, p: ProjectSummary): Presence {
   const col = DATE_COLS[key]!; // 날짜 열마다 정의가 있다(위 satisfies)
   if (col.na?.(p)) return '해당없음';
   return col.date(p) || col.done?.(p) ? '있음' : '없음';
+}
+
+/** 진행단계의 일 이름 — 날짜 열의 차례 그대로다(필터 값의 차례도 이것) */
+const stepOf = (key: MilestoneKey): string => DATE_COLS[key]!.step ?? labelOf(key);
+export const PROGRESS_STEPS: readonly string[] = DATE_KEYS.map(stepOf);
+
+export interface Progress {
+  key: MilestoneKey;
+  /** 일 이름 — 「충전기·캐노피 설치」 */
+  step: string;
+  /** 그 일의 날 — 날짜 없이 완료(✓)만 찍힌 옛 칸이면 null */
+  date: string | null;
+}
+
+/**
+ * 진행단계 — 단계 안에서 실제로 어디까지 왔나(한백 2026-11-11 「계약관리 시공관리 표에 진행단계도 표시해줘」 → 「단계 안의
+ * 세부 진행」). 단계(보드 칸)는 「착공」 하나인데 그 안에 기초 · 배관/배선 → 충전기 · 캐노피 설치 → 설치완료가 있다 — 날짜 열을
+ * 다 펴야 보이던 것을 한 칸에 둔다.
+ *
+ * ★일이 일어나는 차례(DATE_KEYS)에서 가장 뒤의 적힌 일이다 — 적은 날이 가장 늦은 일이 아니다★: 충전기를 받은 뒤에 행위신고
+ * 완료일을 적었다고 진행이 뒤로 가지 않는다. 적혔는지는 날짜 열의 필터와 같은 판정이다(presenceOf — 날짜 없이 완료 ✓ 만 찍힌
+ * 옛 칸도 지난 일, 해당없음은 건너뛴다). 아무것도 안 적혔으면 null — 표는 「—」(아직 올 때가 아님 · 화면 규칙 10).
+ * 계약 국면의 현장은 대개 null 이다 — 그 국면의 진행은 단계(계약접수 → 계약검토 → …)가 이미 말한다.
+ */
+export function progressOf(p: ProjectSummary): Progress | null {
+  for (let i = DATE_KEYS.length - 1; i >= 0; i--) {
+    const key = DATE_KEYS[i];
+    if (presenceOf(key, p) === '있음') return { key, step: stepOf(key), date: DATE_COLS[key]!.date(p) };
+  }
+  return null;
+}
+
+/**
+ * 진행단계로 줄 세우는 수 — 일의 차례가 앞자리, 같은 일이면 그 날(20261103)이 뒷자리. 아무것도 없으면 0(맨 앞) ·
+ * 날짜 없이 완료만 찍힌 옛 칸은 그 일의 맨 앞. 글자로 견주지 않는다 — 한국어 정렬 규칙이 기호를 어떻게 볼지 기대지 않게.
+ */
+function progressRankOf(p: ProjectSummary): number {
+  const g = progressOf(p);
+  if (!g) return 0;
+  const day = g.date ? Number(g.date.slice(0, 10).replace(/-/g, '')) || 0 : 0;
+  return (DATE_KEYS.indexOf(g.key) + 1) * 1e8 + day;
 }
 
 /**
@@ -310,17 +363,29 @@ export function tableSheet(
 ): { columns: XlsxColumn[]; rows: XlsxCell[][] } {
   const keys = TABLE_ORDER.filter((k) => !hidden.has(k));
   const label = new Map<ColKey, string>(PICKABLE.map((c) => [c.key, c.label]));
+  /*
+   * 진행단계는 엑셀에서 둘로 가른다 — 일 이름과 그 날. 화면은 한 칸에 둘을 쓰지만, 엑셀에서 한 칸이면 「충전기 수령」으로
+   * 거르지도 날짜로 줄 세우지도 못한다(현장 칸을 셋으로 가르는 것과 같은 까닭).
+   */
   const columns: XlsxColumn[] = [
     { header: '현장명' },
     { header: '관리번호' },
     { header: '주소' },
-    ...keys.map((k) => ({ header: DATE_COLS[k]?.name ?? label.get(k) ?? k })),
+    ...keys.flatMap((k) =>
+      k === 'progress'
+        ? [{ header: '진행단계' }, { header: '진행단계일' }]
+        : [{ header: DATE_COLS[k]?.name ?? label.get(k) ?? k }]
+    ),
   ];
   const rows = projects.map((p) => [
     p.name,
     p.mgmtNo ?? p.id,
     p.addr ?? null,
-    ...keys.map((k) => cellOf(p, k, tab)),
+    ...keys.flatMap((k): XlsxCell[] => {
+      if (k !== 'progress') return [cellOf(p, k, tab)];
+      const g = progressOf(p);
+      return [g?.step ?? null, g?.date ? { date: g.date } : null];
+    }),
   ]);
   return { columns, rows };
 }

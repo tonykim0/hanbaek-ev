@@ -30,8 +30,8 @@ import {
 } from '@/lib/board';
 import type { AttrFilters, AttrKey } from '@/lib/project-filter';
 import {
-  DATE_COLS, DATE_KEYS, DEFAULT_HIDDEN, filterAttrOf, labelOf, PICK_GROUPS, PICKABLE, qtyOf, restoreHidden, sortProjects,
-  tableSheet, termsOf, type ColKey, type SortKey, type TableDateField, type TableTab,
+  DATE_COLS, DATE_KEYS, DEFAULT_HIDDEN, filterAttrOf, labelOf, PICK_GROUPS, PICKABLE, progressOf, qtyOf, restoreHidden,
+  sortProjects, tableSheet, termsOf, type ColKey, type SortKey, type TableDateField, type TableTab,
 } from '@/lib/project-table';
 import { today } from '@/lib/date';
 import { Badge, Blank, Btn, Err, Tag } from '@/components/ui';
@@ -121,6 +121,9 @@ const PIN_EDGE = 'shadow-[inset_-1px_0_0_theme(colors.slate.200)]';
 const PIN_HEAD = `sticky left-0 z-20 bg-slate-50 ${PIN_EDGE}`;
 const PIN_CELL = `sticky left-0 z-[1] bg-white group-hover:bg-brand-50 ${PIN_EDGE}`;
 const PIN_FOOT = `sticky left-0 z-[1] bg-slate-50 ${PIN_EDGE}`;
+
+/** 합계 줄에서 대수 열 앞에 서는 열 — 빈 칸으로 자리를 맞춘다(TABLE_ORDER 의 대수 앞) */
+const LEAD: readonly ColKey[] = ['stage', 'progress'];
 
 export default function ProjectTable({
   projects, canMove, onMove, busyId, filters, options, onFilter, tab, columns, sort: sorting, viewer,
@@ -214,6 +217,7 @@ export default function ProjectTable({
             <tr>
               {head('현장', { sort: 'name', left: true, pin: true })}
               {show('stage') && head('단계', { sort: 'stage', attr: 'col' })}
+              {show('progress') && head('진행단계', { sort: 'progress', attr: 'progress' })}
               {show('qty') && head('대수', { sort: 'qty' })}
               {show('term') && head('계약연수', { sort: 'term', attr: 'term' })}
               {show('cpo') && head('운영사', { attr: 'cpo' })}
@@ -267,6 +271,7 @@ export default function ProjectTable({
                       <StageCell p={p} col={col} canMove={canMove} onMove={onMove} busy={busy} construction={tab === 'construction'} />
                     </td>
                   )}
+                  {show('progress') && <ProgressCell p={p} />}
                   {show('qty') && (
                     <td className="px-3 py-2.5 font-bold tabular-nums text-slate-700">
                       {qtyOf(p)}
@@ -331,15 +336,16 @@ export default function ProjectTable({
                   <> · <span className="tabular-nums">{units.toLocaleString('ko-KR')}</span>대</>
                 )}
               </td>
-              {show('stage') && <td />}
+              {/* 대수 열 앞의 열(단계 · 진행단계)은 빈 칸으로 자리를 맞추고, 대수 뒤는 한 칸으로 묶는다 */}
+              {LEAD.filter(show).map((k) => <td key={k} />)}
               {show('qty') && (
                 <td className="px-3 py-2.5 font-bold tabular-nums text-slate-900">
                   {units.toLocaleString('ko-KR')}
                   <span className="ml-1 text-tiny font-normal text-slate-500">대</span>
                 </td>
               )}
-              {shown - (show('stage') ? 1 : 0) - (show('qty') ? 1 : 0) > 0 && (
-                <td colSpan={shown - (show('stage') ? 1 : 0) - (show('qty') ? 1 : 0)} />
+              {shown - LEAD.filter(show).length - (show('qty') ? 1 : 0) > 0 && (
+                <td colSpan={shown - LEAD.filter(show).length - (show('qty') ? 1 : 0)} />
               )}
             </tr>
           </tfoot>
@@ -615,6 +621,30 @@ function StageCell({
       </select>
     </>
   );
+}
+
+/**
+ * 진행단계 칸 — 단계 안에서 실제로 어디까지 왔나(lib/project-table progressOf · 한백 2026-11-11 「진행단계도 표시해줘」).
+ * 일 이름과 그 날. 날짜 없이 완료(✓)만 찍힌 옛 칸은 이름만이다. 아무것도 안 적혔으면 「—」 — 다른 빈 칸과 같은 모양(Cell).
+ * 손을 얹으면 칸의 온 이름과 날이 뜬다.
+ */
+function ProgressCell({ p }: { p: ProjectSummary }) {
+  const g = progressOf(p);
+  if (!g) return <Cell value={null} />;
+  return (
+    <td
+      className="whitespace-nowrap px-3 py-2.5"
+      title={g.date ? `${DATE_COLS[g.key]!.name} ${g.date}` : `${g.step} — 완료 확인됨`}
+    >
+      <span className="font-semibold text-slate-700">{g.step}</span>
+      {g.date && <span className="ml-1.5 tabular-nums text-slate-500">{shortDay(g.date)}</span>}
+    </td>
+  );
+}
+
+/** 올해의 날은 월-일만(줄이 짧다) — 다른 해는 다 적는다(지난해 현장이 섞여도 헷갈리지 않게) */
+function shortDay(day: string): string {
+  return day.slice(0, 4) === today().slice(0, 4) ? day.slice(5, 10) : day.slice(0, 10);
 }
 
 /** 그 칸을 적을 수 있나 — 시공사는 한백 전용 칸(환경부 승인일·충전기 발주일)을 못 적는다. 상세와 같은 목록이고 저장소가 다시 본다 */
