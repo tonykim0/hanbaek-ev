@@ -635,7 +635,7 @@ export interface ProjectRepository {
   saveAgitAssignees(input: { assignees: string }, actor: Actor): Promise<AgitHookInfo>;
   /**
    * 위탁운영수수료를 받는 플러그링크의 계좌(lib/agit/fee — 그 글의 엑셀에 적는다) — 은행 · 계좌 · 예금주. null 이면 지운다. 틀리면 사람 말로
-   * 던진다. 감사기록에는 계좌 끝 넉 자리만
+   * 던진다. 감사기록에는 계좌 끝 넉 자리만. ★화면 · API 가 없다★ — 고정값이라 Claude Code 의 스크립트만 부른다(한백 2026-11-11)
    */
   saveAgitFeePayee(input: { bank?: unknown; account?: unknown; holder?: unknown } | null, actor: Actor): Promise<AgitHookInfo>;
   /** 끊기 — 로그인만 비운다(요청 담당은 남는다). 연결한 적이 없으면 false */

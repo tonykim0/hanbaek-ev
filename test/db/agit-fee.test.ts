@@ -110,22 +110,21 @@ async function settled(id: string) {
 }
 
 describe('플러그링크 위탁운영수수료 글 (한백 2026-11-10 「세금계산서를 올려주고 너가 나머지를 처리」)', () => {
-  it('플러그링크 계좌 — 관리자만 · 은행 · 계좌 · 예금주를 다 받는다 · 감사기록엔 끝 넉 자리 · 지울 수 있다', async () => {
-    await signIn(USERS.viewer);
-    expect((await call(patchHook, { body: { feePayee: { bank: '우리', account: '1002000000009', holder: '주식회사 플러그링크' } } })).status).toBe(403);
+  it('플러그링크 계좌 — 화면 · API 없이 DB 에만(고정값) · 관리자만 · 은행 · 계좌 · 예금주를 다 받는다 · 감사기록엔 끝 넉 자리 · 지울 수 있다', async () => {
+    /* 담당자 PATCH 는 계좌를 안 받는다 — 한백 11-11 「이건 UI에 안넣고 그냥 DB에 넣어서 고정으로」 */
     await signIn(USERS.admin);
-    expect((await call(patchHook, { body: { feePayee: { bank: '우리', account: '12', holder: 'x' } } })).status).toBe(422);
-    expect((await call(patchHook, { body: { feePayee: 'x' } })).status).toBe(400);
-    const set = await call(patchHook, { body: { feePayee: { bank: '우리', account: '1002-000-000009', holder: '주식회사 플러그링크' } } });
-    expect(set.status).toBe(200);
-    const payeeOf = (r: typeof set) => (r.json as { hook?: { feePayee?: unknown } } | undefined)?.hook?.feePayee;
-    expect(payeeOf(set)).toEqual({ bank: '우리은행', account: '1002000000009', holder: '주식회사 플러그링크' });
+    expect((await call(patchHook, { body: { feePayee: { bank: '우리', account: '1002000000009', holder: '주식회사 플러그링크' } } })).status).toBe(400);
+    expect((await repo.getAgitHook(admin)).feePayee).toBeNull();
+    const viewer = { id: 'viewer', name: '열람', role: 'viewer' as const, org: null };
+    await expect(repo.saveAgitFeePayee({ bank: '우리', account: '1002000000009', holder: '주식회사 플러그링크' }, viewer)).rejects.toThrow();
+    await expect(repo.saveAgitFeePayee({ bank: '우리', account: '12', holder: 'x' }, admin)).rejects.toThrow('8~16자리');
+    const set = await repo.saveAgitFeePayee({ bank: '우리', account: '1002-000-000009', holder: '주식회사 플러그링크' }, admin);
+    expect(set.feePayee).toEqual({ bank: '우리은행', account: '1002000000009', holder: '주식회사 플러그링크' });
     const audit = await getDb().select({ newValue: auditLog.newValue }).from(auditLog)
       .where(and(eq(auditLog.action, '플러그링크 계좌'), gte(auditLog.at, started)));
     expect(audit.map((a) => a.newValue)).toContain('우리은행 ****0009 · 주식회사 플러그링크');
     expect(JSON.stringify(audit)).not.toContain('1002000000009');
-    const cleared = await call(patchHook, { body: { feePayee: null } });
-    expect(payeeOf(cleared)).toBeNull();
+    expect((await repo.saveAgitFeePayee(null, admin)).feePayee).toBeNull();
   });
 
   it('세금계산서로 짓는 초안 → 계좌 없으면 시작 안 함 → 승인 → 긴급구매요청으로 올림 · 대화에 한 줄 · zip · 다시는 again', async () => {

@@ -222,12 +222,15 @@ export function feeInDateOf(raw: unknown): string | null {
 
 /* ── 받는 곳(플러그링크 계좌) ── */
 
-/** 받는 곳이 비었을 때의 말 — 올리기 · 첨부 받기가 던진다(카드의 단추 이름은 「플러그링크 계좌 미지정 — 올릴 수 없음」) */
-export const FEE_PAYEE_MISSING = '플러그링크 계좌 미지정 — 정산 담당 화면 머리말의 「플러그링크 계좌」에서 넣어 주세요.';
+/**
+ * 받는 곳이 비었을 때의 말 — 올리기 · 첨부 받기가 던진다(카드의 단추 이름은 「플러그링크 계좌 미지정 — 올릴 수 없음」). 계좌는 고정값이라 화면이
+ * 없다 — Claude Code 가 DB 에 넣는다(한백 2026-11-11 「이건 UI에 안넣고 그냥 DB에 넣어서 고정으로」)
+ */
+export const FEE_PAYEE_MISSING = '플러그링크 계좌 미지정 — 콘솔 DB 에 고정값이 없습니다. Claude Code 에 넣어 달라고 해 주세요.';
 
 /**
- * 화면에서 넣은 받는 곳 — 은행은 목록의 이름으로(「우리」 → 우리은행) · 계좌는 숫자만 · 예금주는 그대로. 틀리면 사람 말로 던진다.
- * ★값은 화면(DB)에만 — 저장소가 공개라 코드 · 마이그레이션에 적지 않는다★
+ * 받는 곳 — 은행은 목록의 이름으로(「우리」 → 우리은행) · 계좌는 숫자만 · 예금주는 그대로. 틀리면 사람 말로 던진다.
+ * ★값은 DB 에만 — 저장소가 공개라 코드 · 마이그레이션에 적지 않는다★ · 화면 · API 도 없다(고정값 — 바뀌면 Claude Code 가 고친다)
  */
 export function agitFeePayeeOf(raw: { bank?: unknown; account?: unknown; holder?: unknown }): AgitFeePayee {
   const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '');

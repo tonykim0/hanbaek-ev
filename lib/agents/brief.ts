@@ -171,7 +171,7 @@ export function agitLines(agit: NonNullable<ScopeData['agit']>): string[] {
   const out = [
     `[아지트 열린구매 글 — 지금 콘솔의 초안 · 올린 글(결제일 ${agit.from} 이후, 안 올린 것은 다). 올렸는지 · 금액은 지난 대화가 아니라 이것으로 말한다]`,
     `아지트 계정 ${state} · 요청 담당 ${a.assignees.length ? `${a.assignees.length}명` : '미지정 — 올릴 수 없음'}`
-      + ` · 플러그링크 계좌(위탁운영수수료 글) ${a.feePayee ? '있음' : '미지정 — 위탁운영수수료 글을 올릴 수 없음'}`,
+      + ` · 플러그링크 계좌(위탁운영수수료 글 · 고정값) ${a.feePayee ? '있음' : '미지정 — 위탁운영수수료 글을 올릴 수 없음(Claude Code 가 넣는다)'}`,
   ];
   if (agit.posts.length === 0) out.push('- 없음');
   for (const p of agit.posts) {

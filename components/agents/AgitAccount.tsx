@@ -14,7 +14,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { assigneesLabel, type AgitHookInfo } from '@/lib/agit/post';
-import { formatAccountNo } from '@/lib/bank-account';
 import { Btn, Err, FIELD_BASE, Tag, TEXT } from '@/components/ui';
 
 async function send(url: string, method: 'PUT' | 'PATCH' | 'DELETE', body?: unknown): Promise<string | null> {
@@ -169,89 +168,11 @@ function AssigneeRow({ hook }: { hook: AgitHookInfo }) {
   );
 }
 
-/**
- * 플러그링크 계좌 — 위탁운영수수료 글의 엑셀(구매요청간소화)에 적는 받는 곳(lib/agit/fee · 한백 2026-11-10). 플러그링크는 콘솔 계정이 없어
- * 협력사 정보에 계좌가 없다 — 여기 한 번 넣어 둔다. 비면 위탁운영수수료 글의 카드가 「플러그링크 계좌 미지정」을 말한다. 지우기도 여기(규칙 7)
- */
-function FeePayeeRow({ hook }: { hook: AgitHookInfo }) {
-  const router = useRouter();
-  const [open, setOpen] = useState(false);
-  const [bank, setBank] = useState('');
-  const [account, setAccount] = useState('');
-  const [holder, setHolder] = useState('');
-  const [busy, setBusy] = useState<null | 'save' | 'clear'>(null);
-  const [error, setError] = useState<string | null>(null);
-  const payee = hook.feePayee;
-
-  async function save(feePayee: { bank: string; account: string; holder: string } | null) {
-    setBusy(feePayee ? 'save' : 'clear');
-    setError(null);
-    const err = await send('/api/agit/hook', 'PATCH', { feePayee });
-    setBusy(null);
-    if (err) return setError(err);
-    setOpen(false);
-    router.refresh();
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-      <span className={TEXT.label}>플러그링크 계좌</span>
-      {open ? (
-        <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); void save({ bank, account, holder }); }}>
-          <input value={bank} onChange={(e) => setBank(e.target.value)} placeholder="은행" autoComplete="off" autoFocus className={`${FIELD_BASE} w-28`} />
-          <input
-            value={account}
-            onChange={(e) => setAccount(e.target.value)}
-            placeholder="계좌번호"
-            inputMode="numeric"
-            autoComplete="off"
-            className={`${FIELD_BASE} w-44`}
-          />
-          <input value={holder} onChange={(e) => setHolder(e.target.value)} placeholder="예금주" autoComplete="off" className={`${FIELD_BASE} w-44`} />
-          <Btn size="sm" type="submit" busy={busy === 'save'} busyLabel="저장 중…" disabled={busy !== null}>저장</Btn>
-          <Btn size="sm" kind="quiet" disabled={busy !== null} onClick={() => { setOpen(false); setError(null); }}>취소</Btn>
-          {payee && (
-            <Btn size="sm" kind="undo" busy={busy === 'clear'} busyLabel="지우는 중…" disabled={busy !== null} onClick={() => void save(null)}>
-              지우기
-            </Btn>
-          )}
-        </form>
-      ) : (
-        <>
-          {payee ? (
-            <span className="text-small font-bold text-slate-800 tabular-nums">
-              {payee.bank} {formatAccountNo(payee.bank, payee.account)} · {payee.holder}
-            </span>
-          ) : (
-            <Tag tone="warn">미지정</Tag>
-          )}
-          <span className={TEXT.meta}>위탁운영수수료 글</span>
-          <Btn
-            size="sm"
-            kind={payee ? 'quiet' : 'side'}
-            onClick={() => {
-              setBank(payee?.bank ?? '');
-              setAccount(payee?.account ?? '');
-              setHolder(payee?.holder ?? '');
-              setError(null);
-              setOpen(true);
-            }}
-          >
-            {payee ? '바꾸기' : '계좌 넣기'}
-          </Btn>
-        </>
-      )}
-      <Err>{error}</Err>
-    </div>
-  );
-}
-
 export function AgitAccount({ hook }: { hook: AgitHookInfo }) {
   return (
     <div className="flex flex-col gap-1.5">
       <AccountRow hook={hook} />
       <AssigneeRow hook={hook} />
-      <FeePayeeRow hook={hook} />
     </div>
   );
 }

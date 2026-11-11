@@ -918,7 +918,10 @@ export const agitHooks = pgTable('agit_hooks', {
   sessionAt: timestamp('session_at', { withTimezone: true }),
   sessionUntil: timestamp('session_until', { withTimezone: true }),
   sessionError: text('session_error'),
-  /** 위탁운영수수료를 받는 플러그링크의 계좌(migrations/0131 · lib/agit/fee) — 은행 · 계좌(숫자만) · 예금주. 화면에서 한백이 넣는다 */
+  /**
+   * 위탁운영수수료를 받는 플러그링크의 계좌(migrations/0131 · lib/agit/fee) — 은행 · 계좌(숫자만) · 예금주. 고정값이라 화면 없이 Claude Code 가
+   * 넣는다(한백 2026-11-11 「UI에 안넣고 그냥 DB에 넣어서 고정으로」 · 저장소에는 값을 적지 않는다)
+   */
   feePayee: jsonb('fee_payee').$type<AgitFeePayee>(),
 });
 
