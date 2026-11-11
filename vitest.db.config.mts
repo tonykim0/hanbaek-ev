@@ -23,7 +23,11 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['test/db/setup.ts'],
     fileParallelism: false,
-    testTimeout: 30_000,
+    /*
+     * 한 시험이 개발 DB 를 수백 번 오간다(왕복 30~40ms) — 2026-11-10 혼자 돌려 잰 것: agit-posts 「긴급 글」 69초 · 「못 올렸으면」 43초,
+     * payout-integrity L10 36초. 30초에서는 망이 조금만 느려도 멀쩡한 시험이 시간 초과로 빨갰다. 진짜 멈춤은 120초에서도 잡힌다
+     */
+    testTimeout: 120_000,
     hookTimeout: 60_000,
   },
 });
