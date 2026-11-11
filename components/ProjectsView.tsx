@@ -19,9 +19,10 @@ import { FIELD, Note, PANEL } from '@/components/ui';
 import type { ProcessStatus, ProjectSummary } from '@/types/project';
 import { type BoardColumn } from '@/lib/board';
 import {
-  ATTR_BY_KEY, ATTRS, countActive, optionsOf, panelAttrKeys, passesAttrs,
+  ATTR_BY_KEY, ATTRS, countActive, optionsOf, panelAttrKeys, passesAttrs, valueLabelOf,
   type AttrFilters, type AttrKey,
 } from '@/lib/project-filter';
+import type { TableTab } from '@/lib/project-table';
 import { ALL_YEARS, businessYearsOf, inBusinessYear } from '@/lib/business-year';
 import ProjectBoard from './ProjectBoard';
 import type { Role } from '@/lib/roles';
@@ -112,6 +113,8 @@ export default function ProjectsView({
   org: string | null;
 }) {
   const sp = useSearchParams();
+  /** 이 페이지의 표 열쇠 — 열 · 엑셀 · 표, 그리고 필터 값의 이름(시공관리의 「환경부 승인 대기」)이 같이 본다 */
+  const tab: TableTab = band === '계약' ? 'intake' : 'construction';
 
   const [view, setView] = useState<ViewKey>(() => (sp.get('view') === 'table' ? 'table' : 'board'));
   const [q, setQ] = useState(() => sp.get('q') ?? '');
@@ -164,7 +167,7 @@ export default function ProjectsView({
     restored.current = true;
   }, [band, urlHadFilters]);
   /*
-   * 판에 펼 축 — 정해 둔 다섯(사업유형·운영사·전력인입·영업사·시공사)에, 표의 열 머리글에서 걸어 둔
+   * 판에 펼 축 — 정해 둔 여섯(단계·사업유형·운영사·전력인입·영업사·시공사)에, 표의 열 머리글에서 걸어 둔
    * 나머지 축이 있으면 그것도 같이 편다. 걸려 있는데 판에 없으면 푸는 자리가 없다.
    */
   const panelKeys = useMemo(() => panelAttrKeys(attrs), [attrs]);
@@ -318,7 +321,7 @@ export default function ProjectsView({
   const viewer = useMemo(() => ({ role, org }), [role, org]);
 
   /* 열 상태 — 「열」 단추(필터 줄)와 표가 같이 본다. 숨긴 열의 필터를 푸는 일이 있어 여기가 주인이다 */
-  const columns = useTableColumns(band === '계약' ? 'intake' : 'construction', attrs, setAttr);
+  const columns = useTableColumns(tab, attrs, setAttr);
   /* 정렬도 여기가 쥔다 — 「엑셀 받기」가 화면과 같은 차례로 낸다 */
   const sort = useTableSort();
 
@@ -433,7 +436,7 @@ export default function ProjectsView({
             projects={filtered}
             columns={columns}
             sort={sort}
-            tab={band === '계약' ? 'intake' : 'construction'}
+            tab={tab}
             fileBase={band === '계약' ? '계약관리' : '시공관리'}
           />
         )}
@@ -452,7 +455,7 @@ export default function ProjectsView({
               <Group
                 key={key}
                 label={attr.label}
-                options={options[key].map((v) => ({ value: v, label: v }))}
+                options={options[key].map((v) => ({ value: v, label: valueLabelOf(key, v, tab) }))}
                 picked={attrs[key] ?? []}
                 onToggle={(v) => setAttr(key, toggle(attrs[key] ?? [], v))}
               />
@@ -487,7 +490,7 @@ export default function ProjectsView({
           filters={attrs}
           options={options}
           onFilter={setAttr}
-          tab={band === '계약' ? 'intake' : 'construction'}
+          tab={tab}
           columns={columns}
           sort={sort}
           viewer={viewer}

@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  ATTR_BY_KEY, ATTRS, countActive, optionsOf, panelAttrKeys, passesAttrs, restStartOf, type AttrFilters,
+  ATTR_BY_KEY, ATTRS, countActive, optionsOf, panelAttrKeys, passesAttrs, restStartOf, valueLabelOf, type AttrFilters,
 } from '@/lib/project-filter';
 import {
   DATE_COLS, DATE_KEYS, filterAttrOf, labelOf, MILESTONE_KEYS, PICKABLE, presenceOf, tableSheet, type MilestoneKey,
@@ -183,6 +183,37 @@ describe('겹쳐 좁히기', () => {
     expect(countActive(filters)).toBe(2);
     expect(panelAttrKeys(filters)).toContain('start');
     expect(panelAttrKeys({})).not.toContain('start');
+  });
+});
+
+describe('단계 — 필터 판의 맨 앞 축 (2026-11-11 「필터에 현재 단계 추가 해줘」)', () => {
+  it('판에 늘 선다 · 맨 앞 — 보드 보기에는 머리글 ▾ 가 없어 판이 거는 자리다', () => {
+    expect(panelAttrKeys({})[0]).toBe('col');
+    expect(ATTR_BY_KEY.get('col')?.label).toBe('단계');
+    // 걸려 있어도 한 번만 선다
+    expect(panelAttrKeys({ col: ['착공'] }).filter((k) => k === 'col')).toHaveLength(1);
+  });
+
+  it('지금 서 있는 칸으로 거른다 — 최근 완료가 아니다', () => {
+    // 착공 칸에 서 있지만 적힌 날짜는 충전기 수령까지 — 단계 「착공」에 걸리고 「충전기 수령」에는 안 걸린다
+    const p = site({ status: '착공' }, { chargerRecvDate: '2026-03-25' });
+    expect(passesAttrs(p, { col: ['착공'] })).toBe(true);
+    expect(passesAttrs(p, { col: ['충전기 수령'] })).toBe(false);
+  });
+
+  it('값은 보드 칸의 차례 — 가나다가 아니다', () => {
+    const list = (['준공완료', '행위신고', '착공'] as const).map((status, i) => site({ id: `s${i}`, status }));
+    expect(optionsOf(list, 'col')).toEqual(['행위신고', '착공', '준공완료']);
+  });
+
+  it('시공관리에서는 맞물리는 칸이 보드와 같은 이름 — 거르는 값(주소 · 저장분)은 칸 열쇠 그대로', () => {
+    expect(valueLabelOf('col', '운영사 계약서 제출', 'construction')).toBe('환경부 승인 대기');
+    expect(valueLabelOf('col', '운영사 계약서 제출', 'intake')).toBe('운영사 계약서 제출');
+    expect(valueLabelOf('col', '착공', 'construction')).toBe('착공');
+    // 다른 축의 값은 그대로다
+    expect(valueLabelOf('cpo', '나이스인프라', 'construction')).toBe('나이스인프라');
+    const p = site({ status: '운영사 계약서 제출' });
+    expect(passesAttrs(p, { col: ['운영사 계약서 제출'] })).toBe(true);
   });
 });
 

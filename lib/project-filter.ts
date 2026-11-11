@@ -9,15 +9,15 @@
  * 값이 없는 현장(운영사 미지정 등)도 걸러야 한다 — 「수전방식이 안 적힌 현장만 보기」가
  * 실제로 필요한 질문이다. 그래서 빈 값에도 이름을 준다(EMPTY).
  */
-import type { ProjectSummary } from '@/types/project';
+import type { ProcessStatus, ProjectSummary } from '@/types/project';
 import { subsidized } from '@/types/project';
-import { BOARD_COLUMNS, boardColumnOf } from './board';
+import { BOARD_COLUMNS, boardColumnOf, constructionLabelOf } from './board';
 /*
  * 날짜 열의 정의(무슨 값 · 언제 해당없음)는 표가 쥔다 — 날짜 축 · 최근 완료 축은 그것을 그대로 읽는다.
  * ★project-table 은 이 파일에서 타입만 가져간다★ — 값까지 서로 부르면 모듈이 서로를 기다려 ATTRS 를 짓다가 깨진다.
  */
 import {
-  DATE_COLS, DATE_KEYS, labelOf, PRESENCE, presenceOf, LAST_DONE_STEPS, lastDoneOf, type MilestoneKey,
+  DATE_COLS, DATE_KEYS, labelOf, PRESENCE, presenceOf, LAST_DONE_STEPS, lastDoneOf, type MilestoneKey, type TableTab,
 } from './project-table';
 
 /** 값이 비어 있는 현장을 고르는 이름. 실제 값과 겹치지 않게 괄호를 쓴다. */
@@ -145,23 +145,27 @@ export const ATTRS: Attr[] = [
 export const ATTR_BY_KEY = new Map(ATTRS.map((a) => [a.key, a]));
 
 /**
- * 필터 판에 펴 두는 축 — 다섯이다(한백 지시 2026-08-26 넷 · 2026-11-06 전력인입을 더했다 「보드랑 필터표에 전력인입도」).
- * 적은 순서대로 나온다.
+ * 필터 판에 펴 두는 축 — 여섯이다(한백 지시 2026-08-26 넷 · 2026-11-06 전력인입을 더했다 「보드랑 필터표에 전력인입도」 ·
+ * 2026-11-11 단계를 더했다 「필터에 현재 단계 추가 해줘」). 적은 순서대로 나온다.
  *
- * 어떤 사업이고, 누구 운영사이고, ★누가 영업했고 누가 짓는가★. 업체는 계약관리·시공관리
+ * ★단계가 맨 앞이다★ — 지금 서 있는 보드 칸(최근 완료가 아니다 — 같은 날 둘을 그렇게 갈랐다). 표의 머리글 ▾ 에만 있어서
+ * 보드 보기에서는 걸 자리가 없었다. 값은 보드 칸의 차례로 서고(ATTRS 의 order), 시공관리에서는 보드와 같은 이름이다(valueLabelOf).
+ * 보드에서 걸면 고르지 않은 칸이 빈 채로 선다 — 건수 줄이 「N건 / 전체」로 걸린 것을 말한다.
+ *
+ * 그다음은 어떤 사업이고, 누구 운영사이고, ★누가 영업했고 누가 짓는가★. 업체는 계약관리·시공관리
  * 양쪽에서 묻는다 — 계약은 영업사가 서류를 모으고 시공은 시공사가 도는데, 어느 쪽이든
  * 「이 업체 현장이 지금 어디까지 왔나」가 보드에서 물어야 할 질문이다.
  * 두 국면이 같은 판을 쓴다: 페이지마다 필터가 다르면 옮겨 다닐 때마다 다시 익혀야 한다.
  *
  * ★ATTRS 를 줄이지 않는다.★ 표의 열 머리글에서도 같은 축을 거는데(ProjectTable),
  * 거기서 걸 수 있는 것은 열이 있는 만큼이다 — 축을 지우면 그쪽에서도 사라진다.
- * 나머지 축(단계 · 최근 완료 · 계약연수 · 건축물 · 대기번호 · 날짜 열마다의 있음/없음/해당없음)은 열 머리글에 남는다.
+ * 나머지 축(최근 완료 · 계약연수 · 건축물 · 대기번호 · 날짜 열마다의 있음/없음/해당없음)은 열 머리글에 남는다.
  * 거기서 걸어 둔 것은 판에도 나온다 — 걸려 있는데 보이지 않는 조건을 두지 않는다
  * (푸는 자리가 없으면 왜 이것만 나오는지 알 수 없다).
  */
-export const PANEL_ATTR_KEYS: AttrKey[] = ['biz', 'cpo', 'power', 'sales', 'gc'];
+export const PANEL_ATTR_KEYS: AttrKey[] = ['col', 'biz', 'cpo', 'power', 'sales', 'gc'];
 
-/** 판에 그릴 축 — 정해 둔 다섯 + 지금 걸려 있는 나머지 */
+/** 판에 그릴 축 — 정해 둔 여섯 + 지금 걸려 있는 나머지 */
 export function panelAttrKeys(filters: AttrFilters): AttrKey[] {
   const extra = ATTRS
     .map((a) => a.key)
@@ -196,6 +200,16 @@ export function optionsOf(projects: ProjectSummary[], key: AttrKey): string[] {
     if (b === EMPTY) return -1;
     return byName(a, b);
   });
+}
+
+/**
+ * 고르는 값의 보이는 이름 — 거르는 값(주소 열쇠 · 저장분)은 그대로 두고 이름만 바꾼다. 필터 판과 표 머리글 ▾ 가 같이 쓴다.
+ *
+ * 시공관리의 단계는 맞물리는 칸을 「환경부 승인 대기」로 부른다(lib/board constructionLabelOf) — 보드 · 표의 단계 칸이 그
+ * 이름인데 필터만 「운영사 계약서 제출」이면 둘이 다른 칸처럼 읽힌다(표의 칸은 감사 L3 에서 맞췄고 머리글 ▾ 는 남아 있었다).
+ */
+export function valueLabelOf(key: AttrKey, value: string, tab: TableTab): string {
+  return key === 'col' && tab === 'construction' ? constructionLabelOf(value as ProcessStatus) : value;
 }
 
 /**

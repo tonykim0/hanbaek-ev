@@ -28,7 +28,7 @@ import { DatePicker } from '@/components/DatePicker';
 import {
   BAND_TONE, bandOfColumn, boardColumnOf, constructionLabelOf, type BoardColumn,
 } from '@/lib/board';
-import { restStartOf, type AttrFilters, type AttrKey } from '@/lib/project-filter';
+import { restStartOf, valueLabelOf, type AttrFilters, type AttrKey } from '@/lib/project-filter';
 import {
   DATE_COLS, DATE_KEYS, DEFAULT_HIDDEN, filterAttrOf, labelOf, PICK_GROUPS, PICKABLE, lastDoneOf, qtyOf, restoreHidden,
   sortProjects, tableSheet, termsOf, type ColKey, type SortKey, type TableDateField, type TableTab,
@@ -243,6 +243,7 @@ export default function ProjectTable({
           {attr && (
             <ColumnFilter
               attr={attr}
+              tab={tab}
               label={label}
               options={options[attr] ?? []}
               picked={filters[attr] ?? []}
@@ -834,9 +835,11 @@ function Cell({ value }: { value: string | null }) {
  * 고를 수 있는 값은 지금 화면에 있는 것뿐이라, 걸어도 0건이 되는 값은 목록에 없다.
  */
 function ColumnFilter({
-  attr, label, options, picked, onChange,
+  attr, tab, label, options, picked, onChange,
 }: {
   attr: AttrKey;
+  /** 값의 이름을 가른다 — 시공관리의 단계는 보드와 같은 「환경부 승인 대기」(valueLabelOf · 필터 판과 같은 이름) */
+  tab: TableTab;
   label: string;
   options: string[];
   picked: string[];
@@ -852,7 +855,7 @@ function ColumnFilter({
     <CheckMenu
       label={label}
       trigger="chip"
-      options={options.map((v) => ({ value: v, label: v }))}
+      options={options.map((v) => ({ value: v, label: valueLabelOf(attr, v, tab) }))}
       picked={picked}
       onChange={onChange}
       sepAt={restStartOf(attr, options)}
