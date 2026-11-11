@@ -202,6 +202,8 @@ export function requestNameOf(payDate: string, kinds: readonly PayoutKind[]) {
   return {
     /** 「26년 10월」 — 일한 달 */
     month,
+    /** 일한 달의 숫자(1~12) — 엑셀의 「해당 청구 月」(lib/agit/purchase-xlsx M5) */
+    monthNo: wm,
     /** 「1차」 · 「2차」 · 정기결제가 아니면 null */
     round,
     /** 「영업위탁 수수료」 · 「시공비」 · 「영업위탁 수수료 및 시공비」 */

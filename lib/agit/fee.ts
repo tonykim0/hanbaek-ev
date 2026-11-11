@@ -26,7 +26,8 @@
  */
 import { won } from '@/lib/format';
 import { today } from '@/lib/date';
-import { businessDayOnOrBefore, WEEKDAYS, weekdayOf } from '@/lib/business-days';
+import { businessDayOnOrBefore, businessDaysBefore, dayLabel, WEEKDAYS, weekdayOf } from '@/lib/business-days';
+import type { RemindPlan } from '@/lib/agents/open-purchase';
 import { formatAccountNo, isValidAccountNo, matchBankName, normalizeAccountNo } from '@/lib/bank-account';
 import {
   AGIT_CC, AGIT_FEE_KIND, AGIT_IMAGE_ALT, AGIT_IMAGE_SLOT, AGIT_URGENT_TAG, safeName, type AgitFeePayee, type AgitPostText,
@@ -140,6 +141,63 @@ export function agitFeePostOf(payDate: string, input: AgitFeeInput): AgitPostTex
     `cc ${AGIT_CC}`,
   ].join('\n');
   return { payDate, kind: AGIT_FEE_KIND, title, text, total: fee.supply, batches: 1, urgent: FEE_URGENT_REASON, blocked: null };
+}
+
+/* ── 말일 상신 알림 ── (한백 2026-11-11 말일 며칠 전 「세금계산서를 넘겨 주세요」 알림 — 「yes」) */
+
+/** 상신 기한 — 지급일의 몇 영업일 전(열린구매 상신 알림과 같은 3영업일 — lib/agents/open-purchase) */
+export const FEE_REMIND_LEAD = 3;
+
+export interface FeeRemindDue {
+  /** 지급 요청일 — 이번 달 말일(쉬는 날이면 앞 영업일) */
+  payDate: string;
+  /** 몇 월분 — 지난달 'YYYY-MM' */
+  month: string;
+  round: number;
+  /** 상신 기한 — 지급일의 3영업일 전 */
+  deadline: string;
+}
+
+/** 알림 하나의 열쇠 — 같은 지급일은 한 번(store/agents agentRemind) · 아지트에 올리면 그 할 일이 끝난다(store/agit finishAgitPost) */
+export const feeRemindKey = (payDate: string): string => `pluglink-fee:${payDate}`;
+
+/**
+ * 오늘 알릴 위탁운영수수료 — 이번 달 말일에 나가는 지난달분. 기한이 왔고(기한 ≤ 오늘) 아직 지급일 전(오늘 < 지급일)일 때만 — 기한 날 아침에
+ * 한 번, 그날을 놓쳤으면 지급일 전까지 늦게라도 한 번(열린구매 상신 알림과 같은 규칙). 6월분(2차) 앞은 없다.
+ */
+export function feeRemindDue(today: string): FeeRemindDue | null {
+  const [y, m] = ymOf(today.slice(0, 7));
+  const month = m === 1 ? `${y - 1}-12` : `${y}-${pad(m - 1)}`;
+  if (feeRoundOf(month) < 2) return null;
+  const payDate = feePayDateOf(month);
+  const deadline = businessDaysBefore(payDate, FEE_REMIND_LEAD);
+  return deadline <= today && today < payDate ? { payDate, month, round: feeRoundOf(month), deadline } : null;
+}
+
+/** 그날 남길 것 — 할 일 · 대화의 말 · 알림(lib/agents/remind-run → store/agents agentRemind). 모델을 부르지 않는다 */
+export function feeRemindPlan(due: FeeRemindDue, today: string): RemindPlan {
+  const [, m, d] = due.payDate.split('-').map(Number);
+  const title = `${AGIT_FEE_KIND} 상신 — ${m}월 ${d}일 (${feeMonthName(due.month)} · ${due.round}차)`;
+  const what = `${dayLabel(due.payDate)} 플러그링크 ${AGIT_FEE_KIND} ${due.round}차(${feeMonthName(due.month)}) 지급`;
+  const late = today > due.deadline;
+  return {
+    key: feeRemindKey(due.payDate),
+    task: { title, note: '세금계산서 두 장(위탁운영수수료 · 충전매출)을 정산 담당 대화에', due: due.deadline },
+    say: [
+      late
+        ? `${what} — 상신 기한(${dayLabel(due.deadline)})이 지났습니다. 세금계산서가 왔으면 바로 넘겨 주세요.`
+        : `${what} — 오늘이 상신 기한입니다(${FEE_REMIND_LEAD}영업일 전).`,
+      '플러그링크가 보낸 위탁운영수수료 세금계산서와 한백이 끊은 충전매출 세금계산서를 이 대화에 넘겨 주세요 — 금액은 콘솔이 읽어 '
+        + '긴급구매요청 초안을 짓습니다. 충전매출 입금 예정일도 알려 주시면 글에 넣습니다.',
+      '아지트에 올리면 이 할 일이 저절로 끝납니다.',
+    ].join('\n'),
+    alarm: {
+      title,
+      body: late
+        ? `기한 ${dayLabel(due.deadline)} 지남 — 세금계산서가 왔으면 정산 담당에게`
+        : `오늘 ${dayLabel(due.deadline)}까지 — 세금계산서 두 장을 정산 담당에게`,
+    },
+  };
 }
 
 /* ── 세금계산서 두 장 가르기 ── */
@@ -274,6 +332,8 @@ export function agitFeeBundleOf(payDate: string, input: AgitFeeInput, payee: Agi
       content: AGIT_FEE_KIND,
       year: Number(payDate.slice(0, 4)),
       madeOn,
+      /* 해당 청구 月 — 몇 월분(한백의 5차 엑셀도 9월분에 9) · 한백 2026-11-11 「actual month」 */
+      month: m,
       rows: [{
         content: `${yy}년 ${m}월분 ${AGIT_FEE_KIND}`,
         org: FEE_PAYEE,

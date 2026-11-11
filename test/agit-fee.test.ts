@@ -8,9 +8,11 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import JSZip from 'jszip';
 import {
-  agitFeeBundleOf, agitFeePayeeOf, agitFeePostOf, feeInDateOf, feeInvoicesOf, feeMonthName, feePayDateOf, feePayeeLabel, feeRoundOf,
-  FEE_URGENT_REASON, type AgitFeeInput, type TaxInvoiceRead,
+  agitFeeBundleOf, agitFeePayeeOf, agitFeePostOf, feeInDateOf, feeInvoicesOf, feeMonthName, feePayDateOf, feePayeeLabel, feeRemindDue,
+  feeRemindKey, feeRemindPlan, feeRoundOf, FEE_URGENT_REASON, type AgitFeeInput, type TaxInvoiceRead,
 } from '@/lib/agit/fee';
+import { agitBundleOf } from '@/lib/agit/bundle';
+import type { AgitBatch } from '@/lib/agit/post';
 import { taxInvoiceReadOf } from '@/lib/agit/fee-read';
 import { AGIT_CC, AGIT_FEE_KIND, AGIT_URGENT_TAG, agitKindOf, agitPostedSay, agitPostName, agitTemplateOf, agitTitleOf } from '@/lib/agit/post';
 import { agitEditorDocOf, CC_MARK, gapMarkOf, IMG_MARK } from '@/lib/agit/editor-doc';
@@ -171,6 +173,44 @@ describe('세금계산서 두 장 가르기', () => {
   });
 });
 
+describe('말일 상신 알림 (한백 2026-11-11 「yes」)', () => {
+  it('이번 달 말일 지급(지난달분)의 3영업일 전부터 지급일 전까지 · 6월분(2차)부터', () => {
+    expect(feeRemindDue('2026-11-24')).toBeNull();
+    expect(feeRemindDue('2026-11-25')).toEqual({ payDate: '2026-11-30', month: '2026-10', round: 6, deadline: '2026-11-25' });
+    expect(feeRemindDue('2026-11-27')?.payDate).toBe('2026-11-30');     // 늦었어도 지급일 전까지
+    expect(feeRemindDue('2026-11-30')).toBeNull();                        // 지급일에는 말하지 않는다
+    expect(feeRemindDue('2026-12-28')).toMatchObject({ payDate: '2026-12-31', month: '2026-11', round: 7 });
+    expect(feeRemindDue('2027-01-26')).toMatchObject({ payDate: '2027-01-29', month: '2026-12', round: 8 });   // 1-31 일요일
+    expect(feeRemindDue('2026-06-26')).toBeNull();                        // 5월분은 1차 묶음이었다
+  });
+
+  it('할 일 · 대화 · 알림 — 기한 날과 늦은 날', () => {
+    const due = feeRemindDue('2026-11-25')!;
+    const plan = feeRemindPlan(due, '2026-11-25');
+    expect(plan.key).toBe(feeRemindKey('2026-11-30'));
+    expect(plan.task).toEqual({
+      title: '위탁운영수수료 상신 — 11월 30일 (26년 10월분 · 6차)', note: '세금계산서 두 장(위탁운영수수료 · 충전매출)을 정산 담당 대화에',
+      due: '2026-11-25',
+    });
+    expect(plan.say.split('\n')[0]).toBe('11월 30일(월) 플러그링크 위탁운영수수료 6차(26년 10월분) 지급 — 오늘이 상신 기한입니다(3영업일 전).');
+    expect(plan.say).toContain('세금계산서를 이 대화에 넘겨 주세요');
+    expect(plan.alarm).toEqual({ title: plan.task.title, body: '오늘 11월 25일(수)까지 — 세금계산서 두 장을 정산 담당에게' });
+    const late = feeRemindPlan(due, '2026-11-27');
+    expect(late.say).toContain('상신 기한(11월 25일(수))이 지났습니다');
+    expect(late.alarm.body).toBe('기한 11월 25일(수) 지남 — 세금계산서가 왔으면 정산 담당에게');
+  });
+});
+
+describe('엑셀의 해당 청구 月 (한백 2026-11-11 「actual month」)', () => {
+  it('열린구매 글은 일한 달 — 11/10 결제는 10 · 1/10 결제는 12', () => {
+    const batch: AgitBatch = {
+      org: '에코일렉', kind: '영업비', total: 1_000_000, invoice: false, lines: [{ projectId: 'p', label: '1차', amount: 1_000_000, qty: 1 }],
+    };
+    expect(agitBundleOf('2026-11-10', [batch], () => undefined).sheet.month).toBe(10);
+    expect(agitBundleOf('2027-01-10', [batch], () => undefined).sheet.month).toBe(12);
+  });
+});
+
 describe('플러그링크 계좌 · 첨부', () => {
   const payee = agitFeePayeeOf({ bank: '우리', account: '1002-123-456789', holder: ' 주식회사  플러그링크 ' });
 
@@ -197,6 +237,9 @@ describe('플러그링크 계좌 · 첨부', () => {
     const xlsx = await JSZip.loadAsync(await purchaseXlsx(plan.sheet, TEMPLATE));
     const sheet = await xlsx.file('xl/worksheets/sheet1.xml')!.async('string');
     const cell = (ref: string) => new RegExp(`<c r="${ref}"[^>]*?(?:/>|>[\\s\\S]*?</c>)`).exec(sheet)?.[0] ?? '';
+    /* 해당 청구 月 — 9월분이면 9(틀에 남았던 4 가 아니다) */
+    expect(plan.sheet.month).toBe(9);
+    expect(cell('M5')).toContain('<v>9</v>');
     expect(cell('G8')).not.toContain('<f>');
     expect(cell('G8')).toContain('<v>1234567</v>');
     expect(cell('H8')).toContain('<v>13580245</v>');

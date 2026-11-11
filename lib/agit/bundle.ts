@@ -65,6 +65,8 @@ export function agitBundleOf(
       content: ` 전기차 충전 인프라 구축사업 ${tight}`,
       year: Number(payDate.slice(0, 4)),
       madeOn,
+      /* 해당 청구 月 — 일한 달(공사명의 「26년 10월」) · 한백 2026-11-11 「actual month」 */
+      month: name.monthNo,
       rows: sorted.map((b) => {
         const payee = payeeOf(b.org);
         return {

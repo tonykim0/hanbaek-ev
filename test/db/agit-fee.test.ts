@@ -9,7 +9,7 @@
  * ★세금계산서 판독 · 아지트 · 서버 브라우저는 가짜다★ — 금액 · 계좌 · 쿠키는 지어낸 것이다(실제 값은 공개 저장소에 적지 않는다).
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { and, eq, gte, like } from 'drizzle-orm';
+import { and, eq, gte, like, sql } from 'drizzle-orm';
 import JSZip from 'jszip';
 import { PATCH as patchHook } from '@/app/api/agit/hook/route';
 import { POST as publishRoute } from '@/app/api/agit/publish/route';
@@ -17,9 +17,11 @@ import { GET as findRoute } from '@/app/api/agit/posts/route';
 import { GET as getFiles } from '@/app/api/agit/posts/[id]/files/route';
 import { getRepository } from '@/lib/data';
 import { getDb } from '@/lib/db/client';
-import { agentMessages, agitHooks, agitPosts, auditLog } from '@/lib/db/schema';
+import { agentMessages, agentTasks, agitHooks, agitPosts, auditLog, notifications } from '@/lib/db/schema';
 import { draftAgitFeePost, type FeeDraftRequest } from '@/lib/agit/fee-run';
-import { feePayDateOf, FEE_URGENT_REASON, type AgitFeeFile, type TaxInvoiceRead } from '@/lib/agit/fee';
+import { feePayDateOf, feeRemindKey, FEE_URGENT_REASON, type AgitFeeFile, type TaxInvoiceRead } from '@/lib/agit/fee';
+import { businessDaysBefore } from '@/lib/business-days';
+import { runAgentReminders } from '@/lib/agents/remind-run';
 import { AGIT_FEE_KIND } from '@/lib/agit/post';
 import { USERS, call, signIn } from './kit';
 import { admin } from './money-kit';
@@ -55,6 +57,8 @@ const repo = getRepository();
 /** 아무 시험도 안 쓰는 먼 달 — 그 다음 달 말일(영업일)이 지급 요청일 */
 const MONTH = '2098-04';
 const PAY = feePayDateOf(MONTH);
+/** 그 지급일의 상신 기한 — 3영업일 전(말일 상신 알림이 서는 날) */
+const DEADLINE = businessDaysBefore(PAY, 3);
 const FEE: AgitFeeFile = { url: 'https://x.public.blob.vercel-storage.com/agent-files/settlement/fee-test.pdf', name: '플링비즈_98년 4월분.pdf' };
 const SALES: AgitFeeFile = { url: 'https://x.public.blob.vercel-storage.com/agent-files/settlement/sales-test.pdf', name: '충전매출 (98년 4월).pdf' };
 const READS: Record<string, TaxInvoiceRead> = {
@@ -78,6 +82,11 @@ let savedHook: typeof agitHooks.$inferSelect | undefined;
 async function sweep() {
   const db = getDb();
   await db.delete(agitPosts).where(and(eq(agitPosts.payDate, PAY), eq(agitPosts.kind, AGIT_FEE_KIND)));
+  /* 말일 상신 알림이 남긴 것 — 할 일 · 대화의 그 줄 · 알림 */
+  await db.delete(agentTasks).where(and(eq(agentTasks.agentId, 'settlement'), eq(agentTasks.kind, feeRemindKey(PAY))));
+  await db.delete(agentMessages).where(and(eq(agentMessages.agentId, 'settlement'), sql`${agentMessages.meta}->>'remind' = ${feeRemindKey(PAY)}`));
+  await db.delete(notifications).where(and(eq(notifications.agentId, 'settlement'), like(notifications.title, '위탁운영수수료 상신 — 5월 30일%')));
+  await db.delete(auditLog).where(and(eq(auditLog.field, '정산 담당'), gte(auditLog.at, started)));
   await db.delete(agentMessages).where(and(eq(agentMessages.agentId, 'settlement'), like(agentMessages.body, '%위탁운영수수료 열린구매 긴급 글을 아지트에 올렸습니다%98%')));
   await db.delete(agentMessages).where(and(eq(agentMessages.agentId, 'settlement'), like(agentMessages.body, `${Number(PAY.slice(5, 7))}월 ${Number(PAY.slice(8))}일 위탁운영수수료 열린구매%`)));
   await db.delete(auditLog).where(and(eq(auditLog.field, '아지트'), gte(auditLog.at, started)));
@@ -158,6 +167,17 @@ describe('플러그링크 위탁운영수수료 글 (한백 2026-11-10 「세금
     expect(found.posts.map((p) => [p.post.id, p.template])).toEqual([[made.post.id, '긴급구매요청']]);
     expect(found.missing).toEqual([]);
 
+    /* 말일 상신 알림 — 그 지급일의 3영업일 전 아침 크론이 할 일 · 대화 한 줄 · 알림을 한 번 남긴다(다시 돌아도 하나 · 열린구매 알림은 없는 날) */
+    const ran = await runAgentReminders(new Date(`${DEADLINE}T00:00:00Z`));
+    expect(ran).toEqual({ day: DEADLINE, due: [`${PAY} 위탁운영수수료`], reminded: [`${PAY} 위탁운영수수료`], drafted: [] });
+    expect((await runAgentReminders(new Date(`${DEADLINE}T03:00:00Z`))).reminded).toEqual([]);
+    const remindTask = async () => (await getDb().select({ title: agentTasks.title, due: agentTasks.due, doneAt: agentTasks.doneAt })
+      .from(agentTasks).where(and(eq(agentTasks.agentId, 'settlement'), eq(agentTasks.kind, feeRemindKey(PAY)))));
+    expect(await remindTask()).toEqual([expect.objectContaining({ due: DEADLINE, doneAt: null })]);
+    expect((await remindTask())[0].title).toMatch(/^위탁운영수수료 상신 — 5월 30일 \(98년 4월분 · \d+차\)$/);
+    expect(await getDb().select({ id: notifications.id }).from(notifications)
+      .where(and(eq(notifications.agentId, 'settlement'), like(notifications.title, '위탁운영수수료 상신 — 5월 30일%')))).toHaveLength(1);
+
     /* 플러그링크 계좌가 없으면 시작하지 않는다 */
     const before = await publish([{ id: made.post.id, seen: dated.post.body }]);
     expect(before.status).toBe(422);
@@ -188,6 +208,8 @@ describe('플러그링크 위탁운영수수료 글 (한백 2026-11-10 「세금
     expect(auto[0].body).toContain('긴급 글을 아지트에 올렸습니다 — 공급가액 1,000,001원');
     expect(auto[0].body).not.toContain('지급 1건');
     expect(auto[0].meta).not.toHaveProperty('link');
+    /* 올렸으니 그 지급일의 상신 할 일이 저절로 끝났다 */
+    expect((await remindTask())[0].doneAt).not.toBeNull();
 
     /* 첨부 zip — 엑셀 · 넘긴 세금계산서(폴더 없이) */
     const res = await getFiles(new Request(`http://test.local/api/agit/posts/${made.post.id}/files`), { params: { id: made.post.id } });

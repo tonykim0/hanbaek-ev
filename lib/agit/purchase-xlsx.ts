@@ -5,7 +5,8 @@
  * 틀은 scripts/agit-purchase-template.ts 가 지난 엑셀에서 값만 걷어 지었다 — 모양(글꼴 · 테두리 · 채움 · 열 폭 · 줄 높이 · 합친 칸 · 수식 ·
  * 고르는 칸 · 입금처 조건부 서식)은 틀의 것 그대로다.
  *
- * 채우는 칸(시트 「구매(일반)」): 내용 I5 · 공사명 D6 · 구매번호 머리의 해 E4(F5 =D5&E4&"-"&F4&"-"&G4 → 「요청간2026--」, 뒤는 구매팀이 적는다) ·
+ * 채우는 칸(시트 「구매(일반)」): 내용 I5 · 공사명 D6 · 해당 청구 月 M5(2026-11-11 — 그전에는 틀의 4 가 늘 남았다) ·
+ * 구매번호 머리의 해 E4(F5 =D5&E4&"-"&F4&"-"&G4 → 「요청간2026--」, 뒤는 구매팀이 적는다) ·
  * 지급 줄 — 8행부터 배치마다 한 줄, 8행의 칸 모양 그대로: No. · 내 용 · 거래처 · 공급가액 · 세액(=F*0.1) · 입금액(=SUM(F:G)) · 은행 · 계좌번호 ·
  * 예금주명 · 연락처(-) · 입금처(㈜한백) · 비 고. 소계 · 특기 사항 줄은 지급 줄 바로 밑으로 당기거나 민다(지난 엑셀도 줄 수만큼 넣고 지웠다) —
  * 소계 수식 · 합친 칸 · 입금처 조건부 서식이 따라간다.
@@ -41,6 +42,11 @@ export interface PurchaseSheet {
   year: number;
   /** 지은 날 YYYY-MM-DD — 틀의 =NOW()(M6)에 미리 셈한 값으로 적는다 */
   madeOn: string;
+  /**
+   * 「해당 청구 月」(M5 — 틀의 칸 모양이 「4月」로 보인다) — 그 글이 청구하는 달: 열린구매 글은 일한 달, 위탁운영수수료 글은 몇 월분
+   * (한백 2026-11-11 「actual month」 — 틀에 남은 4 가 모든 엑셀에 그대로 찍히고 있었다). 빼면 틀의 값 그대로
+   */
+  month?: number;
   rows: PurchaseRow[];
 }
 
@@ -120,7 +126,10 @@ function fillSheet(xml: string, sheet: PurchaseSheet): string {
 
   const head = rows.filter((r) => r.r < FIRST).map(({ r, xml: row }) => {
     if (r === 4) return setCell(row, 'E4', { num: sheet.year });
-    if (r === 5) return setCached(setCell(row, 'I5', { text: sheet.content }), 'F5', `요청간${sheet.year}--`);
+    if (r === 5) {
+      const filled = setCached(setCell(row, 'I5', { text: sheet.content }), 'F5', `요청간${sheet.year}--`);
+      return sheet.month ? setCell(filled, 'M5', { num: sheet.month }) : filled;
+    }
     if (r === 6) return setCached(setCell(row, 'D6', { text: sheet.subject }), 'M6', serialOf(sheet.madeOn));
     return row;
   });

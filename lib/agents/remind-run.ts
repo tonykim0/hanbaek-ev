@@ -1,5 +1,6 @@
 /**
- * 에이전트의 정기 일 (서버 전용) — 매일 아침 크론(app/api/cron/agents · vercel.json)이 부른다. 지금은 하나:
+ * 에이전트의 정기 일 (서버 전용) — 매일 아침 크론(app/api/cron/agents · vercel.json)이 부른다. 정산 담당의 둘 — 아래 열린구매와,
+ *   말일 지급 플러그링크 위탁운영수수료의 상신 알림(lib/agit/fee feeRemindDue — 3영업일 전 · 2026-11-11, 아래 remindFee). 열린구매는:
  *   정산 담당의 열린구매 상신 알림(lib/agents/open-purchase — 정기결제 10일 · 25일의 3영업일 전, 한백 지시 2026-11-04)과
  *   그 결제일의 아지트 열린구매 글 초안(lib/agit — 한백 2026-11-08 「정산담당 에이전트가 때가 되면 초안을 올려주고, 내가 승인하면
  *   정산담당에이전트가 아지트에 글을 올리는 구조」). 초안은 알림의 말 밑에 카드로 서고, 한백이 승인해야 올라간다.
@@ -11,7 +12,8 @@ import { getRepository } from '@/lib/data';
 import { today } from '@/lib/date';
 import { AUTO } from '@/lib/check-kit';
 import { agitUrgentFor, draftKindsOf, loadAgitDraft, loadAgitKinds } from '@/lib/agit/load';
-import type { AgitPayoutText } from '@/lib/agit/post';
+import { AGIT_FEE_KIND, type AgitPayoutText } from '@/lib/agit/post';
+import { feeRemindDue, feeRemindPlan } from '@/lib/agit/fee';
 import type { Actor } from '@/lib/data/repository';
 import { loadScope } from './scope';
 import { OPEN_PURCHASE_AGENT, openPurchaseDue, openPurchasePlan, unknownYears } from './open-purchase';
@@ -24,7 +26,9 @@ export async function runAgentReminders(now: Date = new Date()): Promise<{
 }> {
   const day = today(now);
   const dues = openPurchaseDue(day);
-  if (dues.length === 0) return { day, due: [], reminded: [], drafted: [] };
+  /* 플러그링크 위탁운영수수료 — 이번 달 말일 지급분의 3영업일 전(lib/agit/fee · 한백 2026-11-11). 결과 목록에는 「지급일 위탁운영수수료」로 선다 */
+  const fee = await remindFee(day);
+  if (dues.length === 0) return { day, due: fee.due, reminded: fee.reminded, drafted: [] };
   const { batches } = await loadScope(REMIND_ACTOR);
   const reminded: string[] = [];
   const drafted: string[] = [];
@@ -58,5 +62,25 @@ export async function runAgentReminders(now: Date = new Date()): Promise<{
       }
     }
   }
-  return { day, due: dues.map((d) => d.payDate), reminded, drafted };
+  return { day, due: [...dues.map((d) => d.payDate), ...fee.due], reminded: [...reminded, ...fee.reminded], drafted };
+}
+
+/**
+ * 위탁운영수수료 상신 알림 — 기한 날 아침(놓쳤으면 지급일 전까지 한 번). 할 일 · 대화 한 줄 · 한백 관리자 알림만 남긴다 — 초안은 한백이
+ * 세금계산서를 넘겨야 지을 수 있다(lib/agit/fee-run). 그 지급일의 글을 이미 올렸으면 알리지 않는다.
+ */
+async function remindFee(day: string): Promise<{ due: string[]; reminded: string[] }> {
+  const due = feeRemindDue(day);
+  if (!due) return { due: [], reminded: [] };
+  const label = `${due.payDate} ${AGIT_FEE_KIND}`;
+  const years = unknownYears({ payDate: due.payDate, payDay: due.payDate, deadline: due.deadline });
+  if (years.length) console.error('[agents] 공휴일 표 없음', years.join(','), '— lib/business-days 에 그 해를 더한다');
+  const posted = (await getRepository().recentAgitPosts(REMIND_ACTOR, due.payDate))
+    .some((p) => p.kind === AGIT_FEE_KIND && p.payDate === due.payDate && p.status === 'posted');
+  if (posted) return { due: [label], reminded: [] };
+  const plan = feeRemindPlan(due, day);
+  const r = await getRepository().agentRemind({
+    agentId: OPEN_PURCHASE_AGENT, key: plan.key, task: plan.task, say: plan.say, alarm: plan.alarm,
+  }, REMIND_ACTOR);
+  return { due: [label], reminded: r.created ? [label] : [] };
 }

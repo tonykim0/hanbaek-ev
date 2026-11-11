@@ -39,7 +39,7 @@ import {
   AGIT_FEE_KIND, AGIT_MAX_ASSIGNEES, AGIT_POST_KINDS, AGIT_POST_STATUSES, agitAssigneesOf, agitKindOf, agitPostedSay, agitPostName, agitTitleOf,
   badAgitIds, type AgitFeePayee, type AgitHookInfo, type AgitKind, type AgitPostRecord, type AgitPostStatus,
 } from '@/lib/agit/post';
-import { agitFeePayeeOf, feePayeeLabel } from '@/lib/agit/fee';
+import { agitFeePayeeOf, feePayeeLabel, feeRemindKey } from '@/lib/agit/fee';
 import { agitLoginOf, agitSessionUntil, type AgitCookie } from '@/lib/agit/session';
 import { PAYOUT_KINDS, type PayoutKind } from '@/types/project';
 import type { ProjectRepository } from '../repository';
@@ -431,13 +431,15 @@ export const agitStore: Pick<
         { payDate: row.payDate, kind, title: agitTitleOf(row.body), total: row.total, batches: row.batches, urgent: row.urgentReason },
         actor.name
       );
-      /* 위탁운영수수료 글은 열린구매 상신 할 일(결제일의 거래명세서 글)과 따로다 — 대화에 한 줄만 */
+      /* 위탁운영수수료 글은 그 지급일의 위탁운영수수료 상신 할 일(lib/agit/fee feeRemindKey)을 끝낸다 — 열린구매 상신 할 일(결제일의 거래명세서
+       * 글 · 구분이 다 올라가야)과 따로다 */
       const fee = kind === AGIT_FEE_KIND;
       const postedKinds = new Set((await tx.select({ kind: agitPosts.kind }).from(agitPosts)
         .where(and(eq(agitPosts.payDate, row.payDate), eq(agitPosts.status, 'posted')))).map((r) => agitKindOf(r.kind)));
       const left = fee ? [] : (input.kinds ?? [kind]).filter((k) => !postedKinds.has(k));
-      const closed = fee || left.length ? [] : await tx.update(agentTasks).set({ doneAt: new Date() }).where(and(
-        eq(agentTasks.agentId, agent.id), eq(agentTasks.kind, openPurchaseKey(row.payDate)), isNull(agentTasks.doneAt),
+      const closed = left.length ? [] : await tx.update(agentTasks).set({ doneAt: new Date() }).where(and(
+        eq(agentTasks.agentId, agent.id), eq(agentTasks.kind, fee ? feeRemindKey(row.payDate) : openPurchaseKey(row.payDate)),
+        isNull(agentTasks.doneAt),
       )).returning({ title: agentTasks.title });
       for (const t of closed) {
         await writeAudit(tx, { projectId: null, actor, action: '에이전트 할 일 끝냄', field: key, oldValue: t.title, newValue: '끝냄 — 아지트에 올림' });
