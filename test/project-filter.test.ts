@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  ATTR_BY_KEY, ATTRS, countActive, optionsOf, panelAttrKeys, passesAttrs, type AttrFilters,
+  ATTR_BY_KEY, ATTRS, countActive, optionsOf, panelAttrKeys, passesAttrs, restStartOf, type AttrFilters,
 } from '@/lib/project-filter';
 import {
   DATE_COLS, DATE_KEYS, filterAttrOf, labelOf, MILESTONE_KEYS, PICKABLE, presenceOf, tableSheet, type MilestoneKey,
@@ -55,10 +55,11 @@ describe('날짜 축 — 날짜 열마다 하나', () => {
     for (const taken of ['view', 'q', 'flag', 'year']) expect(keys).not.toContain(taken);
   });
 
-  it('날짜가 있으면 있음 · 없으면 없음', () => {
-    expect(valueOf('start', site({}, { startDate: '2026-04-02' }))).toEqual(['있음']);
+  it('날짜가 있으면 있음과 그 달 · 없으면 없음', () => {
+    // 그 달로도 거른다(2026-11-11 「일정에 대해서도 필터를 걸 수 있을까?」) — 접수월과 같은 이름
+    expect(valueOf('start', site({}, { startDate: '2026-04-02' }))).toEqual(['있음', '26년 4월']);
     expect(valueOf('start', site())).toEqual(['없음']);
-    expect(valueOf('completion', site({}, { completionSubmitAt: '2026-06-30' }))).toEqual(['있음']);
+    expect(valueOf('completion', site({}, { completionSubmitAt: '2026-06-30' }))).toEqual(['있음', '26년 6월']);
   });
 
   it('★날짜 없이 완료(✓)만 찍힌 칸은 있음★ — 칸에 ✓ 가 보이고 엑셀에는 「완료」로 나간다', () => {
@@ -108,7 +109,8 @@ describe('고르는 값의 차례', () => {
       site({}, { envApprovalDate: '2026-02-18' }),
       site(),
     ];
-    expect(optionsOf(sites, 'envApproval')).toEqual(['있음', '없음', '해당없음']);
+    // 있음 · 없음 · 해당없음 뒤에 달이 온다
+    expect(optionsOf(sites, 'envApproval')).toEqual(['있음', '없음', '해당없음', '26년 2월']);
     expect(optionsOf(sites, 'queue')).toEqual(['있음', '해당없음']);
     expect(optionsOf([...sites, site({ envQueueNo: null })], 'queue')).toEqual(['있음', '없음', '해당없음']);
   });
@@ -120,6 +122,43 @@ describe('고르는 값의 차례', () => {
   it('다른 축의 차례는 그대로 — 가나다, (없음)은 끝', () => {
     expect(optionsOf([site({ cpo: '에버온' }), site({ cpo: '나이스인프라' })], 'cpo')).toEqual(['나이스인프라', '에버온']);
     expect(optionsOf([site({ gcOrg: null }), site({ gcOrg: '대광이브이' })], 'gc')).toEqual(['대광이브이', '(없음)']);
+  });
+});
+
+describe('날짜 열을 달로 거른다 — 일정 필터', () => {
+  const sep = site({ id: 'sep' }, { startDate: '2026-09-30' });
+  const oct1 = site({ id: 'oct1' }, { startDate: '2026-10-01' });
+  const oct2 = site({ id: 'oct2' }, { startDate: '2026-10-31' });
+  const feb = site({ id: 'feb' }, { startDate: '2026-02-03' });
+  const last = site({ id: 'last' }, { startDate: '2025-12-15' });
+  const none = site({ id: 'none' });
+  const checked = site({ id: 'checked' }, { installConfirmed: true });
+  const all = [oct2, none, sep, feb, oct1, last, checked];
+  const pass = (f: AttrFilters) => all.filter((p) => passesAttrs(p, f)).map((p) => p.id).sort();
+
+  it('달은 있음 · 없음 뒤에 해와 달의 차례로 — 「26년 2월」이 「26년 10월」 앞, 지난해가 맨 앞', () => {
+    expect(optionsOf(all, 'start')).toEqual(['있음', '없음', '25년 12월', '26년 2월', '26년 9월', '26년 10월']);
+  });
+
+  it('한 달을 고르면 그 달에 적힌 현장만 — 달의 첫날 · 끝날도 그 달', () => {
+    expect(pass({ start: ['26년 10월'] })).toEqual(['oct1', 'oct2']);
+    expect(pass({ start: ['26년 9월', '26년 10월'] })).toEqual(['oct1', 'oct2', 'sep']);
+  });
+
+  it('있음은 달과 상관없이 다 — 날짜 없이 완료(✓)만 찍힌 칸은 달이 없어 있음에만 선다', () => {
+    expect(pass({ start: ['있음'] })).toEqual(['feb', 'last', 'oct1', 'oct2', 'sep']);
+    expect(valueOf('install', checked)).toEqual(['있음']);
+    expect(optionsOf([checked], 'install')).toEqual(['있음']);
+  });
+
+  it('달 + 없음 — 「10월에 착공했거나 아직 착공일이 없는 현장」', () => {
+    expect(pass({ start: ['26년 10월', '없음'] })).toEqual(['checked', 'none', 'oct1', 'oct2']);
+  });
+
+  it('머리글 판의 가는 선은 달이 시작하는 자리 — 달이 없으면 없다', () => {
+    expect(restStartOf('start', optionsOf(all, 'start'))).toBe(2);
+    expect(restStartOf('start', ['있음', '없음'])).toBe(-1);
+    expect(restStartOf('cpo', ['나이스인프라', '에버온'])).toBe(-1);
   });
 });
 

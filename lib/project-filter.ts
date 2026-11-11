@@ -17,7 +17,7 @@ import { BOARD_COLUMNS, boardColumnOf } from './board';
  * ★project-table 은 이 파일에서 타입만 가져간다★ — 값까지 서로 부르면 모듈이 서로를 기다려 ATTRS 를 짓다가 깨진다.
  */
 import {
-  DATE_KEYS, labelOf, PRESENCE, presenceOf, LAST_DONE_STEPS, lastDoneOf, type MilestoneKey,
+  DATE_COLS, DATE_KEYS, labelOf, PRESENCE, presenceOf, LAST_DONE_STEPS, lastDoneOf, type MilestoneKey,
 } from './project-table';
 
 /** 값이 비어 있는 현장을 고르는 이름. 실제 값과 겹치지 않게 괄호를 쓴다. */
@@ -124,11 +124,20 @@ export const ATTRS: Attr[] = [
    * 것이다. 해당없음을 없음과 가르는 것도 같은 까닭이다: 자체투자의 환경부 승인일이 「없음」에 섞이면 그 목록으로는
    * 챙길 곳을 알 수 없다. 판정은 표의 칸 · 엑셀과 한 정의다(lib/project-table presenceOf).
    * 거는 자리는 그 열의 머리글이다 — 판에는 펴 두지 않고(열일곱이다) 걸려 있을 때만 선다(panelAttrKeys).
+   *
+   * ★날짜가 적힌 칸은 그 달로도 거른다★ (한백 2026-11-11 「일정에 대해서도 필터를 걸 수 있을까?」) — 「10월에 착공한 현장」 ·
+   * 「11월에 개통한 현장」. 접수월과 같은 까닭으로 날이 아니라 달로 묶고(날짜 하나하나를 고르는 목록은 아무것도 못 고른다)
+   * 같은 이름을 쓴다(「26년 10월」). 그 칸은 있음과 그 달 둘에 같이 선다 — 한 축 안의 값끼리는 또는이라 「있음」을 고르면 달과
+   * 상관없이 다 나온다. 날짜 없이 완료(✓)만 찍힌 옛 칸은 달이 없다(있음뿐).
    */
   ...DATE_KEYS.map((key): Attr => ({
     key,
     label: labelOf(key),
-    valuesOf: (p) => [presenceOf(key, p)],
+    valuesOf: (p) => {
+      const presence = presenceOf(key, p);
+      const day = presence === '있음' ? DATE_COLS[key]!.date(p) : null;
+      return day ? [presence, monthOf(day)] : [presence];
+    },
     order: PRESENCE,
   })),
 ];
@@ -171,18 +180,33 @@ export function optionsOf(projects: ProjectSummary[], key: AttrKey): string[] {
   for (const p of projects) for (const v of attr.valuesOf(p)) seen.add(v);
 
   const list = [...seen];
-  // 차례가 정해진 축은 그 차례로 — 가나다로 두면 「없음 · 있음 · 해당없음」이 된다
+  const byName = (a: string, b: string) => a.localeCompare(b, 'ko', { numeric: true });
+  /*
+   * 차례가 정해진 축은 그 차례로 — 가나다로 두면 「없음 · 있음 · 해당없음」이 된다. 차례 밖의 값(날짜 축의 달)은 그 뒤에
+   * 이름 차례로 선다 — 「26년 2월」이 「26년 10월」 앞(숫자로 견준다).
+   */
   const order = attr.order;
   if (order) {
     const rank = (v: string) => (order.includes(v) ? order.indexOf(v) : order.length);
-    return list.sort((a, b) => rank(a) - rank(b));
+    return list.sort((a, b) => rank(a) - rank(b) || byName(a, b));
   }
   // 「(없음)」은 늘 끝으로 — 값 목록 사이에 섞이면 눈에 걸린다
   return list.sort((a, b) => {
     if (a === EMPTY) return 1;
     if (b === EMPTY) return -1;
-    return a.localeCompare(b, 'ko', { numeric: true });
+    return byName(a, b);
   });
+}
+
+/**
+ * 정해 둔 차례 밖의 값이 시작하는 자리 — 날짜 축은 있음 · 없음 · 해당없음 다음부터가 달이다. 머리글 필터가 그 앞에 가는 선을
+ * 긋는다(components/ProjectTable). 없으면 -1.
+ */
+export function restStartOf(key: AttrKey, options: readonly string[]): number {
+  const order = ATTR_BY_KEY.get(key)?.order;
+  if (!order) return -1;
+  const at = options.findIndex((v) => !order.includes(v));
+  return at > 0 ? at : -1;
 }
 
 /** 걸린 축을 모두 통과하는가. 축끼리는 AND, 한 축 안의 값끼리는 OR 다. */

@@ -18,7 +18,7 @@
  * 한백 전용 칸)는 현장 상세의 시공 탭과 같다. 날짜는 전이가 아니라 단계를 옮기지 않는다 — 완료 선언(✓)은 여기서
  * 찍지 않는다. 그것은 조건을 묻는 선언이라 상세의 「다음 단계로 진행」이 한다.
  */
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { useAction } from '@/lib/use-action';
 import Link from 'next/link';
 import type { ProcessStatus, ProjectSummary } from '@/types/project';
@@ -28,7 +28,7 @@ import { DatePicker } from '@/components/DatePicker';
 import {
   BAND_TONE, bandOfColumn, boardColumnOf, constructionLabelOf, type BoardColumn,
 } from '@/lib/board';
-import type { AttrFilters, AttrKey } from '@/lib/project-filter';
+import { restStartOf, type AttrFilters, type AttrKey } from '@/lib/project-filter';
 import {
   DATE_COLS, DATE_KEYS, DEFAULT_HIDDEN, filterAttrOf, labelOf, PICK_GROUPS, PICKABLE, lastDoneOf, qtyOf, restoreHidden,
   sortProjects, tableSheet, termsOf, type ColKey, type SortKey, type TableDateField, type TableTab,
@@ -118,12 +118,63 @@ export type TableSort = ReturnType<typeof useTableSort>;
  * 머리 칸은 몸 칸보다 위다 — 머리 줄도 위에 붙어(sticky top) 있어 둘이 겹치는 모서리가 생긴다.
  */
 const PIN_EDGE = 'shadow-[inset_-1px_0_0_theme(colors.slate.200)]';
-const PIN_HEAD = `sticky left-0 z-20 bg-slate-50 ${PIN_EDGE}`;
+/*
+ * 머리 줄 · 합계 줄의 가르는 선도 그림자다 — 둘 다 상자 위 · 아래에 붙는데(아래 useFitToScreen), 테두리는 붙지 않고 줄과 같이
+ * 밀려 올라가 머리 줄 밑이 비었다. 붙은 현장 칸은 오른쪽 선과 같이 그린다.
+ */
+const HEAD_LINE = 'shadow-[inset_0_-1px_0_theme(colors.slate.200)]';
+const FOOT_LINE = 'shadow-[inset_0_1px_0_theme(colors.slate.200)]';
+const PIN_HEAD = 'sticky left-0 z-20 bg-slate-50 shadow-[inset_-1px_0_0_theme(colors.slate.200),inset_0_-1px_0_theme(colors.slate.200)]';
 const PIN_CELL = `sticky left-0 z-[1] bg-white group-hover:bg-brand-50 ${PIN_EDGE}`;
-const PIN_FOOT = `sticky left-0 z-[1] bg-slate-50 ${PIN_EDGE}`;
+const PIN_FOOT = 'sticky left-0 z-[1] bg-slate-50 shadow-[inset_-1px_0_0_theme(colors.slate.200),inset_0_1px_0_theme(colors.slate.200)]';
 
 /** 합계 줄에서 대수 열 앞에 서는 열 — 빈 칸으로 자리를 맞춘다(TABLE_ORDER 의 대수 앞) */
 const LEAD: readonly ColKey[] = ['stage', 'lastDone'];
+
+/*
+ * ★표는 제 상자 안에서 스크롤한다 — 머리 줄 · 합계 줄 · 현장 열이 붙어 있게★ (한백 2026-11-11 「페이지 스크롤 내려도 맨위에있는
+ * 속성들은 고정되게 해줘」). 머리 줄은 처음부터 sticky 였는데 붙지 않았다: 가로로 미는 상자(overflow-x-auto)는 세로로도 스크롤
+ * 상자가 되어(한 축이 auto 면 다른 축도 auto), 머리 줄은 늘어나기만 하는 그 상자에 붙은 채 페이지와 같이 올라갔다.
+ * 그래서 상자의 높이를 화면 아래 끝까지로 묶고 그 안에서 스크롤한다 — 위의 보기 · 필터 줄도 늘 보이고, 가로 스크롤 막대도
+ * 표 맨 밑(138줄 아래)이 아니라 화면 안에 선다.
+ * 높이는 그 자리에서 잰다 — 위쪽 줄(필터 판을 펴면 길어진다 · 좁은 화면은 접힌다)의 높이를 숫자로 적지 않는다. 본문(main)의
+ * 크기가 바뀔 때마다 다시 잰다(ResizeObserver — 배치가 끝난 뒤에 불린다). 창의 resize 만 들으면 그 순간의 배치가 아직 옛 것이라
+ * 넓은 창을 좁히면 상자가 117px 짧게 남았다. 첫 그림(서버)은 어림값이다. 화면이 아주 낮으면 FIT_MIN 을 지키고 페이지가 조금 스크롤한다.
+ */
+const FIT_MIN = 320;
+const FIT_FALLBACK = 'calc(100dvh - 15rem)';
+
+function useFitToScreen(ref: RefObject<HTMLElement>, on: boolean): number | null {
+  const [max, setMax] = useState<number | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    const main = el?.closest('main');
+    if (!on || !el) return;
+    const fit = () => {
+      const r = el.getBoundingClientRect();
+      // 상자 밑에 남는 자리(본문 아래 여백 · 판의 테두리) — 상자의 지금 높이와 상관없이 본문 끝에서 잰다
+      const below = main ? Math.max(0, main.getBoundingClientRect().bottom - r.bottom) : 24;
+      const next = Math.max(FIT_MIN, Math.floor(window.innerHeight - (r.top + window.scrollY) - below));
+      setMax((prev) => (prev === next ? prev : next));
+    };
+    fit();
+    // 다음 그림에서 잰다 — 잰 값이 상자 높이를 바꾸면 그 자리에서 또 불려 「ResizeObserver loop」가 난다
+    let frame = 0;
+    const later = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fit);
+    };
+    const ro = new ResizeObserver(later);
+    if (main) ro.observe(main);
+    window.addEventListener('resize', later);
+    return () => {
+      cancelAnimationFrame(frame);
+      ro.disconnect();
+      window.removeEventListener('resize', later);
+    };
+  }, [ref, on]);
+  return max;
+}
 
 export default function ProjectTable({
   projects, canMove, onMove, busyId, filters, options, onFilter, tab, columns, sort: sorting, viewer,
@@ -164,7 +215,7 @@ export default function ProjectTable({
     const on = key !== undefined && sort === key;
     return (
       <th
-        className={`whitespace-nowrap px-3 py-2 ${left ? 'text-left' : ''} ${pin ? PIN_HEAD : ''}`}
+        className={`whitespace-nowrap px-3 py-2 ${left ? 'text-left' : ''} ${pin ? PIN_HEAD : HEAD_LINE}`}
       >
         <div className="inline-flex items-center gap-1">
           {key ? (
@@ -191,6 +242,7 @@ export default function ProjectTable({
           )}
           {attr && (
             <ColumnFilter
+              attr={attr}
               label={label}
               options={options[attr] ?? []}
               picked={filters[attr] ?? []}
@@ -202,18 +254,26 @@ export default function ProjectTable({
     );
   }
 
+  const scroll = useRef<HTMLDivElement>(null);
+  const fit = useFitToScreen(scroll, rows.length > 0);
+
   if (rows.length === 0) return <Blank>조건에 맞는 현장이 없습니다.</Blank>;
 
   return (
     <div className="overflow-hidden rounded-panel border border-slate-200 bg-white">
-      <div className="overflow-x-auto">
+      {/*
+        * 가로 · 세로 모두 이 상자 안에서 민다 — 머리 줄 · 합계 줄 · 현장 열이 상자 가장자리에 붙는다(useFitToScreen).
+        * relative 가 있어야 한다: 줄마다의 화면 읽기 이름(단계 칸의 sr-only — absolute)이 상자 밖의 기준을 잡아 상자를 빠져나가,
+        * 표가 상자 안에서 스크롤하는데도 페이지가 표 길이만큼 늘었다(복제한 120줄에서 페이지가 2,300px 더 스크롤했다).
+        */}
+      <div ref={scroll} className="relative overflow-auto" style={{ maxHeight: fit ?? FIT_FALLBACK }}>
         {/* 최소 폭은 보이는 열 수에 따라간다 — 열이 적은데 가로 스크롤이 남으면 이상하다 */}
         <table
           className="text-center w-full text-base"
           style={{ minWidth: 260 + (PICKABLE.length - hidden.size) * 92 }}
         >
           {/* 머리글은 붙여 둔다 — 138건을 훑으면서 어느 열인지 계속 알아야 한다 */}
-          <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50 text-tiny tracking-[0.06em]">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-tiny tracking-[0.06em]">
             <tr>
               {head('현장', { sort: 'name', left: true, pin: true })}
               {show('stage') && head('단계', { sort: 'stage', attr: 'col' })}
@@ -327,8 +387,9 @@ export default function ProjectTable({
             * 합계 줄 — 지금 걸러 둔 줄의 건수와 대수 합(한백 지시 2026-11-06 「필터링 하면 현재 필터에서 총 대수 합계를
             * 볼 수 있게」). 대수는 대수 열 밑에 선다 — 그 열을 꺼 두면 건수 곁에 붙인다. 위 건수 줄(필터 줄 오른쪽 끝)과
             * 같은 줄 목록에서 세니 둘이 갈리지 않는다. 엑셀에는 넣지 않는다 — 합계 줄이 섞이면 엑셀의 필터 · 정렬이 그 줄까지 옮긴다.
+            * 상자 아래에 붙어 있다(2026-11-11 — 표가 제 상자 안에서 스크롤하게 되며) — 줄이 길어도 걸러 둔 합계가 늘 보인다.
             */}
-          <tfoot className="border-t border-slate-200 bg-slate-50">
+          <tfoot className="sticky bottom-0 z-10 bg-slate-50">
             <tr>
               <td className={`px-3 py-2.5 text-left font-bold text-slate-700 ${PIN_FOOT}`}>
                 합계 <span className="tabular-nums">{rows.length.toLocaleString('ko-KR')}</span>건
@@ -337,15 +398,15 @@ export default function ProjectTable({
                 )}
               </td>
               {/* 대수 열 앞의 열(단계 · 최근 완료)은 빈 칸으로 자리를 맞추고, 대수 뒤는 한 칸으로 묶는다 */}
-              {LEAD.filter(show).map((k) => <td key={k} />)}
+              {LEAD.filter(show).map((k) => <td key={k} className={FOOT_LINE} />)}
               {show('qty') && (
-                <td className="px-3 py-2.5 font-bold tabular-nums text-slate-900">
+                <td className={`px-3 py-2.5 font-bold tabular-nums text-slate-900 ${FOOT_LINE}`}>
                   {units.toLocaleString('ko-KR')}
                   <span className="ml-1 text-tiny font-normal text-slate-500">대</span>
                 </td>
               )}
               {shown - LEAD.filter(show).length - (show('qty') ? 1 : 0) > 0 && (
-                <td colSpan={shown - LEAD.filter(show).length - (show('qty') ? 1 : 0)} />
+                <td colSpan={shown - LEAD.filter(show).length - (show('qty') ? 1 : 0)} className={FOOT_LINE} />
               )}
             </tr>
           </tfoot>
@@ -773,8 +834,9 @@ function Cell({ value }: { value: string | null }) {
  * 고를 수 있는 값은 지금 화면에 있는 것뿐이라, 걸어도 0건이 되는 값은 목록에 없다.
  */
 function ColumnFilter({
-  label, options, picked, onChange,
+  attr, label, options, picked, onChange,
 }: {
+  attr: AttrKey;
   label: string;
   options: string[];
   picked: string[];
@@ -784,6 +846,7 @@ function ColumnFilter({
    * 모양·동작은 공용 부품이 갖는다(components/CheckMenu) — 기성관리 필터가 같은 것을
    * 쓰면서 두 벌이 되었고, 두 벌이면 한쪽만 고쳐진다(2026-08-28). 여기는 표 머리글이라
    * 작은 ▾ 로 뜬다. 값이 문자열 목록이라 그대로 옵션으로 옮긴다.
+   * 날짜 열은 있음 · 없음 · 해당없음 뒤에 달이 온다 — 그 사이에 가는 선을 긋는다(restStartOf).
    */
   return (
     <CheckMenu
@@ -792,6 +855,7 @@ function ColumnFilter({
       options={options.map((v) => ({ value: v, label: v }))}
       picked={picked}
       onChange={onChange}
+      sepAt={restStartOf(attr, options)}
     />
   );
 }

@@ -10,16 +10,25 @@
  * ★한 부품인 이유★ 이 모양이 현장 표의 열 머리글 필터에 이미 있었다(ProjectTable 의
  * ColumnFilter). 같은 것을 두 벌 두면 한쪽만 고쳐진다 — 열 머리글의 작은 ▾ 와 이름이 붙은
  * 단추는 자리만 다르므로 trigger 로 가른다.
+ *
+ * ★펴는 판은 포털로 띄운다★ (2026-11-11) — 현장 표가 제 상자 안에서 스크롤하게 되며(머리 줄을 붙여 두려고) 머리글 ▾ 의 판이
+ * 그 상자에 잘렸다. 줄이 몇 안 되는 표에서 날짜 열의 달 목록을 펴면 판 아래가 사라졌다. 날짜 고르기(DatePicker)와 같은 길이다:
+ * 문서 최상위에 고정 좌표로 띄우고, 화면 아래가 모자라면 위로 편다 · 바깥을 누르거나 스크롤하면 닫는다(고정 좌표라 어긋난다).
  */
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 export interface CheckOption {
   value: string;
   label: string;
 }
 
+/** 판의 줄 하나 · 목록 높이 상한 — 위 · 아래 어느 쪽에 펼지 어림하는 데만 쓴다 */
+const ROW_H = 30;
+const LIST_MAX = 280;
+
 export default function CheckMenu({
-  label, options, picked, onChange, trigger = 'button', width = 190,
+  label, options, picked, onChange, trigger = 'button', width = 190, sepAt = -1,
 }: {
   /** 무엇을 고르는 자리인가 — 단추와 도움말에 쓴다 */
   label: string;
@@ -29,22 +38,55 @@ export default function CheckMenu({
   /** button = 이름이 붙은 단추 · chip = 표 머리글의 작은 ▾ */
   trigger?: 'button' | 'chip';
   width?: number;
+  /** 이 차례의 값 앞에 가는 선을 긋는다 — 날짜 열의 있음 · 없음 · 해당없음과 달 사이. -1 이면 없다 */
+  sepAt?: number;
 }) {
   const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const pop = useRef<HTMLDivElement>(null);
 
-  // 바깥을 누르면 닫는다. 열린 채로 표를 훑으면 아래 줄이 가린다.
+  const toggle = () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const r = btn.current!.getBoundingClientRect();
+    const h = Math.min(LIST_MAX, options.length * ROW_H) + 12 + (picked.length > 0 ? 34 : 0);
+    const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
+    // 아래가 모자라면 위로 편다 — 아래 끝을 단추 위에 붙여, 고르며 「필터 해제」 줄이 생겨도 위로 자란다
+    setPos(
+      r.bottom + 4 + h > window.innerHeight && r.top - 4 - h > 0
+        ? { left, bottom: window.innerHeight - r.top + 4 }
+        : { left, top: r.bottom + 4 }
+    );
+    setOpen(true);
+  };
+
+  // 바깥을 누르면 닫는다(열린 채로 표를 훑으면 아래 줄이 가린다) · 스크롤하면 닫는다(판 안의 목록 스크롤은 빼고)
   useEffect(() => {
     if (!open) return;
     const off = (e: MouseEvent) => {
-      if (!box.current?.contains(e.target as Node)) setOpen(false);
+      const t = e.target as Node;
+      if (box.current?.contains(t) || pop.current?.contains(t)) return;
+      setOpen(false);
     };
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    const move = (e: Event) => {
+      if (pop.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    };
+    const resize = () => setOpen(false);
     document.addEventListener('mousedown', off);
     document.addEventListener('keydown', esc);
+    window.addEventListener('scroll', move, true);
+    window.addEventListener('resize', resize);
     return () => {
       document.removeEventListener('mousedown', off);
       document.removeEventListener('keydown', esc);
+      window.removeEventListener('scroll', move, true);
+      window.removeEventListener('resize', resize);
     };
   }, [open]);
 
@@ -58,10 +100,11 @@ export default function CheckMenu({
   return (
     <div ref={box} className="relative">
       <button
+        ref={btn}
         type="button"
         aria-label={`${label} 필터`}
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         className={
           trigger === 'chip'
             ? `rounded-tag px-1 py-0.5 text-micro font-black leading-none transition ${
@@ -84,18 +127,21 @@ export default function CheckMenu({
         )}
       </button>
 
-      {open && (
+      {open && pos && createPortal(
         <div
-          style={{ width }}
-          className="absolute left-0 top-full z-20 mt-1 rounded-box border border-slate-200 bg-white p-1.5 shadow-lg"
+          ref={pop}
+          style={{ width, left: pos.left, top: pos.top, bottom: pos.bottom }}
+          className="fixed z-[100] rounded-box border border-slate-200 bg-white p-1.5 shadow-lg"
         >
           <div className="max-h-[280px] overflow-y-auto">
-            {options.map((o) => {
+            {options.map((o, i) => {
               const checked = picked.includes(o.value);
               return (
                 <label
                   key={o.value}
-                  className="flex cursor-pointer items-center gap-2 rounded-ctl px-2 py-1.5 text-small font-semibold text-slate-700 hover:bg-slate-50"
+                  className={`flex cursor-pointer items-center gap-2 rounded-ctl px-2 py-1.5 text-small font-semibold text-slate-700 hover:bg-slate-50 ${
+                    i === sepAt ? 'mt-1 border-t border-slate-100 pt-2' : ''
+                  }`}
                 >
                   <input
                     type="checkbox"
@@ -119,7 +165,8 @@ export default function CheckMenu({
               {label} 필터 해제
             </button>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
