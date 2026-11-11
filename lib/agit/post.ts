@@ -47,6 +47,7 @@
 import { won } from '@/lib/format';
 import { batchesOf, batchKey, REGULAR_PAY_DAYS } from '@/lib/payout-board';
 import { PAYOUT_KINDS, type BatchFinal, type PayoutKind, type PayoutRow, type TaxInvoice } from '@/types/project';
+import type { AgitFeeInput } from './fee';
 
 /** 지급처의 계좌 — 협력사 정보(/settings · /admin/partners)의 값 */
 export interface AgitPayee {
@@ -111,12 +112,24 @@ export function urgentReasonOf(raw: string | null | undefined): string | null {
  * 「시공비」 · 엑셀 내용 칸 · zip 이름). 차례는 영업비 먼저.
  */
 export const AGIT_KINDS = PAYOUT_KINDS;
-export const agitKindOf = (v: unknown): PayoutKind => (v === '시공비' ? '시공비' : '영업비');
+/**
+ * 위탁운영수수료 — 플러그링크에 매달 말 내는 수수료 글(lib/agit/fee). 거래명세서(배치)가 아니라 한백이 정산 담당에게 넘긴 세금계산서로 짓는다
+ * (한백 2026-11-10 「이건은 내가 에이전트한테 세금계산서를 올려주고 너가 나머지를 처리해주는 방식으로」). 같은 줄(agit_posts)에 구분으로 선다 —
+ * 초안 · 승인 · 올리기 · 카드가 열린구매 글과 같은 길이다.
+ */
+export const AGIT_FEE_KIND = '위탁운영수수료' as const;
+/** 아지트 글의 구분 — 지급의 구분 둘(거래명세서로 짓는다) · 위탁운영수수료(세금계산서로 짓는다) */
+export type AgitKind = PayoutKind | typeof AGIT_FEE_KIND;
+/** 글의 차례 — 영업비 · 시공비 · 위탁운영수수료 */
+export const AGIT_POST_KINDS: readonly AgitKind[] = [...AGIT_KINDS, AGIT_FEE_KIND];
+export const agitKindOf = (v: unknown): AgitKind => (v === '시공비' ? '시공비' : v === AGIT_FEE_KIND ? AGIT_FEE_KIND : '영업비');
+/** 거래명세서로 짓는 글(영업비 · 시공비)인가 — 위탁운영수수료가 아니면 */
+export const isPayoutKind = (k: AgitKind): k is PayoutKind => k !== AGIT_FEE_KIND;
 
 export interface AgitPostText {
   payDate: string;
-  /** 구분 — 이 글에 든 배치의 구분(영업비 · 시공비) */
-  kind: PayoutKind;
+  /** 구분 — 이 글에 든 배치의 구분(영업비 · 시공비) · 위탁운영수수료 */
+  kind: AgitKind;
   /** 글의 공사명 — 화면의 목록에도 쓴다 */
   title: string;
   text: string;
@@ -128,6 +141,9 @@ export interface AgitPostText {
   /** 올릴 수 없는 까닭 — 단추 이름이 된다(화면 규칙 3). null 이면 올릴 수 있다 */
   blocked: string | null;
 }
+
+/** 거래명세서로 지은 글 — 구분이 지급의 구분(영업비 · 시공비)이다 */
+export type AgitPayoutText = AgitPostText & { kind: PayoutKind };
 
 export const VAT_RATE = 0.1;
 /** 부가세 — 공급가액의 10%, 원 단위 절사(세금계산서가 그렇게 끊는다) */
@@ -214,7 +230,7 @@ export function agitPostOf(
   consoleUrl: string,
   urgent: string | null = null,
   kind: PayoutKind = batches[0]?.kind ?? '영업비'
-): AgitPostText {
+): AgitPayoutText {
   if (batches.some((b) => b.kind !== kind)) throw new Error(`아지트 글 하나에 다른 구분의 배치가 섞였습니다 — ${kind} 글`);
   const sorted = sortBatches(batches);
   const total = sorted.reduce((n, b) => n + b.total, 0);
@@ -319,7 +335,10 @@ export function agitFolderOf(payDate: string, kinds: readonly PayoutKind[]): str
 export function agitTitleOf(body: string): string {
   const line = body.split('\n').find((l) => l.includes('공사명 :'));
   if (line) return line.replace(/^>\s*/, '').replace(/\*/g, '').replace(/^-\s*공사명\s*:\s*/, '').trim();
-  return body.split('\n')[0] ?? '';
+  const first = body.split('\n')[0] ?? '';
+  /* 위탁운영수수료 글(lib/agit/fee)은 공사명 줄 없이 제목 머리뿐이다 — 「# [긴급] 」과 끝의 #긴급구매요청 고리를 뗀다 */
+  if (first.startsWith('# [긴급] ')) return first.slice('# [긴급] '.length).replace(AGIT_URGENT_TAG, '').trim();
+  return first;
 }
 
 /** 글을 올릴 결제일 — 오늘이거나 앞으로 올 지급일(지난 지급일의 글은 늦었다) · 이른 것이 위 */
@@ -366,7 +385,7 @@ export function agitDraftsOf(
   consoleUrl: string,
   only?: string,
   onlyKind?: PayoutKind
-): AgitPostText[] {
+): AgitPayoutText[] {
   const days = only ? [only] : upcomingPayDates(today, batchesOf([...rows], [...finals], [...invoices]).map((b) => b.paidAt));
   return days.flatMap((day) => {
     const kinds = onlyKind ? [onlyKind] : agitKindsOn(agitBatchesOf(rows, finals, invoices, day));
@@ -395,6 +414,18 @@ export interface AgitHookInfo {
    * (한백 2026-11-08 「담당자는 미리 넣어둘수없나」)
    */
   assignees: string[];
+  /**
+   * 위탁운영수수료를 받는 플러그링크의 계좌 — 그 글의 엑셀(구매요청간소화)에 적는다(migrations/0131). 비면 위탁운영수수료 글을 못 올린다
+   * (「플러그링크 계좌 미지정」). 플러그링크는 콘솔 계정이 없어 협력사 정보에 계좌가 없다 — 한 번 넣어 둔다
+   */
+  feePayee: AgitFeePayee | null;
+}
+
+/** 위탁운영수수료를 받는 곳 — 은행 · 계좌(숫자만) · 예금주 */
+export interface AgitFeePayee {
+  bank: string;
+  account: string;
+  holder: string;
 }
 
 /** 요청 담당자는 이만큼까지 — 가이드는 여럿을 받는다고만 적었다 */
@@ -444,8 +475,10 @@ export type AgitPostStatus = (typeof AGIT_POST_STATUSES)[number];
 export interface AgitPostRecord {
   id: string;
   payDate: string;
-  /** 구분 — 영업비 · 시공비(글은 결제일 × 구분마다 하나) */
-  kind: PayoutKind;
+  /** 구분 — 영업비 · 시공비(글은 결제일 × 구분마다 하나) · 위탁운영수수료 */
+  kind: AgitKind;
+  /** 위탁운영수수료 글의 재료(세금계산서에서 읽은 것 — lib/agit/fee) — 그 밖의 글은 null */
+  fee: AgitFeeInput | null;
   status: AgitPostStatus;
   title: string;
   /** 아지트에 갈(간) 글 그대로 */
@@ -482,16 +515,24 @@ export function payDateName(payDate: string): string {
   return `${m}월 ${d}일 ${isRegular(payDate) ? '정기결제' : '지급'}`;
 }
 
-/** 결제일 · 구분의 이름 — 「11월 10일 정기결제 시공비」 */
-export const agitPostName = (post: { payDate: string; kind: PayoutKind }): string => `${payDateName(post.payDate)} ${post.kind}`;
+/** 결제일 · 구분의 이름 — 「11월 10일 정기결제 시공비」 · 위탁운영수수료는 「11월 30일 위탁운영수수료」(말일 지급 — 정기결제가 아니다) */
+export const agitPostName = (post: { payDate: string; kind: AgitKind }): string => {
+  if (post.kind === AGIT_FEE_KIND) {
+    const [, m, d] = post.payDate.split('-').map(Number);
+    return `${m}월 ${d}일 ${AGIT_FEE_KIND}`;
+  }
+  return `${payDateName(post.payDate)} ${post.kind}`;
+};
 
 /** 올린 뒤 정산 담당 대화에 남는 한 줄(자동) — by 는 올리라고 한 사람 */
 export function agitPostedSay(
   post: Pick<AgitPostText, 'payDate' | 'kind' | 'title' | 'total' | 'batches'> & { urgent?: string | null },
   by: string
 ): string {
+  /* 위탁운영수수료는 지급처가 플러그링크 하나라 건수를 말하지 않는다 */
+  const count = post.kind === AGIT_FEE_KIND ? '' : `지급 ${post.batches}건 · `;
   return [
-    `${agitPostName(post)} 열린구매 ${post.urgent ? '긴급 글' : '글'}을 아지트에 올렸습니다 — 지급 ${post.batches}건 · `
+    `${agitPostName(post)} 열린구매 ${post.urgent ? '긴급 글' : '글'}을 아지트에 올렸습니다 — ${count}`
       + `공급가액 ${won(post.total)}원 (승인 ${by}).`,
     post.title,
   ].join('\n');

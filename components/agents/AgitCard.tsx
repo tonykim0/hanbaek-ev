@@ -21,6 +21,7 @@ import { useRouter } from 'next/navigation';
 import { won } from '@/lib/format';
 import { downloadBlob } from '@/lib/download';
 import { agitPostName, assigneesLabel, payDateName, type AgitPostRecord } from '@/lib/agit/post';
+import { feeMonthName } from '@/lib/agit/fee';
 import { Btn, Confirm, Err, Tag, TEXT, type Tone } from '@/components/ui';
 
 const LOOK: Record<AgitPostRecord['status'], { band: string; label: string; tone: Tone }> = {
@@ -34,11 +35,16 @@ const STALLED = { band: 'border-red-500 bg-red-50', label: '아지트 글 · 올
 /** 올리는 중이면 이만큼마다 다시 그린다 */
 const POLL_MS = 5000;
 
+/** 「11월 30일」 */
+const monthDayOf = (day: string): string => `${Number(day.slice(5, 7))}월 ${Number(day.slice(8))}일`;
+
 export interface AgitAccountState {
   /** 아지트 계정의 로그인을 쥐고 있는가 */
   connected: boolean;
   /** 올리다가 로그인이 풀렸으면 그 까닭 */
   expired: string | null;
+  /** 플러그링크 계좌를 넣어 두었는가 — 위탁운영수수료 글의 엑셀에 든다(lib/agit/fee) */
+  feePayee: boolean;
 }
 
 export function AgitCard({ post, assignees, account }: {
@@ -56,14 +62,19 @@ export function AgitCard({ post, assignees, account }: {
   const sending = post.status === 'sending' && !post.stalled;
   const look = post.stalled ? STALLED : LOOK[post.status];
   const open = post.status === 'draft' || post.status === 'failed' || post.stalled;
-  const sum = `지급 ${post.batches}건 · 공급가액 ${won(post.total)}원`;
+  /* 위탁운영수수료 글은 몇 차 · 몇 월분 · 세금계산서의 공급가액(지급처가 플러그링크 하나) — 거래명세서 글은 지급 건수 · 공급가액 */
+  const fee = post.fee;
+  const sum = fee
+    ? `${fee.round}차 · ${feeMonthName(fee.month)} · 공급가액 ${won(fee.fee.supply)}원`
+    : `지급 ${post.batches}건 · 공급가액 ${won(post.total)}원`;
   /* 올린 글은 그때 붙인 사람, 아직이면 지금 정해 둔 사람 */
   const who = post.status === 'posted' || post.status === 'sending' ? post.assignees : assignees;
   /* 못 올리는 까닭이 단추 이름이다(규칙 3) */
   const blocked = account.expired ? '아지트 로그인 풀림 — 다시 연결'
     : !account.connected ? '아지트 계정 연결 전 — 올릴 수 없음'
       : assignees.length === 0 ? '요청 담당 미지정 — 올릴 수 없음'
-        : null;
+        : fee && !account.feePayee ? '플러그링크 계좌 미지정 — 올릴 수 없음'
+          : null;
 
   /* 올리는 중 — 서버가 끝내면 카드가 「올림」으로 바뀌게 몇 초마다 다시 그린다 */
   useEffect(() => {
@@ -133,10 +144,28 @@ export function AgitCard({ post, assignees, account }: {
       </div>
 
       <dl className="mt-2 grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 gap-y-1">
-        <dt className={TEXT.label}>결제일</dt>
-        <dd className="text-small font-bold text-slate-900 tabular-nums">{payDateName(post.payDate)} · {sum}</dd>
+        <dt className={TEXT.label}>{fee ? '지급일' : '결제일'}</dt>
+        <dd className="text-small font-bold text-slate-900 tabular-nums">
+          {fee ? monthDayOf(post.payDate) : payDateName(post.payDate)} · {sum}
+        </dd>
         <dt className={TEXT.label}>구분</dt>
         <dd className="text-small font-semibold text-slate-800">{post.kind}</dd>
+        {fee && (
+          <>
+            <dt className={TEXT.label}>충전매출</dt>
+            <dd className="text-small font-semibold text-slate-800 tabular-nums">
+              {fee.sales
+                ? `합계 ${won(fee.sales.total)}원 · ${fee.sales.inDate ? `${monthDayOf(fee.sales.inDate)} 입금 예정` : '입금 예정일 미지정'}`
+                : '없음'}
+            </dd>
+            <dt className={TEXT.label}>계산서</dt>
+            <dd className="text-small text-slate-800">
+              <a href={fee.fee.file.url} target="_blank" rel="noreferrer" className="font-semibold text-brand-700 underline-offset-2 hover:underline">
+                {fee.fee.file.name}
+              </a>
+            </dd>
+          </>
+        )}
         <dt className={TEXT.label}>요청 담당</dt>
         <dd className="text-small font-semibold text-slate-800">{who.length ? assigneesLabel(who) : <Tag tone="warn">미지정</Tag>}</dd>
       </dl>
@@ -169,7 +198,7 @@ export function AgitCard({ post, assignees, account }: {
             {blocked ?? (post.status === 'draft' ? '승인하고 올리기' : '다시 올리기')}
           </Btn>
         )}
-        <Btn size="sm" kind="side" busy={zipping} busyLabel="묶는 중… (거래명세서 PDF)" onClick={() => void bundle()}>
+        <Btn size="sm" kind="side" busy={zipping} busyLabel={fee ? '묶는 중… (엑셀 캡처)' : '묶는 중… (거래명세서 PDF)'} onClick={() => void bundle()}>
           첨부 파일 받기 (zip)
         </Btn>
         <Btn size="sm" kind="quiet" onClick={() => void copy()}>{copied ? '복사됨' : '복사'}</Btn>

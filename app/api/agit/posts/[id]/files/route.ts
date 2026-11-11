@@ -1,5 +1,5 @@
 /**
- * GET /api/agit/posts/[id]/files — 아지트 열린구매 글의 첨부 zip 받기 [한백 관리자]
+ * GET /api/agit/posts/[id]/files[?part=png] — 아지트 열린구매 글의 첨부 zip 받기(part=png 면 엑셀 캡처만) [한백 관리자]
  * (한백 2026-11-08 「열린구매 글에는 거래명세서, 세금계산서 그리고 엑셀파일이 들어가야해」 → 「개별 파일로 하나의 zip으로 다운받아서 올려」)
  *
  * 콘솔이 그 글(결제일 × 구분)의 첨부를 zip 하나로 묶어 주고, Claude Code 가 받아 아지트 글의 첨부 파일로 붙인다(scripts/agit-post.ts).
@@ -13,10 +13,7 @@ import { requireAdmin } from '@/lib/auth/guard';
 import { actorOf } from '@/lib/auth/session';
 import { getRepository } from '@/lib/data';
 import { isUnexpectedError } from '@/lib/api/errors';
-import { loadAgitBundleInput } from '@/lib/agit/load';
-import { agitBundleOf } from '@/lib/agit/bundle';
-import { agitZipOf, fetchOurBlob } from '@/lib/agit/bundle-zip';
-import { renderAgitFiles } from '@/lib/agit/statement-pdf';
+import { agitPostFilesOf } from '@/lib/agit/publish';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -30,17 +27,17 @@ export async function GET(request: Request, { params }: { params: { id: string }
     const actor = actorOf(session);
     const post = await getRepository().getAgitPost(actor, params.id);
     if (!post) return fail('아지트 글을 찾을 수 없습니다.', 404);
-    const { batches, payeeOf } = await loadAgitBundleInput(actor, post.payDate, post.kind);
-    if (!batches.some((b) => b.org)) return fail(`그 결제일에 나갈 ${post.kind} 지급이 0건입니다 — 묶을 것이 없습니다.`, 422);
-    const plan = agitBundleOf(post.payDate, batches, payeeOf);
-    const zip = await agitZipOf(plan, {
-      render: ({ paths, html }) => renderAgitFiles({ origin: new URL(request.url).origin, cookie: request.headers.get('cookie'), paths, html }),
-      file: (url) => fetchOurBlob(url),
-    });
-    return new NextResponse(new Blob([zip as BlobPart], { type: 'application/zip' }), {
+    /* 올릴 때 붙는 것과 같은 zip — 위탁운영수수료 글은 엑셀 · 넘긴 세금계산서(lib/agit/fee), 그 밖은 그 결제일 · 구분의 배치 */
+    const url = new URL(request.url);
+    const { zip, png } = await agitPostFilesOf(actor, post, { origin: url.origin, cookie: request.headers.get('cookie') });
+    /* ?part=png — 엑셀 캡처만(예비 길이 본문 그림으로 올린다 · 위탁운영수수료 zip 에는 캡처가 없다 — 한백의 5차 zip 그대로) */
+    const file = url.searchParams.get('part') === 'png'
+      ? { bytes: png.bytes, name: png.name, type: 'image/png' }
+      : { bytes: zip.bytes, name: zip.name, type: 'application/zip' };
+    return new NextResponse(new Blob([file.bytes as BlobPart], { type: file.type }), {
       headers: {
-        'Content-Type': 'application/zip',
-        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(plan.zipName)}`,
+        'Content-Type': file.type,
+        'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.name)}`,
         'Cache-Control': 'no-store',
       },
     });

@@ -19,11 +19,13 @@ import { getRepository } from '@/lib/data';
 import { background } from '@/lib/background';
 import { isUnexpectedError } from '@/lib/api/errors';
 import type { Actor } from '@/lib/data/repository';
+import type { PayoutKind } from '@/types/project';
 import { agitBundleOf } from './bundle';
-import { agitFilesOf, fetchOurBlob } from './bundle-zip';
+import { agitFeeFilesOf, agitFilesOf, fetchOurBlob, type AgitFileHands } from './bundle-zip';
 import { agitWallOf } from './editor-doc';
-import { loadAgitBundleInput, loadAgitDraft, loadAgitKinds } from './load';
-import { agitTemplateOf, type AgitPostRecord } from './post';
+import { agitFeeBundleOf, FEE_PAYEE_MISSING } from './fee';
+import { loadAgitBundleInput, loadAgitKinds, loadAgitPostDraft } from './load';
+import { agitTemplateOf, isPayoutKind, type AgitPostRecord } from './post';
 import { renderAgitFiles } from './statement-pdf';
 import { AgitSignedOut, type ComposeCheck } from './compose';
 import { postAsHanbaek } from './agit-web';
@@ -59,16 +61,19 @@ export async function claimAgitForPosting(actor: Actor, id: string, seen: string
   const post = await repo.getAgitPost(actor, id);
   if (!post) throw new Error('아지트 글 초안을 찾을 수 없습니다.');
   if (post.status === 'posted') throw new Error('이미 아지트에 올린 글입니다.');
-  const { assignees } = await repo.getAgitHook(actor);
+  const hook = await repo.getAgitHook(actor);
+  const { assignees } = hook;
   if (assignees.length === 0) throw new Error('아지트 요청 담당 미지정 — 「요청 담당」에서 아지트 ID 를 넣어 주세요.');
-  const draft = await loadAgitDraft(actor, post.payDate, post.kind, post.urgent);
+  /* 위탁운영수수료 글의 엑셀에는 플러그링크 계좌가 든다 — 없으면 시작하지 않는다(카드의 단추 이름과 같은 말) */
+  if (!isPayoutKind(post.kind) && !hook.feePayee) throw new Error(FEE_PAYEE_MISSING);
+  const draft = await loadAgitPostDraft(actor, post);
   if (draft.blocked) throw new Error(draft.blocked);
   if (draft.text !== seen) {
     /* 초안을 지금 글로 고쳐 둔다 — 카드가 새 글을 보이고 한백이 다시 승인한다 */
     await repo.draftAgitPost(
       {
         payDate: post.payDate, kind: post.kind, body: draft.text, total: draft.total, batches: draft.batches, again: post.again, messageId: null,
-        urgent: draft.urgent,
+        urgent: draft.urgent, fee: post.fee,
       },
       actor
     );
@@ -81,10 +86,29 @@ export async function claimAgitForPosting(actor: Actor, id: string, seen: string
   return { post: claimed, template: agitTemplateOf(claimed.urgent), assignees: claimed.assignees };
 }
 
-/** 글 하나의 첨부 — zip 과 그 안의 캡처(구매 내역 그림) */
-async function filesOf(actor: Actor, post: AgitPostRecord, ctx: PublishContext) {
-  const { batches, payeeOf } = await loadAgitBundleInput(actor, post.payDate, post.kind);
-  if (!batches.some((b) => b.org)) throw new Error(`그 결제일에 나갈 ${post.kind} 지급이 0건입니다 — 묶을 것이 없습니다.`);
+/**
+ * 글 하나의 첨부 — zip 과 캡처(구매 내역 그림). 위탁운영수수료 글은 엑셀 · 넘긴 세금계산서(lib/agit/fee — 거래명세서 없음), 그 밖의 글은
+ * 그 결제일 · 구분의 배치로
+ */
+export async function agitPostFilesOf(actor: Actor, post: AgitPostRecord, ctx: Pick<PublishContext, 'origin' | 'cookie'>): Promise<{
+  zip: { bytes: Uint8Array; name: string }; png: { bytes: Uint8Array; name: string };
+}> {
+  const render: AgitFileHands['render'] = ({ paths, html }) => renderAgitFiles({ origin: ctx.origin, cookie: ctx.cookie, paths, html });
+  if (!isPayoutKind(post.kind)) {
+    if (!post.fee) throw new Error('위탁운영수수료 글의 세금계산서 재료가 없습니다 — 정산 담당에게 세금계산서를 다시 넘겨 주세요.');
+    const { feePayee } = await getRepository().getAgitHook(actor);
+    if (!feePayee) throw new Error(FEE_PAYEE_MISSING);
+    const plan = agitFeeBundleOf(post.payDate, post.fee, feePayee);
+    const { zip, image } = await agitFeeFilesOf(plan, { render, file: (url) => fetchOurBlob(url) });
+    return { zip: { bytes: zip, name: plan.zipName }, png: { bytes: image, name: plan.imageName } };
+  }
+  return filesOf(actor, post, post.kind, ctx);
+}
+
+/** 거래명세서 글의 첨부 — 그 결제일 · 구분의 배치(엑셀 · 캡처 · 거래명세서 PDF · 세금계산서) */
+async function filesOf(actor: Actor, post: AgitPostRecord, kind: PayoutKind, ctx: Pick<PublishContext, 'origin' | 'cookie'>) {
+  const { batches, payeeOf } = await loadAgitBundleInput(actor, post.payDate, kind);
+  if (!batches.some((b) => b.org)) throw new Error(`그 결제일에 나갈 ${kind} 지급이 0건입니다 — 묶을 것이 없습니다.`);
   const plan = agitBundleOf(post.payDate, batches, payeeOf);
   const { zip, image } = await agitFilesOf(plan, {
     render: ({ paths, html }) => renderAgitFiles({ origin: ctx.origin, cookie: ctx.cookie, paths, html }),
@@ -103,7 +127,7 @@ async function runOne(actor: Actor, claimed: { post: AgitPostRecord; template: s
   try {
     const session = await repo.agitSessionFor(actor);
     sessionAt = session.at;
-    const files = await filesOf(actor, post, ctx);
+    const files = await agitPostFilesOf(actor, post, ctx);
     const out = await postAsHanbaek({
       cookies: session.cookies, template: claimed.template, assignees: claimed.assignees, text: post.body, title: post.title,
       png: files.png, zip: files.zip, mark: ctx.mark ?? null, noCc: ctx.noCc ?? false, startedAt,
@@ -115,7 +139,8 @@ async function runOne(actor: Actor, claimed: { post: AgitPostRecord; template: s
     });
     const wall = agitWallOf(out.url);
     if (!wall) throw new Error(`올린 글 주소가 아지트 글 주소가 아닙니다 — ${out.url}`);
-    const kinds = await loadAgitKinds(actor, post.payDate);
+    /* 상신 할 일은 거래명세서 글의 일 — 위탁운영수수료 글은 그날 나가는 구분을 세지 않는다 */
+    const kinds = isPayoutKind(post.kind) ? await loadAgitKinds(actor, post.payDate) : undefined;
     await repo.finishAgitPost({ id: post.id, result: { ok: true, agitId: wall.id, agitUrl: wall.url }, kinds }, actor).catch((e) => {
       /* 아지트에는 올라갔다 — 주소를 로그에 남겨 손으로 적을 수 있게(카드는 6분 뒤 「멈춤」으로 다시 올리기를 연다) */
       console.error(`[agit] 아지트에는 올렸는데 콘솔에 남기지 못함 — ${wall.url}`, e instanceof Error ? e.message : String(e));
@@ -176,10 +201,10 @@ export async function dryAgitPublish(actor: Actor, id: string, ctx: PublishConte
   if (!post) throw new Error('아지트 글 초안을 찾을 수 없습니다.');
   const { assignees } = await repo.getAgitHook(actor);
   if (assignees.length === 0) throw new Error('아지트 요청 담당 미지정 — 「요청 담당」에서 아지트 ID 를 넣어 주세요.');
-  const draft = await loadAgitDraft(actor, post.payDate, post.kind, post.urgent);
+  const draft = await loadAgitPostDraft(actor, post);
   if (draft.blocked) throw new Error(draft.blocked);
   const session = await repo.agitSessionFor(actor);
-  const files = await filesOf(actor, post, ctx);
+  const files = await agitPostFilesOf(actor, post, ctx);
   try {
     const out = await postAsHanbaek({
       cookies: session.cookies, template: agitTemplateOf(draft.urgent), assignees, text: draft.text, title: post.title,

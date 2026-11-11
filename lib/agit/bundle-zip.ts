@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import JSZip from 'jszip';
 import { ourBlobPathname } from '@/lib/intake-stage';
 import type { AgitBundlePlan } from './bundle';
+import type { AgitFeePlan } from './fee';
 import { purchaseXlsx } from './purchase-xlsx';
 import { purchaseHtml } from './purchase-image';
 
@@ -53,6 +54,21 @@ export async function agitFilesOf(plan: AgitBundlePlan, hands: AgitFileHands): P
 
 export async function agitZipOf(plan: AgitBundlePlan, hands: AgitFileHands): Promise<Uint8Array> {
   return (await agitFilesOf(plan, hands)).zip;
+}
+
+/**
+ * 위탁운영수수료 글의 첨부(lib/agit/fee) — 한백의 5차 zip 그대로 폴더 없이 엑셀과 플러그링크 세금계산서 둘. 엑셀 캡처는 글의 구매 내역 그림으로만
+ * 쓰고 zip 에는 넣지 않는다(5차 zip 에도 없었다). 거래명세서는 없다 — 서버 브라우저는 캡처 하나만 그린다.
+ */
+export async function agitFeeFilesOf(plan: AgitFeePlan, hands: AgitFileHands): Promise<{ zip: Uint8Array; image: Uint8Array }> {
+  if (!ourBlobPathname(plan.invoice.url)) throw new Error(`세금계산서 주소가 콘솔 저장소가 아닙니다 — ${plan.invoice.name}`);
+  const zip = new JSZip();
+  const xlsx = await purchaseXlsx(plan.sheet, await purchaseTemplate());
+  zip.file(plan.xlsxName, xlsx);
+  const { image } = await hands.render({ paths: [], html: await purchaseHtml(xlsx) });
+  if (!image) throw new Error('엑셀 캡처를 만들지 못했습니다.');
+  zip.file(plan.invoice.name, await hands.file(plan.invoice.url));
+  return { zip: await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }), image };
 }
 
 /** 우리 Blob 의 파일 하나를 받는다 — 콘솔 저장소 주소만(ourBlobPathname) */

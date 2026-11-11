@@ -15,6 +15,7 @@ import { formatAccountNo } from '@/lib/bank-account';
 import { normalizeOrg } from '@/lib/roles';
 import { CONSOLE_URL } from '@/lib/portal-intake';
 import { agitPostName, type AgitHookInfo, type AgitPostRecord } from '@/lib/agit/post';
+import { feeMonthName } from '@/lib/agit/fee';
 import type { CpoName, ProjectSummary } from '@/types/project';
 import { CPO_NAMES } from '@/types/project';
 import type { Agent, AgentHeadline } from '@/types/agents';
@@ -169,13 +170,19 @@ export function agitLines(agit: NonNullable<ScopeData['agit']>): string[] {
     : a.connected ? `연결됨(로그인 ${a.until ?? '-'}까지)` : '연결 전 — 한백이 정산 담당 화면의 「아지트 계정」에서 연결해야 올린다';
   const out = [
     `[아지트 열린구매 글 — 지금 콘솔의 초안 · 올린 글(결제일 ${agit.from} 이후, 안 올린 것은 다). 올렸는지 · 금액은 지난 대화가 아니라 이것으로 말한다]`,
-    `아지트 계정 ${state} · 요청 담당 ${a.assignees.length ? `${a.assignees.length}명` : '미지정 — 올릴 수 없음'}`,
+    `아지트 계정 ${state} · 요청 담당 ${a.assignees.length ? `${a.assignees.length}명` : '미지정 — 올릴 수 없음'}`
+      + ` · 플러그링크 계좌(위탁운영수수료 글) ${a.feePayee ? '있음' : '미지정 — 위탁운영수수료 글을 올릴 수 없음'}`,
   ];
   if (agit.posts.length === 0) out.push('- 없음');
   for (const p of agit.posts) {
+    /* 위탁운영수수료 글은 몇 차 · 몇 월분 · 세금계산서 두 장의 금액 — 거래명세서 글은 지급 건수 · 공급가액 */
+    const amount = p.fee
+      ? `${p.fee.round}차(${feeMonthName(p.fee.month)}) · 위탁운영수수료 공급가액 ${won(p.fee.fee.supply)}원 · 합계 ${won(p.fee.fee.total)}원`
+        + (p.fee.sales ? ` · 충전매출 합계 ${won(p.fee.sales.total)}원(입금 예정 ${p.fee.sales.inDate ?? '날짜 없음'})` : ' · 충전매출 없음')
+      : `지급 ${p.batches}건 · 공급가액 ${won(p.total)}원`;
     out.push(`- ${[
-      `${p.payDate} ${agitPostName(p)}`, agitStateOf(p), `지급 ${p.batches}건 · 공급가액 ${won(p.total)}원`,
-      p.urgent && `긴급(사유: ${p.urgent})`, p.again && '다시 올리는 초안',
+      `${p.payDate} ${agitPostName(p)}`, agitStateOf(p), amount,
+      !p.fee && p.urgent && `긴급(사유: ${p.urgent})`, p.again && '다시 올리는 초안',
     ].filter(Boolean).join(' · ')}`);
   }
   return out;

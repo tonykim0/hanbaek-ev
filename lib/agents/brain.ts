@@ -50,6 +50,7 @@ import type {
 } from '@/types/agents';
 import { isLead } from '@/types/agents';
 import type { PayoutKind } from '@/types/project';
+import { AGIT_FEE_KIND, AGIT_POST_KINDS, agitKindOf, type AgitKind } from '@/lib/agit/post';
 import { directionsBlock, HISTORY_DAYS, teamLineOf, TELLS_PER_TURN } from './team';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -130,6 +131,12 @@ function roleOf(agent: Agent): string {
         + '올렸는지 · 못 올렸는지(까닭) · 올리는 중인지 · 그 글의 금액 · 아지트 계정이 연결됐는지는 [아지트 열린구매 글]이 지금이다 — 지난 대화에 '
         + '나온 초안 금액을 지금 것으로 말하지 않는다. 「올리는 중에 멈춤」이면 다시 올리기 전에 아지트에 올라갔는지 한백에게 먼저 확인받는다. 콘솔이 아예 '
         + '못 올리는 날(아지트가 막는 등)에만 예비 길 — Claude Code 에 「○월 ○일 열린구매 올려」 — 을 알려 준다. '
+        + '★플러그링크 위탁운영수수료 글★(한백 11-10 「내가 에이전트한테 세금계산서를 올려주고 너가 나머지를 처리해주는 방식으로」): 매달 말 '
+        + '플러그링크에 내는 위탁운영수수료(플러그링크 잉여금 일부 처분)의 긴급구매요청 글이다 — 거래명세서 글이 아니다. 한백이 세금계산서 두 장'
+        + '(위탁운영수수료 — 플러그링크가 한백에 끊은 것 · 충전매출 — 한백이 플러그링크에 끊은 것)을 넘기면 agit_fee_post 에 두 파일의 id 를 '
+        + '준다 — 금액 · 몇 월분 · 차 · 지급 요청일(다음 달 말일)은 콘솔이 세금계산서를 읽어 짓는다. 한 장만 왔으면 다른 한 장을 달라고 한다. '
+        + '충전매출 입금 예정일은 한백이 말했을 때만 넣는다. 올리라고 하면 agit_publish(돌려받은 지급 요청일 · kind 위탁운영수수료). 이 글에는 '
+        + '상신 할 일이 없고, 엑셀에 적는 플러그링크 계좌는 정산 담당 화면 머리말의 「플러그링크 계좌」에 한백이 넣어 둔다(비었으면 못 올린다). '
         + '한백이 따로 써 달라고 할 때만 [열린구매] 자료로 글을 쓴다. 붙일 자료는 자료 줄에 있는 것(거래명세서 주소 · 세금계산서 · '
         + '사업자등록증 · 통장사본)을 보고 없는 것은 없다고 짚는다.';
     case 'strategy':
@@ -352,9 +359,20 @@ export interface AgentHands {
    * 올리기 시작한다(끝은 응답 뒤 — 대화에 한 줄이 저절로 선다). 시작 못 한 글은 skipped(changed 면 초안을 지금 금액으로 고쳐 두었다).
    * 올릴 초안이 하나도 없거나 연결이 없으면 사람 말로 던진다
    */
-  agitPublish?(input: { payDate: string; kind?: PayoutKind }): Promise<{
-    started: { id: string; name: string; kind: PayoutKind; batches: number; total: number; urgent: string | null }[];
-    skipped: { kind: PayoutKind; why: string; changed: boolean; total: number; batches: number }[];
+  agitPublish?(input: { payDate: string; kind?: AgitKind }): Promise<{
+    started: { id: string; name: string; kind: AgitKind; batches: number; total: number; urgent: string | null }[];
+    skipped: { kind: AgitKind; why: string; changed: boolean; total: number; batches: number }[];
+  }>;
+  /**
+   * 플러그링크 위탁운영수수료 글 초안 — 전기차 정산 담당만(lib/agit/fee-run). 한백이 넘긴 세금계산서 두 장(파일 id)을 콘솔이 읽어 짓는다 —
+   * 담당은 금액을 옮겨 적지 않는다. 바뀌어 온 파일 · 맞지 않는 금액 · 못 읽은 달은 사람 말로 던진다
+   */
+  agitFeeDraft?(input: {
+    feeFileId: string; salesFileId: string | null; inDate: string | null; month: string | null; payDate: string | null; again: boolean;
+  }): Promise<{
+    id: string; plan: 'create' | 'refresh' | 'keep'; name: string; payDate: string; round: number; month: string;
+    fee: { supply: number; vat: number; total: number };
+    sales: { supply: number; vat: number; total: number; inDate: string | null } | null;
   }>;
   /** 팀장만 — 팀 목표 · 방향 올리기(id 없이) · 고치기(id). 저장소가 틀리면 사람 말로 던진다 */
   saveDirection?(input: { id: string | null; title: string; body: string }): Promise<{ id: string; title: string }>;
@@ -511,13 +529,53 @@ const AGIT_PUBLISH_TOOL = {
   input_schema: {
     type: 'object',
     properties: {
-      pay_date: { type: 'string', description: '결제일 YYYY-MM-DD — 올릴 초안의 결제일' },
+      pay_date: { type: 'string', description: '결제일 YYYY-MM-DD — 올릴 초안의 결제일(위탁운영수수료 글은 그 지급 요청일)' },
       kind: {
-        type: 'string', enum: ['영업비', '시공비'],
-        description: '그 구분의 글만 — 한백이 한쪽만 올리라고 했을 때. 빼면 그날의 승인 전 초안 전부 (선택)',
+        type: 'string', enum: ['영업비', '시공비', '위탁운영수수료'],
+        description: '그 구분의 글만 — 한백이 한쪽만 올리라고 했을 때 · 위탁운영수수료 글이면 위탁운영수수료. 빼면 그날의 승인 전 초안 전부 (선택)',
       },
     },
     required: ['pay_date'],
+  },
+};
+
+/**
+ * 플러그링크 위탁운영수수료 글 초안 — 전기차 정산 담당만(라우트가 손을 이어 줄 때). 한백이 세금계산서를 넘기면 담당은 어느 파일이 어느 것인지만
+ * 고르고 콘솔이 읽어 짓는다(lib/agit/fee-run — 한백 2026-11-10 「내가 에이전트한테 세금계산서를 올려주고 너가 나머지를 처리해주는 방식으로」)
+ */
+const AGIT_FEE_TOOL = {
+  name: 'agit_fee_post',
+  description: '플러그링크 위탁운영수수료 글 — 매달 말 아지트 열린구매에 올리는 「[긴급] 플러그링크 잉여금 일부 처분의 건 - 위탁운영수수료 N차」 '
+    + '긴급구매요청 글 — 초안을 이 답 밑에 올린다. 한백이 이 대화에 넘긴 세금계산서 PDF 두 장의 파일 id 만 준다: 위탁운영수수료(공급자 플러그링크 → '
+    + '공급받는자 한백 · 품목 「전기요금, 플링비즈 위탁운영 비용, 법정정기검사 수수료 N월분」) · 충전매출(공급자 한백 → 공급받는자 플러그링크). '
+    + '★금액 · 몇 월분 · 차 · 지급 요청일은 콘솔이 세금계산서를 읽어 짓는다 — 네가 옮겨 적지 않는다★. 두 장이 바뀌어 왔거나 금액 셈이 맞지 않거나 '
+    + '달을 못 읽으면 짓지 않고 까닭을 돌려준다 — 그대로 한백에게 말한다. 충전매출 입금 예정일은 한백이 말했을 때만 sales_in_date — 말하지 '
+    + '않았으면 빼고 짓고(글에는 「입금 예정」만) 날짜를 알려 주면 넣겠다고 한 줄 덧붙인다. 글 · 엑셀 · 첨부 zip(엑셀 · 플러그링크 세금계산서)은 '
+    + '지난 5차 글 그대로다. 같은 지급일의 승인 전 초안이 있으면 고쳐 이 답 밑으로 옮긴다. 짓기만 한다 — 올리는 것은 agit_publish(돌려준 '
+    + '지급 요청일 · kind 위탁운영수수료, 한백이 올리라고 했을 때만).',
+  input_schema: {
+    type: 'object',
+    properties: {
+      fee_file_id: {
+        type: 'string', description: '위탁운영수수료 세금계산서(플러그링크 → 한백) — 「[넘긴 파일 … · id=…]」의 id',
+      },
+      sales_file_id: {
+        type: 'string',
+        description: '충전매출 세금계산서(한백 → 플러그링크)의 id — 한백이 넘기지 않았으면 넘겨 달라고 묻는다. 그 달에 충전매출이 없다고 한백이 '
+          + '말했으면 빼고 no_sales (선택)',
+      },
+      no_sales: { type: 'boolean', description: '그 달은 충전매출 세금계산서가 없다(한백이 그렇게 말했을 때만) — 글에서 충전매출 표가 빠진다 (선택)' },
+      sales_in_date: { type: 'string', description: '충전매출(플러그링크 → 한백) 입금 예정일 YYYY-MM-DD — 한백이 말했을 때만 (선택)' },
+      month: {
+        type: 'string', description: '몇 월분 YYYY-MM — 콘솔이 세금계산서에서 달을 못 읽었다고 돌려줬을 때 · 한백이 말했을 때만 (선택)',
+      },
+      pay_date: {
+        type: 'string',
+        description: '지급 요청일 YYYY-MM-DD — 한백이 다른 날을 말했을 때만. 빼면 그 달 다음 달 말일(쉬는 날이면 앞 영업일) (선택)',
+      },
+      again: { type: 'boolean', description: '이미 올린 그 지급일의 위탁운영수수료 글을 다시 올리는 초안 — 한백이 다시 올리라고 했을 때만 (선택)' },
+    },
+    required: ['fee_file_id'],
   },
 };
 
@@ -737,7 +795,8 @@ export function toolsOf(
   agent: Agent,
   hands: Pick<
     AgentHands,
-    'siteMail' | 'pricingTable' | 'saveDirection' | 'tellTeammate' | 'saveMemo' | 'saveDuty' | 'bundleSiteDocs' | 'agitDraft' | 'agitPublish'
+    | 'siteMail' | 'pricingTable' | 'saveDirection' | 'tellTeammate' | 'saveMemo' | 'saveDuty' | 'bundleSiteDocs' | 'agitDraft' | 'agitPublish'
+    | 'agitFeeDraft'
   >,
 ): unknown[] {
   const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
@@ -748,6 +807,7 @@ export function toolsOf(
     ...(hands.bundleSiteDocs ? [BUNDLE_TOOL] : []),
     ...(agent.kind === 'settlement' && hands.agitDraft ? [AGIT_POST_TOOL] : []),
     ...(agent.kind === 'settlement' && hands.agitPublish ? [AGIT_PUBLISH_TOOL] : []),
+    ...(agent.kind === 'settlement' && hands.agitFeeDraft ? [AGIT_FEE_TOOL] : []),
     ...(siteSpec ? [siteMailTool(siteSpec)] : []),
     ...(agent.kind === 'operator' && hands.pricingTable ? [PRICING_TOOL] : []),
     ...(hands.saveDuty ? DUTY_TOOLS : []),
@@ -975,12 +1035,14 @@ export async function agentReply(input: {
         const payDate = str(args.pay_date);
         if (!DAY_RE.test(payDate)) return fail('pay_date 는 YYYY-MM-DD 다.');
         if (agitPublished.length >= 4) return fail('한 답에 아지트 글 올리기는 넷까지다.');
-        const kind = args.kind === '영업비' || args.kind === '시공비' ? args.kind : undefined;
+        const kind = typeof args.kind === 'string' && (AGIT_POST_KINDS as readonly string[]).includes(args.kind)
+          ? agitKindOf(args.kind) : undefined;
         const { started, skipped } = await hands.agitPublish({ payDate, ...(kind ? { kind } : {}) });
         const won = (n: number) => n.toLocaleString('ko-KR');
         const lines = started.map((s) => {
           agitPublished.push(s.urgent ? `${s.name} (긴급)` : s.name);
-          return `${s.name} 글을 올리기 시작했다 (id=${s.id}, 지급 ${s.batches}건 · 공급가액 ${won(s.total)}원${s.urgent ? ' · 긴급' : ''}) — `
+          const count = s.kind === AGIT_FEE_KIND ? '' : `지급 ${s.batches}건 · `;
+          return `${s.name} 글을 올리기 시작했다 (id=${s.id}, ${count}공급가액 ${won(s.total)}원${s.urgent ? ' · 긴급' : ''}) — `
             + '1~2분 뒤 이 대화에 「아지트에 올렸습니다」 한 줄이 저절로 선다. 아직 다 된 것이 아니다.';
         });
         return {
@@ -991,6 +1053,39 @@ export async function agentReply(input: {
               ? `${k.kind} 글은 올리지 않았다 — 초안 뒤에 금액이 바뀌어 초안을 지금 글로 고쳐 두었다(지급 ${k.batches}건 · 공급가액 ${won(k.total)}원). `
                 + '한백에게 새 금액을 말하고, 다시 올리라고 하면 그때 agit_publish.'
               : `${k.kind} 글은 올리지 않았다 — ${k.why}`)),
+          ].join('\n'),
+        };
+      }
+      if (block.name === 'agit_fee_post' && agent.kind === 'settlement' && hands.agitFeeDraft) {
+        const feeFileId = str(args.fee_file_id);
+        if (!feeFileId) return fail('fee_file_id 를 준다 — 「[넘긴 파일 … · id=…]」의 id.');
+        const salesFileId = str(args.sales_file_id) || null;
+        if (!salesFileId && args.no_sales !== true) {
+          return fail('충전매출 세금계산서(한백 → 플러그링크)의 sales_file_id 도 준다 — 한백이 넘기지 않았으면 넘겨 달라고 묻고, 그 달에 없다고 했으면 no_sales.');
+        }
+        const inDate = str(args.sales_in_date) || null;
+        if (inDate && !DAY_RE.test(inDate)) return fail('sales_in_date 는 YYYY-MM-DD 다.');
+        const month = str(args.month) || null;
+        if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return fail('month 는 YYYY-MM 다.');
+        const payDate = str(args.pay_date) || null;
+        if (payDate && !DAY_RE.test(payDate)) return fail('pay_date 는 YYYY-MM-DD 다.');
+        if (agitDrafts.length >= 4) return fail('한 답에 아지트 글 초안은 넷까지다.');
+        const made = await hands.agitFeeDraft({ feeFileId, salesFileId, inDate, month, payDate, again: args.again === true });
+        agitDrafts.push(`${made.name} (긴급)`);
+        const won = (n: number) => n.toLocaleString('ko-KR');
+        const sum = (i: { supply: number; vat: number; total: number }) => `공급가액 ${won(i.supply)}원 · 세액 ${won(i.vat)}원 · 합계 ${won(i.total)}원`;
+        const [y, m] = made.month.split('-');
+        const head = made.plan === 'create' ? '초안을 올렸다'
+          : made.plan === 'refresh' ? '승인 전 초안을 지금 글로 고쳐 이 답 밑으로 옮겼다' : '같은 초안이 이미 있어 이 답 밑으로 옮겼다';
+        return {
+          type: 'tool_result', tool_use_id: block.id,
+          content: [
+            `위탁운영수수료 ${made.round}차(${y.slice(2)}년 ${Number(m)}월분) 긴급 글 ${head} (id=${made.id}, 지급 요청일 ${made.payDate}).`,
+            `위탁운영수수료(플러그링크 → 한백 계산서): ${sum(made.fee)}`,
+            made.sales
+              ? `충전매출(한백 → 플러그링크 계산서): ${sum(made.sales)} · 입금 예정 ${made.sales.inDate ?? '날짜 없음 — 한백이 알려 주면 sales_in_date 로 다시 짓는다'}`
+              : '충전매출: 없음(no_sales)',
+            `아직 올리지 않았다 — 한백이 올리라고 하면 agit_publish(pay_date ${made.payDate}, kind 위탁운영수수료). 카드의 「승인하고 올리기」도 같다.`,
           ].join('\n'),
         };
       }

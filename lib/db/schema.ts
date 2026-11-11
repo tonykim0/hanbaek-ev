@@ -16,6 +16,8 @@ import type { NoticeFile } from '@/types/project';
 import type { SiteFile } from '@/lib/solar/sites';
 import type { AgentMessageMeta } from '@/types/agents';
 import type { ConsultDup } from '@/lib/consult-dup';
+import type { AgitFeeInput } from '@/lib/agit/fee';
+import type { AgitFeePayee } from '@/lib/agit/post';
 
 // ── 계정 ────────────────────────────────────────────────────────
 export const users = pgTable('users', {
@@ -916,6 +918,8 @@ export const agitHooks = pgTable('agit_hooks', {
   sessionAt: timestamp('session_at', { withTimezone: true }),
   sessionUntil: timestamp('session_until', { withTimezone: true }),
   sessionError: text('session_error'),
+  /** 위탁운영수수료를 받는 플러그링크의 계좌(migrations/0131 · lib/agit/fee) — 은행 · 계좌(숫자만) · 예금주. 화면에서 한백이 넣는다 */
+  feePayee: jsonb('fee_payee').$type<AgitFeePayee>(),
 });
 
 /**
@@ -941,6 +945,11 @@ export const agitPosts = pgTable('agit_posts', {
   again: boolean('again').notNull().default(false),
   /** 긴급사유 — 있으면 긴급 글(글양식 긴급구매요청 · lib/agit/post), 없으면 보통 글(migrations/0128) */
   urgentReason: text('urgent_reason'),
+  /**
+   * 위탁운영수수료 글(구분 「위탁운영수수료」)의 재료 — 몇 월분 · 차 · 세금계산서 두 장의 금액 · 충전매출 입금 예정일 · 넘긴 세금계산서 파일
+   * (migrations/0131 · lib/agit/fee AgitFeeInput). 승인 때 이것으로 다시 지어 본 글과 견준다. 그 밖의 글은 null
+   */
+  fee: jsonb('fee').$type<AgitFeeInput>(),
   /** 아지트가 돌려준 그 글의 id · 주소(lib/agit/send) — 카드의 「아지트에서 보기」 */
   agitId: text('agit_id'),
   agitUrl: text('agit_url'),

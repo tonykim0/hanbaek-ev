@@ -284,7 +284,12 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
     if (a.messageId && shown.has(a.messageId)) agitOf.set(a.messageId, [...(agitOf.get(a.messageId) ?? []), a]);
   }
   const agitCard = (a: AgitPostRecord) => (
-    <AgitCard key={a.id} post={a} assignees={agit?.assignees ?? []} account={agit?.account ?? { connected: false, expired: null }} />
+    <AgitCard
+      key={a.id}
+      post={a}
+      assignees={agit?.assignees ?? []}
+      account={agit?.account ?? { connected: false, expired: null, feePayee: false }}
+    />
   );
   const pendingMails = mailList.filter((m) => m.status === 'draft' || m.status === 'failed').length;
 

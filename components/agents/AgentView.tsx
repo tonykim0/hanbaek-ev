@@ -138,7 +138,9 @@ export async function AgentView({ biz, id, week }: { biz: Biz; id: string; week:
             today={side.today}
             agit={withAgit ? {
               posts: agitPosts,
-              account: { connected: agitHook?.connected ?? false, expired: agitHook?.expired ?? null },
+              account: {
+                connected: agitHook?.connected ?? false, expired: agitHook?.expired ?? null, feePayee: Boolean(agitHook?.feePayee),
+              },
               assignees: agitHook?.assignees ?? [],
             } : undefined}
           />

@@ -11,7 +11,7 @@ import { getRepository } from '@/lib/data';
 import { today } from '@/lib/date';
 import { AUTO } from '@/lib/check-kit';
 import { agitUrgentFor, draftKindsOf, loadAgitDraft, loadAgitKinds } from '@/lib/agit/load';
-import type { AgitPostText } from '@/lib/agit/post';
+import type { AgitPayoutText } from '@/lib/agit/post';
 import type { Actor } from '@/lib/data/repository';
 import { loadScope } from './scope';
 import { OPEN_PURCHASE_AGENT, openPurchaseDue, openPurchasePlan, unknownYears } from './open-purchase';
@@ -32,7 +32,7 @@ export async function runAgentReminders(now: Date = new Date()): Promise<{
     const years = unknownYears(due);
     if (years.length) console.error('[agents] 공휴일 표 없음', years.join(','), '— lib/business-days 에 그 해를 더한다');
     /* 크론은 긴급을 정하지 않는다 — 한백이 먼저 긴급 초안을 시켜 두었으면 그 모양 그대로 다시 짓는다 */
-    const drafts: AgitPostText[] = [];
+    const drafts: AgitPayoutText[] = [];
     for (const kind of draftKindsOf(await loadAgitKinds(REMIND_ACTOR, due.payDate))) {
       drafts.push(await loadAgitDraft(REMIND_ACTOR, due.payDate, kind, await agitUrgentFor(REMIND_ACTOR, due.payDate, kind, undefined)));
     }

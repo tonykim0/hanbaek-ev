@@ -1,5 +1,5 @@
 /**
- * GET /api/agit/posts?payDate=YYYY-MM-DD[&kind=영업비|시공비] — 그 결제일의 아직 안 올린 아지트 글(초안 · 못 올림 · 올리는 중)과 요청 담당
+ * GET /api/agit/posts?payDate=YYYY-MM-DD[&kind=영업비|시공비|위탁운영수수료] — 그 결제일의 아직 안 올린 아지트 글(초안 · 못 올림 · 올리는 중)과 요청 담당
  * [한백 관리자]. (한백 2026-11-09 「Claude Code posts it」) — 한백이 Claude Code 에 「○월 ○일 열린구매 올려」라고 하면 scripts/agit-post.ts 가
  * 한백의 콘솔 로그인으로 이것을 읽어 어느 초안을 올릴지 찾는다.
  *
@@ -11,7 +11,7 @@ import { requireAdmin } from '@/lib/auth/guard';
 import { actorOf } from '@/lib/auth/session';
 import { getRepository } from '@/lib/data';
 import { isUnexpectedError } from '@/lib/api/errors';
-import { agitKindOf, agitTemplateOf } from '@/lib/agit/post';
+import { AGIT_POST_KINDS, agitKindOf, agitTemplateOf } from '@/lib/agit/post';
 import { loadAgitKinds } from '@/lib/agit/load';
 
 export const dynamic = 'force-dynamic';
@@ -26,7 +26,9 @@ export async function GET(request: Request) {
   const payDate = q.get('payDate') ?? '';
   if (!DAY_RE.test(payDate)) return fail('결제일은 YYYY-MM-DD 로 주세요.', 400);
   const only = q.get('kind');
-  if (only !== null && only !== '영업비' && only !== '시공비') return fail('구분은 영업비 · 시공비 중 하나입니다.', 400);
+  if (only !== null && !(AGIT_POST_KINDS as readonly string[]).includes(only)) {
+    return fail('구분은 영업비 · 시공비 · 위탁운영수수료 중 하나입니다.', 400);
+  }
   try {
     const actor = actorOf(session);
     const repo = getRepository();

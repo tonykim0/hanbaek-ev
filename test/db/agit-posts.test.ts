@@ -243,7 +243,7 @@ describe('아지트 계정 연결 · 요청 담당', () => {
     expect((await call(deleteAccount, { method: 'DELETE' })).status).toBe(200);
     await expect(repo.agitSessionFor(admin)).rejects.toThrow(/아지트 계정 연결 전/);
     expect(await repo.getAgitHook(admin)).toEqual({
-      connected: false, login: null, connectedBy: null, connectedAt: null, until: null, expired: null, assignees: ['kiko.x'],
+      connected: false, login: null, connectedBy: null, connectedAt: null, until: null, expired: null, assignees: ['kiko.x'], feePayee: null,
     });
   });
 

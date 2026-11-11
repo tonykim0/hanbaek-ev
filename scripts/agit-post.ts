@@ -9,6 +9,7 @@
  * 한백이 Claude Code 에 「11월 25일 열린구매 올려」라고 했고 콘솔이 못 올리면:
  *   npx tsx scripts/agit-post.ts 2026-11-25            (그날의 글 전부 — 영업비 · 시공비 따로, 영업비 먼저)
  *   npx tsx scripts/agit-post.ts 2026-11-25 시공비     (한 구분만)
+ *   npx tsx scripts/agit-post.ts 2026-11-30 위탁운영수수료   (플러그링크 위탁운영수수료 글 — 그 지급 요청일 · lib/agit/fee)
  * 글은 결제일 × 구분마다 하나다 — 아래 2~5 를 글마다 한다. 한 글이 금액이 바뀌었거나 못 올라가도 다음 글은 올린다(끝에 모아 말한다).
  * 1. 전용 크롬 창(프로필 ~/hanbaek-backups/agit-browser · 9335 포트 — 떠 있으면 붙고 없으면 띄운다)에서 콘솔과 아지트에 로그인돼 있는지 본다.
  *    안 돼 있으면 한백이 그 창에서 로그인할 때까지 기다린다(★비밀번호는 Claude 가 받지 않는다★).
@@ -38,7 +39,9 @@ const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Conte
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-type Kind = '영업비' | '시공비';
+/** 글의 구분 — 위탁운영수수료 글(lib/agit/fee)은 그 지급 요청일로 찾는다 */
+type Kind = '영업비' | '시공비' | '위탁운영수수료';
+const KINDS: readonly Kind[] = ['영업비', '시공비', '위탁운영수수료'];
 
 interface Args {
   payDate: string; kind: Kind | null; dry: boolean; console: string; cdp: string | null; mark: string | null; noCc: boolean;
@@ -47,9 +50,9 @@ interface Args {
 function argsOf(argv: string[]): Args {
   const payDate = argv.find((a) => /^\d{4}-\d{2}-\d{2}$/.test(a));
   if (!payDate) {
-    throw new Error('사용: npx tsx scripts/agit-post.ts <결제일 YYYY-MM-DD> [영업비|시공비] [--dry] [--console 주소] [--cdp 주소] [--mark 글] [--no-cc]');
+    throw new Error('사용: npx tsx scripts/agit-post.ts <결제일 YYYY-MM-DD> [영업비|시공비|위탁운영수수료] [--dry] [--console 주소] [--cdp 주소] [--mark 글] [--no-cc]');
   }
-  const kind = (argv.find((a) => a === '영업비' || a === '시공비') as Kind | undefined) ?? null;
+  const kind = (argv.find((a) => (KINDS as readonly string[]).includes(a)) as Kind | undefined) ?? null;
   const val = (name: string) => {
     const i = argv.indexOf(name);
     return i >= 0 && argv[i + 1] ? argv[i + 1] : null;
@@ -111,8 +114,8 @@ async function api<T>(page: Page, path: string, body?: unknown): Promise<{ statu
   }, path, body === undefined ? null : JSON.stringify(body)) as Promise<{ status: number; json: T }>;
 }
 
-/** 콘솔의 첨부 zip — 바이트와 이름 */
-async function zipOf(page: Page, id: string): Promise<{ bytes: Buffer; name: string }> {
+/** 콘솔의 첨부 zip(part 를 주면 그것만 — png 엑셀 캡처) — 바이트와 이름 */
+async function zipOf(page: Page, id: string, part?: 'png'): Promise<{ bytes: Buffer; name: string }> {
   const got = await page.evaluate(async (path: string) => {
     const res = await fetch(path);
     if (!res.ok) return { error: `${res.status} ${(await res.text()).slice(0, 200)}` };
@@ -120,10 +123,10 @@ async function zipOf(page: Page, id: string): Promise<{ bytes: Buffer; name: str
     let s = '';
     for (let i = 0; i < buf.length; i += 0x8000) s += String.fromCharCode(...buf.subarray(i, i + 0x8000));
     return { b64: btoa(s), disposition: res.headers.get('Content-Disposition') ?? '' };
-  }, `/api/agit/posts/${id}/files`);
-  if ('error' in got) throw new Error(`첨부 zip 을 받지 못했다 — ${got.error}`);
+  }, `/api/agit/posts/${id}/files${part ? `?part=${part}` : ''}`);
+  if ('error' in got) throw new Error(`첨부 ${part ?? 'zip'} 을 받지 못했다 — ${got.error}`);
   const name = /filename\*=UTF-8''([^;]+)/.exec(got.disposition)?.[1];
-  return { bytes: Buffer.from(got.b64, 'base64'), name: name ? decodeURIComponent(name) : `열린구매 첨부.zip` };
+  return { bytes: Buffer.from(got.b64, 'base64'), name: name ? decodeURIComponent(name) : part ? `엑셀 캡처.${part}` : '열린구매 첨부.zip' };
 }
 
 interface Draft { id: string; kind: Kind; body: string; title: string; status: string; urgent: string | null }
@@ -170,9 +173,12 @@ async function postOne(a: Args, browser: Browser, consoleTab: Page, draft: Draft
     writeFileSync(zipPath, zip.bytes);
     const unzipped = await JSZip.loadAsync(zip.bytes);
     const pngEntry = Object.values(unzipped.files).find((f) => !f.dir && f.name.endsWith('.png'));
-    if (!pngEntry) throw new Error('첨부 zip 에 엑셀 캡처(png)가 없다');
-    const png = await pngEntry.async('nodebuffer');
-    const pngName = pngEntry.name.split('/').pop()!;
+    /* 위탁운영수수료 zip 에는 캡처가 없다(한백의 5차 zip 그대로) — 따로 받는다 */
+    const shot = pngEntry
+      ? { bytes: await pngEntry.async('nodebuffer'), name: pngEntry.name.split('/').pop()! }
+      : await zipOf(consoleTab, draft.id, 'png');
+    const png = shot.bytes;
+    const pngName = shot.name;
     console.log(`[파일] ${zip.name} (${Math.round(zip.bytes.length / 1024)}KB) · 캡처 ${pngName}`);
 
     /* 아지트 쓰는 칸 — 차례는 콘솔이 올릴 때와 같다(lib/agit/compose) */

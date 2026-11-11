@@ -15,7 +15,8 @@ import type { Biz } from '@/lib/biz';
 import type { DocCheck, DraftPlan } from '@/lib/site-mail';
 import type { RetouchLog } from '@/lib/retouch/types';
 import type { ConsultDup } from '@/lib/consult-dup';
-import type { AgitHookInfo, AgitPostRecord } from '@/lib/agit/post';
+import type { AgitHookInfo, AgitKind, AgitPostRecord } from '@/lib/agit/post';
+import type { AgitFeeInput } from '@/lib/agit/fee';
 import type { AgitCookie } from '@/lib/agit/session';
 import type {
   AgentDetail, AgentFile, AgentMail, AgentMemos, AgentMessage, AgentMessageMeta, AgentMessageRole, AgentSummary, AgentTeam, AgentUsage, MailAccountInfo, MemoScope, TeamMemberLog,
@@ -632,6 +633,11 @@ export interface ProjectRepository {
   saveAgitSession(input: { login: string; cookies: AgitCookie[] }, actor: Actor): Promise<AgitHookInfo>;
   /** 요청 담당자 — 아지트 ID 를 쉼표 · 띄어쓰기로(빈 글이면 비운다). 연결 전에도 넣는다. ID 가 틀리면 사람 말로 던진다 */
   saveAgitAssignees(input: { assignees: string }, actor: Actor): Promise<AgitHookInfo>;
+  /**
+   * 위탁운영수수료를 받는 플러그링크의 계좌(lib/agit/fee — 그 글의 엑셀에 적는다) — 은행 · 계좌 · 예금주. null 이면 지운다. 틀리면 사람 말로
+   * 던진다. 감사기록에는 계좌 끝 넉 자리만
+   */
+  saveAgitFeePayee(input: { bank?: unknown; account?: unknown; holder?: unknown } | null, actor: Actor): Promise<AgitHookInfo>;
   /** 끊기 — 로그인만 비운다(요청 담당은 남는다). 연결한 적이 없으면 false */
   deleteAgitSession(actor: Actor): Promise<boolean>;
   /** 올릴 때만 — 풀어 둔 로그인 쿠키(at = 연결한 때 · 아래 둘이 그 연결인지 견준다). 연결 전 · 풀림 · 풀 수 없으면 사람 말로 던진다 */
@@ -648,10 +654,13 @@ export interface ProjectRepository {
    * 그 결제일 · 구분의 아직 안 올린 글(초안 · 못 올림 · 올리는 중) — 없으면 null. 다시 지을 때 모양(긴급 · 보통)을 그대로 두려고 읽는다.
    * 글은 결제일 × 구분(영업비 · 시공비)마다 하나다
    */
-  openAgitPost(actor: Actor, payDate: string, kind: PayoutKind): Promise<AgitPostRecord | null>;
-  /** 그 결제일의 아직 안 올린 글 전부 — 구분마다 하나씩, 영업비 먼저. Claude Code 가 올릴 글을 찾는다(GET /api/agit/posts?payDate=) */
+  openAgitPost(actor: Actor, payDate: string, kind: AgitKind): Promise<AgitPostRecord | null>;
+  /**
+   * 그 결제일의 아직 안 올린 글 전부 — 구분마다 하나씩, 영업비 · 시공비 · 위탁운영수수료 차례. Claude Code 가 올릴 글을 찾는다
+   * (GET /api/agit/posts?payDate=)
+   */
   openAgitPosts(actor: Actor, payDate: string): Promise<AgitPostRecord[]>;
-  /** 그 결제일에 이미 올린 구분 — 영업비 먼저 */
+  /** 그 결제일에 이미 올린 지급의 구분(영업비 · 시공비) — 영업비 먼저. 위탁운영수수료는 세지 않는다(상신 할 일과 따로다) */
   postedAgitKinds(actor: Actor, payDate: string): Promise<PayoutKind[]>;
   /**
    * 정산 담당이 부를 때 읽는 글 — 결제일이 fromDay 이후인 글과 아직 안 올린 글(초안 · 못 올림 · 올리는 중) 전부. 결제일 · 구분(영업비 먼저) 차례,
@@ -661,12 +670,13 @@ export interface ProjectRepository {
   /**
    * 초안 — 그 결제일 · 구분의 열린 초안(초안 · 못 올림)이 있으면 지금 글로 고치고(messageId 를 주면 그 말 밑으로 옮긴다), 없으면 새로.
    * urgent 는 그 글의 긴급사유(null 이면 보통 글) — body 를 지은 모양과 같아야 한다(lib/agit/post agitPostOf 가 돌려준 urgent).
-   * 올리는 중이면 · 이미 올린 결제일 · 구분인데 again 이 아니면 사람 말로 던진다. plan: create 새로 · refresh 고침 · keep 같은 글
+   * 올리는 중이면 · 이미 올린 결제일 · 구분인데 again 이 아니면 사람 말로 던진다. plan: create 새로 · refresh 고침 · keep 같은 글.
+   * 위탁운영수수료 글은 fee(세금계산서에서 읽은 재료 — lib/agit/fee)를 같이 준다 — 승인 때 그것으로 다시 짓는다
    */
   draftAgitPost(
     input: {
-      payDate: string; kind: PayoutKind; body: string; total: number; batches: number; again: boolean; messageId: string | null;
-      urgent: string | null;
+      payDate: string; kind: AgitKind; body: string; total: number; batches: number; again: boolean; messageId: string | null;
+      urgent: string | null; fee?: AgitFeeInput | null;
     },
     actor: Actor
   ): Promise<{ post: AgitPostRecord; plan: 'create' | 'refresh' | 'keep' }>;

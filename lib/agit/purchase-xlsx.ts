@@ -21,6 +21,11 @@ export interface PurchaseRow {
   org: string;
   supply: number;
   vat: number;
+  /**
+   * 세액을 세금계산서 값 그대로 적는다(수식 =F*0.1 대신 값) — 위탁운영수수료 글(lib/agit/fee): 세금계산서의 세액이 10% 절사와 1원 다른 달이
+   * 있다. 빼면 틀의 수식(열린구매 글 — 콘솔이 셈한 배치)
+   */
+  fixedVat?: boolean;
   bank: string;
   account: string;
   holder: string;
@@ -50,6 +55,8 @@ const PARTNER_FIRST = 3;
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 /** 세액 =F*0.1 의 미리 셈한 값 — 엑셀과 같은 곱셈, 떠도는 소수 자리만 걷는다 */
 const tenth = (n: number): number => Math.round(n * 0.1 * 100) / 100;
+/** 지급 줄의 세액 — 값으로 적는 줄은 그 값, 아니면 수식의 미리 셈한 값 */
+const vatCellOf = (p: PurchaseRow): number => (p.fixedVat ? p.vat : tenth(p.supply));
 
 type Value = { text: string } | { num: number } | { formula: string; cached: number | string };
 
@@ -120,14 +127,14 @@ function fillSheet(xml: string, sheet: PurchaseSheet): string {
 
   const data = sheet.rows.map((p, i) => {
     const r = FIRST + i;
-    const vat = tenth(p.supply);
+    const vat = vatCellOf(p);
     let row = moveRow(pattern.xml, FIRST, r);
     const put: Array<[string, Value]> = [
       ['C', { num: i + 1 }],
       ['D', { text: p.content }],
       ['E', { text: p.org }],
       ['F', { num: p.supply }],
-      ['G', { formula: `F${r}*0.1`, cached: vat }],
+      ['G', p.fixedVat ? { num: vat } : { formula: `F${r}*0.1`, cached: vat }],
       ['H', { formula: `SUM(F${r}:G${r})`, cached: p.supply + vat }],
       ['I', { text: p.bank || '-' }],
       ['J', { text: p.account || '-' }],
@@ -141,7 +148,7 @@ function fillSheet(xml: string, sheet: PurchaseSheet): string {
   });
 
   const supply = sheet.rows.reduce((s, p) => s + p.supply, 0);
-  const vat = Math.round(sheet.rows.reduce((s, p) => s + tenth(p.supply), 0) * 100) / 100;
+  const vat = Math.round(sheet.rows.reduce((s, p) => s + vatCellOf(p), 0) * 100) / 100;
   const foot = rows.filter((r) => r.r >= FOOT).map(({ r, xml: row }) => {
     let next = moveRow(row, r, r + delta);
     if (r === FOOT) {

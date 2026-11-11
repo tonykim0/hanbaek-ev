@@ -32,8 +32,9 @@ import { loadAgentBrief } from '@/lib/agents/scope';
 import { siteMailOfCpo } from '@/lib/site-mail';
 import { requestSiteMail } from '@/lib/site-mail-run';
 import { agitUrgentFor, draftKindsOf, loadAgitDraft, loadAgitKinds } from '@/lib/agit/load';
-import { agitPostName, payDateName } from '@/lib/agit/post';
+import { agitPostName, payDateName, type AgitKind } from '@/lib/agit/post';
 import { requestAgitPublish } from '@/lib/agit/publish';
+import { draftAgitFeePost } from '@/lib/agit/fee-run';
 import { isUnexpectedError } from '@/lib/api/errors';
 import type { PayoutKind } from '@/types/project';
 import { OPEN_PURCHASE_AGENT } from '@/lib/agents/open-purchase';
@@ -185,7 +186,32 @@ async function answer(
          * 아지트에 올리기 — 한백이 올리라고 했을 때(lib/agit/publish). 서버 브라우저는 승인 라우트(크로미움을 실은 함수)에서만 띄우므로 그
          * 라우트를 한백의 로그인으로 부른다(카드의 「승인하고 올리기」와 같은 문). seen 은 지금 초안 그대로 — 그때 금액이 다르면 올리지 않는다
          */
-        agitPublish: async (q: { payDate: string; kind?: PayoutKind }) => {
+        /*
+         * 플러그링크 위탁운영수수료 글 — 한백이 이 대화에 넘긴 세금계산서 두 장을 콘솔이 읽어 짓는다(lib/agit/fee-run). 파일은 이 담당에게 넘긴 것만
+         */
+        agitFeeDraft: async (q: {
+          feeFileId: string; salesFileId: string | null; inDate: string | null; month: string | null; payDate: string | null; again: boolean;
+        }) => {
+          const fileOf = async (id: string, what: string) => {
+            const f = await repo.agentFileOf(agentId, id, actor);
+            if (!f) throw new Error(`${what}(id=${id})를 이 대화에서 찾지 못했다 — 「[넘긴 파일 … · id=…]」의 id 를 쓴다.`);
+            return { url: f.url, name: f.name };
+          };
+          const feeFile = await fileOf(q.feeFileId, '위탁운영수수료 세금계산서');
+          const salesFile = q.salesFileId ? await fileOf(q.salesFileId, '충전매출 세금계산서') : null;
+          const { post, plan, input } = await draftAgitFeePost(actor, {
+            feeFile, salesFile, inDate: q.inDate, month: q.month, payDate: q.payDate, again: q.again,
+          });
+          agitDrafted.push(post.id);
+          return {
+            id: post.id, plan, name: agitPostName(post), payDate: post.payDate, round: input.round, month: input.month,
+            fee: { supply: input.fee.supply, vat: input.fee.vat, total: input.fee.total },
+            sales: input.sales
+              ? { supply: input.sales.supply, vat: input.sales.vat, total: input.sales.total, inDate: input.sales.inDate }
+              : null,
+          };
+        },
+        agitPublish: async (q: { payDate: string; kind?: AgitKind }) => {
           const open = (await repo.openAgitPosts(actor, q.payDate)).filter((p) => !q.kind || p.kind === q.kind);
           if (open.length === 0) {
             throw new Error(`${payDateName(q.payDate)}${q.kind ? ` ${q.kind}` : ''} 의 올릴 초안이 없다 — 이미 올렸거나 초안 전이다(agit_post 로 먼저 짓는다).`);

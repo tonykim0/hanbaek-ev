@@ -12,7 +12,11 @@ import { loadPartnerLines } from '@/lib/partner-lines';
 import type { Actor } from '@/lib/auth/types';
 import type { PartnerLine } from '@/lib/agents/brief';
 import type { PayoutKind } from '@/types/project';
-import { AGIT_KINDS, agitBatchesOf, agitPostOf, urgentReasonOf, type AgitBatch, type AgitPayee, type AgitPostText } from './post';
+import {
+  AGIT_KINDS, agitBatchesOf, agitPostOf, isPayoutKind, urgentReasonOf, type AgitBatch, type AgitPayee, type AgitPayoutText, type AgitPostRecord,
+  type AgitPostText,
+} from './post';
+import { agitFeePostOf } from './fee';
 
 /** 배치의 지급처 → 협력사 정보의 계좌 */
 export const payeeOfMap = (partners: ReadonlyMap<string, PartnerLine>) =>
@@ -40,9 +44,21 @@ export async function loadAgitDraft(
   payDate: string,
   kind: PayoutKind,
   urgent: string | null = null
-): Promise<AgitPostText> {
+): Promise<AgitPayoutText> {
   const { rows, finals, invoices } = await ledger(actor);
   return agitPostOf(payDate, agitBatchesOf(rows, finals, invoices, payDate, kind), CONSOLE_URL, urgent, kind);
+}
+
+/**
+ * 그 글을 지금 다시 짓는다 — 승인 때 본 글과 견주려고(lib/agit/publish). 영업비 · 시공비는 지금 원장으로(금액이 바뀌었으면 다른 글이 나온다),
+ * 위탁운영수수료는 그 줄에 둔 재료(세금계산서에서 읽은 것 — lib/agit/fee)로.
+ */
+export async function loadAgitPostDraft(actor: Actor, post: AgitPostRecord): Promise<AgitPostText> {
+  if (!isPayoutKind(post.kind)) {
+    if (!post.fee) throw new Error('위탁운영수수료 글의 세금계산서 재료가 없습니다 — 정산 담당에게 세금계산서를 다시 넘겨 주세요.');
+    return agitFeePostOf(post.payDate, post.fee);
+  }
+  return loadAgitDraft(actor, post.payDate, post.kind, post.urgent);
 }
 
 /**

@@ -11,7 +11,7 @@
  * ★아지트 화면이 바뀌면 SEL 을 고친다★.
  */
 import type { ElementHandle, Page } from 'puppeteer-core';
-import { agitEditorDocOf, CC_MARK, IMG_MARK, withUploadedImage } from './editor-doc';
+import { agitEditorDocOf, CC_MARK, GAP_MARK, IMG_MARK, withUploadedImage } from './editor-doc';
 
 /** 열린구매 그룹 */
 export const AGIT_GROUP = 'https://team-hanbaek.agit.io/g/300450579';
@@ -135,6 +135,39 @@ async function setAssignees(page: Page, want: readonly string[]): Promise<void> 
   if (now.length !== want.length || want.some((x) => !now.includes(x))) throw new Error(`요청 담당이 맞지 않는다 — ${now.join(', ')}`);
 }
 
+/**
+ * 이어진 빈칸 — 붙여 넣기가 빈칸을 하나로 접으므로(lib/agit/editor-doc GAP_MARK) 「§GAP4§」 자리 표를 하나씩 골라 지우고 빈칸을 쳐 넣는다.
+ * 넣은 자리 수를 돌려준다(위탁운영수수료 글의 두 표 — 넷)
+ */
+async function putGaps(page: Page): Promise<number> {
+  let done = 0;
+  for (; done < 40; done++) {
+    const width = await page.evaluate((sel: string, mark: string) => {
+      const root = document.querySelector(sel)!;
+      const re = new RegExp(`${mark}(\\d+)§`);
+      const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        const m = re.exec(n.textContent ?? '');
+        if (!m) continue;
+        const range = document.createRange();
+        range.setStart(n, m.index);
+        range.setEnd(n, m.index + m[0].length);
+        const s = window.getSelection()!;
+        s.removeAllRanges();
+        s.addRange(range);
+        return Number(m[1]);
+      }
+      return 0;
+    }, SEL.editor, GAP_MARK);
+    if (!width) break;
+    await sleep(150);
+    await page.keyboard.press('Backspace');
+    await page.keyboard.type(' '.repeat(Math.min(width, 8)));
+    await sleep(150);
+  }
+  return done;
+}
+
 /** 긴급 글 — 「cc §CC§」 자리 표를 지우고 그 자리에 팀 멘션을 멘션 고르기로 넣는다 */
 async function putCc(page: Page, alias: string): Promise<void> {
   await page.evaluate((sel: string, mark: string) => {
@@ -201,7 +234,7 @@ async function checkCompose(page: Page, want: { template: string; assignees: rea
         return Boolean(b && r && r.width > 0 && r.height > 0 && !b.disabled);
       })(),
     };
-  }, SEL, { subject: want.subject, zip: want.zip }, [IMG_MARK, CC_MARK]);
+  }, SEL, { subject: want.subject, zip: want.zip }, [IMG_MARK, CC_MARK, GAP_MARK]);
   const assignees = await assigneesNow(page);
   const bad = [
     got.template !== want.template && `글양식 ${got.template || '없음'}`,
@@ -267,6 +300,8 @@ export async function fillCompose(page: Page, input: ComposeInput): Promise<Comp
   await selectAll(page);
   await paste(page, { html: withUploadedImage(doc.html, img) });
   await sleep(1500);
+  const gaps = await putGaps(page);
+  if (gaps) log(`[빈칸] ${gaps}자리 쳐 넣음`);
   if (doc.cc) await putCc(page, doc.cc);
 
   /* 첨부 zip · 요청 담당 */

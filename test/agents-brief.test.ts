@@ -161,11 +161,23 @@ describe('정산 담당이 읽는 것 — 기성관리 · 지급관리 · 열린
 
   it('아지트 글 — 지금 콘솔의 초안 · 올린 글 · 계정(지난 대화의 금액으로 말하지 않게)', () => {
     const post = (over: Partial<AgitPostRecord>): AgitPostRecord => ({
-      id: 'p', payDate: '2026-11-10', kind: '영업비', status: 'draft', title: '공사명', body: '', total: 1_200_000, batches: 1, error: null,
-      postedBy: '정산 담당', assignees: [], messageId: null, again: false, urgent: null, agitUrl: null, createdAt: '2026-11-07 08:00',
+      id: 'p', payDate: '2026-11-10', kind: '영업비', fee: null, status: 'draft', title: '공사명', body: '', total: 1_200_000, batches: 1,
+      error: null, postedBy: '정산 담당', assignees: [], messageId: null, again: false, urgent: null, agitUrl: null, createdAt: '2026-11-07 08:00',
       at: '2026-11-07 08:00', stalled: false, ...over,
     });
-    const account = { connected: true, login: 'x', connectedBy: '한백 관리자', connectedAt: '2026-11-10 16:57', until: '2027-02-10', expired: null, assignees: ['a', 'b'] };
+    const account = {
+      connected: true, login: 'x', connectedBy: '한백 관리자', connectedAt: '2026-11-10 16:57', until: '2027-02-10', expired: null,
+      assignees: ['a', 'b'], feePayee: null,
+    };
+    /* 위탁운영수수료 글 — 금액은 지어낸 것(실제 세금계산서 값은 공개 저장소에 적지 않는다) */
+    const file = { url: 'https://x.public.blob.vercel-storage.com/agent-files/settlement/a.pdf', name: 'a.pdf' };
+    const feePost = post({
+      id: 't', payDate: '2026-11-30', kind: '위탁운영수수료', total: 1_000_000, urgent: '매월 말 진행되는 플러그링크 Mother EPC 거래의 일부',
+      fee: {
+        month: '2026-10', round: 6, fee: { supply: 1_000_000, vat: 100_000, total: 1_100_000, file },
+        sales: { supply: 400_000, vat: 40_000, total: 440_000, inDate: null, file },
+      },
+    });
     const text = briefOf(SETTLE, data({
       agit: {
         from: '2026-10-27',
@@ -175,12 +187,17 @@ describe('정산 담당이 읽는 것 — 기성관리 · 지급관리 · 열린
           post({ id: 'q', kind: '시공비', status: 'posted', at: '2026-11-10 17:01', agitUrl: 'https://team-hanbaek.agit.io/g/1/wall/2', total: 9_545_000, batches: 2 }),
           post({ id: 'r', payDate: '2026-11-12', kind: '시공비', status: 'failed', error: '아지트 로그인이 풀렸습니다', urgent: '세금계산서 발행 지연' }),
           post({ id: 's', payDate: '2026-11-25', status: 'sending', stalled: true }),
+          feePost,
         ],
       },
     }));
     const agit = text.slice(text.indexOf('[아지트 열린구매 글'));
     expect(agit).toContain('결제일 2026-10-27 이후');
-    expect(agit).toContain('아지트 계정 연결됨(로그인 2027-02-10까지) · 요청 담당 2명');
+    expect(agit).toContain('아지트 계정 연결됨(로그인 2027-02-10까지) · 요청 담당 2명 · 플러그링크 계좌(위탁운영수수료 글) 미지정 — 위탁운영수수료 글을 올릴 수 없음');
+    /* 위탁운영수수료 글은 차 · 몇 월분 · 두 계산서의 금액(지급 건수 · 긴급사유는 말하지 않는다 — 늘 같은 한 줄이다) */
+    expect(agit).toContain('- 2026-11-30 11월 30일 위탁운영수수료 · 초안(승인 전) · 6차(26년 10월분) · 위탁운영수수료 공급가액 1,000,000원 · 합계 1,100,000원'
+      + ' · 충전매출 합계 440,000원(입금 예정 날짜 없음)');
+    expect(agit).not.toContain('지급 1건 · 공급가액 1,000,000원');
     expect(agit).toContain('- 2026-11-10 11월 10일 정기결제 영업비 · 초안(승인 전) · 지급 1건 · 공급가액 1,200,000원');
     expect(agit).toContain('- 2026-11-10 11월 10일 정기결제 시공비 · 올림 2026-11-10 17:01 https://team-hanbaek.agit.io/g/1/wall/2 · 지급 2건 · 공급가액 9,545,000원');
     expect(agit).toContain('못 올림 — 아지트 로그인이 풀렸습니다 · 지급 1건 · 공급가액 1,200,000원 · 긴급(사유: 세금계산서 발행 지연)');

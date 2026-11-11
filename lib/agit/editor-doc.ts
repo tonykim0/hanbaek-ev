@@ -4,7 +4,8 @@
  *  「Claude Code posts it」 — 봇 글은 한백이 고칠 수 없고 파일을 못 붙인다. 그래서 Claude Code 가 한백의 아지트 로그인으로 쓰는 칸에 써서
  *  올린다: scripts/agit-post.ts)
  *
- * 줄마다: # 머리 → <h1> · > 줄(이어진 것) → <blockquote><p>… · *굵게* → <strong> · [글](주소) → <a> · 그 밖 → <p>.
+ * 줄마다: # 머리 → <h1> · ## 머리 → <h2> · > 줄(이어진 것) → <blockquote><p>… · 빈 > 줄 → 상자 안 빈 줄 · *굵게* → <strong> ·
+ * [글](주소) → <a> · 그 밖 → <p>.
  * 엑셀 캡처 자리(![구매요청간소화 엑셀](올릴 때 붙는 엑셀 캡처))는 「§IMG§」 한 줄이 된다 — 쓰는 칸에 그림을 먼저 올리고(아지트가 그 그림에
  * image_id 를 준다) withUploadedImage 로 그 자리에 넣어 통째로 붙여 넣는다(11-08 · 09 손으로 한 길 — 그림을 자리에 바로 붙이면 쓰는 칸 전체가
  * 그림 하나로 바뀌었다).
@@ -29,8 +30,18 @@ export interface AgitEditorDoc {
 const esc = (s: string): string => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 /** 마크다운 고리 글자의 \ 가림을 푼다(lib/agit/post mdText 의 반대) */
 const unescapeMd = (s: string): string => s.replace(/\\([\\[\]*_`])/g, '$1');
-/** 글자 — 가리고 *굵게* 만 <strong> 으로 */
-const styled = (s: string): string => esc(s).replace(/\*([^*\n]+?)\*/g, '<strong>$1</strong>');
+/**
+ * 이어진 빈칸이 설 자리 표 — 「§GAP4§」(빈칸 넷). ★아지트 쓰는 칸은 붙여 넣은 빈칸을 다 하나로 접는다★(2026-11-10 쓰는 칸에서 견줌: &nbsp; ·
+ * 빈칸 섞기 · white-space: pre-wrap · 다른 빈칸 글자(U+2002) 모두 빈칸 하나가 됐다). 쳐 넣은 빈칸은 남는다 — 한백의 5차 글 「공급가액    부가세
+ * 합계」가 그렇게 섰다. 그래서 붙여 넣을 때는 자리 표로 두고, 붙인 뒤 자리 표마다 빈칸을 쳐 넣는다(lib/agit/compose putGaps)
+ */
+export const GAP_MARK = '§GAP';
+export const gapMarkOf = (n: number): string => `${GAP_MARK}${n}§`;
+
+/** 글자 — 가리고 *굵게* 만 <strong> 으로. 이어진 빈칸(둘 이상)은 자리 표로(위 GAP_MARK) */
+const styled = (s: string): string => esc(s)
+  .replace(/ {2,}/g, (m) => gapMarkOf(m.length))
+  .replace(/\*([^*\n]+?)\*/g, '<strong>$1</strong>');
 
 const LINK = /\[((?:\\.|[^\]\\])*)\]\(([^)\s]+)\)/g;
 
@@ -79,6 +90,9 @@ export function agitEditorDocOf(text: string): AgitEditorDoc {
       html.push(`<p>cc ${CC_MARK}</p>`);
     } else if (IMAGE_LINE.test(line)) {
       html.push(imageMark());
+    } else if (line.startsWith('## ')) {
+      /* 위탁운영수수료 글의 소제목(지급요청 항목 · 구매 내역 · 긴급사유 기재) — 한백의 5차 글이 h2 였다(lib/agit/fee) */
+      html.push(`<h2>${inline(line.slice(3))}</h2>`);
     } else if (line.startsWith('# ')) {
       html.push(`<h1>${inline(line.slice(2))}</h1>`);
     } else {
