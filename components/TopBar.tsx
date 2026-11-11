@@ -16,12 +16,13 @@
  * (접으면 바 높이를 넘는다) 안 읽은 수는 늘 보여야 한다.
  * 두 사업 모두에 선다 — 그래서 바 위 글자는 사업 색(BIZ_FRAME ink)을 따른다.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BIZ_ALERTS, BIZ_FRAME, BIZ_NOTICES, type Biz } from '@/lib/biz';
 import { NOTIFICATIONS_CHANGED } from '@/lib/notify-events';
 import { isHanbaek, type Role } from '@/lib/roles';
+import { Count, COUNT_MAX } from '@/components/ui';
 
 const TOOLS: { href: string; label: string; adminOnly?: boolean; blank?: boolean }[] = [
   { href: '/library', label: '운영사 자료실' },
@@ -166,8 +167,12 @@ export default function TopBar({ role, biz, onMenu }: {
         */}
       <nav aria-label="공지 · 알림" className="flex shrink-0 items-center gap-1">
         {/* 공지 · 알림은 사업마다 따로다 — 지금 사업의 것으로 간다(lib/biz BIZ_NOTICES · BIZ_ALERTS) */}
-        <BarLink href={BIZ_NOTICES[biz]} label="공지" biz={biz} count={unread} active={pathname.startsWith(BIZ_NOTICES[biz])} />
-        <BarLink href={BIZ_ALERTS[biz]} label="알림" biz={biz} count={alerts} active={pathname.startsWith(BIZ_ALERTS[biz])} />
+        <CountSlot label="공지" biz={biz}>
+          <BarLink href={BIZ_NOTICES[biz]} label="공지" biz={biz} count={unread} active={pathname.startsWith(BIZ_NOTICES[biz])} />
+        </CountSlot>
+        <CountSlot label="알림" biz={biz}>
+          <BarLink href={BIZ_ALERTS[biz]} label="알림" biz={biz} count={alerts} active={pathname.startsWith(BIZ_ALERTS[biz])} />
+        </CountSlot>
       </nav>
       {/* 가르는 선 — 먼저 읽을 것(공지 · 알림)과 도구는 다른 갈래다. 도구가 서는 사업(전기차)에만 */}
       {ev && <div className="mx-1 h-5 w-px shrink-0 bg-white/25" />}
@@ -216,7 +221,7 @@ function BarLink({ href, label, biz, active, count, blank = false }: {
   active: boolean;
   /**
    * 안 읽은 수(공지 · 알림) — 있을 때만 단다. 0 을 적으면 사이드바의 할 일 배지(늘 서 있다)와 헷갈린다.
-   * 흰 바탕에 사업 색 글자라 그린 바에서도 귤색 바에서도 읽힌다. 글자 오른쪽 위에 얹는다 — 아래 body 주석.
+   * 이름 바로 뒤 같은 줄에 선다(ui.tsx Count) — 자리는 CountSlot 이 미리 잡아 둔다.
    */
   count?: number;
   /**
@@ -227,34 +232,8 @@ function BarLink({ href, label, biz, active, count, blank = false }: {
    */
   blank?: boolean;
 }) {
-  const frame = BIZ_FRAME[biz];
-  /*
-   * 수를 다는 링크(공지 · 알림)는 오른쪽에 그 자리를 늘 비워 둔다(pr-8 — 「99+」까지 든다). 수가 0 이어도 같은 폭이라
-   * 수가 생기고 사라져도 아무것도 움직이지 않고, 얹은 수가 옆 글자를 덮지도 않는다(링크 사이 여백으로 어림했더니 굵은
-   * 「99+」가 「알림」의 첫 글자를 덮었다). 수를 눌러도 그 링크다.
-   */
-  /* 글자 크기는 사이드바 메뉴와 같은 text-base(13px)다 — 12px 이었다(한백 2026-11-04 「상단바 폰트사이즈도 사이드바에 맞춰줘」) */
-  const cls = `flex shrink-0 items-center whitespace-nowrap rounded-ctl py-1.5 text-base font-bold transition ${
-    count !== undefined ? 'pl-2.5 pr-8' : 'px-2.5'
-  } ${active ? frame.inkOn : frame.ink}`;
-  /*
-   * ★안 읽은 수는 글자 오른쪽 위에 얹는다 — 자리를 밀지 않는다★ (한백 2026-11-04 「숫자 붙는 걸 고려 안 한 상태로 UI 가
-   * 들어갔다 · 기존 구조를 유지해줘」). 처음엔 글자 뒤에 끼워 넣었더니, 수가 생기고 사라질 때마다(화면을 연 뒤 세어 오는
-   * 순간 · 새 알림 · 공지를 읽음) 뒤의 도구들이 옆으로 밀리고 당겨졌다. 사이드바에 있을 때 수는 줄 오른쪽의 빈자리에 서서
-   * 아무것도 밀지 않았다 — 바에서 그 구조는 「얹기」다(absolute). 세 자리부터는 99+ — 얹은 표시가 옆 글자까지 덮지 않게.
-   */
-  const body = (
-    <span className="relative">
-      {label}
-      {count !== undefined && count > 0 && (
-        <span
-          className={`absolute -top-2 left-full ml-0.5 min-w-[16px] rounded-tag bg-white px-1 text-center text-micro font-black leading-4 tabular-nums ${frame.pick}`}
-        >
-          {count > 99 ? '99+' : count}
-        </span>
-      )}
-    </span>
-  );
+  const cls = barCls(biz, active);
+  const body = <BarBody label={label} count={count} />;
   if (blank) {
     return (
       <a href={href} target="_blank" rel="noopener noreferrer" className={cls}>
@@ -263,8 +242,46 @@ function BarLink({ href, label, biz, active, count, blank = false }: {
     );
   }
   return (
-    <Link href={href} className={cls} title={count ? `${label} — 안 읽음 ${count}` : undefined}>
+    // 「99+」의 정확한 수는 손을 얹으면 — 화면 읽기는 Count 의 글로 늘 정확한 수를 읽는다
+    <Link href={href} className={cls} title={count !== undefined && count > COUNT_MAX ? `${label} — 안 읽음 ${count.toLocaleString('ko-KR')}건` : undefined}>
       {body}
     </Link>
+  );
+}
+
+/*
+ * ★수가 들고 나도 바의 아무것도 움직이지 않는다★ — 링크마다 「이름 + 99+」 만큼 칸을 잡아 둔다(보이지 않는 본을 같은 칸에
+ * 겹쳐 그린다 — 폭을 숫자로 적지 않아 글꼴이 바뀌어도 맞다). 수는 화면을 연 뒤에 세어 오고 · 새 알림에 붙고 · 읽으면 떨어진다 —
+ * 그때마다 뒤의 알림 · 도구가 밀리고 당겨졌다(한백 2026-11-04 「숫자 붙는 걸 고려 안 한 상태로 UI 가 들어갔다 · 기존 구조를 유지해줘」).
+ * 그날은 수를 글자 오른쪽 위에 띄워 얹고 링크 안 오른쪽을 비워 두었는데(pr-8), 수가 각주처럼 떠 보였고 · 켜진 링크의 바탕이
+ * 글자를 왼쪽에 둔 채 오른쪽으로 늘어졌고 · 켜진 링크의 수는 바탕 모서리 밖에 걸렸다(2026-11-10 「숫자뜨는 UI가 별로야」).
+ * 이제 링크는 제 이름과 수만 감싸고(켜진 바탕의 가운데에 둘 다), 남는 자리는 링크 밖 칸의 뒤쪽이다. 수가 없으면 그 뒤쪽이 빈다 —
+ * 그날의 pr-8 보다 링크마다 14px 넓다(「99+」가 글자 위가 아니라 같은 줄에 선다).
+ */
+function CountSlot({ label, biz, children }: { label: string; biz: Biz; children: ReactNode }) {
+  return (
+    <span className="grid shrink-0 items-center">
+      <span aria-hidden className={`invisible col-start-1 row-start-1 ${barCls(biz, false)}`}>
+        <BarBody label={label} count={COUNT_MAX + 1} />
+      </span>
+      <span className="col-start-1 row-start-1 justify-self-start">{children}</span>
+    </span>
+  );
+}
+
+/* 글자 크기는 사이드바 메뉴와 같은 text-base(13px)다 — 12px 이었다(한백 2026-11-04 「상단바 폰트사이즈도 사이드바에 맞춰줘」) */
+function barCls(biz: Biz, active: boolean) {
+  const frame = BIZ_FRAME[biz];
+  return `flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-ctl px-2.5 py-1.5 text-base font-bold transition ${
+    active ? frame.inkOn : frame.ink
+  }`;
+}
+
+function BarBody({ label, count }: { label: string; count?: number }) {
+  return (
+    <>
+      {label}
+      {count !== undefined && count > 0 && <Count n={count} tone="bar" what="안 읽음" />}
+    </>
   );
 }

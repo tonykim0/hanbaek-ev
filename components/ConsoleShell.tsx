@@ -26,6 +26,7 @@ import { canWrite, isHanbaek, ROLE_LABEL } from '@/lib/roles';
 import { TODO_GROUPS, type TodoGroup } from '@/lib/todo-types';
 import { BIZ_COOKIE, BIZ_FRAME, BIZ_HOME, BIZ_LABEL, BIZ_TITLE, BIZES, bizOf, isShared, type Biz } from '@/lib/biz';
 import TopBar from '@/components/TopBar';
+import { Count } from '@/components/ui';
 
 const COLLAPSE_KEY = 'hb-console-sidebar-collapsed';
 
@@ -475,15 +476,12 @@ export default function ConsoleShell({
                         {expanded ? (
                           <>
                             <span className="truncate">{it.label}</span>
-                            {/* 실제 처리 화면별 할 일 건수 — 주황은 있음, 회색은 없음 */}
+                            {/*
+                              * 실제 처리 화면별 할 일 건수 — 노랑은 있음, 회색은 0건. 상단 바의 안 읽은 수와 같은 모양이다(ui.tsx Count).
+                              * 줄 오른쪽이 비어 있어 정확한 수를 싣는다(max) — 할 일은 몇 건인지가 곧 일의 양이다.
+                              */}
                             {todoCount !== null && (
-                              <span
-                                className={`ml-auto rounded-tag px-1.5 py-0.5 text-tiny font-bold tabular-nums ${
-                                  todoCount > 0 ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-400'
-                                }`}
-                              >
-                                {todoCount}
-                              </span>
+                              <Count n={todoCount} tone={todoCount > 0 ? 'warn' : 'mute'} what="할 일" max={999} className="ml-auto" />
                             )}
                             {it.external && (
                               <span aria-hidden className="ml-auto text-tiny text-slate-300">

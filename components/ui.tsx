@@ -285,6 +285,56 @@ export function Tag({ tone = 'mute', children }: { tone?: Tone; children: ReactN
   );
 }
 
+/* ── 수 ─────────────────────────────────────────────────────────────────────
+ * 메뉴 이름 바로 뒤의 건수 — 사이드바의 할 일 수와 상단 바의 안 읽은 공지 · 알림 수가 이 모양 하나다(2026-11-10).
+ * 그전에는 두 자리가 따로 그려 높이 · 글자 · 색이 갈렸다.
+ *
+ * ★이름 바로 뒤, 같은 줄 가운데에 선다★ — 무엇을 세는지 말하는 글자 옆이 수의 자리다(GitHub Primer CounterLabel 의 규칙).
+ * 상단 바에서는 글자 오른쪽 위에 띄워 얹었는데 각주처럼 읽혔다(한백 2026-11-10 「공지랑 알림옆에 숫자뜨는 UI가 별로야」).
+ * 높이와 최소 폭이 같다 — 한 자리는 정사각, 늘면 옆으로만 는다(Material 3 의 큰 배지 모양). 셋째 자리부터는 「99+」 —
+ * 정확한 수는 화면 읽기 글에 있다. 모서리는 tag — 세어진 것이다(화면 규칙 11).
+ *
+ * 화면 읽기는 그린 숫자를 건너뛰고 「안 읽음 3건」처럼 무엇의 수인지 붙은 말을 읽는다(what). 숫자만 읽으면 「공지3」이 된다.
+ *
+ * 색 셋 — warn 있음(사이드바 할 일) · mute 0건(사이드바 할 일 — 세었고 없음) · bar 사업 색 바 위(흰 바탕에 사업 색 글자 —
+ * 그린 바에서도 귤색 바에서도 바에서 가장 밝은 자리다). 빨강은 쓰지 않는다 — 빨강은 막는 것이다(화면 규칙 12 · 색의 뜻).
+ * ★채운 노랑 위 글자는 진한 색이다★ — 흰 글자는 amber-500 위에서 2.2:1 로 읽히지 않았다(0건의 slate-400 도 2.4:1 이었다).
+ */
+type CountTone = 'warn' | 'mute' | 'bar';
+
+const COUNT: Record<CountTone, string> = {
+  warn: 'bg-amber-500 text-amber-950',
+  mute: 'bg-slate-100 text-slate-500',
+  bar: 'bg-white text-brand-800',
+};
+
+export const COUNT_MAX = 99;
+
+export function Count({ n, tone, what, max = COUNT_MAX, className = '' }: {
+  n: number;
+  tone: CountTone;
+  /** 화면 읽기가 숫자 앞에 읽는 말 — 「안 읽음」 · 「할 일」 */
+  what: string;
+  /** 이보다 크면 「max+」 — 자리가 넉넉한 곳(사이드바 줄 끝)만 올린다 */
+  max?: number;
+  /** 자리만 — 색 · 모양은 tone 이 정한다 */
+  className?: string;
+}) {
+  return (
+    <>
+      <span
+        aria-hidden
+        className={`inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-tag px-1 text-tiny font-bold leading-none tabular-nums ${COUNT[tone]} ${className}`}
+      >
+        {n > max ? `${max}+` : n}
+      </span>
+      <span className="sr-only">
+        {what} {n.toLocaleString('ko-KR')}건
+      </span>
+    </>
+  );
+}
+
 /* ── 띠 ────────────────────────────────────────────────────────────────────
  * 왼쪽 선 + 연한 배경 한 모양이다. 사방 테두리를 두르지 않는다 — 카드 안에 들어가는
  * 것이라 테두리를 더하면 상자가 두 겹이 된다(화면 규칙 1번: 약한 것부터).

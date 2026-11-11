@@ -14,10 +14,10 @@
  * components/ui.tsx(모양) 와 tailwind.config.js(토큰) 에 먼저 추가한다.
  */
 import {
-  Alerts, Badge, Blank, Btn, Choice, Clear, Empty, Err, FIELD, FIELD_CELL, GroupHead, HR, Note, Saved, SectionHead, Segments, Tag, TEXT, Td, Th, Val,
+  Alerts, Badge, Blank, Btn, Choice, Clear, Count, Empty, Err, FIELD, FIELD_CELL, GroupHead, HR, Note, Saved, SectionHead, Segments, Tag, TEXT, Td, Th, Val,
   type Tone,
 } from '@/components/ui';
-import { BIZES, BIZ_LABEL } from '@/lib/biz';
+import { BIZES, BIZ_FRAME, BIZ_LABEL } from '@/lib/biz';
 
 export const metadata = { title: '디자인 기준' };
 
@@ -256,6 +256,26 @@ export default function DesignPage() {
             <Tag tone="warn">확인 필요</Tag>
             <Tag tone="mute">단가 미지정</Tag>
             <span className="text-tiny text-slate-400">여럿이 붙는다 — 그 안에서 세어진 것</span>
+          </Part>
+
+          {/* 메뉴 이름 바로 뒤의 건수 — 사이드바 할 일 · 상단 바 안 읽은 공지 · 알림이 이 하나다(2026-11-10) */}
+          <Part label="수">
+            <span className="inline-flex items-center gap-2 text-base font-semibold text-slate-600">
+              계약관리 <Count n={3} tone="warn" what="할 일" />
+            </span>
+            <span className="inline-flex items-center gap-2 text-base font-semibold text-slate-600">
+              기성관리 <Count n={0} tone="mute" what="할 일" />
+            </span>
+            {BIZES.map((b) => (
+              <span
+                key={b}
+                data-biz={b}
+                className={`inline-flex items-center gap-1.5 rounded-ctl px-2.5 py-1.5 text-base font-bold ${BIZ_FRAME[b].bar} ${BIZ_FRAME[b].ink}`}
+              >
+                알림 <Count n={b === 'ev' ? 7 : 128} tone="bar" what="안 읽음" />
+              </span>
+            ))}
+            <span className={TEXT.meta}>이름 바로 뒤 같은 줄 — 할 일은 0건도 서고, 안 읽음은 0 을 그리지 않는다 · 셋째 자리부터 99+</span>
           </Part>
 
           <Part label="고르는 칩">

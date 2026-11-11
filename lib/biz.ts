@@ -76,23 +76,21 @@ export const BIZ_TITLE: Record<Biz, string> = { ev: '전기차사업관리', sol
 
 /**
  * 틀의 색 — bar 상단 바 · ink 바 위 글자(메뉴 단추 · 바로가기 · 공지 · 알림) · inkOn 그중 지금 연 화면 ·
- * pick 흰 바탕 위 사업 글자(바 위 안 읽은 수) · on 사이드바의 고른 메뉴.
+ * on 사이드바의 고른 메뉴. 바 위 안 읽은 수는 ui.tsx Count 의 bar 가 칠한다(흰 바탕에 brand-800 — 2026-11-10 까지 여기 pick 이었다).
  * 전기차는 진한 그린 바에 흰 글자, 태양광은 귤색 바에 진한 글자 — 귤색은 밝아서 흰 글자가 안 읽힌다.
  * 바에는 2026-11-04 부터 공지 · 알림이 두 사업 모두 서므로 바 위 글자는 늘 이 값을 쓴다(흰 글자를 박아 두면 귤색에서 안 읽힌다).
  */
-export const BIZ_FRAME: Record<Biz, { bar: string; ink: string; inkOn: string; pick: string; on: string }> = {
+export const BIZ_FRAME: Record<Biz, { bar: string; ink: string; inkOn: string; on: string }> = {
   ev: {
     bar: 'bg-brand-700',
     ink: 'text-white/80 hover:bg-white/10 hover:text-white',
     inkOn: 'bg-white/15 text-white',
-    pick: 'text-brand-800',
     on: 'bg-brand-50 text-brand-800',
   },
   solar: {
     bar: 'bg-brand-fill', // 채움과 같은 값을 읽는다 — 귤색 #FA9F38(globals.css 의 태양광 brand-fill, 2026-11-04)
     ink: 'text-slate-900/75 hover:bg-black/5 hover:text-slate-900',
     inkOn: 'bg-black/10 text-slate-900',
-    pick: 'text-sun-800',
     on: 'bg-sun-50 text-sun-800',
   },
 };
