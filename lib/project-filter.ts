@@ -13,18 +13,18 @@ import type { ProjectSummary } from '@/types/project';
 import { subsidized } from '@/types/project';
 import { BOARD_COLUMNS, boardColumnOf } from './board';
 /*
- * 날짜 열의 정의(무슨 값 · 언제 해당없음)는 표가 쥔다 — 날짜 축 · 진행단계 축은 그것을 그대로 읽는다.
+ * 날짜 열의 정의(무슨 값 · 언제 해당없음)는 표가 쥔다 — 날짜 축 · 최근 완료 축은 그것을 그대로 읽는다.
  * ★project-table 은 이 파일에서 타입만 가져간다★ — 값까지 서로 부르면 모듈이 서로를 기다려 ATTRS 를 짓다가 깨진다.
  */
 import {
-  DATE_KEYS, labelOf, PRESENCE, presenceOf, PROGRESS_STEPS, progressOf, type MilestoneKey,
+  DATE_KEYS, labelOf, PRESENCE, presenceOf, LAST_DONE_STEPS, lastDoneOf, type MilestoneKey,
 } from './project-table';
 
 /** 값이 비어 있는 현장을 고르는 이름. 실제 값과 겹치지 않게 괄호를 쓴다. */
 export const EMPTY = '(없음)';
 
 export type AttrKey =
-  | 'col' | 'progress' | 'month' | 'cpo' | 'term' | 'biz' | 'bldg' | 'power' | 'sales' | 'gc' | 'queue'
+  | 'col' | 'lastDone' | 'month' | 'cpo' | 'term' | 'biz' | 'bldg' | 'power' | 'sales' | 'gc' | 'queue'
   /** 날짜 열마다 하나 — 있음 · 없음 · 해당없음 */
   | MilestoneKey;
 
@@ -57,14 +57,14 @@ export const ATTRS: Attr[] = [
   /* 단계는 보드 칸의 차례로 고른다 — 가나다로 두면 「개통 및 통신확인」이 맨 위, 「행위신고」가 맨 밑이었다 */
   { key: 'col', label: '단계', valuesOf: (p) => [boardColumnOf(p)], order: BOARD_COLUMNS.map((c) => c.key) },
   /*
-   * 진행단계 — 단계 안에서 어디까지 왔나(lib/project-table progressOf · 한백 2026-11-11). 일의 차례로 고른다.
+   * 최근 완료 — 날짜가 적힌 일 중 공정 순서상 가장 뒤의 일(lib/project-table lastDoneOf · 한백 2026-11-11). 일의 차례로 고른다.
    * 아무것도 안 적힌 현장은 「(없음)」 — 「환경부 승인 대기인데 승인일이 아직」을 거르는 값이다.
    */
   {
-    key: 'progress',
-    label: '진행단계',
-    valuesOf: (p) => [progressOf(p)?.step ?? EMPTY],
-    order: [...PROGRESS_STEPS, EMPTY],
+    key: 'lastDone',
+    label: '최근 완료',
+    valuesOf: (p) => [lastDoneOf(p)?.step ?? EMPTY],
+    order: [...LAST_DONE_STEPS, EMPTY],
   },
   {
     key: 'month',
@@ -146,7 +146,7 @@ export const ATTR_BY_KEY = new Map(ATTRS.map((a) => [a.key, a]));
  *
  * ★ATTRS 를 줄이지 않는다.★ 표의 열 머리글에서도 같은 축을 거는데(ProjectTable),
  * 거기서 걸 수 있는 것은 열이 있는 만큼이다 — 축을 지우면 그쪽에서도 사라진다.
- * 나머지 축(단계 · 진행단계 · 계약연수 · 건축물 · 대기번호 · 날짜 열마다의 있음/없음/해당없음)은 열 머리글에 남는다.
+ * 나머지 축(단계 · 최근 완료 · 계약연수 · 건축물 · 대기번호 · 날짜 열마다의 있음/없음/해당없음)은 열 머리글에 남는다.
  * 거기서 걸어 둔 것은 판에도 나온다 — 걸려 있는데 보이지 않는 조건을 두지 않는다
  * (푸는 자리가 없으면 왜 이것만 나오는지 알 수 없다).
  */

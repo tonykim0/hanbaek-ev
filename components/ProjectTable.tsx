@@ -30,7 +30,7 @@ import {
 } from '@/lib/board';
 import type { AttrFilters, AttrKey } from '@/lib/project-filter';
 import {
-  DATE_COLS, DATE_KEYS, DEFAULT_HIDDEN, filterAttrOf, labelOf, PICK_GROUPS, PICKABLE, progressOf, qtyOf, restoreHidden,
+  DATE_COLS, DATE_KEYS, DEFAULT_HIDDEN, filterAttrOf, labelOf, PICK_GROUPS, PICKABLE, lastDoneOf, qtyOf, restoreHidden,
   sortProjects, tableSheet, termsOf, type ColKey, type SortKey, type TableDateField, type TableTab,
 } from '@/lib/project-table';
 import { today } from '@/lib/date';
@@ -123,7 +123,7 @@ const PIN_CELL = `sticky left-0 z-[1] bg-white group-hover:bg-brand-50 ${PIN_EDG
 const PIN_FOOT = `sticky left-0 z-[1] bg-slate-50 ${PIN_EDGE}`;
 
 /** 합계 줄에서 대수 열 앞에 서는 열 — 빈 칸으로 자리를 맞춘다(TABLE_ORDER 의 대수 앞) */
-const LEAD: readonly ColKey[] = ['stage', 'progress'];
+const LEAD: readonly ColKey[] = ['stage', 'lastDone'];
 
 export default function ProjectTable({
   projects, canMove, onMove, busyId, filters, options, onFilter, tab, columns, sort: sorting, viewer,
@@ -217,7 +217,7 @@ export default function ProjectTable({
             <tr>
               {head('현장', { sort: 'name', left: true, pin: true })}
               {show('stage') && head('단계', { sort: 'stage', attr: 'col' })}
-              {show('progress') && head('진행단계', { sort: 'progress', attr: 'progress' })}
+              {show('lastDone') && head('최근 완료', { sort: 'lastDone', attr: 'lastDone' })}
               {show('qty') && head('대수', { sort: 'qty' })}
               {show('term') && head('계약연수', { sort: 'term', attr: 'term' })}
               {show('cpo') && head('운영사', { attr: 'cpo' })}
@@ -271,7 +271,7 @@ export default function ProjectTable({
                       <StageCell p={p} col={col} canMove={canMove} onMove={onMove} busy={busy} construction={tab === 'construction'} />
                     </td>
                   )}
-                  {show('progress') && <ProgressCell p={p} />}
+                  {show('lastDone') && <LastDoneCell p={p} />}
                   {show('qty') && (
                     <td className="px-3 py-2.5 font-bold tabular-nums text-slate-700">
                       {qtyOf(p)}
@@ -336,7 +336,7 @@ export default function ProjectTable({
                   <> · <span className="tabular-nums">{units.toLocaleString('ko-KR')}</span>대</>
                 )}
               </td>
-              {/* 대수 열 앞의 열(단계 · 진행단계)은 빈 칸으로 자리를 맞추고, 대수 뒤는 한 칸으로 묶는다 */}
+              {/* 대수 열 앞의 열(단계 · 최근 완료)은 빈 칸으로 자리를 맞추고, 대수 뒤는 한 칸으로 묶는다 */}
               {LEAD.filter(show).map((k) => <td key={k} />)}
               {show('qty') && (
                 <td className="px-3 py-2.5 font-bold tabular-nums text-slate-900">
@@ -624,12 +624,12 @@ function StageCell({
 }
 
 /**
- * 진행단계 칸 — 단계 안에서 실제로 어디까지 왔나(lib/project-table progressOf · 한백 2026-11-11 「진행단계도 표시해줘」).
- * 일 이름과 그 날. 날짜 없이 완료(✓)만 찍힌 옛 칸은 이름만이다. 아무것도 안 적혔으면 「—」 — 다른 빈 칸과 같은 모양(Cell).
+ * 최근 완료 칸 — 날짜가 적힌 일 중 공정 순서상 가장 뒤의 일과 그 날(lib/project-table lastDoneOf · 한백 2026-11-11).
+ * 날짜 없이 완료(✓)만 찍힌 옛 칸은 이름만이다. 아무것도 안 적혔으면 「—」 — 다른 빈 칸과 같은 모양(Cell).
  * 손을 얹으면 칸의 온 이름과 날이 뜬다.
  */
-function ProgressCell({ p }: { p: ProjectSummary }) {
-  const g = progressOf(p);
+function LastDoneCell({ p }: { p: ProjectSummary }) {
+  const g = lastDoneOf(p);
   if (!g) return <Cell value={null} />;
   return (
     <td
@@ -642,9 +642,12 @@ function ProgressCell({ p }: { p: ProjectSummary }) {
   );
 }
 
-/** 올해의 날은 월-일만(줄이 짧다) — 다른 해는 다 적는다(지난해 현장이 섞여도 헷갈리지 않게) */
+/**
+ * 날은 늘 해까지 — 「26-05-25」(한백 2026-11-11 「일자에는 연도도 추가해줘 26-05-25 이런거처럼」). 처음엔 올해면 월-일만
+ * 적었는데, 어느 해인지 칸만 보고 알 수 없었다. 네 자리 해는 줄이 길어 두 자리다.
+ */
 function shortDay(day: string): string {
-  return day.slice(0, 4) === today().slice(0, 4) ? day.slice(5, 10) : day.slice(0, 10);
+  return day.slice(2, 10);
 }
 
 /** 그 칸을 적을 수 있나 — 시공사는 한백 전용 칸(환경부 승인일·충전기 발주일)을 못 적는다. 상세와 같은 목록이고 저장소가 다시 본다 */
