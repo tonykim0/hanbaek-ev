@@ -12,10 +12,12 @@ import { proposalBlocker } from '@/lib/solar/proposal/blocker';
 import { buildProposal, fetchProposalTemplates } from '@/lib/solar/proposal/client';
 import { proposalFileName, storedSeller, type ProposalInput, type Seller } from '@/lib/solar/proposal/fill-common';
 import { proposalLayout, type ProposalLayout } from '@/lib/solar/proposal/layout-rule';
+import { siteQueryOf, traceKeyOf } from '@/lib/solar/parcels';
 import { PARTIES, PARTY_LABEL, type Party } from '@/lib/solar/proposal/party';
 import { missingTerms, PRODUCTS, productOf, termOf, UPCOMING, type ProductKey, type TemplateKey, type Terms } from '@/lib/solar/proposal/products';
 import type { Report } from '@/lib/solar/types';
 import { SearchBox } from './Checker';
+import ParcelBar from './ParcelBar';
 import { siteImager } from './proposal-image';
 import ProposalTemplates from './ProposalTemplates';
 import SiteMap from './SiteMap';
@@ -55,7 +57,15 @@ function saveSeller(s: Seller): void {
  */
 export default function ProposalMaker({ mapKey, initialQ, canManage }: { mapKey: string | null; initialQ: string; canManage: boolean }) {
   // 들고 온 주소(부지 검토의 「이 부지로 제안서 만들기」)는 처음 한 번 불러온다
-  const { report, busy: loading, error: loadFail, run: load } = useSiteReport(initialQ.length >= 2 ? { q: initialQ, mode: 'roof' } : null);
+  const { report, busy: loading, error: loadFail, run: load, reload } = useSiteReport(initialQ.length >= 2 ? { q: initialQ, mode: 'roof' } : null);
+  // 필지를 더하고 빼서 다시 불러온 부지의 주소 한 줄 — 검색창 글을 맞춘다(lib/solar/parcels)
+  const [sync, setSync] = useState<{ q: string } | null>(null);
+  const reparcel = async (q: string): Promise<string | null> => {
+    const r = await reload('roof', q);
+    if ('error' in r) return r.error;
+    setSync({ q: siteQueryOf(r.report.place) });
+    return null;
+  };
   const [templates, setTemplates] = useState<ProposalTemplate[] | null>(null);
   const [templatesFail, setTemplatesFail] = useState<string | null>(null);
   const [product, setProduct] = useState<ProductKey | null>(null);
@@ -95,12 +105,16 @@ export default function ProposalMaker({ mapKey, initialQ, canManage }: { mapKey:
         onRun={load}
         action="불러오기"
         busyAction="불러오는 중…"
+        sync={sync}
       >
+        {/* 불러온 현장 — 이름 · 도로명(대표 필지) · 지번. 지번 자리에서 필지를 더하고 뺀다(한 부지로 묶어 제안 — ParcelBar) */}
         {place && (
-          <p className={`mt-3 border-t border-slate-100 pt-3 ${TEXT.body}`}>
+          <div className={`mt-3 flex flex-wrap items-center gap-x-2 gap-y-1 border-t border-slate-100 pt-3 ${TEXT.body}`}>
             <span className="font-bold text-slate-900">{place.buildingName ?? place.roadAddress ?? place.query}</span>
-            <span className={`ml-2 ${TEXT.label}`}>{[place.roadAddress, place.jibunAddress].filter(Boolean).join(' · ')}</span>
-          </p>
+            {/* 도로명이 이미 굵은 이름이면(건물명 없음) 다시 적지 않는다(화면 규칙 5) */}
+            {place.buildingName && place.roadAddress && <span className={TEXT.label}>{place.roadAddress} ·</span>}
+            <ParcelBar place={place} busy={loading !== null} onChange={reparcel} />
+          </div>
         )}
       </SearchBox>
 
@@ -190,7 +204,8 @@ function ProposalSite({
   const plan = useRoofPlan(report.map);
   const { place } = report;
   const [customer, setCustomer] = useState(place.buildingName ?? '');
-  const [address, setAddress] = useState(place.roadAddress ?? place.jibunAddress ?? place.query);
+  // 고객 주소 — 한 필지면 도로명, 여러 필지면 지번을 늘어놓은 한 줄(「…가나동 12, 12-3」 — lib/solar/parcels)
+  const [address, setAddress] = useState(siteQueryOf(place));
   // 계약자 구분 — 그것을 받는 상품(모햇)만. 고객마다라 현장을 바꾸면 다시 고른다
   const [party, setParty] = useState<Party | null>(null);
   const [aiBusy, setAiBusy] = useState(false);
@@ -232,7 +247,7 @@ function ProposalSite({
     templatesLoaded: !!templates,
     productChosen: !!chosen,
     templateState: chosen ? stateOf(chosen.template) : null,
-    pnu: place.pnu,
+    pnu: traceKeyOf(place.parcels.map((x) => x.pnu)),
     hasPlan: !!plan,
     aiBusy,
     roofs: plan?.roofs.length ?? 0,
@@ -298,7 +313,7 @@ function ProposalSite({
           appKey={mapKey}
           plan={plan}
           ground={null}
-          pnu={place.pnu}
+          pnu={traceKeyOf(place.parcels.map((x) => x.pnu))}
           heading={{ step: 3, title: '패널 배치' }}
           panels={preview?.quads ?? null}
           note={previewLine}

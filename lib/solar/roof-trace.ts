@@ -80,15 +80,24 @@ const SCHEMA = {
   additionalProperties: false,
 } as const;
 
-function prompt(a: Aerial): string {
+/**
+ * @param parcels 노란 선이 두른 필지 수 — 여럿이면 한 부지로 묶은 필지들이다(lib/solar/parcels). 필지 사이 경계선에 걸친 건물은
+ *   한 지붕으로 따라고 한다(그 선은 땅 주인의 선이지 지붕의 이음매가 아니다). 한 필지의 지시문은 바꾸지 않았다.
+ */
+export function prompt(a: Pick<Aerial, 'width' | 'height' | 'metersPerPx'>, parcels = 1): string {
+  const one = parcels <= 1;
   return [
     `This is a north-up aerial photo, ${a.width} × ${a.height} pixels, about ${a.metersPerPx.toFixed(2)} m per pixel.`,
-    'The yellow line is the boundary of one land parcel. We are planning rooftop solar panels for the buildings on this parcel.',
+    one
+      ? 'The yellow line is the boundary of one land parcel. We are planning rooftop solar panels for the buildings on this parcel.'
+      : `The yellow lines are the boundaries of ${parcels} neighboring land parcels that together make one site. We are planning rooftop solar panels for the buildings on this site.`,
     '',
-    'Task 1 — roofs: trace the outline of every building roof that lies mostly inside the yellow line.',
+    one
+      ? 'Task 1 — roofs: trace the outline of every building roof that lies mostly inside the yellow line.'
+      : 'Task 1 — roofs: trace the outline of every building roof that lies mostly inside the yellow lines. A yellow line between two of these parcels does not split a building — trace a building that crosses it as one roof.',
     '- One polygon per separately built structure; do not merge buildings that have a visible gap or a different roof height.',
     '- Follow the actual roof edge (eaves), not shadows or the ground around it. Rectangular roofs need exactly 4 points; add points only where the edge really turns.',
-    '- Skip parking lots, roads, bare ground, small sheds under about 20 m², and anything mostly outside the yellow line.',
+    `- Skip parking lots, roads, bare ground, small sheds under about 20 m², and anything mostly outside the yellow ${one ? 'line' : 'lines'}.`,
     '- kind: 판넬·금속 (metal/sandwich panel), 콘크리트 (flat concrete slab), 기와 (tiles), 슬레이트, or 기타 (anything else, e.g. a fabric/membrane tent roof). Say what you saw in note.',
     '',
     'Task 2 — obstacles: on those roofs, outline the parts where panels cannot go — skylights, rooftop equipment, roof gardens, rooftop parking, domes or towers. Leave it empty when the roofs are clear.',
@@ -149,7 +158,8 @@ export function traceOf(raw: Raw, aerial: Pick<Aerial, 'originX' | 'originY' | '
 
 let client: Anthropic | null = null;
 
-export async function traceRoofs(parcel: PolygonCoords[]): Promise<Trace> {
+/** @param parcels 필지 수 — parcel 이 한 부지로 묶은 필지 여럿의 도형을 이은 것이면 그 수(지시문이 갈린다) */
+export async function traceRoofs(parcel: PolygonCoords[], parcels = 1): Promise<Trace> {
   if (!solarApiKey()) throw new Error('[AI] ANTHROPIC_SOLAR_API_KEY · ANTHROPIC_API_KEY 없음');
   const box = bboxOf(parcel);
   if (!box) throw new Error('[AI] 필지 모양 없음');
@@ -168,7 +178,7 @@ export async function traceRoofs(parcel: PolygonCoords[]): Promise<Trace> {
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: aerial.jpeg.toString('base64') } },
-          { type: 'text', text: prompt(aerial) },
+          { type: 'text', text: prompt(aerial, parcels) },
         ],
       },
     ],

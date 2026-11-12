@@ -7,7 +7,9 @@ import { withCapacity } from '@/lib/solar/capacity-checks';
 import { areaLabel, estimateCapacity } from '@/lib/solar/estimate';
 import type { Check, CheckStatus, Estimate, GridView, Level, Report, Verdict } from '@/lib/solar/types';
 import { LEVEL_LABEL } from '@/lib/solar/verdict';
+import { siteQueryOf, traceKeyOf } from '@/lib/solar/parcels';
 import GridDetail from './GridDetail';
+import ParcelBar from './ParcelBar';
 import SiteMap from './SiteMap';
 import { LEVEL_TONE, PANEL, StatusPill, TEXT } from './ui';
 import { useGroundBoxes } from './useGroundBoxes';
@@ -35,12 +37,18 @@ export default function ReportView({
   mapKey,
   canRegister = false,
   canPropose = false,
+  busy = false,
+  onParcels,
 }: {
   report: Report;
   mapKey: string | null;
   canRegister?: boolean;
   /** 지붕형 결과에 「이 부지로 제안서 만들기」를 세우는가 — 한백의 눈(관리자 · 열람 전용). 사업자 자료라 협력사에게는 없다 */
   canPropose?: boolean;
+  /** 다른 검토가 도는 중 — 필지 더하기 · 빼기를 막는다 */
+  busy?: boolean;
+  /** 필지를 더하고 빼서 다시 불러온다(ParcelBar) — 못 하면 그 까닭 */
+  onParcels?: (q: string) => Promise<string | null>;
 }) {
   // 지붕형은 지도에서 고른 지붕의 패널 장수가 용량이다 — 고를 때마다 용량·계통·허가·종합 판정을 다시 센다
   const plan = useRoofPlan(report.mode === 'roof' ? report.map : null);
@@ -113,6 +121,8 @@ export default function ReportView({
         register={register}
         canRegister={canRegister}
         canPropose={canPropose && report.mode === 'roof'}
+        busy={busy}
+        onParcels={onParcels}
       />
 
       {/* 검토마다 새로 그린다 — 앞 결과의 도형이 남지 않게 */}
@@ -123,7 +133,7 @@ export default function ReportView({
           appKey={mapKey}
           plan={plan}
           ground={ground}
-          pnu={report.mode === 'roof' ? report.place.pnu : null}
+          pnu={report.mode === 'roof' ? traceKeyOf(report.place.parcels.map((x) => x.pnu)) : null}
         />
       )}
 
@@ -149,6 +159,8 @@ function Summary({
   register,
   canRegister,
   canPropose,
+  busy,
+  onParcels,
 }: {
   report: Report;
   verdict: Verdict;
@@ -160,9 +172,12 @@ function Summary({
   canRegister: boolean;
   /** 「이 부지로 제안서 만들기」 — 지붕형 · 한백의 눈 */
   canPropose: boolean;
+  busy: boolean;
+  onParcels?: (q: string) => Promise<string | null>;
 }) {
   const { place } = report;
-  const address = place.roadAddress ?? place.jibunAddress ?? place.query;
+  // 다음 화면으로 들고 가는 주소 — 여러 필지면 지번을 늘어놓은 한 줄(lib/solar/parcels — 받는 쪽이 다시 필지마다 나눈다)
+  const address = siteQueryOf(place);
   const tone = LEVEL_TONE[verdict.level];
   // 자료를 못 받아 조건부가 된 판정은 「확인 못한 것」 — 사유가 다르다
   const head = verdict.level === 'conditional' && verdict.because.every((c) => c.status === 'unknown') ? '확인 못한 것' : BECAUSE[verdict.level];
@@ -196,7 +211,16 @@ function Summary({
           </div>
         )}
       </div>
-      <p className={`mt-0.5 ${TEXT.label}`}>{[place.roadAddress, place.jibunAddress].filter(Boolean).join(' · ')}</p>
+      {/* 도로명(대표 필지) · 지번 — 지번 자리는 필지를 더하고 빼는 자리다(여러 필지면 필지마다 칩) */}
+      <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+        {/* 도로명이 이미 제목이면(건물명 없음) 다시 적지 않는다(화면 규칙 5) */}
+        {place.buildingName && place.roadAddress && <span className={TEXT.label}>{place.roadAddress} ·</span>}
+        {onParcels ? (
+          <ParcelBar place={place} busy={busy} onChange={onParcels} />
+        ) : (
+          <span className={TEXT.label}>{siteQueryOf({ ...place, roadAddress: null })}</span>
+        )}
+      </div>
 
       <div className="mt-4 flex flex-wrap items-end justify-between gap-x-8 gap-y-4 border-t border-slate-100 pt-4">
         <div className="min-w-0">

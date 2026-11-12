@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'vitest';
 import { summarizeRegister, type RegisterBuilding } from '@/lib/solar/building-register';
 import type { LngLat } from '@/lib/solar/geo';
-import { FLUSH_KINDS, roofCheck, roofSetbackCheck, setbackCheck, siteCheck, siteFactsOf, terrainCheck, zoneCheck } from '@/lib/solar/site-checks';
+import { FLUSH_KINDS, mergeLotChecks, mergeZones, roofCheck, roofSetbackCheck, setbackCheck, siteCheck, siteFactsOf, terrainCheck, zoneCheck } from '@/lib/solar/site-checks';
 
 /** 토지특성의 지목 · 면적 · 용도지역이 빈 것 — 지형 · 도로만 보는 시험에 */
 const NO_LAND = { category: null, areaM2: null, zoning: [] as string[] };
@@ -68,7 +68,7 @@ describe('현장의 공적 자료(제안서의 부지 검토 표)', () => {
     { name: '자연녹지지역', relation: '접함' },
   ] };
   it('땅은 토지특성, 건물은 대장의 주건축물(건축면적 합 · 가장 큰 동의 주용도 · 사용승인일)', () => {
-    expect(siteFactsOf({ ok: true, value: traits }, zones, register, '2074장')).toEqual({
+    expect(siteFactsOf([{ traits: { ok: true, value: traits }, jibun: '2074장' }], zones, register)).toEqual({
       zoning: ['일반공업지역'],
       landCategory: '공장용지',
       landAreaM2: 15_446,
@@ -78,7 +78,7 @@ describe('현장의 공적 자료(제안서의 부지 검토 표)', () => {
     });
   });
   it('토지특성을 못 받으면 지목은 지번 끝 부호에서 · 용도지역은 토지이용계획에서(지구 · 접함 빼고) · 면적은 갈음하지 않는다', () => {
-    expect(siteFactsOf({ ok: false, error: '없음' }, zones, null, '2074장')).toEqual({
+    expect(siteFactsOf([{ traits: { ok: false, error: '없음' }, jibun: '2074장' }], zones, null)).toEqual({
       zoning: ['일반공업지역'],
       landCategory: '공장용지',
       landAreaM2: null,
@@ -86,7 +86,59 @@ describe('현장의 공적 자료(제안서의 부지 검토 표)', () => {
       buildingUse: null,
       approvedOn: null,
     });
-    expect(siteFactsOf({ ok: true, value: null }, { ok: false, error: '없음' }, null, null)).toMatchObject({ zoning: [], landCategory: null });
+    expect(siteFactsOf([{ traits: { ok: true, value: null }, jibun: null }], { ok: false, error: '없음' }, null)).toMatchObject({ zoning: [], landCategory: null });
+  });
+  it('여러 필지를 한 부지로 — 지목은 다른 것끼리 잇고 · 토지 면적은 모두 알 때만 더하고 · 용도지역은 겹치지 않게', () => {
+    const other = { ...traits, category: '대', areaM2: 300.25, zoning: ['일반공업지역', '자연녹지지역'] };
+    expect(
+      siteFactsOf(
+        [
+          { traits: { ok: true, value: traits }, jibun: '2074장' },
+          { traits: { ok: true, value: other }, jibun: '2075대' },
+          { traits: { ok: true, value: { ...traits, areaM2: 100.1 } }, jibun: '2076장' },
+        ],
+        zones,
+        register,
+      ),
+    ).toMatchObject({ zoning: ['일반공업지역', '자연녹지지역'], landCategory: '공장용지 · 대', landAreaM2: 15_846.35, buildingAreaM2: 3_521.72 });
+    // 한 필지의 토지특성을 못 받으면 — 지목은 그 필지의 지번 부호로 · 면적은 비우고 · 용도지역은 토지이용계획에서
+    expect(
+      siteFactsOf(
+        [
+          { traits: { ok: true, value: traits }, jibun: '2074장' },
+          { traits: { ok: false, error: '없음' }, jibun: '2075대' },
+        ],
+        zones,
+        null,
+      ),
+    ).toMatchObject({ zoning: ['일반공업지역'], landCategory: '공장용지 · 대', landAreaM2: null });
+  });
+});
+
+describe('여러 필지를 한 부지로 — 용도지역 · 검사 합치기', () => {
+  it('용도지역은 이름마다 하나 — 한 필지에라도 걸렸으면 걸린 것', () => {
+    expect(
+      mergeZones([
+        [{ name: '자연녹지지역', relation: '접함' }, { name: '도시지역', relation: '포함' }],
+        [{ name: '자연녹지지역', relation: '포함' }, { name: '도시지역', relation: '포함' }],
+      ]),
+    ).toEqual([
+      { name: '자연녹지지역', relation: '포함' },
+      { name: '도시지역', relation: '포함' },
+    ]);
+  });
+  it('검사 — 가장 나쁜 상태 · 그 필지의 결론에 필지 이름 · 사실도 필지마다', () => {
+    const a = siteCheck({ properties: { jibun: '12대' }, polygons: parcel }, parcel).check;
+    const b = siteCheck({ properties: { jibun: '12-3답' }, polygons: parcel }, parcel).check;
+    const m = mergeLotChecks(['가나동 12', '가나동 12-3'], [a, b]);
+    expect(m).toMatchObject({ key: 'site', status: 'conditional', summary: '가나동 12-3 — 지목 답(논) — 농지전용 허가 필요' });
+    expect(m.facts?.map((f) => f.label)).toEqual(['가나동 12 필지', '가나동 12 면적', '가나동 12-3 필지', '가나동 12-3 면적']);
+    // 모두 같은 말이면 한 번 · 한 필지라도 모르면 통과로 치지 않는다
+    expect(mergeLotChecks(['가', '나'], [a, a]).summary).toBe(a.summary);
+    const unknown = terrainCheck({ ok: false, error: '없음' });
+    const ok = terrainCheck({ ok: true, value: { ...NO_LAND, year: '2026', height: '완경사', shape: null, road: '세로각지(가)', use: null } });
+    expect(mergeLotChecks(['가', '나'], [ok, unknown])).toMatchObject({ status: 'unknown', summary: '나 — 토지특성 못 받음 — 없음' });
+    expect(mergeLotChecks(['가'], [ok])).toBe(ok);
   });
 });
 

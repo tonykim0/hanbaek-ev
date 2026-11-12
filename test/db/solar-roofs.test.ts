@@ -70,6 +70,22 @@ describe('AI 지붕 따기 — 결과를 DB 에', () => {
     expect(await rowsOf(pnu)).toHaveLength(1);
   });
 
+  it('여러 필지를 한 부지로 — 필지들의 도형을 한 번에 따고, 넣은 차례가 달라도 같은 부지는 저장해 둔 결과', async () => {
+    await signIn(USERS.admin);
+    const { traceRoofs } = await import('@/lib/solar/roof-trace');
+    const [a, b] = [pnuOf(), pnuOf()];
+    const first = await ask(`${b},${a}`);
+    expect(first.status).toBe(200);
+    expect(vi.mocked(traceRoofs).mock.lastCall?.[1]).toBe(2);
+    const again = await ask(`${a},${b}`);
+    expect(again.body.cached).toBe(true);
+    expect(ai.calls).toBe(1);
+    expect(await rowsOf(`${a},${b}`)).toHaveLength(1);
+    // 한 필지만은 다른 부지다
+    expect((await ask(a)).body.cached).toBeUndefined();
+    expect((await ask(`${a},123`)).status).toBe(400);
+  });
+
   it('같은 필지를 동시에 두 번 — AI 는 한 번, 둘 다 같은 결과', async () => {
     await signIn(USERS.admin);
     const pnu = pnuOf();

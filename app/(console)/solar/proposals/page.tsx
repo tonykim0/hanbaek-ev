@@ -22,7 +22,7 @@ export default async function SolarProposalsPage({ searchParams }: { searchParam
   const session = await getSessionUser();
   // 로그인 자체가 없는 경우는 바깥 레이아웃이 먼저 로그인으로 보낸다
   if (!session || !isHanbaek(session.role)) redirect(BIZ_HOME.solar);
-  const q = firstParam(searchParams.q).trim().slice(0, 200);
+  const q = firstParam(searchParams.q).trim().slice(0, 500);
   return (
     <div className="max-w-4xl">
       <h1 className="mb-5 text-h1 font-black text-slate-900">제안서 생성</h1>

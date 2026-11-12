@@ -4,13 +4,15 @@ import { solarApiKey } from '@/lib/solar/api-key';
 import { finishTrace, recentTrace, startTrace, tracesSince } from '@/lib/data/solar-roof-traces';
 import { today } from '@/lib/date';
 import { traceRoofs, type Trace } from '@/lib/solar/roof-trace';
+import { pnusOfKey } from '@/lib/solar/parcels';
 import { hasVworld, parcelByPnu } from '@/lib/solar/sources/vworld';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
 /**
- * GET /api/solar/roofs?pnu= — AI 지붕 따기. 부를 때마다 돈이 든다(사진 한 장 + 판단 — 비용은 [llm] solar-roofs 한 줄).
+ * GET /api/solar/roofs?pnu= — AI 지붕 따기. 여러 필지를 한 부지로 묶었으면 필지번호를 쉼표로 잇는다(lib/solar/parcels traceKeyOf —
+ * 차례대로라 같은 부지는 같은 열쇠다) — 필지들의 도형을 한 장의 사진에 두르고 한 번 딴다. 부를 때마다 돈이 든다(사진 한 장 + 판단 — 비용은 [llm] solar-roofs 한 줄).
  * 같은 필지는 하루 동안 저장해 둔 결과를 돌려주고, 한 계정이 하루(한국 날짜) 20번까지만 부른다 — 둘 다 DB 다(lib/data/solar-roof-traces,
  * 2026-11-08 — 그전에는 서버 메모리라 함수가 새로 뜨면 비어 같은 필지를 또 AI 에 보냈다).
  * 같은 필지를 동시에 두 번 부르면(단추를 두 번 · 저절로와 단추) 이 서버에서는 AI 를 한 번만 부르고 둘이 같은 결과를 받는다.
@@ -29,16 +31,16 @@ class Refused extends Error {
   }
 }
 
-/** 한 번 따기 — 오늘 한도 → 필지 → 줄 세우기(실패해도 한 번으로 센다) → AI → 결과 적기 */
-async function trace(pnu: string, userId: string): Promise<Trace> {
+/** 한 번 따기 — 오늘 한도 → 필지 → 줄 세우기(실패해도 한 번으로 센다) → AI → 결과 적기. key 는 필지번호(여럿이면 쉼표) */
+async function trace(key: string, pnus: string[], userId: string): Promise<Trace> {
   const kstMidnight = new Date(`${today()}T00:00:00+09:00`);
   if ((await tracesSince(userId, kstMidnight)) >= PER_ACCOUNT_PER_DAY) {
     throw new Refused(429, `오늘 AI로 패널배치하기를 ${PER_ACCOUNT_PER_DAY}번 다 썼습니다.`);
   }
-  const parcel = await parcelByPnu(pnu);
-  if (!parcel) throw new Refused(404, '필지를 찾지 못했습니다.');
-  const id = await startTrace(pnu, userId);
-  const result = await traceRoofs(parcel.polygons);
+  const parcels = await Promise.all(pnus.map(parcelByPnu));
+  if (parcels.some((p) => !p)) throw new Refused(404, '필지를 찾지 못했습니다.');
+  const id = await startTrace(key, userId);
+  const result = await traceRoofs(parcels.flatMap((p) => p!.polygons), parcels.length);
   await finishTrace(id, result);
   return result;
 }
@@ -46,8 +48,9 @@ async function trace(pnu: string, userId: string): Promise<Trace> {
 export async function GET(req: Request) {
   const { session, denied } = await solarGate();
   if (denied) return denied;
-  const pnu = new URL(req.url).searchParams.get('pnu') ?? '';
-  if (!/^\d{19}$/.test(pnu)) return NextResponse.json({ error: '필지번호가 이상합니다.' }, { status: 400 });
+  const pnus = pnusOfKey(new URL(req.url).searchParams.get('pnu') ?? '');
+  if (!pnus) return NextResponse.json({ error: '필지번호가 이상합니다.' }, { status: 400 });
+  const pnu = pnus.join(',');
 
   // 키가 없으면 세지 않고 돌려보낸다 — 부르지도 않은 것을 하루 한도에서 깎지 않게
   if (!solarApiKey()) return NextResponse.json({ error: 'AI 키(ANTHROPIC_SOLAR_API_KEY)가 아직 없습니다.' }, { status: 503 });
@@ -61,7 +64,7 @@ export async function GET(req: Request) {
     let job = inflight.get(pnu);
     const joined = !!job;
     if (!job) {
-      job = trace(pnu, session.id).finally(() => inflight.delete(pnu));
+      job = trace(pnu, pnus, session.id).finally(() => inflight.delete(pnu));
       inflight.set(pnu, job);
     }
     const result = await job;

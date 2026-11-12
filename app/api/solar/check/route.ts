@@ -14,7 +14,8 @@ export async function GET(req: Request) {
   const q = url.searchParams.get('q')?.trim() ?? '';
   const mode = modeOf(url.searchParams);
   if (q.length < 2) return NextResponse.json({ error: '주소를 넣어 주세요.' }, { status: 400 });
-  if (q.length > 200) return NextResponse.json({ error: '주소가 너무 깁니다.' }, { status: 400 });
+  // 여러 필지를 한 부지로 늘어놓으면 길어진다(lib/solar/parcels — 열 필지까지)
+  if (q.length > 500) return NextResponse.json({ error: '주소가 너무 깁니다.' }, { status: 400 });
 
   // 자동완성에서 고른 후보 — 좌표가 있으면 그 자리로 본다
   const picked = pickedOf(url.searchParams);

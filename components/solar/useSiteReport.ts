@@ -37,6 +37,25 @@ export function useSiteReport(initial: { q: string; mode: Mode } | null) {
     }
   }
 
+  /**
+   * 불러온 부지의 필지를 더하고 빼서 다시 불러온다(ParcelBar). 못 하면 불러온 부지는 그대로 두고 그 까닭을 돌려준다 — 검색창 밑이
+   * 아니라 누른 자리에 뜬다. 되면 새 부지도 돌려준다(검색창의 글을 그 부지의 주소 한 줄로 맞춘다).
+   */
+  async function reload(mode: Mode, q: string): Promise<{ report: Report } | { error: string }> {
+    if (busy) return { error: '불러오는 중입니다.' };
+    setBusy(mode);
+    try {
+      const next = await fetchSiteReport(mode, q);
+      setReport(next);
+      setError(null);
+      return { report: next };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const started = useRef(false);
   useEffect(() => {
     if (!initial || started.current) return;
@@ -45,5 +64,5 @@ export function useSiteReport(initial: { q: string; mode: Mode } | null) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 처음 한 번
   }, []);
 
-  return { report, busy, error, run };
+  return { report, busy, error, run, reload };
 }

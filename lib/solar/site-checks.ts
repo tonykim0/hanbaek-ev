@@ -184,26 +184,75 @@ export function siteCheck(parcel: Feature, polys: PolygonCoords[]): { check: Che
  * 몇 % 어긋나 「대지면적」 칸에 적을 값이 아니다. 건물은 대장의 주건축물(건축면적 합 · 가장 큰 동의 주용도 · 사용승인일).
  */
 export function siteFactsOf(
-  traits: Settled<LandTraits | null>,
+  /** 필지마다 — 토지특성과 지번(「12공」 — 끝 부호가 지목). 여러 필지를 한 부지로 묶으면 여럿(lib/solar/parcels) */
+  lands: { traits: Settled<LandTraits | null>; jibun: string | null }[],
   zones: Settled<Zone[]>,
   register: RegisterSummary | null,
-  jibun: string | null,
 ): SiteFacts {
-  const t = traits.ok ? traits.value : null;
-  const zoning = t?.zoning.length
-    ? t.zoning
+  const ts = lands.map((l) => (l.traits.ok ? l.traits.value : null));
+  // 용도지역 — 토지특성이 정본, 한 필지라도 못 받았으면 토지이용계획(필지 모두의 것)에서
+  const zoning = ts.length && ts.every((t) => t?.zoning.length)
+    ? [...new Set(ts.flatMap((t) => t!.zoning))]
     : zones.ok
       ? [...new Set(zonesInside(zones.value).map((z) => z.name).filter(isUseZone))]
       : [];
-  const code = landCategoryOf(jibun);
+  const categories = lands.map((l, i) => {
+    const code = landCategoryOf(l.jibun);
+    return ts[i]?.category ?? (code ? (JIMOK_NAME[code] ?? null) : null);
+  });
+  const known = [...new Set(categories.filter((c): c is string => !!c))];
+  // 토지 면적은 필지 모두를 알 때만 더한다 — 하나라도 모르면 합이 「대지면적」 칸에 적을 값이 아니다
+  // (소수를 더하면 끝이 새서 둘째 자리로 — 대장의 건축면적과 같은 까닭)
+  const areas = ts.map((t) => t?.areaM2 ?? null);
+  const landAreaM2 = areas.length && areas.every((a) => a !== null)
+    ? areas.length === 1
+      ? areas[0]
+      : Math.round(areas.reduce((s, a) => s + a!, 0) * 100) / 100
+    : null;
   return {
     zoning,
-    landCategory: t?.category ?? (code ? (JIMOK_NAME[code] ?? null) : null),
-    landAreaM2: t?.areaM2 ?? null,
+    landCategory: known.length ? known.join(' · ') : null,
+    landAreaM2,
     // 동마다의 ㎡(소수 둘째)를 더하면 3521.7200000000003 처럼 끝이 샌다 — 대장의 자리수로
     buildingAreaM2: register && register.area > 0 ? Math.round(register.area * 100) / 100 : null,
     buildingUse: register?.biggest?.use ?? null,
     approvedOn: register?.biggest?.useApr ?? null,
+  };
+}
+
+/**
+ * 필지마다의 용도지역 · 지구를 한 부지의 것으로 — 이름마다 하나. 한 필지에라도 걸렸으면(포함 · 저촉) 걸린 것이다(접함은 모두가
+ * 접함일 때만) — 같은 지역이 두 번 서면 판정 사유 · 「걸린 지역·지구」가 두 번 적힌다.
+ */
+export function mergeZones(lists: Zone[][]): Zone[] {
+  const byName = new Map<string, Zone>();
+  for (const z of lists.flat()) {
+    const had = byName.get(z.name);
+    if (!had || (zonesInside([z]).length && !zonesInside([had]).length)) byName.set(z.name, z);
+  }
+  return [...byName.values()];
+}
+
+/**
+ * 필지마다 지은 같은 검사 하나를 한 칸으로(여러 필지를 한 부지로 묶었을 때 — 지상형의 부지 · 경사 · 진입도로).
+ * 상태는 가장 나쁜 것 — 한 필지라도 자료를 못 받았으면 나머지가 통과여도 「모름」이다(통과로 치지 않는다). 결론은 그 상태인
+ * 필지들의 결론에 필지 이름을 붙여 잇고(모두 같은 말이면 한 번), 사실도 필지 이름을 붙여 늘어놓는다.
+ */
+export function mergeLotChecks(labels: string[], checks: Check[]): Check {
+  if (checks.length === 1) return checks[0];
+  const levels = checks.flatMap((c) => (c.status === 'unknown' || c.status === 'skip' ? [] : [c.status]));
+  const worst = worstLevel(levels);
+  const status = worst === 'ok' && checks.some((c) => c.status === 'unknown') ? 'unknown' : levels.length ? worst : checks[0].status;
+  const top = checks.map((c, i) => ({ c, label: labels[i] })).filter(({ c }) => c.status === status);
+  const summaries = new Set(top.map(({ c }) => c.summary));
+  return {
+    key: checks[0].key,
+    title: checks[0].title,
+    status,
+    summary: summaries.size === 1 && top.length === checks.length ? [...summaries][0] : top.map(({ c, label }) => `${label} — ${c.summary}`).join(' / '),
+    facts: checks.flatMap((c, i) => (c.facts ?? []).map((f) => ({ label: `${labels[i]} ${f.label}`, value: f.value }))),
+    law: top.find(({ c }) => c.law)?.c.law,
+    source: checks[0].source,
   };
 }
 

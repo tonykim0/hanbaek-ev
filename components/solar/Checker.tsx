@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Btn, Err, FIELD, SectionHead, Tag } from '@/components/ui';
-import type { Mode, Report, Suggestion } from '@/lib/solar/types';
+import { siteQueryOf } from '@/lib/solar/parcels';
+import type { Mode, Suggestion } from '@/lib/solar/types';
 import ReportView from './ReportView';
 import { useSiteReport } from './useSiteReport';
 import { PANEL, TEXT } from './ui';
@@ -47,7 +48,15 @@ export default function Checker({
    */
   canPropose?: boolean;
 }) {
-  const { report, busy, error, run } = useSiteReport(initial);
+  const { report, busy, error, run, reload } = useSiteReport(initial);
+  const [sync, setSync] = useState<{ mode: Mode; q: string } | null>(null);
+  // 필지를 더하고 빼서 다시 — 되면 그 갈래의 검색창 글도 새 부지의 주소 한 줄로(lib/solar/parcels)
+  const reparcel = async (mode: Mode, q: string): Promise<string | null> => {
+    const r = await reload(mode, q);
+    if ('error' in r) return r.error;
+    setSync({ mode, q: siteQueryOf(r.report.place) });
+    return null;
+  };
 
   return (
     <div>
@@ -61,6 +70,7 @@ export default function Checker({
             busy={busy}
             error={error?.mode === b.mode ? error.text : null}
             onRun={run}
+            sync={sync?.mode === b.mode ? sync : null}
           />
         ))}
       </div>
@@ -73,6 +83,8 @@ export default function Checker({
           mapKey={mapKey}
           canRegister={canRegister}
           canPropose={canPropose}
+          busy={busy !== null}
+          onParcels={(q) => reparcel(report.mode, q)}
         />
       )}
     </div>
@@ -95,6 +107,7 @@ export function SearchBox({
   step,
   action = '검토하기',
   busyAction = '검토 중…',
+  sync = null,
   children,
 }: {
   mode: Mode;
@@ -111,6 +124,11 @@ export function SearchBox({
   busyAction?: string;
   /** 창 밑 — 불러온 현장 한 줄 */
   children?: ReactNode;
+  /**
+   * 입력칸을 이 글로 맞춘다 — 필지를 더하고 빼서 다시 불러온 부지의 주소 한 줄(ParcelBar). 그대로 두면 다시 「검토하기」를 눌렀을 때
+   * 더한 필지가 빠진다. 같은 글로 다시 맞출 수 있게 상자에 담는다(바뀐 것은 상자다)
+   */
+  sync?: { q: string } | null;
 }) {
   const [query, setQuery] = useState(initialQuery);
   const [items, setItems] = useState<Suggestion[]>([]);
@@ -122,6 +140,15 @@ export function SearchBox({
   const skipNext = useRef(initialQuery !== '');
   const boxRef = useRef<HTMLDivElement>(null);
   const listId = `suggest-${mode}`;
+
+  useEffect(() => {
+    if (!sync) return;
+    skipNext.current = true;
+    setQuery(sync.q);
+    // 앞 글의 후보가 열린 채 남으면 밑의 불러온 현장 줄(필지)을 가린다
+    setItems([]);
+    setOpen(false);
+  }, [sync]);
 
   useEffect(() => {
     if (skipNext.current) {

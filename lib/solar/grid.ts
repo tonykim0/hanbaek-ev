@@ -34,7 +34,13 @@ export const NEIGHBOR_TRIES = 8;
  * 동 전체가 번지 기록을 다 품으므로 동에 기록이 없으면 그 동의 번지는 묻지 않는다.
  * 한전은 한꺼번에 넷을 받으면 일부를 빈 응답으로 돌려줘서(실측 2026-11-03, 나주 송월동) 하나씩 차례로 묻는다.
  */
-export async function gridNear(pnu: string, jibunAddress: string | null, polys: PolygonCoords[]): Promise<GridResult> {
+export async function gridNear(
+  pnu: string,
+  jibunAddress: string | null,
+  polys: PolygonCoords[],
+  /** ②까지만 — 한 부지로 묶은 필지 중 대표가 아닌 것은 제 번지 기록만 본다(둘레 · 동은 대표의 것으로 — lib/solar/run) */
+  ownOnly = false,
+): Promise<GridResult> {
   const parts = parsePnu(pnu);
   const { dong, ri } = dongRiOf(jibunAddress);
   if (!parts || !dong) return { rows: [], via: null };
@@ -54,6 +60,7 @@ export async function gridNear(pnu: string, jibunAddress: string | null, polys: 
     const own = await gridRowsIn(found, { dong, ri, jibun: jibunOf(parts) });
     if (own.rows.length) return { rows: own.rows, via: null };
   }
+  if (ownOnly) return { rows: [], via: null };
 
   const bbox = bboxOf(polys);
   if (bbox) {

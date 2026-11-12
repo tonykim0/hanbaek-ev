@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { fromWorldPx, metersPerPx, toWorldPx } from '@/lib/solar/mercator';
 import { solarApiKey } from '@/lib/solar/api-key';
-import { ringOf } from '@/lib/solar/roof-trace';
+import { prompt, ringOf } from '@/lib/solar/roof-trace';
 
 describe('항공영상 픽셀 ↔ 경위도', () => {
   it('되돌리면 같은 자리 (충주, 19단계)', () => {
@@ -51,5 +51,21 @@ describe('태양광 API 키 — ANTHROPIC_SOLAR_API_KEY 먼저, 없으면 공용
     expect(solarApiKey()).toBe('solar');
     process.env.ANTHROPIC_SOLAR_API_KEY = '  ';
     expect(solarApiKey()).toBe('main');
+  });
+});
+
+describe('AI 지붕 따기 지시문 — 여러 필지를 한 부지로', () => {
+  const a = { width: 800, height: 600, metersPerPx: 0.25 };
+  it('한 필지는 한 필지의 말 그대로', () => {
+    const one = prompt(a);
+    expect(one).toContain('The yellow line is the boundary of one land parcel.');
+    expect(one).toContain('mostly outside the yellow line.');
+    expect(prompt(a, 1)).toBe(one);
+  });
+  it('여럿이면 한 부지 — 필지 사이 선에 걸친 건물은 한 지붕', () => {
+    const two = prompt(a, 2);
+    expect(two).toContain('boundaries of 2 neighboring land parcels that together make one site');
+    expect(two).toContain('trace a building that crosses it as one roof');
+    expect(two).toContain('mostly outside the yellow lines.');
   });
 });

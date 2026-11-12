@@ -53,7 +53,7 @@ export default function SiteMap({
   plan: RoofPlan | null;
   /** 지상형 — 그린 네모(설치 영역) */
   ground: GroundPlan | null;
-  /** AI 지붕 따기에 보낼 필지번호 */
+  /** AI 지붕 따기에 보낼 필지번호 — 한 부지로 묶었으면 쉼표로 이은 열쇠(lib/solar/parcels traceKeyOf) */
   pnu: string | null;
   /** 판 머리의 걸음 — 제안서 생성의 「3 패널 배치」. 없으면 단추만 */
   heading?: { step: number; title: string };

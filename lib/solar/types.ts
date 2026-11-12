@@ -64,6 +64,11 @@ export type Suggestion = {
   lng: number;
 };
 
+/**
+ * 검토한 부지 — 위 칸들은 대표 필지(주소 칸의 첫째 — 건물명 · 도로명이 제안서에 간다)의 것이다.
+ * 여러 필지를 한 부지로 묶으면(lib/solar/parcels — 「가나동 12, 12-3」) 필지마다는 parcels 에 있고, 검토 결과(건물 · 대장 ·
+ * 용도지역 · 면적 · 계통 · 지도)는 그 모두를 합친 것이다.
+ */
 export type Place = {
   query: string;
   roadAddress: string | null;
@@ -73,7 +78,11 @@ export type Place = {
   pnu: string | null;
   lat: number | null;
   lng: number | null;
+  /** 한 부지로 묶은 필지 — 넣은 차례(첫째가 대표). 한 필지면 하나 */
+  parcels: SiteParcel[];
 };
+
+export type SiteParcel = { pnu: string | null; jibunAddress: string | null; roadAddress: string | null };
 
 /* ------------------------------------------------------------- 계통 */
 

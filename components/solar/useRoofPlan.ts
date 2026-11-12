@@ -37,7 +37,7 @@ export type TraceReply = TraceResult & { cached?: boolean; meta?: { ms?: number 
  * 실패하면 그 까닭(한글)을 던진다.
  */
 export async function fetchRoofTrace(pnu: string): Promise<TraceReply> {
-  const res = await fetch(`/api/solar/roofs?pnu=${pnu}`);
+  const res = await fetch(`/api/solar/roofs?pnu=${encodeURIComponent(pnu)}`);
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((body as { error?: string }).error ?? `실패 (${res.status})`);
   return body as TraceReply;
@@ -164,6 +164,7 @@ export type TraceState = { busy: boolean; msg: string | null; error: boolean; tr
  * AI 패널배치(지붕 따기) — 지도의 단추와 저절로(autoRun) 같은 길 하나. 지도가 안 떠도 돈다(지붕을 받아 오는 일이다).
  * 저절로는 한 번만 — 이미 배치가 있으면(앞서 돌렸으면) 안 돈다. 개발 모드의 두 번 도는 효과에도 한 번(ref).
  *
+ * @param pnu      필지번호 — 한 부지로 묶었으면 쉼표로 이은 열쇠(lib/solar/parcels traceKeyOf)
  * @param autoRun  처음 그릴 때 저절로 한 번(제안서 생성 — 배치 없이는 제안서를 못 짓는다)
  * @param onAiBusy 도는 동안 — 제안서 생성의 만들기 단추가 기다린다
  */
