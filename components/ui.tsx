@@ -299,8 +299,13 @@ export function Tag({ tone = 'mute', children }: { tone?: Tone; children: ReactN
  * 색 셋 — warn 있음(사이드바 할 일) · mute 0건(사이드바 할 일 — 세었고 없음) · bar 사업 색 바 위(흰 바탕에 사업 색 글자 —
  * 그린 바에서도 귤색 바에서도 바에서 가장 밝은 자리다). 빨강은 쓰지 않는다 — 빨강은 막는 것이다(화면 규칙 12 · 색의 뜻).
  * ★채운 노랑 위 글자는 진한 색이다★ — 흰 글자는 amber-500 위에서 2.2:1 로 읽히지 않았다(0건의 slate-400 도 2.4:1 이었다).
+ *
+ * ★크기 둘 — menu(사이드바) 20px · bar(상단 바) 18px★. 처음에는 18px 하나로 맞췄는데 사이드바 할 일 수가 그전(높이 20 · 좌우 6px)보다
+ * 작아졌다(한백 2026-11-12 「사이드바 숫자 표시 UI가 갑자기 작아진거같네」) — 사이드바는 그전 크기로 되돌렸다. 상단 바는 18px 그대로다:
+ * 13px 글자의 줄 높이(20.8px) 안에 들어 수가 들고 나도 바의 높이가 안 움직인다. 글자 · 색 · 모서리는 둘이 같다.
  */
 type CountTone = 'warn' | 'mute' | 'bar';
+type CountSize = 'menu' | 'bar';
 
 const COUNT: Record<CountTone, string> = {
   warn: 'bg-amber-500 text-amber-950',
@@ -308,13 +313,20 @@ const COUNT: Record<CountTone, string> = {
   bar: 'bg-white text-brand-800',
 };
 
+const COUNT_SIZE: Record<CountSize, string> = {
+  menu: 'h-5 min-w-5 px-1.5',
+  bar: 'h-[18px] min-w-[18px] px-1',
+};
+
 export const COUNT_MAX = 99;
 
-export function Count({ n, tone, what, max = COUNT_MAX, className = '' }: {
+export function Count({ n, tone, what, size = 'menu', max = COUNT_MAX, className = '' }: {
   n: number;
   tone: CountTone;
   /** 화면 읽기가 숫자 앞에 읽는 말 — 「안 읽음」 · 「할 일」 */
   what: string;
+  /** menu 사이드바(20px) · bar 상단 바(18px) */
+  size?: CountSize;
   /** 이보다 크면 「max+」 — 자리가 넉넉한 곳(사이드바 줄 끝)만 올린다 */
   max?: number;
   /** 자리만 — 색 · 모양은 tone 이 정한다 */
@@ -324,7 +336,7 @@ export function Count({ n, tone, what, max = COUNT_MAX, className = '' }: {
     <>
       <span
         aria-hidden
-        className={`inline-flex h-[18px] min-w-[18px] shrink-0 items-center justify-center rounded-tag px-1 text-tiny font-bold leading-none tabular-nums ${COUNT[tone]} ${className}`}
+        className={`inline-flex shrink-0 items-center justify-center rounded-tag text-tiny font-bold leading-none tabular-nums ${COUNT_SIZE[size]} ${COUNT[tone]} ${className}`}
       >
         {n > max ? `${max}+` : n}
       </span>

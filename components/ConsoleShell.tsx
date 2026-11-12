@@ -477,7 +477,7 @@ export default function ConsoleShell({
                           <>
                             <span className="truncate">{it.label}</span>
                             {/*
-                              * 실제 처리 화면별 할 일 건수 — 노랑은 있음, 회색은 0건. 상단 바의 안 읽은 수와 같은 모양이다(ui.tsx Count).
+                              * 실제 처리 화면별 할 일 건수 — 노랑은 있음, 회색은 0건. 상단 바의 안 읽은 수와 같은 모양이고 크기만 한 단계 크다(ui.tsx Count size menu).
                               * 줄 오른쪽이 비어 있어 정확한 수를 싣는다(max) — 할 일은 몇 건인지가 곧 일의 양이다.
                               */}
                             {todoCount !== null && (

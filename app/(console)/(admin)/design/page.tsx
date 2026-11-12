@@ -272,7 +272,7 @@ export default function DesignPage() {
                 data-biz={b}
                 className={`inline-flex items-center gap-1.5 rounded-ctl px-2.5 py-1.5 text-base font-bold ${BIZ_FRAME[b].bar} ${BIZ_FRAME[b].ink}`}
               >
-                알림 <Count n={b === 'ev' ? 7 : 128} tone="bar" what="안 읽음" />
+                알림 <Count n={b === 'ev' ? 7 : 128} tone="bar" size="bar" what="안 읽음" />
               </span>
             ))}
             <span className={TEXT.meta}>이름 바로 뒤 같은 줄 — 할 일은 0건도 서고, 안 읽음은 0 을 그리지 않는다 · 셋째 자리부터 99+</span>

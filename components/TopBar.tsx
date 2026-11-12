@@ -281,7 +281,7 @@ function BarBody({ label, count }: { label: string; count?: number }) {
   return (
     <>
       {label}
-      {count !== undefined && count > 0 && <Count n={count} tone="bar" what="안 읽음" />}
+      {count !== undefined && count > 0 && <Count n={count} tone="bar" size="bar" what="안 읽음" />}
     </>
   );
 }
