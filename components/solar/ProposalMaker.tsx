@@ -14,7 +14,7 @@ import { proposalFileName, storedSeller, type ProposalInput, type Seller } from 
 import { proposalLayout, type ProposalLayout } from '@/lib/solar/proposal/layout-rule';
 import { siteQueryOf, traceKeyOf } from '@/lib/solar/parcels';
 import { PARTIES, PARTY_LABEL, type Party } from '@/lib/solar/proposal/party';
-import { missingTerms, PRODUCTS, productOf, termOf, UPCOMING, type ProductKey, type TemplateKey, type Terms } from '@/lib/solar/proposal/products';
+import { missingTerms, PRODUCTS, productOf, TEMPLATES, termOf, UPCOMING, type ProductKey, type TemplateKey, type Terms } from '@/lib/solar/proposal/products';
 import type { Report } from '@/lib/solar/types';
 import { SearchBox } from './Checker';
 import ParcelBar from './ParcelBar';
@@ -254,6 +254,7 @@ function ProposalSite({
     selected: plan?.selected.size ?? 0,
     kw: preview && chosenTerms ? capacityKw(preview.count, chosenTerms.moduleWatt) : null,
     minKw: termOf(chosenTerms, 'minKw'),
+    maxKw: chosen ? (TEMPLATES[chosen.template].maxKw ?? 0) : 0,
     customer,
     address,
     partyNeeded,

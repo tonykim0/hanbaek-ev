@@ -44,7 +44,18 @@ export type TemplateDef = {
   /** 올린 파일이 그 틀인지 보는 표 — 원본 파일 이름의 실마리(화면 안내) */
   hint: string;
   terms: TermField[];
+  /** 이 용량(kW)을 넘는 배치면 만들기를 막는다 — 셈이 그 용량까지만 맞다(ROOF_REC_CAP_KW) */
+  maxKw?: number;
 };
+
+/**
+ * 지붕 태양광의 REC 가중치 1.5 는 3MW 이하 설비의 것이다(신 · 재생에너지 공급인증서 가중치 — 건축물 등 기존 시설물 이용). 3MW 를 넘는 부분은
+ * 가중치가 낮다. 타이런트 솔라15(16~35년 발전수익 = REC × 1.5)와 모햇(계약서상 가중치가 1.5 보다 낮으면 임대료가 그만큼 준다)의 셈은 1.5 를
+ * 전제로 하므로, 3MW 를 넘는 지붕은 제안서 숫자가 실제보다 크게 나간다. 넘는 부분을 낮은 가중치로 섞어 셀 수도 있지만 사업자 견본에 그런 예가
+ * 없어 맞게 셌는지 대조할 길이 없다 — 막는다(한백 2026-11-12 「이건 막아주고」). 그 규모는 사업자와 따로 협의한다 · 지도에서 지붕을 빼 3MW
+ * 안으로 줄이면 지을 수 있다. 3MW 는 발전사업허가가 시 · 도지사에서 산업부로 넘어가는 경계이기도 하다(capacity-checks permitCheckOf).
+ */
+export const ROOF_REC_CAP_KW = 3_000;
 
 const W: TermField = { key: 'moduleWatt', label: '모듈 출력', unit: 'W', min: 300, max: 900 };
 /**
@@ -88,6 +99,7 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
        */
       { key: 'gridCostBelowKw', label: '계통연계비 차감(이 용량 미만)', unit: 'kW', min: 0, max: 100_000, zeroText: '없음', optional: true },
     ],
+    maxKw: ROOF_REC_CAP_KW,
   },
   /**
    * 모햇 공유옥상 임대 — 지붕을 모햇 협동조합에 20년 빌려주고 임대료를 받는다. 1년 선납(해마다 1년치) · 5년 선납(상업운전 때 5년치를
@@ -110,6 +122,7 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
       { key: 'prepay5PerKw', label: '5년 선납 임대료(1~5년차)', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
       { key: 'subsidyPerKw', label: '참여지원금(5년 선납 법인, 1회)', unit: '원/kW', min: 1, max: 5_000_000 },
     ],
+    maxKw: ROOF_REC_CAP_KW,
   },
   'lumora-rent': {
     key: 'lumora-rent',

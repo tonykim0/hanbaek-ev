@@ -1,6 +1,7 @@
 /** 제안서를 못 짓는 까닭(lib/solar/proposal/blocker) — 화면 위에서부터 처음 걸리는 것 하나 */
 import { describe, expect, it } from 'vitest';
 import { proposalBlocker, type ProposalReadiness } from '@/lib/solar/proposal/blocker';
+import { ROOF_REC_CAP_KW, TEMPLATES } from '@/lib/solar/proposal/products';
 
 const ready: ProposalReadiness = {
   templatesLoaded: true,
@@ -13,6 +14,7 @@ const ready: ProposalReadiness = {
   selected: 2,
   kw: 123.45,
   minKw: 0,
+  maxKw: 0,
   customer: '(주)가나',
   address: '충북 충주시 동충주산단4길 17',
   partyNeeded: false,
@@ -45,6 +47,18 @@ describe('proposalBlocker', () => {
     expect(proposalBlocker({ ...ready, kw: null, minKw: 150 })).toBeNull();
     // 배치 걸음이 먼저다 — 고른 지붕이 없으면 그 까닭
     expect(proposalBlocker({ ...ready, selected: 0, kw: 0, minKw: 150 })).toBe('고른 지붕 없음');
+  });
+  it('셈이 맞는 최대 용량(지붕 REC 가중치 1.5 의 3MW) — 넘으면 막고, 같으면 짓고, 비운 값(0) · 모르는 용량은 막지 않는다', () => {
+    expect(proposalBlocker({ ...ready, kw: 3_000.65, maxKw: 3_000 })).toBe('3,000kW 초과(REC 가중치 1.5 범위 밖)');
+    expect(proposalBlocker({ ...ready, kw: 3_000, maxKw: 3_000 })).toBeNull();
+    expect(proposalBlocker({ ...ready, kw: 9_999, maxKw: 0 })).toBeNull();
+    expect(proposalBlocker({ ...ready, kw: null, maxKw: 3_000 })).toBeNull();
+  });
+  it('3MW 를 넘으면 막는 것은 REC 1.5 를 전제로 셈하는 두 틀 — 타이런트 · 모햇(루모라 임대료는 kW 단가라 상관없다)', () => {
+    expect(TEMPLATES['tyrant-solar15'].maxKw).toBe(ROOF_REC_CAP_KW);
+    expect(TEMPLATES['henergy-mohaet'].maxKw).toBe(ROOF_REC_CAP_KW);
+    expect(TEMPLATES['lumora-rent'].maxKw).toBeUndefined();
+    expect(ROOF_REC_CAP_KW).toBe(3_000);
   });
   it('계약자 구분 — 받는 상품만, 고르기 전에는 막는다', () => {
     expect(proposalBlocker({ ...ready, partyNeeded: true })).toBe('계약자 구분 미지정');

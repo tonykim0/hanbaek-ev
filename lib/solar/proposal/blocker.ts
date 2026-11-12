@@ -23,6 +23,8 @@ export type ProposalReadiness = {
   kw: number | null;
   /** 그 상품의 참여 최소 용량(kW · 「템플릿 · 조건」) — 0 이면 막지 않는다 */
   minKw: number;
+  /** 그 상품의 셈이 맞는 최대 용량(kW · products 의 maxKw — 지붕 REC 가중치 1.5 의 3MW) — 0 이면 막지 않는다 */
+  maxKw: number;
   customer: string;
   address: string;
   /** 계약자 구분을 받는 상품인가(products 의 party — 모햇) · 고른 구분 */
@@ -43,6 +45,8 @@ export function proposalBlocker(s: ProposalReadiness): string | null {
     [!s.selected, '고른 지붕 없음'],
     // 사업자의 참여 자격(최소 용량) — 그 상품의 기준으로 깐 용량으로 본다
     [s.minKw > 0 && s.kw !== null && s.kw < s.minKw, `${kwText(s.minKw)}kW 미만(참여 최소 용량)`],
+    // 셈의 전제가 맞는 용량까지만 — 지붕 REC 가중치 1.5 는 3MW 이하(products ROOF_REC_CAP_KW). 지도에서 지붕을 빼면 지을 수 있다
+    [s.maxKw > 0 && s.kw !== null && s.kw > s.maxKw, `${kwText(s.maxKw)}kW 초과(REC 가중치 1.5 범위 밖)`],
     [!s.customer.trim(), '고객명 없음'],
     [!s.address.trim(), '주소 없음'],
     [s.partyNeeded && !s.party, '계약자 구분 미지정'],
