@@ -31,7 +31,6 @@
     "@notionhq/client": "^2.2.15",
     "@sparticuz/chromium": "^153.0.0",
     "@types/heic-convert": "^2.1.1",
-    "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.3.3",
     "drizzle-orm": "^0.45.2",
     "heic-convert": "^2.1.0",

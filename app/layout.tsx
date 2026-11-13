@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import { Analytics } from '@vercel/analytics/react';
 import { SYSTEM_NAME } from '@/lib/biz';
 import './globals.css';
 
@@ -22,6 +21,11 @@ export const metadata: Metadata = {
   icons: { icon: '/logo.png', apple: '/logo.png' },
 };
 
+/*
+ * ★방문 분석(Vercel Web Analytics)은 걷었다★ (2026-11-13 사용자 「web analytics 꺼」) — 아무도 보지 않는 숫자에 이벤트마다
+ * 돈이 나갔다(10/23~ 주기 1.2만 건 $0.36). 다시 켜려면 @vercel/analytics 의 <Analytics /> 를 여기 body 끝에 두고
+ * Vercel 프로젝트에서 Web Analytics 를 켠다.
+ */
 export default function RootLayout({
   children,
 }: {
@@ -31,7 +35,6 @@ export default function RootLayout({
     <html lang="ko">
       <body>
         {children}
-        <Analytics />
       </body>
     </html>
   );
