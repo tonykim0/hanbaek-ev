@@ -13,9 +13,13 @@ import { normalizeRoadAddress } from '@/lib/address';
  * 시·도 축약형(경기 · 서울)은 정식 명칭으로 펴서 돌려줍니다.
  *
  * 스크립트는 검색을 처음 열 때만 불러옵니다(페이지 로딩에 영향 없음).
+ *
+ * ★주소는 t1.kakaocdn.net 이다★ — 카카오가 옛 주소 t1.daumcdn.net 을 2026-11-30 까지만 두고 닫는다고 알렸다(카카오 우편번호 공지
+ * #1562 · 한백 2026-11-14 「주소검색 누르면 이거 나오는데 이거 대응해줘」 — 옛 주소로 띄운 창은 맨 위에 그 공지를 달았다).
+ * 경로 · 쓰는 법은 같고 도메인만 바뀌었다. 옛 주소가 다시 들어오면 test/conventions/kakao-cdn.test.ts 가 잡는다.
  */
 const POSTCODE_SCRIPT_SRC =
-  'https://t1.daumcdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
+  'https://t1.kakaocdn.net/mapjsapi/bundle/postcode/prod/postcode.v2.js';
 
 export interface PostcodeData {
   /** 도로명주소 — 시도 + 시군구 + 도로명 + 건물번호 */
