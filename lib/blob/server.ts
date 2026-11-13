@@ -150,7 +150,8 @@ export async function signedGetUrl(urlOrPath: string, opts?: { ttlMs?: number; d
  * 때 맨 주소를 적던 자리). 서명 열쇠는 그 저장소의 열쇠에서 뽑는다 — 미리보기(개발 저장소)는 운영 파일의 링크를
  * 못 만든다. 열쇠를 갈면 그전 링크가 다 닫힌다.
  */
-function linkSig(path: string): string {
+/** 고정 링크의 서명 — 경로마다 늘 같다(시험이 링크를 지을 때도 이것) */
+export function linkSig(path: string): string {
   return createHmac('sha256', `file-link\n${blobToken()}`).update(path).digest('base64url').slice(0, 32);
 }
 
