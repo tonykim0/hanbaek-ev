@@ -1,4 +1,7 @@
 /**
+ * ★2026-11-14 부터 쓰지 않는다★ — 파일이 비공개 저장소로 옮겨져 맨 주소로 받던 이 방식이 안 된다(그리고 운영 열쇠가 필요하다).
+ * 매일 백업은 ~/hanbaek-backups/blob-tool/mirror.mjs 가 콘솔의 백업 문(/api/backup/files)으로 받는다(CLAUDE.md 「운영 백업」).
+ *
  * 프로덕션 파일 아카이브 — Vercel Blob → 오프사이트 폴더. ★읽기만 한다.★
  *
  *   npx tsx scripts/archive-blob.ts \

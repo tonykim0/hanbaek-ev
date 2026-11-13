@@ -18,6 +18,7 @@ import JSZip from 'jszip';
 import { docContentType, MAX_DOC_BYTES, type DocFile, type ProjectDocument } from '@/types/project';
 import { canShrink, shrink } from '@/lib/shrink';
 import { downloadBlob } from '@/lib/download';
+import { BLOB_ACCESS, fileHref } from '@/lib/blob/path';
 
 /** 파일 이름에 쓸 수 없는 문자를 지운다 */
 function safe(name: string): string {
@@ -194,12 +195,12 @@ function FileRow({
   async function download() {
     setBusy(true);
     try {
-      const res = await fetch(file.url);
+      const res = await fetch(fileHref(file.url));
       if (!res.ok) throw new Error(String(res.status));
       downloadBlob(await res.blob(), docFileName(siteName, label, file, index));
     } catch {
       // 실패해도 새 탭으로 열 수 있으니 화면을 막지 않는다
-      window.open(file.url, '_blank', 'noopener');
+      window.open(fileHref(file.url), '_blank', 'noopener');
     } finally {
       setBusy(false);
     }
@@ -222,7 +223,7 @@ function FileRow({
           이미지도 PDF 도 같은 부품이 그린다 — 예전에는 이미지만 40px 로 따로 그렸다.
         */}
         <a
-          href={file.url}
+          href={fileHref(file.url)}
           target="_blank"
           rel="noopener noreferrer"
           title={file.name}
@@ -237,7 +238,7 @@ function FileRow({
         <Peek file={file} className="flex min-w-0 flex-1 flex-col">
           {canPreview(file) ? (
             <a
-              href={file.url}
+              href={fileHref(file.url)}
               target="_blank"
               rel="noopener noreferrer"
               title={file.name}
@@ -454,7 +455,7 @@ export function DownloadAll({
       for (const d of withFiles) {
         for (const [i, f] of d.files.entries()) {
           try {
-            const res = await fetch(f.url);
+            const res = await fetch(fileHref(f.url));
             if (!res.ok) throw new Error(String(res.status));
             zip.file(docFileName(siteName, labelOf(d.kind), f, i), await res.blob());
           } catch {
@@ -558,7 +559,7 @@ function Thumb({ file }: { file: DocFile }) {
   useEffect(() => {
     if (!seen || !pdf) return;
     let alive = true;
-    void pdfThumb(file.url).then((v) => {
+    void pdfThumb(fileHref(file.url)).then((v) => {
       if (!alive) return;
       if (v) setSrc(v);
       else setFailed(true);
@@ -567,7 +568,7 @@ function Thumb({ file }: { file: DocFile }) {
   }, [seen, pdf, file.url]);
 
   /* 이미지는 구울 것이 없다 — 파일이 곧 그림이다 */
-  const show = failed ? null : pdf ? src : isImage(file) ? file.url : null;
+  const show = failed ? null : pdf ? src : isImage(file) ? fileHref(file.url) : null;
 
   return (
     <span
@@ -638,10 +639,10 @@ function Peek({ file, className, children }: {
         >
           {isImage(file) ? (
             /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={file.url} alt={file.name} className="h-full w-full object-contain" />
+            <img src={fileHref(file.url)} alt={file.name} className="h-full w-full object-contain" />
           ) : (
             <iframe
-              src={`${file.url}#toolbar=0&navpanes=0&view=FitH`}
+              src={`${fileHref(file.url)}#toolbar=0&navpanes=0&view=FitH`}
               title={file.name}
               className="h-full w-full border-0"
             />
@@ -798,7 +799,7 @@ export function DocUpload({
 
       const { put } = await import('@vercel/blob/client');
       const blob = await put(pathname, file, {
-        access: 'public',
+        access: BLOB_ACCESS,
         token: tokenBody.token,
         /*
          * 형식은 확장자로 정한다 — 브라우저가 말하는 것을 그대로 넘기면 한컴오피스로

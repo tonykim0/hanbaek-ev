@@ -39,6 +39,7 @@ import PrintButton from './PrintButton';
 import { Badge, Btn, BtnLink, Empty, Err, FIELD_CELL, Saved } from '@/components/ui';
 import { SiteLink, won } from './parts';
 import { useFinalizeBatch, useTaxInvoiceUpload } from './use-batch';
+import { fileHref } from '@/lib/blob/path';
 
 /**
  * 줄 하나의 부가세 — 공급가액의 10%.
@@ -511,7 +512,7 @@ function InvoiceCard({
         </p>
       ) : undefined}
       action={invoice ? (
-        <BtnLink kind="side" size="md" href={`${invoice.blobUrl}?download=1`}>내려받기</BtnLink>
+        <BtnLink kind="side" size="md" href={fileHref(invoice.blobUrl, { download: true })}>내려받기</BtnLink>
       ) : undefined}
     >
       <div className="mt-4">
@@ -533,14 +534,14 @@ function InvoiceCard({
                * pagemode 는 그 밖의 뷰어가 알아듣는 말이다 — 모르는 뷰어는 그냥 무시한다.
                * 도구줄(확대·내려받기)은 남긴다: 잔글씨를 키워 보는 자리다.
                */
-              src={`${invoice.blobUrl}#view=FitH&navpanes=0&pagemode=none`}
+              src={`${fileHref(invoice.blobUrl)}#view=FitH&navpanes=0&pagemode=none`}
               className="h-[min(70vh,860px)] w-full rounded-box border border-slate-200 bg-slate-50"
             />
           ) : (
-            <a href={invoice.blobUrl} target="_blank" rel="noopener">
+            <a href={fileHref(invoice.blobUrl)} target="_blank" rel="noopener">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={invoice.blobUrl}
+                src={fileHref(invoice.blobUrl)}
                 alt={`세금계산서 ${invoice.filename}`}
                 loading="lazy"
                 className="w-full rounded-box border border-slate-200 bg-slate-50"
@@ -570,7 +571,7 @@ function InvoiceCard({
           {/* 미리보기가 위에 있고 첨부일은 머리에 있으니, 이 줄은 파일 이름만 말한다 */}
           <p className="flex flex-wrap items-baseline gap-2">
             <a
-              href={invoice.blobUrl}
+              href={fileHref(invoice.blobUrl)}
               target="_blank"
               rel="noopener"
               className="min-w-0 truncate text-small font-bold text-brand-700 underline-offset-2 hover:underline"

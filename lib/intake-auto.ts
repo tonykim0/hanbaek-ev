@@ -17,7 +17,6 @@
  *
  * 서버 전용.
  */
-import { put } from '@vercel/blob';
 import { contractDateOfFiles, repNameOf } from './fact-read';
 import type { FileCategory } from '@/types/intake';
 import type { AutoDoc, AutoFields, AutoIntakeResult } from '@/types/intake-auto';
@@ -33,6 +32,7 @@ import { demoteOldContracts, kindOfCategory, partyFromCategories, preInstallFrom
 import { today } from './date';
 import { docNameOf } from './doc-rules';
 import { withRegionPrefix } from './region';
+import { putBlob } from '@/lib/blob/server';
 
 export type { AutoDoc, AutoFields, AutoIntakeResult };
 
@@ -240,11 +240,7 @@ export async function autoIntakeFromZip(
      * allowOverwrite 기본값이 false 라 같은 이름이면 그냥 실패한다.
      */
     const pathname = `${stagePrefix}/${kind}-${index}.${ext}`;
-    const blob = await put(pathname, item.buffer, {
-      access: 'public',
-      contentType: item.contentType ?? 'application/pdf',
-      token: process.env.BLOB_READ_WRITE_TOKEN,
-    });
+    const blob = await putBlob(pathname, item.buffer, { contentType: item.contentType ?? 'application/pdf' });
     docs.push({
       kind, category: item.category, filename: item.standardName, blobUrl: blob.url,
       title: item.title ?? null,

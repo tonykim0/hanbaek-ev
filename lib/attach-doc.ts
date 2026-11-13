@@ -7,7 +7,6 @@
  *
  * 서버 전용.
  */
-import { put } from '@vercel/blob';
 import { actorOf } from '@/lib/auth/session';
 import type { SessionPayload } from '@/lib/auth/types';
 import { getRepository } from '@/lib/data';
@@ -21,6 +20,7 @@ import {
   stagedPathnameOf,
 } from '@/lib/intake-stage';
 import { uprightPdf } from '@/lib/pdf-orient';
+import { putBlob, readBlob } from '@/lib/blob/server';
 
 /**
  * ★돌아간 스캔을 붙이기 전에 세운다★ (한백 지시 2026-09-30 「90° 돌아가 있는 서류를
@@ -42,19 +42,13 @@ function needsUpright(pathname: string, staged: string | null): boolean {
 
 /** 세운 PDF — 고칠 페이지가 없으면 null. 받아 오지 못하면 던진다(임시본이 사라진 경우를 가른다) */
 async function uprightOf(url: string): Promise<Buffer | null> {
-  const res = await fetch(url, { cache: 'no-store' });
-  if (!res.ok) throw new Error(`파일을 받지 못했습니다 (${res.status})`);
-  const src = Buffer.from(await res.arrayBuffer());
+  const src = await readBlob(url);
   const fixed = await uprightPdf(src, 'attach-doc');
   return fixed === src ? null : fixed;
 }
 
 async function putUpright(own: string, pdf: Buffer): Promise<string> {
-  const blob = await put(`${own}${Date.now()}-upright.pdf`, pdf, {
-    access: 'public',
-    contentType: 'application/pdf',
-    token: process.env.BLOB_READ_WRITE_TOKEN,
-  });
+  const blob = await putBlob(`${own}${Date.now()}-upright.pdf`, pdf, { contentType: 'application/pdf' });
   return blob.url;
 }
 

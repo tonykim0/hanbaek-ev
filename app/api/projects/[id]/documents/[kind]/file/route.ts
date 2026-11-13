@@ -15,7 +15,6 @@
  * Blob 설정 문제다). 껍데기는 400·403·422 만 낸다. 여기서 422 로 답하면 화면이
  * 「다시 해보세요」로 읽는데, 다시 해도 안 된다.
  */
-import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 import { NextResponse } from 'next/server';
 import { getSessionUser, actorOf, viewerOf } from '@/lib/auth/session';
 import { getRepository } from '@/lib/data';
@@ -36,6 +35,7 @@ import type { FilledFacts } from '@/types/project';
 export const maxDuration = 300;
 import { dropBlob, pathnameOfBlobUrl } from '@/lib/intake-stage';
 import { MAX_DOC_BYTES } from '@/types/project';
+import { clientUploadToken } from '@/lib/blob/server';
 
 /** 받는 형식은 types/project.ts 한 곳에 있다 — 접수와 서류 칸이 같은 목록을 봐야 한다 */
 const MAX_BYTES = MAX_DOC_BYTES;
@@ -90,8 +90,7 @@ export async function POST(
       return NextResponse.json({ error: '업로드 경로가 올바르지 않습니다.' }, { status: 400 });
     }
     try {
-      const token = await generateClientTokenFromReadWriteToken({
-        token: process.env.BLOB_READ_WRITE_TOKEN!,
+      const token = await clientUploadToken({
         pathname: body.pathname,
         validUntil: Date.now() + 10 * 60 * 1000,
         /*

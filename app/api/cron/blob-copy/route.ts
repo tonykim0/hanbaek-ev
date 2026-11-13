@@ -15,7 +15,7 @@ import { syncStores } from '@/lib/blob/sync';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-const MODE: 'mirror' | 'finish' = 'mirror';
+const MODE: 'mirror' | 'finish' = 'finish';
 
 const same = (a: string, b: string) => {
   const x = Buffer.from(a);

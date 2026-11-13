@@ -9,6 +9,7 @@
 import type { ChangeEvent, ReactNode } from 'react';
 import { FIELD, Picks } from '@/components/ui';
 import type { DocFinding } from '@/types/intake-auto';
+import { fileHref } from '@/lib/blob/path';
 
 export function Card({
   title, note, children,
@@ -105,7 +106,7 @@ export function Finding({ finding }: { finding: DocFinding }) {
  */
 export function Preview({ url }: { url: string }) {
   function open() {
-    window.open(url, '_blank', 'noopener');
+    window.open(fileHref(url), '_blank', 'noopener');
   }
 
   return (

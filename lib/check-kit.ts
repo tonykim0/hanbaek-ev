@@ -6,6 +6,7 @@
  */
 import type { Actor } from '@/lib/data/repository';
 import type { DocFile } from '@/types/project';
+import { readBlob } from '@/lib/blob/server';
 
 /** 칸 안에서 이름이 겹치면 판독의 답을 파일에 되짚을 수 없다 — 뒤에 번호를 붙인다 */
 export function named<T extends Pick<DocFile, 'name' | 'url'>>(files: T[]): (T & { name: string })[] {
@@ -55,9 +56,7 @@ export function pinAnsweredNames<T extends { originalName: string }>(files: T[],
 }
 
 export async function fetchFile(url: string): Promise<Buffer> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`파일을 읽지 못했습니다 (${res.status})`);
-  return Buffer.from(await res.arrayBuffer());
+  return readBlob(url); // 비공개 저장소 — SDK 로 읽는다(lib/blob/server)
 }
 
 /** 여럿을 받는다 — 한 장을 못 받아도 대조를 멈추지 않고 그 장을 「못 읽음」으로 돌려준다 */

@@ -10,13 +10,13 @@
  *
  * 경로는 서버가 짓는다. 클라이언트가 지어 보내면 남의 자리를 가리킬 수 있다.
  */
-import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
 import { canWrite } from '@/lib/roles';
 import { isKnownDocKind } from '@/lib/data/assemble';
 import { stagePrefix } from '@/lib/intake-stage';
 import { MAX_DOC_BYTES } from '@/types/project';
+import { clientUploadToken } from '@/lib/blob/server';
 
 /** 받는 형식은 types/project.ts 한 곳에 있다 — 접수와 서류 칸이 같은 목록을 봐야 한다 */
 const MAX_BYTES = MAX_DOC_BYTES;
@@ -51,8 +51,7 @@ export async function POST(request: Request) {
   }`;
 
   try {
-    const token = await generateClientTokenFromReadWriteToken({
-      token: process.env.BLOB_READ_WRITE_TOKEN!,
+    const token = await clientUploadToken({
       pathname,
       validUntil: Date.now() + 10 * 60 * 1000,
       // 형식을 묻지 않는다 — 서류 칸 라우트(documents/[kind]/file)와 같은 판단(한백 지시 2026-09-02)

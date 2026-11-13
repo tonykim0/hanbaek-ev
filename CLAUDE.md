@@ -41,6 +41,17 @@
 
 ### 다음 할 일 (위에서부터 — "계속해" = 맨 위를 진행한다)
 
+000. **파일 비공개 전환 — 진행 중** (2026-11-14 사용자 「그래 비공개로 전환해줘」 · 설계는 아래 「파일(Vercel Blob)」)
+    차례(되돌릴 수 없는 것은 마지막 하나):
+    ① ~~새 저장소 둘(서울 · 비공개) 만들기~~ · 콘솔에 연결(접두사 PRIVATE_BLOB — 운영 열쇠를 쓰는 일이라 사용자가 `!` 로)
+    ② 배포 1 — 옮기는 크론(`app/api/cron/blob-copy` MODE 'mirror', 5분마다): 콘솔이 옛 저장소에 쓰는 동안 새 저장소를 같게 맞춘다.
+       로그 `npx vercel logs --environment production --query blob-copy` 에서 「남음 0」이 이어지면 다 맞춘 것
+    ③ 배포 2 — 콘솔 전체를 비공개로(파일 문 · 서버 읽기 · 올리기). 같은 배포에서 크론 MODE 를 'finish' 로(넘어가기 직전 1분치만
+       마저 옮기고 표지를 남겨 멈춘다 — 계속 돌면 새 저장소에서 지운 파일을 되살린다). 배포 직후 화면에서 서류 · 사진 · 계산서 ·
+       자료실 · 에이전트 파일을 열어 본다. 백업(mirror.mjs)을 백업 문으로 바꾸고 BACKUP_FILES_SECRET 을 넣는다
+    ④ 1주쯤 본 뒤 — 옛 공개 저장소(`hanbaek-uploads-2`) · 옛 개발 저장소(`hanbaek-dev2` · `hanbaek-dev`) 지우기(사용자 확인 —
+       되돌릴 수 없다), `BLOB_READ_WRITE_TOKEN` 환경변수 · 크론 · `lib/blob/sync` 걷기
+
 00. **감사 나머지 — 중간 34건 · 낮음 29건** (2026-09-04 시작, 미완)
 
     전 화면 로직 감사를 돌렸다(화면 묶음 12곳 병렬 검토 → 발견 86건 → 반박 검증 →
@@ -309,8 +320,10 @@
   DB 를 `auto/prod-*.dump`(최근 60개 · 두 달)로 뜨고 같은 것을 `prod-backup/db/` 에 두고, 운영 파일을 `prod-backup/blob/`(저장소 이름
   그대로 · 새 파일만 받는다 · 운영에서 지운 것도 남긴다)로 받는다. 주소 · DB 자리 대응은 `prod-backup/manifest.json` 이다 — `scripts/archive-blob.ts`
   와 같은 모양이라 `scripts/restore-blob.ts --archive ~/hanbaek-backups/prod-backup` 로 되살린다. ★파일 목록은 Blob 이 아니라 그날 덤프에서
-  읽는다 — 토큰이 없다★(2026-11-08 `blob-tool/mirror.mjs` — 운영 파일은 공개 주소라 받는 데 열쇠가 필요 없고, 이 Mac 에 운영 파일을 지울
-  수 있는 토큰을 두지 않는다. 대가: DB 에 없는 자료실(전기차 · 태양광)은 빠진다). ★`prod-backup/` 은 Google Drive 앱이 「내 Mac」 폴더로
+  읽는다 — 토큰이 없다★(2026-11-08 `blob-tool/mirror.mjs` — 이 Mac 에 운영 파일을 지울 수 있는 토큰을 두지 않는다. 대가: DB 에 없는
+  자료실(전기차 · 태양광)은 빠진다). ★비공개 전환(2026-11-14) 뒤에는 콘솔의 백업 문으로 받는다★ — `GET /api/backup/files/<경로>` 에
+  `Authorization: Bearer <BACKUP_FILES_SECRET>`(Vercel 운영 · 이 Mac 의 `~/hanbaek-backups/.env.backup-files`)를 실으면 5분짜리 서명
+  주소로 넘긴다. 그 비밀은 받기만 된다 — 새도 지우거나 바꾸지 못한다(그래서 저장소 열쇠 대신 이것을 둔다). ★`prod-backup/` 은 Google Drive 앱이 「내 Mac」 폴더로
   동기화한다★(사용자 「내 구글드라이브에 저장해줘」 · 사용자 개인 계정 · 폴더는 사용자가 Drive 앱에서 더한다) — 스크립트는
   `~/Library/CloudStorage` 에 직접 못 쓴다(macOS 보호 · Operation not permitted). 결과는 `auto/backup.log` 마지막 한 줄이고 감시가
   「실패 —」·「경고 —」와 덤프 나이(3일)를 본다. 성공은 알리지 않는다.
@@ -318,13 +331,30 @@
 - 프로덕션 DB 를 봐야 할 때만 접속 문자열을 바꿔 쓰고, 끝나면 개발 DB 로 되돌린다.
 - 프로덕션의 첫 관리자는 `npm run auth:bootstrap`, 다음 사람부터는 `/admin/accounts`.
 
-**파일(Vercel Blob) — 분리 완료 (2026-08-23)**
+**파일(Vercel Blob) — ★비공개 저장소다★ (2026-11-14 사용자 「그래 비공개로 전환해줘」 · 옮기는 중 — 「다음 할 일」 000)**
 
-로컬(`.env.local`)의 `BLOB_READ_WRITE_TOKEN` 은 개발용 빈 스토어(`hanbaek-dev2`,
-development 환경에만 연결)를 가리키고, 프로덕션·프리뷰는 원래 스토어
-(`hanbaek-uploads-2`)를 그대로 쓴다. 로컬에서 올리고 지워도 실파일(계약서·사업자등록증·
-통장사본)은 못 건드린다. 부작용 하나: **로컬 자료실(/library·/admin/materials)은 빈
-목록이다** — 자료실은 DB 없이 스토어를 직접 나열해서 그렇다. 프로덕션 자료실은 무관하다.
+공개 저장소(`hanbaek-uploads-2` · 미국 동부)일 때는 DB 에 적힌 Blob 주소를 브라우저가 그대로 열었다 — ★주소만 알면 로그인 없이★
+계약서 · 사업자등록증 · 통장사본이 열렸고(현장 서류 경로는 관리번호 · 서류 종류 · 올린 시각이라 무작위도 아니었다), 퍼진 주소는
+거둘 길이 없었다. 지금은 서울(icn1)의 ★비공개★ 저장소 둘이다 — 운영 `hanbaek-files`(production) · 개발 `hanbaek-dev-files`
+(preview · development · 로컬). 열쇠 이름은 ★`PRIVATE_BLOB_READ_WRITE_TOKEN`★(연결 접두사 PRIVATE_BLOB — SDK 기본 이름이 아니다:
+옮기는 동안 기본 이름 `BLOB_READ_WRITE_TOKEN` 은 옛 공개 저장소이고 옮기는 크론만 읽는다). 미리보기가 운영 파일을 쓰고 지울 수
+있던 것(프리뷰가 운영 저장소를 같이 썼다)도 같이 끝났다.
+- ★`@vercel/blob` 은 `lib/blob/server` 한 곳이 부른다★(옮기기 `lib/blob/sync` 빼고) — 모든 호출이 비공개 열쇠를 넘기고 주소 대신
+  경로를 넘긴다. 브라우저 올리기는 `'@vercel/blob/client'` 의 put 에 `BLOB_ACCESS`(lib/blob/path). `test/conventions/blob.test.ts` 가 본다.
+- ★브라우저는 파일 문으로만 받는다★ — `fileHref(주소)` → `/api/files/<경로>` 가 로그인과 「이 사람이 이 파일을 볼 수 있는가」
+  (`lib/blob/access` — 화면에서 그 파일이 보이는 사람과 같게: 현장 서류는 그 현장을 보는 사람 · 협력사 서류는 그 협력사와 한백 ·
+  에이전트 파일은 관리자 · 실사 저장본 · 임시 자리는 올린 계정 …, 시험 `test/blob-access.test.ts`)를 본 뒤 ★5분짜리 서명 주소로
+  넘긴다(302)★ — 함수가 파일을 흘려 보내지 않는다(전송비를 두 번 낸다). 서명 주소는 CORS 가 열려 화면의 fetch(묶어 받기 · 저장본
+  사진)도 된다. PDF 미리보기(pdf.js)는 조각 요청을 끈다(넘긴 서명 주소가 미리 묻는 요청을 거절한다). 못 보는 파일도 404 다.
+- ★서버는 SDK 로 읽는다★ — `readBlob` · `openBlob` · `headBlob`(맨 주소의 fetch 는 403). 콘솔 밖이 받아야 할 때는 ★고정 링크★
+  `fileLink`(`/api/file-link/<서명>/<경로>` — 파일 하나만 · 로그인 없이 · 서명은 그 저장소의 열쇠에서 뽑는다): Claude API 에 넘기는
+  에이전트 파일(대화마다 다시 싣는데 서명 주소처럼 바뀌면 프롬프트 캐시가 깨진다 — 서명 주소는 같은 만료로 두 번 받아도 다르다,
+  실측) · 메일 본문의 큰 묶음 링크(받는 사람은 계정이 없다 · 보낼 때 본문의 옛 주소도 바꾼다). 미리보기 · 로컬은 바깥에서 닿지
+  않아 50분짜리 서명 주소다.
+- ★DB 의 주소는 고치지 않는다★ — 옛 공개 저장소의 주소든 새 주소든 ★경로★만 뽑아(`blobPathOf`) 지금 저장소에서 찾는다. 옮길 때
+  같은 경로로 복사했다. 그래서 jsonb 수천 곳(서류 · 메일 · 아지트 글 · 저장본 사진 · 대조 결과의 「읽은 파일」)이 그대로 열리고,
+  주소로 견주는 자리(지우기 · 대조를 다시 돌릴지)도 그대로다.
+- 부작용 그대로: **로컬 자료실(/library·/admin/materials)은 빈 목록이다** — 자료실은 DB 없이 저장소를 직접 나열해서 그렇다.
 
 `npm run dev` → http://localhost:3000/projects
 
@@ -984,8 +1014,8 @@ bulletpoint는 다 왼쪽정렬로」). 단가표의 조건 행(설치조건·�
     없는 주소다(2026-11-04 `worktree-biz-switch-color` → `…-git-worktree-biz-swi-f714e8-…`, 사용자가 「열 수 없대」).
     브랜치 이름이 23자를 넘으면(앞뒤 고정 40자) `npx vercel ls` 의 그 배포를 `npx vercel inspect <배포 주소>` 로 열어 Aliases 의 주소를 준다.
     ★사용자는 프리뷰를 보고 판단한다★ — 프로덕션이 아니라. Vercel 로그인이 필요하다(curl 은 401, 상태는
-    `npx vercel ls` 로). DB 는 개발 DB(시드 5건 · `admin`/`dev1234!`). ★2026-11-05 까지는 아니었다★ — Vercel 의 Preview 전용 DATABASE_URL 이 개발 DB 가 아닌 곳(운영으로 보인다 — 값은 Sensitive 라 못 읽었다)을 가리켜, 개발 계정이 프리뷰에서 거절되고 프리뷰의 로그인 잠금이 개발 DB 에 안 남았다. 개발 DB 주소(.env.local 의 6543 풀러)로 바꿨다(`npx vercel env update DATABASE_URL --environment preview`). 그 전 프리뷰에서 고친 것은 그 DB 에 들어갔다. ★프리뷰 빌드는 마이그레이션을 건너뛴다★(scripts/migrate.ts) — 새 마이그레이션이 있는 브랜치는 로컬에서 `npm run db:migrate` 로 개발 DB 에 먼저 적용해야 프리뷰가 돈다. ★Blob 은 프로덕션 스토어를 같이
-    쓴다★ — 파일 올리기 시험은 프로덕션 자료실에 남는다. 실데이터가 걸린 확인만 머지 뒤 프로덕션에서.
+    `npx vercel ls` 로). DB 는 개발 DB(시드 5건 · `admin`/`dev1234!`). ★2026-11-05 까지는 아니었다★ — Vercel 의 Preview 전용 DATABASE_URL 이 개발 DB 가 아닌 곳(운영으로 보인다 — 값은 Sensitive 라 못 읽었다)을 가리켜, 개발 계정이 프리뷰에서 거절되고 프리뷰의 로그인 잠금이 개발 DB 에 안 남았다. 개발 DB 주소(.env.local 의 6543 풀러)로 바꿨다(`npx vercel env update DATABASE_URL --environment preview`). 그 전 프리뷰에서 고친 것은 그 DB 에 들어갔다. ★프리뷰 빌드는 마이그레이션을 건너뛴다★(scripts/migrate.ts) — 새 마이그레이션이 있는 브랜치는 로컬에서 `npm run db:migrate` 로 개발 DB 에 먼저 적용해야 프리뷰가 돈다. ★Blob 은 개발용 비공개 저장소(`hanbaek-dev-files`)다★
+    (2026-11-14 — 그 전에는 프로덕션 스토어를 같이 써서 프리뷰의 올리기 시험이 운영 자료실에 남았다). 실데이터가 걸린 확인만 머지 뒤 프로덕션에서.
   - **머지 = 배포**: 사용자가 「올려」 하면 워크트리에서
     `git fetch origin && git rebase origin/main && git push --force-with-lease origin <브랜치>` 로 브랜치를 최신
     main 위에 세운다. 그러면 CI(`.github/workflows/ci.yml` 의 `check` — tsc·test·lint·마이그레이션 번호, 약 2분)가

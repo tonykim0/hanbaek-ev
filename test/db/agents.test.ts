@@ -188,7 +188,7 @@ describe('넘긴 파일', () => {
     expect((await call(postFileToken, { body: { name: 'a.pdf', size: 10 }, params: { id: '../x' } })).status).toBe(400);
   });
 
-  it.skipIf(!process.env.BLOB_READ_WRITE_TOKEN)('토큰 — 자리는 서버가 이 담당 밑에 짓는다', async () => {
+  it.skipIf(!process.env.PRIVATE_BLOB_READ_WRITE_TOKEN)('토큰 — 자리는 서버가 이 담당 밑에 짓는다', async () => {
     await signIn(USERS.admin);
     const r = await call(postFileToken, { body: { name: '견적/서.pdf', size: 1000 }, params });
     expect(r.status).toBe(200);

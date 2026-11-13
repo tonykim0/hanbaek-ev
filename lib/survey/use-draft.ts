@@ -21,6 +21,7 @@ import {
   DRAFT_CONFLICT, DRAFT_NOT_FOUND, isPhotoRef, photoRefsOf, type DraftCpo, type DraftFull, type DraftSummary, type PhotoRef,
 } from './draft-shape';
 import { canvasOf } from './prepare-image';
+import { BLOB_ACCESS, fileHref } from '@/lib/blob/path';
 
 export const LEAVE_MESSAGE = '실사보고서 작성을 중단하시겠습니까? 임시 저장하지 않은 내용은 초기화됩니다.';
 
@@ -88,7 +89,7 @@ async function uploadPhoto(draftId: string, file: File): Promise<PhotoRef> {
   );
   const body = await shrink(file);
   const { put } = await import('@vercel/blob/client');
-  const blob = await put(pathname, body, { access: 'public', token, contentType: body.type || 'image/jpeg' });
+  const blob = await put(pathname, body, { access: BLOB_ACCESS, token, contentType: body.type || 'image/jpeg' });
   const type = body.type || file.type || 'image/jpeg';
   const name = body === file ? file.name : file.name.replace(/\.[^.]+$/, '') + '.jpg';
   return { __photo: true, url: blob.url, path: pathname, name, type };
@@ -193,7 +194,7 @@ export function useSurveyDraft<T>(cpo: DraftCpo, value: T, apply: (v: T) => T | 
       const missed: string[] = [];
       let done = 0;
       await pool(refs, async (r) => {
-        const res = await fetch(r.url).then((x) => (x.ok ? x : fetch(r.url))).catch(() => null);
+        const res = await fetch(fileHref(r.url)).then((x) => (x.ok ? x : fetch(fileHref(r.url)))).catch(() => null);
         if (!res?.ok) { missed.push(r.name); return; }
         const file = new File([await res.blob()], r.name, { type: r.type });
         uploaded.set(file, r);

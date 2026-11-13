@@ -13,14 +13,13 @@
  * 포털의 /api/intake 와 다른 라우트다. 그쪽은 노션이 필수 경로이고 세션을 안 본다.
  * 여기는 로그인한 사람만 부를 수 있고 노션을 타지 않는다.
  */
-import { del } from '@vercel/blob';
-import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
 import { canWrite } from '@/lib/roles';
 import { autoIntakeFromZip } from '@/lib/intake-auto';
 import { stagedPathnameOf, stagePrefix, sweepStaleStaging } from '@/lib/intake-stage';
 import { MAX_INTAKE_ZIP_BYTES } from '@/types/project';
+import { clientUploadToken, dropBlob, readBlob } from '@/lib/blob/server';
 
 /** 분류·판독까지 도는 경로라 길다. 포털의 판독 라우트와 같은 예산. */
 export const maxDuration = 300;
@@ -84,8 +83,7 @@ export async function POST(request: Request) {
      */
     const pathname = `${stagePrefix(session.id)}/zip-${Date.now()}.zip`;
     try {
-      const token = await generateClientTokenFromReadWriteToken({
-        token: process.env.BLOB_READ_WRITE_TOKEN!,
+      const token = await clientUploadToken({
         pathname,
         // 큰 파일은 오래 걸린다. 기본 30초로는 올리는 중에 만료된다.
         validUntil: Date.now() + 15 * 60 * 1000,
@@ -152,9 +150,7 @@ export async function POST(request: Request) {
 
       try {
         send({ phase: 'fetch', message: '올린 ZIP 을 읽는 중' });
-        const res = await fetch(blobUrl);
-        if (!res.ok) throw new Error(`올린 파일을 읽지 못했습니다 (${res.status})`);
-        const zip = Buffer.from(await res.arrayBuffer());
+        const zip = await readBlob(blobUrl);
 
         const result = await autoIntakeFromZip(zip, prefix, (step) => send(step));
         send({ phase: 'done', result });
@@ -167,7 +163,7 @@ export async function POST(request: Request) {
          * 올린 ZIP 은 지운다. 안의 파일은 칸별로 따로 올려뒀으므로 묶음 원본은 더 쓸 일이 없다.
          * 실패했을 때도 지운다 — 남겨두면 다시 시도할 때마다 쌓인다.
          */
-        await del(blobUrl, { token: process.env.BLOB_READ_WRITE_TOKEN }).catch(() => {});
+        await dropBlob(blobUrl);
         try { controller.close(); } catch { /* 이미 닫힘 */ }
       }
     },

@@ -13,6 +13,7 @@ import type { AgitBundlePlan } from './bundle';
 import type { AgitFeePlan } from './fee';
 import { purchaseXlsx } from './purchase-xlsx';
 import { purchaseHtml } from './purchase-image';
+import { readBlob } from '@/lib/blob/server';
 
 /**
  * 구매요청간소화 엑셀의 틀 — 한백이 쓰던 엑셀에서 값만 걷은 것(scripts/agit-purchase-template.ts). 저장소의 파일이고, 운영에서는
@@ -71,10 +72,10 @@ export async function agitFeeFilesOf(plan: AgitFeePlan, hands: AgitFileHands): P
   return { zip: await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }), image };
 }
 
-/** 우리 Blob 의 파일 하나를 받는다 — 콘솔 저장소 주소만(ourBlobPathname) */
-export async function fetchOurBlob(url: string, fetcher: typeof fetch = fetch): Promise<Uint8Array> {
+/** 우리 Blob 의 파일 하나를 받는다 — 콘솔 저장소 주소만(ourBlobPathname). 비공개 저장소라 SDK 로 읽는다(lib/blob/server) */
+export async function fetchOurBlob(url: string): Promise<Uint8Array> {
   if (!ourBlobPathname(url)) throw new Error('콘솔 저장소의 파일이 아닙니다.');
-  const res = await fetcher(url, { signal: AbortSignal.timeout(20_000) });
-  if (!res.ok) throw new Error(`세금계산서 파일을 받지 못했습니다(${res.status}).`);
-  return new Uint8Array(await res.arrayBuffer());
+  const buf = await readBlob(url).catch(() => null);
+  if (!buf) throw new Error('세금계산서 파일을 받지 못했습니다.');
+  return new Uint8Array(buf);
 }

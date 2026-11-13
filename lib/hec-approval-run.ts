@@ -20,6 +20,7 @@ import {
   APPROVAL_PROMPT, approvalReadOf, judgeApproval, readApprovalSlides, readApprovalText, type ApprovalRead, type ApprovalSite,
 } from './hec-approval';
 import type { DocCheck } from './site-mail';
+import { headBlob, readBlob } from '@/lib/blob/server';
 
 const TAG = 'hec-approval';
 /** 판독에 보내는 쪽 수 — 묶음 PDF(컨설팅결과서 · 체크리스트 · 승인서 · 사진대지)에서 승인서는 대개 앞쪽이다 */
@@ -62,11 +63,11 @@ export async function readApprovalFile(file: { name: string; buffer: Buffer }): 
 /** 칸의 파일 한 장을 받아 읽고 그 현장과 견준다 — 맞으면 빈 목록 */
 export async function checkApprovalFile(file: { name: string; url: string }, site: ApprovalSite): Promise<DocCheck[]> {
   try {
-    const res = await fetch(file.url, { signal: AbortSignal.timeout(30_000) });
-    if (!res.ok) throw new Error(`파일을 받지 못했습니다 (${res.status})`);
-    const size = Number(res.headers.get('content-length') ?? 0);
-    if (size > FETCH_CAP) return [{ level: 'warn', why: '파일이 커서 읽지 않았습니다 — 열어 보고 승인해 주세요' }];
-    const read = await readApprovalFile({ name: file.name, buffer: Buffer.from(await res.arrayBuffer()) });
+    // 비공개 저장소 — 크기를 먼저 보고 SDK 로 읽는다(lib/blob/server)
+    const info = await headBlob(file.url);
+    if (!info) throw new Error('파일을 받지 못했습니다 (저장소에 없음)');
+    if (info.size > FETCH_CAP) return [{ level: 'warn', why: '파일이 커서 읽지 않았습니다 — 열어 보고 승인해 주세요' }];
+    const read = await readApprovalFile({ name: file.name, buffer: await readBlob(file.url) });
     return judgeApproval(read, site);
   } catch (err) {
     console.warn(`[${TAG}] ${file.name} 읽기 실패`, err instanceof Error ? err.message : err);

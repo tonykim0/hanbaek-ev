@@ -7,11 +7,10 @@
  *
  * 브라우저가 Blob에 직접 올리므로 서버 요청 크기 제한을 받지 않습니다.
  */
-import { copy, head } from '@vercel/blob';
-import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 import { NextResponse } from 'next/server';
 import { archivePathOf, archiveStamp, isValidMaterialPath } from '@/lib/materials-meta';
 import { requireAdmin } from '@/lib/auth/guard';
+import { clientUploadToken, copyBlob, hasBlobStore, headBlob } from '@/lib/blob/server';
 
 /** 업로드 허용 최대 크기 — 원본 브로슈어 등 대용량 자료를 위해 500MB */
 const MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
@@ -46,7 +45,7 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    if (!hasBlobStore()) {
       return NextResponse.json(
         { error: '파일 저장소(Vercel Blob)가 연결되지 않았습니다.' },
         { status: 500 }
@@ -72,11 +71,10 @@ export async function POST(request: Request) {
      * 실패해도 업로드를 막지는 않는다: 보관은 보험이지 조건이 아니다. 다만 조용히
      * 넘기지 않고 로그에 남긴다.
      */
-    const existing = await head(pathname).catch(() => null);
+    const existing = await headBlob(pathname);
     if (existing) {
       try {
-        await copy(existing.url, archivePathOf(pathname, archiveStamp()), {
-          access: 'public',
+        await copyBlob(existing.url, archivePathOf(pathname, archiveStamp()), {
           addRandomSuffix: false,
           contentType: existing.contentType,
         });
@@ -85,8 +83,7 @@ export async function POST(request: Request) {
       }
     }
 
-    const clientToken = await generateClientTokenFromReadWriteToken({
-      token: process.env.BLOB_READ_WRITE_TOKEN,
+    const clientToken = await clientUploadToken({
       pathname,
       // 대용량 파일 업로드 중 만료되지 않도록 넉넉히 (60분)
       validUntil: Date.now() + 60 * 60 * 1000,

@@ -35,6 +35,7 @@ async function main() {
   const { getDb } = await import('../lib/db/client');
   const { pgRepository } = await import('../lib/data/pg-store');
   const { fillFactNow, readFact } = await import('../lib/fact-read-run');
+  const { readBlob } = await import('../lib/blob/server');
 
   const [{ n }] = (await getDb().execute(sql`select count(*)::int as n from users where id in ('navy', 'viewer')`)) as unknown as Array<{ n: number }>;
   console.log(n === 0 ? '[운영 DB]' : '[개발 DB]');
@@ -55,9 +56,8 @@ async function main() {
   console.log('\n서류에서 읽은 값');
   for (const kind of ['contract', 'apply']) {
     for (const f of d.documents.find((x) => x.kind === kind)?.files ?? []) {
-      const res = await fetch(f.url);
-      if (!res.ok) throw new Error(`${f.name} 를 받지 못했습니다 (${res.status})`);
-      console.log(`  ${kind} ${f.name}\n    ${JSON.stringify(await readFact(kind, { name: f.name, buffer: Buffer.from(await res.arrayBuffer()) }))}`);
+      const buffer = await readBlob(f.url); // 비공개 저장소(2026-11-14)
+      console.log(`  ${kind} ${f.name}\n    ${JSON.stringify(await readFact(kind, { name: f.name, buffer }))}`);
     }
   }
 

@@ -23,6 +23,9 @@
  *
  * 이미 원본에 있는 파일은 건드리지 않는다 — 되살리기는 없는 것을 채우는 일이지
  * 덮어쓰는 일이 아니다.
+ *
+ * ★2026-11-14 부터 비공개 저장소다★ — 콘솔은 DB 의 주소에서 경로만 뽑아 찾으므로(lib/blob/path) 같은 경로로 올리면
+ * 주소를 갈아끼우지 않아도 열린다. 갈아끼우기는 그대로 둔다(해가 없고, 옛 백업의 임의 접미사 주소를 정리한다).
  */
 import { readFile } from 'fs/promises';
 import { join } from 'path';
@@ -47,8 +50,9 @@ if (!ONLY_PATH && !ONLY_PROJECT && !ONLY_GONE) {
 }
 
 loadEnvFile(ENV_BLOB);
-if (!process.env.BLOB_READ_WRITE_TOKEN) {
-  throw new Error(`${ENV_BLOB} 에 BLOB_READ_WRITE_TOKEN 이 없습니다 (쓰기 권한이 있어야 합니다).`);
+/* 2026-11-14 부터 파일은 비공개 저장소(hanbaek-files)다 — 열쇠 이름이 PRIVATE_BLOB_READ_WRITE_TOKEN 이다(lib/blob/server) */
+if (!process.env.PRIVATE_BLOB_READ_WRITE_TOKEN) {
+  throw new Error(`${ENV_BLOB} 에 PRIVATE_BLOB_READ_WRITE_TOKEN 이 없습니다 (비공개 저장소의 쓰기 열쇠가 있어야 합니다).`);
 }
 loadEnvFile(ENV_DB);
 if (!process.env.DATABASE_URL && process.env.DIRECT_URL) {
@@ -88,7 +92,7 @@ async function main() {
   const live = new Set<string>();
   let cursor: string | undefined;
   do {
-    const page = await list({ limit: 1000, cursor });
+    const page = await list({ limit: 1000, cursor, token: process.env.PRIVATE_BLOB_READ_WRITE_TOKEN });
     for (const b of page.blobs) live.add(b.pathname);
     cursor = page.hasMore ? page.cursor : undefined;
   } while (cursor);
@@ -113,7 +117,7 @@ async function main() {
 
     const body = await readFile(join(ARCHIVE!, 'blob', e.saved));
     /* 임의 접미사를 끈다 — 주소가 경로 그대로여서 다음부터는 갈아끼울 것이 없다 */
-    const up = await put(e.pathname, body, { access: 'public', addRandomSuffix: false });
+    const up = await put(e.pathname, body, { access: 'private', token: process.env.PRIVATE_BLOB_READ_WRITE_TOKEN, addRandomSuffix: false });
     console.log(`   새 주소  …${up.url.slice(-48)}`);
 
     for (const ref of refs) {

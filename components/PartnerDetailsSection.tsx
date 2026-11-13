@@ -35,6 +35,7 @@ import {
 } from '@/lib/bank-account';
 import { formatKoreanBizIdInput, isValidKoreanBizId } from '@/lib/bizid';
 import { Blank, Btn, Empty, Err, FIELD, Note, PANEL } from '@/components/ui';
+import { fileHref } from '@/lib/blob/path';
 
 const EMPTY_DETAILS: PartnerDetailsView = {
   bizRegNo: null,
@@ -511,7 +512,7 @@ function FileFact({
       <FactRow label={KIND_LABEL[kind]}>
         <span className="flex items-center gap-2 whitespace-nowrap">
           {url ? (
-            <a href={url} target="_blank" rel="noreferrer" className="font-bold text-brand-700 underline">
+            <a href={fileHref(url)} target="_blank" rel="noreferrer" className="font-bold text-brand-700 underline">
               보기
             </a>
           ) : (
@@ -544,7 +545,7 @@ function FileFact({
       <span className="flex items-center gap-2 whitespace-nowrap">
         {url ? (
           <>
-            <a href={url} target="_blank" rel="noreferrer" className="font-bold text-brand-700 underline">
+            <a href={fileHref(url)} target="_blank" rel="noreferrer" className="font-bold text-brand-700 underline">
               보기
             </a>
             <button

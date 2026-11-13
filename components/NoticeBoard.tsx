@@ -24,6 +24,7 @@ import { NoticeTalk } from '@/components/NoticeTalk';
 import { useAction } from '@/lib/use-action';
 import { formatSize } from '@/lib/materials-meta';
 import { Btn, Confirm, Empty, Err, FIELD, Tag } from '@/components/ui';
+import { fileHref } from '@/lib/blob/path';
 
 const day = (iso: string) => {
   const d = new Date(iso);
@@ -262,7 +263,7 @@ function Linked({ children }: { children: string }) {
       {children.split(LINK_RE).map((part, i) => (isLink(part) ? (
         <a
           key={i}
-          href={part}
+          href={fileHref(part) /* 글에 적힌 우리 파일 주소는 파일 문으로 — 비공개 저장소라 맨 주소는 403 이다 */}
           target="_blank"
           rel="noopener noreferrer"
           className="font-bold text-brand-800 underline decoration-brand-200 transition hover:decoration-brand-500"
@@ -379,7 +380,7 @@ function NoticeFileRow({ noticeId, file, canWrite }: {
         * 어떻든 올린 이름 그대로 저장된다.
         */}
       <a
-        href={file.url}
+        href={fileHref(file.url)}
         download={file.name}
         className="min-w-0 truncate text-small font-bold text-brand-800 underline decoration-brand-200 transition hover:decoration-brand-500"
       >

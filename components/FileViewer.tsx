@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { Btn, BtnLink, TEXT } from '@/components/ui';
 import { extOf, isImageFile, sizeLabel } from '@/lib/file-kind';
+import { fileHref } from '@/lib/blob/path';
 
 /**
  * 미리보기 창 — 이 화면 위에 뜬다(새 탭으로 나가지 않고 보고 닫는다). 사진은 창에 맞춰, PDF · txt 는 브라우저가 그린다.
@@ -32,7 +33,7 @@ export default function FileViewer({
           <p className="min-w-0 truncate text-lead font-black text-slate-900">{file.name}</p>
           {file.size !== undefined && <span className={`shrink-0 tabular-nums ${TEXT.meta}`}>{sizeLabel(file.size)}</span>}
           <span className="ml-auto flex shrink-0 items-center gap-1.5">
-            <BtnLink kind="quiet" href={file.url} target="_blank" rel="noopener noreferrer">
+            <BtnLink kind="quiet" href={fileHref(file.url)} target="_blank" rel="noopener noreferrer">
               새 탭
             </BtnLink>
             <BtnLink kind="quiet" href={downloadHref(file)} download={file.name}>
@@ -46,9 +47,9 @@ export default function FileViewer({
         <div className="min-h-0 flex-1 bg-slate-100">
           {isImageFile(file) ? (
             /* eslint-disable-next-line @next/next/no-img-element */
-            <img src={file.url} alt={file.name} className="h-full w-full object-contain" />
+            <img src={fileHref(file.url)} alt={file.name} className="h-full w-full object-contain" />
           ) : (
-            <iframe src={extOf(file) === 'pdf' ? `${file.url}#view=FitH` : file.url} title={file.name} className="h-full w-full border-0 bg-white" />
+            <iframe src={extOf(file) === 'pdf' ? `${fileHref(file.url)}#view=FitH` : fileHref(file.url)} title={file.name} className="h-full w-full border-0 bg-white" />
           )}
         </div>
       </div>
@@ -56,8 +57,7 @@ export default function FileViewer({
   );
 }
 
-/** 내려받는 주소 — Blob 이 준 것이 있으면 그것, 없으면 ?download=1 을 붙인다(Vercel Blob 이 첨부로 내려준다) */
+/** 내려받는 주소 — 우리 파일이면 파일 문의 받기(?download=1 — 서명 주소가 첨부로 내려준다), 아니면 그대로 */
 export function downloadHref(file: { url: string; downloadUrl?: string }): string {
-  if (file.downloadUrl) return file.downloadUrl;
-  return `${file.url}${file.url.includes('?') ? '&' : '?'}download=1`;
+  return fileHref(file.downloadUrl ?? file.url, { download: true });
 }

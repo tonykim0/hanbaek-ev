@@ -60,7 +60,11 @@ export function pdfThumb(url: string): Promise<string | null> {
     let doc: PDFDocumentProxy | null = null;
     try {
       const pdfjs = await loadPdfjs();
-      doc = await pdfjs.getDocument({ url, disableAutoFetch: true, disableStream: false }).promise;
+      /*
+       * disableRange — 파일은 비공개 저장소라 주소가 파일 문(/api/files → 302 → 서명 주소)이다. 조각 요청(Range)을 넘기기를
+       * 건너 보내면 브라우저가 미리 묻는 요청(OPTIONS)을 보내고 저장소는 그것을 거절한다(2026-11-14 실측) — 한 번에 받는다.
+       */
+      doc = await pdfjs.getDocument({ url, disableAutoFetch: true, disableStream: false, disableRange: true }).promise;
       const page = await doc.getPage(1);
       const base = page.getViewport({ scale: 1 });
       const viewport = page.getViewport({ scale: WIDTH / base.width });

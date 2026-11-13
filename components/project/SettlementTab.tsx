@@ -37,6 +37,7 @@ import { payoutStepStateOf } from '@/lib/payout-board';
 import { isPassThroughSite, payoutUnitOf } from '@/lib/settlement';
 /* 반려 사유는 어디에 적히든 한 모양이다 (한백 지시 2026-09-04) */
 import { RejectReason } from '@/components/project/parts';
+import { fileHref } from '@/lib/blob/path';
 
 // ── 정산 탭 ─────────────────────────────────────────────────────
 const STEP_STYLE: Record<SettlementStep['state'], string> = {
@@ -516,7 +517,7 @@ function ReceiptList({
         <div key={f.url} className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="shrink-0 text-tiny font-bold text-slate-400">영수증</span>
           <a
-            href={f.url}
+            href={fileHref(f.url)}
             download={f.name}
             className="min-w-0 truncate text-small font-bold text-brand-800 underline decoration-brand-200 transition hover:decoration-brand-500"
           >

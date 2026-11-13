@@ -9,10 +9,10 @@
  * 클라이언트(lib/import-client.ts)가 파일 크기를 보고 알아서 고릅니다.
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { del } from '@vercel/blob';
 import { extractFormFromPdf, FormImportError } from '@/lib/claude-import';
 import { getSessionUser } from '@/lib/auth/session';
 import { stagedPathnameOf } from '@/lib/intake-stage';
+import { deleteBlobs, readBlob } from '@/lib/blob/server';
 
 // 스캔본 판독은 페이지 수에 비례해 오래 걸립니다 (60페이지 상한 기준 여유 확보)
 export const maxDuration = 300;
@@ -154,19 +154,16 @@ function isAllowedBlobUrl(blobUrl: string): boolean {
 }
 
 async function downloadBlob(blobUrl: string): Promise<Buffer> {
-  const res = await fetch(blobUrl);
-  if (!res.ok) {
-    throw new FormImportError(
-      `업로드 파일을 불러오지 못했습니다 (${res.status})`,
-      'BLOB_DOWNLOAD_ERROR'
-    );
+  try {
+    return await readBlob(blobUrl);
+  } catch {
+    throw new FormImportError('업로드 파일을 불러오지 못했습니다', 'BLOB_DOWNLOAD_ERROR');
   }
-  return Buffer.from(await res.arrayBuffer());
 }
 
 async function deleteBlobQuietly(blobUrl: string): Promise<void> {
   try {
-    await del(blobUrl);
+    await deleteBlobs(blobUrl);
   } catch {
     // Blob 정리 실패는 응답을 깨뜨리지 않는다.
   }

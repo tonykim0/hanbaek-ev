@@ -13,6 +13,7 @@ import { NextResponse } from 'next/server';
 import { actorOf, getSessionUser } from '@/lib/auth/session';
 import { getPartnerDetails, type PartnerFileKind } from '@/lib/auth/partner-details';
 import { PartnerDocReadError, readPartnerDoc } from '@/lib/claude-partner-doc';
+import { readBlob } from '@/lib/blob/server';
 
 // 한 장짜리 서류라 계약서 판독(300s)만큼 걸리지 않는다
 export const maxDuration = 120;
@@ -53,9 +54,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (!url) return bad('올려 둔 서류가 없습니다.');
     if (!isAllowedBlobUrl(url)) return bad('서류 주소가 올바르지 않습니다.');
 
-    const res = await fetch(url);
-    if (!res.ok) return bad(`서류를 불러오지 못했습니다 (${res.status}).`, 422);
-    const file = Buffer.from(await res.arrayBuffer());
+    const file = await readBlob(url).catch(() => null);
+    if (!file) return bad('서류를 불러오지 못했습니다.', 422);
 
     const result = await readPartnerDoc({ file, mediaType: mediaTypeOf(url), kind });
     return NextResponse.json(result);

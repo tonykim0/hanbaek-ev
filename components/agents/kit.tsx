@@ -16,6 +16,7 @@
  */
 import { sizeLabel } from '@/lib/agents/files';
 import type { AgentFile } from '@/types/agents';
+import { fileHref } from '@/lib/blob/path';
 
 /** 반짝이 — 네 끝이 오목한 별. 글자(◆ ✦)는 글꼴마다 크기·자리가 달라 그림으로 둔다 */
 export function Spark({ className = '' }: { className?: string }) {
@@ -59,7 +60,7 @@ export function Clip({ className = '' }: { className?: string }) {
 export function FileChip({ file }: { file: Pick<AgentFile, 'name' | 'url' | 'size'> }) {
   return (
     <a
-      href={file.url}
+      href={fileHref(file.url)}
       target="_blank"
       rel="noreferrer"
       className="inline-flex max-w-full items-center gap-1.5 rounded-ctl border border-slate-200 bg-white px-2 py-1 text-small font-semibold text-slate-700 transition hover:border-brand-300 hover:text-brand-800"

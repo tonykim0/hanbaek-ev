@@ -11,13 +11,13 @@
  *
  * 서버 전용.
  */
-import { put } from '@vercel/blob';
 import { PDFDocument } from 'pdf-lib';
 import type { FileCategory } from '@/types/intake';
 import { classifyAndExtract } from './claude';
 import { uprightPdf } from './pdf-orient';
 import { buildUploadItems } from './notion';
 import { createHash } from 'crypto';
+import { putBlob } from '@/lib/blob/server';
 
 /** 갈라 놓은 서류 한 장 — 화면이 이 목록을 그대로 그린다 */
 export interface SortedDoc {
@@ -96,8 +96,7 @@ export async function sortPdf(
     const pages = await PDFDocument.load(item.buffer, { ignoreEncryption: true })
       .then((d) => d.getPageCount())
       .catch(() => 0);
-    const blob = await put(`${prefix}/${item.standardName}`, item.buffer, {
-      access: 'public',
+    const blob = await putBlob(`${prefix}/${item.standardName}`, item.buffer, {
       contentType: item.contentType ?? 'application/pdf',
       addRandomSuffix: true,
     });

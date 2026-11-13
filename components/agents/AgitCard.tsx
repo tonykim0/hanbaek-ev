@@ -23,6 +23,7 @@ import { downloadBlob } from '@/lib/download';
 import { agitPostName, assigneesLabel, payDateName, type AgitPostRecord } from '@/lib/agit/post';
 import { feeMonthName } from '@/lib/agit/fee';
 import { Btn, Confirm, Err, Tag, TEXT, type Tone } from '@/components/ui';
+import { fileHref } from '@/lib/blob/path';
 
 const LOOK: Record<AgitPostRecord['status'], { band: string; label: string; tone: Tone }> = {
   draft: { band: 'border-amber-500 bg-amber-50/70', label: '아지트 글 초안 · 올리기 전', tone: 'warn' },
@@ -160,7 +161,7 @@ export function AgitCard({ post, assignees, account }: {
             </dd>
             <dt className={TEXT.label}>계산서</dt>
             <dd className="text-small text-slate-800">
-              <a href={fee.fee.file.url} target="_blank" rel="noreferrer" className="font-semibold text-brand-700 underline-offset-2 hover:underline">
+              <a href={fileHref(fee.fee.file.url)} target="_blank" rel="noreferrer" className="font-semibold text-brand-700 underline-offset-2 hover:underline">
                 {fee.fee.file.name}
               </a>
             </dd>

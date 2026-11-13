@@ -18,6 +18,7 @@
 import postgres from 'postgres';
 import { loadEnvFile } from '../lib/env-file';
 import { checkImagePhoto, checkPdfPhoto } from '../lib/photo-check';
+import { readBlob } from '../lib/blob/server';
 
 loadEnvFile('.env.prod-db');
 const url = process.env.DIRECT_URL || process.env.DATABASE_URL;
@@ -56,9 +57,7 @@ async function main() {
       if (!f.photo?.length || !f.url) { next.push(f); continue; }
       let verdict: string[] | null = null;
       try {
-        const res = await fetch(f.url);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const buf = Buffer.from(await res.arrayBuffer());
+        const buf = await readBlob(f.url); // 비공개 저장소(2026-11-14) — 열쇠는 PRIVATE_BLOB_READ_WRITE_TOKEN
         /* 이름으로 가른다 — 저장된 것은 PDF 아니면 이미지다 */
         const check = /\.pdf$/i.test(f.name ?? '')
           ? await checkPdfPhoto(buf)

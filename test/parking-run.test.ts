@@ -1,8 +1,8 @@
 /**
  * 건축물대장 대조를 돌리는 길 — 자동 대조는 바뀐 파일만 판독에 보내고(2026-10-30 비용 검토), 한백의 「다시 대조」는 전부 보낸다.
- * 판독(lib/parking-read)은 흉내 내고 파일 받기(fetch)는 그 자리에서 돌려준다 — 실제 API·DB 는 부르지 않는다.
+ * 판독(lib/parking-read)은 흉내 내고 파일 받기(readBlob)는 그 자리에서 돌려준다 — 실제 API·DB 는 부르지 않는다.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ParkingCheck, ParkingRead, ParkingSlot } from '@/lib/parking-check';
 
 const readParking = vi.fn();
@@ -11,8 +11,8 @@ vi.mock('@/lib/db/client', () => ({ getDb: vi.fn() }));
 vi.mock('@/lib/data', () => ({ getRepository: vi.fn() }));
 vi.mock('@/lib/data/store/parking-check', () => ({ loadParkingCheck: vi.fn() }));
 
-beforeAll(() => { vi.stubGlobal('fetch', async () => new Response('%PDF-1.4')); });
-afterAll(() => { vi.unstubAllGlobals(); });
+// 파일은 비공개 저장소에서 SDK 로 읽는다(lib/blob/server) — 그 자리에서 돌려준다
+vi.mock('@/lib/blob/server', () => ({ readBlob: async () => Buffer.from('%PDF-1.4') }));
 
 const file = (slot: ParkingSlot, name: string) => ({ slot, name, url: `https://blob/${name}` });
 const REG = file('bldgreg', '건축물대장.pdf');

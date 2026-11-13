@@ -13,6 +13,7 @@
  * Blob 에는 버전도 휴지통도 없다).
  */
 import { archiveStamp, sanitizeFileName } from '@/lib/materials-meta';
+import { fileHref } from '@/lib/blob/path';
 
 export const LIBRARY_PREFIX = 'solar-materials/';
 /** 목록 밖 보관 자리 — 목록은 LIBRARY_PREFIX 로 시작하는 것만 훑으므로 여기는 안 뜬다 */
@@ -82,8 +83,9 @@ export function libraryFileOf(blob: { pathname: string; url: string; downloadUrl
   const parts = blob.pathname.slice(LIBRARY_PREFIX.length).split('/');
   return {
     pathname: blob.pathname,
-    url: blob.url,
-    downloadUrl: blob.downloadUrl,
+    // 비공개 저장소 — 화면은 파일 문으로 연다(lib/blob/path)
+    url: fileHref(blob.url),
+    downloadUrl: fileHref(blob.url, { download: true }),
     name: parts[parts.length - 1].normalize('NFC'),
     category: parts.length === 2 ? parts[0].normalize('NFC') : null,
     size: blob.size,

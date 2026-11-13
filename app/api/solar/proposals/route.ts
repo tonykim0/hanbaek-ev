@@ -9,8 +9,6 @@
  * 협력사는 403 이다 — 사업자 자료(틀)를 남에게 내지 못한다(타이런트 업무협약서 3조). 브라우저가 Blob 에 바로 올린다(서버리스 본문
  * 한도 4.5MB · 틀은 20MB 안팎) — 자료실 · 현장 첨부파일과 같은 길이다. 옛 틀 파일은 지우지 않는다(바꿔 끼운 기록).
  */
-import { head } from '@vercel/blob';
-import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/auth/guard';
 import { actorOf, getSessionUser } from '@/lib/auth/session';
@@ -18,6 +16,7 @@ import { isUnexpectedError } from '@/lib/api/errors';
 import { listProposalTemplates, setProposalTemplateFile, setProposalTerms } from '@/lib/data/solar-proposals';
 import { isHanbaek } from '@/lib/roles';
 import { isTemplateKey, TEMPLATES, type TemplateKey } from '@/lib/solar/proposal/products';
+import { clientUploadToken, hasBlobStore, headBlob } from '@/lib/blob/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,14 +54,13 @@ export async function POST(request: Request) {
   const kind = TEMPLATES[key].file;
   const filename = typeof body?.filename === 'string' ? body.filename.normalize('NFC').trim() : '';
   if (!filename.toLowerCase().endsWith(`.${kind}`)) return fail(`${TEMPLATES[key].company} ${TEMPLATES[key].title} 템플릿은 ${kind} 파일입니다 — ${TEMPLATES[key].hint}`, 400);
-  if (!process.env.BLOB_READ_WRITE_TOKEN) return fail('파일 저장소(Blob)가 연결되지 않았습니다.', 500);
+  if (!hasBlobStore()) return fail('파일 저장소(Blob)가 연결되지 않았습니다.', 500);
 
   // ── 1단계: 토큰 — 자리는 우리가 짓는다 ───────────────────────────────
   if (new URL(request.url).searchParams.get('step') === 'token') {
     const pathname = `${prefixOf(key)}${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${kind}`;
     try {
-      const token = await generateClientTokenFromReadWriteToken({
-        token: process.env.BLOB_READ_WRITE_TOKEN,
+      const token = await clientUploadToken({
         pathname,
         validUntil: Date.now() + 60 * 60 * 1000,
         addRandomSuffix: false,
@@ -79,7 +77,7 @@ export async function POST(request: Request) {
   // ── 2단계: 올린 뒤 — 그 틀의 자리에 정말 있어야 적는다 ─────────────────
   const pathname = typeof body?.pathname === 'string' ? body.pathname : '';
   if (!pathname.startsWith(prefixOf(key)) || pathname.includes('..')) return fail('올린 자리가 올바르지 않습니다.', 400);
-  const found = await head(pathname).catch(() => null);
+  const found = await headBlob(pathname);
   if (!found) return fail('올린 파일을 찾을 수 없습니다. 다시 올려주세요.', 422);
   try {
     const template = await setProposalTemplateFile(key, { url: found.url, name: filename, size: found.size }, actorOf(session));

@@ -43,6 +43,7 @@ import type { Role } from '@/lib/roles';
 import { Badge, Blank, Btn, Empty, Err, FIELD, Segments, Td, Th } from '@/components/ui';
 import { Frame, won } from './parts';
 import { useFinalizeBatch, useTaxInvoiceUpload } from './use-batch';
+import { fileHref } from '@/lib/blob/path';
 
 const BATCH_STATES = ['가확정', '확정 누락', '확정', '지급완료'] as const satisfies readonly BatchState[];
 /** 상태마다 배지 색 — 확정 누락은 절차가 어긋난 것이라 가확정과 구별되어야 한다 */
@@ -327,7 +328,7 @@ function TodoCell({
   /* 낸 계산서는 눈에 상관없이 같은 모양이다 — 누른 곳이 파일이라는 것이 먼저다 */
   const link = b.invoice ? (
     <a
-      href={b.invoice.blobUrl}
+      href={fileHref(b.invoice.blobUrl)}
       target="_blank"
       rel="noopener"
       className="text-small font-bold text-brand-700 underline-offset-2 hover:underline"

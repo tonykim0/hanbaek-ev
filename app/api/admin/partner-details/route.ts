@@ -12,7 +12,6 @@
  * multipart 로 온다. 권한 확인·오류 모양은 껍데기와 똑같이 맞춘다.
  */
 import { NextResponse } from 'next/server';
-import { del, put } from '@vercel/blob';
 import { actorOf, getSessionUser } from '@/lib/auth/session';
 import { canWrite } from '@/lib/roles';
 import { BadRequest, sessionWrite } from '@/lib/api/write-route';
@@ -23,6 +22,7 @@ import {
   type PartnerFileKind,
 } from '@/lib/auth/partner-details';
 import { MAX_FORM_BYTES } from '@/types/project';
+import { dropBlob, putBlob } from '@/lib/blob/server';
 
 /* 상한의 정본은 types/project.ts 한 곳이다 — 화면도 같은 값을 보고 미리 줄인다 */
 const MAX_FILE_BYTES = MAX_FORM_BYTES;
@@ -65,7 +65,7 @@ export const DELETE = sessionWrite<
   if (!body?.userId) throw new BadRequest('userId 가 필요합니다.');
   const kind = asKind(body.kind);
   const previous = await setPartnerFile(body.userId, kind, null, actor);
-  if (previous) await del(previous).catch(() => undefined); // DB 가 정본 — Blob 삭제 실패로 막지 않는다
+  if (previous) await dropBlob(previous); // DB 가 정본 — Blob 삭제 실패로 막지 않는다
 });
 
 /** 계정 화면과 같은 ID 규칙 — Blob 경로에 들어가므로 여기서도 거른다 */
@@ -114,20 +114,16 @@ export async function POST(request: Request): Promise<NextResponse> {
       );
     }
 
-    const blob = await put(
-      `partner-docs/${userId}-${kind}${EXT_BY_TYPE[file.type]}`,
-      file,
-      { access: 'public', addRandomSuffix: true }
-    );
+    const blob = await putBlob(`partner-docs/${userId}-${kind}${EXT_BY_TYPE[file.type]}`, file, { addRandomSuffix: true });
 
     let previous: string | null;
     try {
       previous = await setPartnerFile(userId, kind, blob.url, actorOf(session));
     } catch (err) {
-      await del(blob.url).catch(() => undefined); // DB 에 못 붙인 파일을 남기지 않는다
+      await dropBlob(blob.url); // DB 에 못 붙인 파일을 남기지 않는다
       throw err;
     }
-    if (previous) await del(previous).catch(() => undefined);
+    if (previous) await dropBlob(previous);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

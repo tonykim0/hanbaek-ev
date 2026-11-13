@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { Btn, TEXT } from '@/components/ui';
 import { dayOf } from '@/lib/date';
 import { canPreviewFile, extOf, isImageFile, sizeLabel } from '@/lib/file-kind';
+import { fileHref } from '@/lib/blob/path';
 
 const NAME = 'min-w-0 truncate text-left text-base font-semibold text-slate-900 underline decoration-slate-300 underline-offset-2 hover:decoration-slate-900';
 
@@ -36,7 +37,7 @@ export default function FileRow({
       {isImageFile(f) ? (
         <button type="button" onClick={onView} aria-label={`${f.name} 미리보기`} className="h-10 w-10 shrink-0 overflow-hidden rounded-tag border border-slate-200 bg-slate-50">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={f.url} alt="" loading="lazy" className="h-full w-full object-cover" />
+          <img src={fileHref(f.url)} alt="" loading="lazy" className="h-full w-full object-cover" />
         </button>
       ) : (
         <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-tag border border-slate-200 bg-slate-50 text-micro font-black text-slate-500">

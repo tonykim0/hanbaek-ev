@@ -18,6 +18,7 @@ import { emptyFieldsOf, HEC_APPROVAL_MAIL, siteMailOfCpo, type SiteMailSpec } fr
 import { checkApprovalFile } from '@/lib/hec-approval-run';
 import type { Actor, SiteDocFile, SiteMailResult } from '@/lib/data/repository';
 import type { ProjectDetail } from '@/types/project';
+import { headBlob } from '@/lib/blob/server';
 
 const FILE_TYPES: Record<string, string> = {
   docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -37,9 +38,8 @@ const FILE_TYPES: Record<string, string> = {
 async function headOf(url: string, name: string): Promise<{ size: number; contentType: string | null }> {
   const ext = name.toLowerCase().split('.').pop() ?? '';
   try {
-    const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(10_000) });
-    const size = Number(res.headers.get('content-length') ?? 0);
-    return { size: Number.isFinite(size) ? size : 0, contentType: FILE_TYPES[ext] ?? res.headers.get('content-type') };
+    const info = await headBlob(url); // 비공개 저장소 — 맨 주소의 HEAD 는 403 이다
+    return { size: info?.size ?? 0, contentType: FILE_TYPES[ext] ?? info?.contentType ?? null };
   } catch {
     return { size: 0, contentType: FILE_TYPES[ext] ?? null };
   }

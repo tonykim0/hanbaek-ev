@@ -8,6 +8,7 @@
  */
 
 import type { CpoKey, FormImportResult } from './form-import';
+import { BLOB_ACCESS } from '@/lib/blob/path';
 
 /** 이 크기 이하는 multipart로 바로 전송 (서버 라우트의 상한과 맞춰둡니다) */
 const INLINE_LIMIT_BYTES = 4 * 1024 * 1024;
@@ -78,7 +79,7 @@ async function uploadPdf(
 
   const { put } = await import('@vercel/blob/client');
   const blob = await put(pathname, file, {
-    access: 'public',
+    access: BLOB_ACCESS,
     contentType: 'application/pdf',
     token: tokenData.token,
     onUploadProgress: ({ percentage }) => onProgress(Math.round(percentage)),

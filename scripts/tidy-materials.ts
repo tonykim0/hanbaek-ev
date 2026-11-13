@@ -1,4 +1,6 @@
 /**
+ * ★2026-11-14 부터 쓰지 않는다★ — 옛 공개 저장소(hanbaek-uploads-2)용이다. 자료실은 비공개 저장소로 옮겨졌다(lib/blob/server).
+ *
  * 자료실 파일 정리 — 이름 규칙을 적용하고 새 분류로 옮긴다.
  *
  *   npx tsx scripts/tidy-materials.ts            무엇이 어떻게 바뀌는지만 본다

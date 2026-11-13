@@ -8,7 +8,6 @@
  * 파일 추가·삭제는 `/admin/materials` 관리자 화면에서 하며, 배포 없이 즉시
  * 목록에 반영됩니다.
  */
-import { list } from '@vercel/blob';
 import {
   CATEGORY_ORDER,
   GROUP_ORDER,
@@ -24,6 +23,8 @@ import {
   type MaterialFile,
   type MaterialGroup,
 } from './materials-meta';
+import { hasBlobStore, listBlobs } from '@/lib/blob/server';
+import { fileHref } from '@/lib/blob/path';
 
 export type { MaterialCategory, MaterialFile, MaterialGroup };
 
@@ -31,7 +32,7 @@ export interface MaterialsResult {
   groups: MaterialGroup[];
   fileCount: number;
   lastUpdated: string | null;
-  /** Blob 저장소가 아직 연결되지 않았을 때 (BLOB_READ_WRITE_TOKEN 없음) */
+  /** Blob 저장소가 아직 연결되지 않았을 때 (PRIVATE_BLOB_READ_WRITE_TOKEN 없음) */
   storageMissing: boolean;
   /** 조회 실패 사유 — 화면에 안내를 띄우기 위한 값 */
   error: string | null;
@@ -79,8 +80,9 @@ function toMaterialFile(blob: {
       // 화면 표시는 완성형으로 (경로 · URL은 저장된 값 그대로 씁니다)
       fileName: fileName.normalize('NFC'),
       pathname: blob.pathname,
-      url: blob.url,
-      downloadUrl: blob.downloadUrl,
+      // 비공개 저장소 — 화면은 파일 문으로 연다(lib/blob/path). 관리 화면이 이 url 을 되돌려 보내도 경로로 읽힌다
+      url: fileHref(blob.url),
+      downloadUrl: fileHref(blob.url, { download: true }),
       ext: ext.toUpperCase(),
       size: formatSize(blob.size),
       uploaded: formatDate(blob.uploadedAt),
@@ -94,7 +96,7 @@ function toMaterialFile(blob: {
  * 파일이 없는 운영사·분류는 빠집니다.
  */
 export async function getMaterials(): Promise<MaterialsResult> {
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  if (!hasBlobStore()) {
     return { ...EMPTY, storageMissing: true };
   }
 
@@ -107,12 +109,7 @@ export async function getMaterials(): Promise<MaterialsResult> {
   }> = [];
 
   try {
-    let cursor: string | undefined;
-    do {
-      const page = await list({ prefix: MATERIALS_PREFIX, limit: 1000, cursor });
-      blobs.push(...page.blobs);
-      cursor = page.hasMore ? page.cursor : undefined;
-    } while (cursor);
+    blobs.push(...(await listBlobs(MATERIALS_PREFIX)));
   } catch (error) {
     console.error('[materials] Blob 목록 조회 실패:', error);
     return { ...EMPTY, error: (error as Error).message };

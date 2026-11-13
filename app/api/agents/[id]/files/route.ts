@@ -5,9 +5,9 @@
  * 짓는다(agent-files/<담당>/<무작위>/<파일 이름>) — 클라이언트가 지으면 남의 자리를 가리킬 수 있다. 올린 파일은 말을 남길 때
  * 붙는다(/messages 의 files) — 그때 라우트가 그 자리가 이 담당의 것이고 우리 Blob 에 실제로 있는지 다시 본다.
  */
-import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 import { adminWrite, BadRequest } from '@/lib/api/write-route';
 import { AGENT_FILE_MAX_BYTES, agentFileName, agentFilePrefix, sizeLabel } from '@/lib/agents/files';
+import { clientUploadToken } from '@/lib/blob/server';
 
 /** 담당 id 는 마이그레이션이 심은 짧은 영문 — 경로에 들어가므로 그 모양만 받는다 */
 const AGENT_ID = /^[a-z0-9-]{1,40}$/;
@@ -21,8 +21,7 @@ export const POST = adminWrite<{ id: string }, { name?: unknown; size?: unknown 
     if (!Number.isFinite(size) || size <= 0) throw new BadRequest('빈 파일입니다.');
     if (size > AGENT_FILE_MAX_BYTES) throw new Error(`파일은 ${sizeLabel(AGENT_FILE_MAX_BYTES)}까지 넘길 수 있습니다.`);
     const pathname = `${agentFilePrefix(params.id)}${crypto.randomUUID()}/${agentFileName(body.name)}`;
-    const token = await generateClientTokenFromReadWriteToken({
-      token: process.env.BLOB_READ_WRITE_TOKEN!,
+    const token = await clientUploadToken({
       pathname,
       validUntil: Date.now() + 10 * 60 * 1000,
       maximumSizeInBytes: AGENT_FILE_MAX_BYTES,

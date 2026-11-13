@@ -12,7 +12,6 @@
  * ★쓰기 껍데기(lib/api/write-route)를 쓰지 않는 이유★ 토큰 발급이 실패하면 500 이다(Blob 설정 문제 — 사람이 고칠 수 없다).
  * 껍데기는 그것을 422 로 바꿀 수 없다. 그래서 열람 전용 막기(canWrite)를 여기서 손으로 적는다.
  */
-import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 import { NextResponse } from 'next/server';
 import { BadRequest, isUnexpectedError, SERVER_ERROR_MESSAGE } from '@/lib/api/errors';
 import { actorOf, getSessionUser } from '@/lib/auth/session';
@@ -21,6 +20,7 @@ import { solarSiteStore } from '@/lib/data/solar-sites';
 import { dropBlob, ourBlob, ourBlobPathname } from '@/lib/intake-stage';
 import { canWrite } from '@/lib/roles';
 import { SITE_FILE_MAX_BYTES, siteFilePrefix } from '@/lib/solar/sites';
+import { clientUploadToken } from '@/lib/blob/server';
 
 /** 토큰이 묶일 자리 — 그 현장의 폴더 바로 밑, 영문 · 숫자 이름만(siteFilePathname 이 짓는 모양) */
 const PATH_RE = /^solar-sites\/SL-\d{4}-\d+\/[A-Za-z0-9.-]+$/;
@@ -69,8 +69,7 @@ export async function POST(request: Request, { params }: { params: { id: string 
       return failed(err);
     }
     try {
-      const token = await generateClientTokenFromReadWriteToken({
-        token: process.env.BLOB_READ_WRITE_TOKEN!,
+      const token = await clientUploadToken({
         pathname,
         validUntil: Date.now() + 10 * 60 * 1000,
         maximumSizeInBytes: SITE_FILE_MAX_BYTES,

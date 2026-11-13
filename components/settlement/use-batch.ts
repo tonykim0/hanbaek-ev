@@ -11,6 +11,7 @@ import { useState, type InputHTMLAttributes } from 'react';
 import { useRouter } from 'next/navigation';
 import { TAX_INVOICE_TYPES, type PayoutKind } from '@/types/project';
 import { useAction } from '@/lib/use-action';
+import { BLOB_ACCESS } from '@/lib/blob/path';
 
 /**
  * 세금계산서 업로드 — 토큰 발급 → Blob 업로드 → 배치에 붙이기.
@@ -53,7 +54,7 @@ export function useTaxInvoiceUpload(
 
       const { put } = await import('@vercel/blob/client');
       const blob = await put(tokenBody.pathname, file, {
-        access: 'public',
+        access: BLOB_ACCESS,
         token: tokenBody.token,
       });
 

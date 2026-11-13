@@ -1,4 +1,6 @@
 /**
+ * ★2026-11-14 부터 쓰지 않는다★ — 노션 이관(2026-08) 때의 일회용이고 옛 공개 저장소에 올렸다. 다시 쓰려면 lib/blob/server 의 putBlob 으로.
+ *
  * 노션 페이지 본문의 서류 파일 → 프로덕션 Blob + 콘솔 documents. (2026-08-24 한백 승인)
  *
  *   npx tsx scripts/import-notion-files.ts --env .env.prod-db                 드라이런(기본)

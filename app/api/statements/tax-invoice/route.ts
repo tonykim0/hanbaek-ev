@@ -21,12 +21,12 @@
  * (서류 올리기와 같은 길 — app/api/projects/[id]/documents/[kind]/file).
  * 경로는 서버가 짓는다 — 클라이언트가 지어 보내면 남의 자리를 가리킬 수 있다.
  */
-import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 import { dropBlob, ourBlob, ourBlobPathname } from '@/lib/intake-stage';
 import { getRepository } from '@/lib/data';
 import { BadRequest, sessionWrite } from '@/lib/api/write-route';
 import { canWrite, isHanbaek } from '@/lib/roles';
 import { PAYOUT_KINDS, TAX_INVOICE_TYPES, type PayoutKind } from '@/types/project';
+import { clientUploadToken } from '@/lib/blob/server';
 
 const ALLOWED_TYPES = [...TAX_INVOICE_TYPES];
 const MAX_BYTES = 20 * 1024 * 1024;
@@ -60,8 +60,7 @@ export const POST = sessionWrite<Record<string, never>, Body>(
         : 'pdf';
       const ext = partner ? 'pdf' : asked;
       const pathname = `tax-invoices/${crypto.randomUUID()}.${ext}`;
-      const token = await generateClientTokenFromReadWriteToken({
-        token: process.env.BLOB_READ_WRITE_TOKEN!,
+      const token = await clientUploadToken({
         pathname,
         validUntil: Date.now() + 10 * 60 * 1000,
         allowedContentTypes: partner ? ['application/pdf'] : ALLOWED_TYPES,

@@ -41,6 +41,7 @@ import { logLlmCall, usdOf } from '@/lib/llm-usage';
 import { solarApiKey } from '@/lib/solar/api-key';
 import { agentFileRead } from './files';
 import { fileText, fileTextsOf } from './file-text';
+import { fileLink } from '@/lib/blob/server';
 import { awaitsReply, pendingOf } from './memory';
 import { MEMO_MAX, memoBlock, memosToOpen, memoText } from './memos';
 import { attachable, bundleLinkLines, bundleText, type BundlePart, type BundleResult } from './bundle';
@@ -270,6 +271,17 @@ function fileBlocks(f: AgentFile, texts?: Map<string, string>): Anthropic.Conten
       return [{ type: 'text', text: t ? `${head} — 글자만 뽑음\n${t}` : `${head} — 이 형식은 열지 못한다. 이름만 안다` }];
     }
   }
+}
+
+/**
+ * 넘긴 파일을 Claude 가 받을 주소로 — 파일은 비공개 저장소라 맨 주소는 403 이다(lib/blob/server fileLink). 운영의 링크는
+ * 파일마다 늘 같은 문자열이라 지난 파일을 다시 실어도 프롬프트 캐시가 산다(부를 때마다 바뀌는 서명 주소를 쓰면 대화 전체를
+ * 다시 쓴다). 글자를 뽑을 때(fileTextsOf)는 원래 주소를 쓴다 — 서버가 SDK 로 읽는다.
+ */
+async function withFileLinks(history: AgentMessage[]): Promise<AgentMessage[]> {
+  return Promise.all(history.map(async (m) => (m.files?.length
+    ? { ...m, files: await Promise.all(m.files.map(async (f) => ({ ...f, url: await fileLink(f.url) }))) }
+    : m)));
 }
 
 /**
@@ -886,7 +898,7 @@ export async function agentReply(input: {
   const tools = toolsOf(agent, hands);
   const { recent } = input;
   if (!awaitsReply(recent)) throw new Error('답할 지시가 없습니다.');
-  const said = toMessages(recent, await fileTextsOf(recent));
+  const said = toMessages(await withFileLinks(recent), await fileTextsOf(recent));
   if (said.length === 0 || said[said.length - 1].role !== 'user') {
     throw new Error('답할 지시가 없습니다.');
   }
@@ -977,7 +989,8 @@ export async function agentReply(input: {
           for (const bid of linkIds) {
             const z = await zipOf(bid);
             if (!z) return fail(`묶음 id=${bid} 를 찾지 못했다 — bundle_site_docs 가 돌려준 id 를 쓴다.`);
-            body += bundleLinkLines(z);
+            // 받는 사람은 콘솔 계정이 없다 — 그 묶음 하나만 여는 고정 링크(비공개 저장소의 맨 주소는 403 이다)
+            body += bundleLinkLines({ ...z, url: await fileLink(z.url) });
           }
         }
         const id = await hands.draftMail({ to: args.to, cc: args.cc, subject, body, fileIds: ids, docFiles });
@@ -1185,7 +1198,7 @@ export async function agentReply(input: {
         const read = agentFileRead(f.name);
         /* PDF · 그림은 대화에 붙일 때와 같은 덩이로 돌려준다(도구 결과에도 문서 · 그림 덩이가 든다 — SDK 0.52 타입은 그림까지만 안다) */
         if (read === 'pdf' || read === 'image') {
-          return { type: 'tool_result', tool_use_id: block.id, content: fileBlocks(f) as Anthropic.ToolResultBlockParam['content'] };
+          return { type: 'tool_result', tool_use_id: block.id, content: fileBlocks({ ...f, url: await fileLink(f.url) }) as Anthropic.ToolResultBlockParam['content'] };
         }
         const t = await fileText(f);
         const head = `[넘긴 파일 ${f.name} · id=${f.id}]`;

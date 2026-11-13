@@ -11,11 +11,11 @@
  * 여기는 한백 관리자만이므로 role === 'admin' 까지 본다.
  */
 import { NextResponse } from 'next/server';
-import { del, put } from '@vercel/blob';
 import { getRepository } from '@/lib/data';
 import { actorOf, getSessionUser } from '@/lib/auth/session';
 import { adminWrite, BadRequest } from '@/lib/api/write-route';
 import { MAX_FORM_BYTES } from '@/types/project';
+import { dropBlob, putBlob } from '@/lib/blob/server';
 
 /* 상한의 정본은 types/project.ts 한 곳이다 — 양식 파일은 대개 수백 KB 다 */
 const MAX_FILE_BYTES = MAX_FORM_BYTES;
@@ -26,7 +26,7 @@ export const DELETE = adminWrite<{ id: string }, { url?: unknown }>(
     if (typeof body?.url !== 'string' || !body.url) throw new BadRequest('뺄 파일을 고르세요.');
     const gone = await getRepository().removeNoticeFile(params.id, body.url, actor);
     /* DB 가 정본이다 — Blob 삭제 실패로 요청을 실패시키지 않는다 */
-    await del(gone).catch(() => undefined);
+    await dropBlob(gone);
   }
 );
 
@@ -62,10 +62,7 @@ export async function POST(
      * DB 의 name 이 정본이라 경로가 어떻든 사람은 원래 이름으로 받는다.
      */
     const ext = file.name.includes('.') ? `.${file.name.split('.').pop()}` : '';
-    const blob = await put(`notice-files/${id}${ext}`, file, {
-      access: 'public',
-      addRandomSuffix: true,
-    });
+    const blob = await putBlob(`notice-files/${id}${ext}`, file, { addRandomSuffix: true });
 
     try {
       await getRepository().attachNoticeFile(
@@ -74,7 +71,7 @@ export async function POST(
         actorOf(session)
       );
     } catch (err) {
-      await del(blob.url).catch(() => undefined); // DB 에 못 붙인 파일을 남기지 않는다
+      await dropBlob(blob.url); // DB 에 못 붙인 파일을 남기지 않는다
       throw err;
     }
 

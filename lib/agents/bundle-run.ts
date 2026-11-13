@@ -11,22 +11,24 @@
  * 붙이고(app/api/agents/[id]/mails/[mailId]/send), 링크로 보낼 때는 받는 사람이 그 주소로 받는다(주소는 무작위라 추측할 수 없다).
  */
 import JSZip from 'jszip';
-import { list, put } from '@vercel/blob';
 import type { Actor } from '@/lib/data/repository';
 import { getRepository } from '@/lib/data';
 import type { Agent } from '@/types/agents';
 import {
   BUNDLE_LIMIT, bundleEntryName, bundleZipName, docSlotOf, packSites, partBytesOf, sizeText, type BundlePart, type BundleResult,
 } from './bundle';
+import { listBlobs, putBlob, readBlob } from '@/lib/blob/server';
 
 /** 파일 하나를 받는 시간 · 한꺼번에 받는 수 */
 const FETCH_MS = 30_000;
 const PARALLEL = 4;
 
 async function fetchBytes(url: string): Promise<Buffer> {
-  const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(FETCH_MS) });
-  if (!res.ok) throw new Error(`서류를 받지 못했다(${res.status})`);
-  return Buffer.from(await res.arrayBuffer());
+  // 비공개 저장소 — 맨 주소는 403 이라 SDK 로 읽는다(lib/blob/server)
+  return Promise.race([
+    readBlob(url),
+    new Promise<never>((_, no) => setTimeout(() => no(new Error('서류를 받지 못했다(시간 초과)')), FETCH_MS)),
+  ]);
 }
 
 /**
@@ -102,11 +104,7 @@ export async function bundleSiteDocs(input: {
     const buf = await zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE', compressionOptions: { level: 3 } });
     const name = bundleZipName(slot, members.length, { index: g + 1, total: groups.length });
     const id = crypto.randomUUID();
-    const blob = await put(`${folder}/${id}/${name}`, buf, {
-      access: 'public',
-      contentType: 'application/zip',
-      token: process.env.BLOB_READ_WRITE_TOKEN,
-    });
+    const blob = await putBlob(`${folder}/${id}/${name}`, buf, { contentType: 'application/zip' });
     parts.push({
       id,
       zip: { name, url: blob.url, size: buf.length, contentType: 'application/zip' },
@@ -127,7 +125,7 @@ export async function bundleSiteDocs(input: {
 /** 앞서 올린 묶음 하나 — id 는 올린 자리의 무작위 마디. 이 담당의 자리에서만 찾는다(없으면 null) */
 export async function bundleFileOf(agentId: string, id: string): Promise<BundlePart['zip'] | null> {
   if (!/^[0-9a-f-]{36}$/.test(id)) return null;
-  const { blobs } = await list({ prefix: `agent-files/${agentId}/bundles/${id}/`, limit: 1, token: process.env.BLOB_READ_WRITE_TOKEN });
+  const blobs = await listBlobs(`agent-files/${agentId}/bundles/${id}/`, { limit: 1 });
   const b = blobs[0];
   if (!b) return null;
   const tail = b.pathname.slice(b.pathname.lastIndexOf('/') + 1);

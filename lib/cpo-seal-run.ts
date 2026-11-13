@@ -18,6 +18,7 @@ import { needsCpoSeal, sealPrompt, sealReadOf, type CpoSealRead, type SealCpo } 
 import { askPdfJson, CAREFUL_PICK, preparePdfs, visionPickOf, type VisionPick } from '@/lib/vision-ask';
 import { splitPdf } from '@/lib/pdf-split';
 import type { DocFile } from '@/types/project';
+import { readBlob } from '@/lib/blob/server';
 
 const KIND = 'contract';
 /** 저절로 읽은 것을 남기는 이름 — 감사로그를 안 남기는 쓰기지만 저장소가 행위자를 받는다 */
@@ -64,10 +65,9 @@ export async function readCpoSealsNow(projectId: string, actor: Actor, all: bool
   // 한 장씩 — 판독을 한꺼번에 보내면 연결이 끊긴 일이 있다
   for (const f of files.filter((x) => all || x.cpoSeal === undefined)) {
     try {
-      const res = await fetch(f.url);
-      if (!res.ok) throw new Error(`파일을 읽지 못했습니다 (${res.status})`);
+      const buffer = await readBlob(f.url);
       // all = 한백의 「직인 (다시) 읽기」 — 손으로 다시 볼 때는 가장 정확한 모델로(vision-ask CAREFUL_PICK)
-      const read = await readCpoSeal({ name: f.name, buffer: Buffer.from(await res.arrayBuffer()) }, cpo, all ? CAREFUL_PICK : undefined);
+      const read = await readCpoSeal({ name: f.name, buffer }, cpo, all ? CAREFUL_PICK : undefined);
       await repo.setDocFileFacts({ projectId, kind: KIND, url: f.url, facts: { cpoSeal: read.seal } }, actor);
       out.push({ name: f.name, url: f.url, cpoSeal: read.seal });
     } catch (err) {

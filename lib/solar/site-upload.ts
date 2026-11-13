@@ -7,6 +7,7 @@
  */
 import { docContentType } from '@/types/project';
 import { SITE_FILE_MAX_BYTES, siteFilePathname } from './sites';
+import { BLOB_ACCESS } from '@/lib/blob/path';
 
 const mb = (n: number) => Math.round((n / 1024 / 1024) * 10) / 10;
 
@@ -21,7 +22,7 @@ export async function uploadSiteFile(siteId: string, file: File, onPct?: (pct: n
 
   const { put } = await import('@vercel/blob/client');
   const blob = await put(pathname, file, {
-    access: 'public',
+    access: BLOB_ACCESS,
     token: tb.token,
     // 형식은 확장자로 — 한컴 엑셀처럼 브라우저가 말하는 형식을 Blob 이 거절하는 일이 있었다(types/project docContentType)
     contentType: docContentType(file.name, file.type),

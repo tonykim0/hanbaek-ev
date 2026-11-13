@@ -5,7 +5,7 @@
  * generateClientTokenFromReadWriteToken 방식으로
  * onUploadCompleted 웹훅 없이 동작합니다.
  */
-import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
+import { clientUploadToken } from '@/lib/blob/server';
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
 import { stagePrefix } from '@/lib/intake-stage';
@@ -53,8 +53,7 @@ export async function POST(request: Request) {
     // 토큰 유효기간: 10분 (기본값 30초 → 큰 파일 업로드 시 만료 방지)
     const validUntil = Date.now() + 10 * 60 * 1000;
 
-    const clientToken = await generateClientTokenFromReadWriteToken({
-      token: process.env.BLOB_READ_WRITE_TOKEN!,
+    const clientToken = await clientUploadToken({
       pathname,
       validUntil,
       allowedContentTypes: PDF_CONTENT_TYPES,

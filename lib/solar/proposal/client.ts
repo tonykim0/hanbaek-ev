@@ -8,6 +8,7 @@
 import type { ProposalTemplate } from '@/lib/data/solar-proposals';
 import type { FillArgs, ProposalInput } from './fill-common';
 import { TEMPLATES, type ProductKey, type TemplateKey, type Terms } from './products';
+import { BLOB_ACCESS, fileHref } from '@/lib/blob/path';
 
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
 const mb = (n: number) => Math.round((n / 1024 / 1024) * 10) / 10;
@@ -21,7 +22,7 @@ export async function uploadProposalTemplate(key: TemplateKey, file: File, onPct
   if (!t.ok || !tb.token || !tb.pathname) throw new Error(tb.error ?? '업로드 준비에 실패했습니다.');
   const { put } = await import('@vercel/blob/client');
   await put(tb.pathname, file, {
-    access: 'public',
+    access: BLOB_ACCESS,
     token: tb.token,
     contentType: tb.contentType,
     multipart: file.size > 10 * 1024 * 1024,
@@ -51,7 +52,7 @@ export async function saveProposalTerms(key: TemplateKey, terms: Record<string, 
 /** 제안서 한 벌 — 틀 파일을 받아 그 상품의 생성기로 채운다 */
 export async function buildProposal(product: ProductKey, template: ProposalTemplate, input: ProposalInput): Promise<Blob> {
   if (!template.file) throw new Error('템플릿이 아직 없습니다.');
-  const res = await fetch(template.file.url);
+  const res = await fetch(fileHref(template.file.url));
   if (!res.ok) throw new Error(`템플릿 파일을 받지 못했습니다 (${res.status}).`);
   const data = await res.arrayBuffer();
   const out = await fill(product, { template: data, terms: template.terms as Terms, input });

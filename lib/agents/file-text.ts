@@ -11,6 +11,7 @@
 import JSZip from 'jszip';
 import { agentFileRead } from './files';
 import type { AgentFile, AgentMessage } from '@/types/agents';
+import { readBlob } from '@/lib/blob/server';
 
 /** 한 파일에서 넘기는 글자 상한 — 넘으면 자르고 잘랐다고 적는다 */
 const TEXT_CAP = 60_000;
@@ -124,9 +125,7 @@ export async function fileText(file: Pick<AgentFile, 'name' | 'url' | 'size'>): 
   if (how !== 'text' && how !== 'sheet' && how !== 'word' && how !== 'hwpx') return null;
   if (file.size > FETCH_CAP) return null;
   try {
-    const res = await fetch(file.url, { cache: 'no-store' });
-    if (!res.ok) return null;
-    const buf = Buffer.from(await res.arrayBuffer());
+    const buf = await readBlob(file.url); // 비공개 저장소 — SDK 로 읽는다(lib/blob/server)
     if (how === 'text') return clipText(decodeText(buf));
     if (how === 'sheet') return await xlsxText(buf);
     if (how === 'word') return await docxText(buf);

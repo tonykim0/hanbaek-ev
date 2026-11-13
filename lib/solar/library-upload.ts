@@ -5,6 +5,7 @@
  */
 import { docContentType } from '@/types/project';
 import { LIBRARY_MAX_BYTES, LIBRARY_MULTIPART_BYTES, libraryPathOf } from './library';
+import { BLOB_ACCESS } from '@/lib/blob/path';
 
 const mb = (n: number) => Math.round((n / 1024 / 1024) * 10) / 10;
 const JSON_HEADERS = { 'Content-Type': 'application/json' };
@@ -20,7 +21,7 @@ export async function uploadLibraryFile(category: string, file: File, onPct?: (p
 
   const { put } = await import('@vercel/blob/client');
   await put(pathname, file, {
-    access: 'public',
+    access: BLOB_ACCESS,
     token: tb.token,
     multipart: file.size > LIBRARY_MULTIPART_BYTES,
     // 형식은 확장자로 — 한컴 엑셀처럼 브라우저가 말하는 형식을 Blob 이 거절하는 일이 있었다(types/project docContentType)

@@ -39,6 +39,27 @@ vi.mock('next/headers', async () => {
   };
 });
 
+/*
+ * 파일 읽기는 global fetch 로 돌린다 — 시험들은 fetch 를 흉내 내 파일을 준다(test.local · x.public.blob… 주소).
+ * 운영은 비공개 저장소를 SDK 로 읽는다(lib/blob/server, 2026-11-14) — 시험이 실제 개발 저장소를 읽거나, 흉내 낸 주소가
+ * 「우리 저장소가 아님」으로 걸리지 않게 읽기 셋만 바꾼다. 올리기 표(clientUploadToken)는 그대로 — 열쇠가 있을 때만 도는 시험이 본다.
+ * 고정 링크(fileLink)는 주소를 그대로 돌려준다 — 에이전트 대화를 짓는 시험이 서명 열쇠를 받으러 가지 않게.
+ */
+vi.mock('@/lib/blob/server', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/blob/server')>();
+  const readBlob = async (url: string) => {
+    const r = await fetch(url, { cache: 'no-store' });
+    if (!r.ok) throw new real.BlobMissing(`시험: 파일을 받지 못함 ${r.status}`);
+    return Buffer.from(await r.arrayBuffer());
+  };
+  const headBlob = async (url: string) => {
+    const r = await fetch(url, { method: 'HEAD' }).catch(() => null);
+    if (!r?.ok) return null;
+    return { url, pathname: url, size: Number(r.headers.get('content-length') ?? 0), contentType: r.headers.get('content-type') ?? '' } as unknown as Awaited<ReturnType<typeof real.headBlob>>;
+  };
+  return { ...real, readBlob, headBlob, fileLink: async (url: string) => url };
+});
+
 beforeAll(async () => {
   // 죽은 실행이 남긴 시험 현장을 걷는다 — 한 시간 넘은 것만(옆 세션의 진행 중인 시험은 건드리지 않는다)
   const { sweepStaleFixtures } = await import('./kit');

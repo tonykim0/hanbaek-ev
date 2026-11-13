@@ -41,6 +41,7 @@ import { asBiz, type Biz } from '@/lib/biz';
 import type { ProjectRepository, SiteMailResult } from '../repository';
 import { assertAdmin } from './shared';
 import { notifyAgentAlarm, retractAgentAlarm } from './notifications';
+import { blobPathOf } from '@/lib/blob/path';
 
 /** 메일 계정 줄 — 콘솔에 하나 */
 /*
@@ -370,13 +371,9 @@ export const agentMailStore: Pick<
     /* 콘솔이 묶어 올린 현장 서류(lib/agents/bundle-run — 여러 현장의 같은 서류 zip). 우리 Blob 의 이 담당 자리만 받는다 */
     const docFiles = input.docFiles ?? [];
     for (const f of docFiles) {
-      let ours = false;
-      try {
-        const u = new URL(f.url);
-        ours = u.protocol === 'https:' && u.hostname.endsWith('.public.blob.vercel-storage.com')
-          && u.pathname.startsWith(`/agent-files/${input.agentId}/bundles/`);
-      } catch { /* 주소가 아니다 */ }
-      if (!ours) throw new Error('붙일 묶음을 찾을 수 없습니다.');
+      // 공개 · 비공개 저장소 둘 다 우리 주소다(lib/blob/path) — 경로가 이 담당의 묶음 자리여야 한다
+      const path = blobPathOf(f.url);
+      if (!path || !path.startsWith(`agent-files/${input.agentId}/bundles/`)) throw new Error('붙일 묶음을 찾을 수 없습니다.');
     }
     if (fileIds.length + docFiles.length > MAIL_LIMITS.files) throw new Error(`붙일 파일은 ${MAIL_LIMITS.files}개까지입니다.`);
     const db = getDb();

@@ -25,6 +25,7 @@ import { downloadBlob } from '@/lib/download';
 import { Badge, Blank, Btn, Err, FIELD_CELL, PANEL } from '@/components/ui';
 import { useFileDragging } from '@/components/DocFiles';
 import type { SortResult, SortedDoc } from '@/lib/pdf-sort';
+import { BLOB_ACCESS, fileHref } from '@/lib/blob/path';
 
 /** 가른 한 장 — 어느 묶음(현장)에서 나왔는지 같이 들고 다닌다 */
 type Sorted = SortedDoc & { siteName: string | null };
@@ -131,7 +132,7 @@ export default function PdfSorter() {
 
       const { put } = await import('@vercel/blob/client');
       const blob = await put(tb.pathname, file, {
-        access: 'public',
+        access: BLOB_ACCESS,
         token: tb.token,
         contentType: 'application/pdf',
         onUploadProgress: ({ percentage }) => say(`올리는 중 ${Math.round(percentage)}%`),
@@ -186,11 +187,11 @@ export default function PdfSorter() {
 
   async function getOne(d: Sorted, i: number) {
     try {
-      const res = await fetch(d.blobUrl);
+      const res = await fetch(fileHref(d.blobUrl));
       if (!res.ok) throw new Error(String(res.status));
       downloadBlob(await res.blob(), nameOf(d, i));
     } catch {
-      window.open(d.blobUrl, '_blank', 'noopener');
+      window.open(fileHref(d.blobUrl), '_blank', 'noopener');
     }
   }
 
@@ -204,7 +205,7 @@ export default function PdfSorter() {
       const used = new Set<string>();   // 같은 이름이 서로를 덮지 않게 (감사 M26)
       for (const [i, d] of docs.entries()) {
         try {
-          const res = await fetch(d.blobUrl);
+          const res = await fetch(fileHref(d.blobUrl));
           if (!res.ok) throw new Error(String(res.status));
           zip.file(uniqueFileName(nameOf(d, i), used), await res.blob());
         } catch {

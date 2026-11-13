@@ -57,8 +57,13 @@ describe('stagedPathnameOf — 내가 올린 것만 통과한다', () => {
    * 한다: 먼저 우리 호스트인가(BLOB_HOST_RE), 그다음 내가 올린 것인가(이 함수).
    * 한쪽만 두면 그 사이로 빠진다 — 다음에 이 검사를 옮길 때 같이 옮겨야 하는 짝이다.
    */
-  it('호스트는 안 본다 — 그 판정은 라우트가 따로 한다(짝을 잊지 말 것)', () => {
-    expect(stagedPathnameOf('https://evil.example.com/intake-stage/ecoelec/a.zip', ME)).toBeTruthy();
+  /*
+   * ★2026-11-14 부터 호스트도 본다★ — 경로 뽑기가 lib/blob/path 의 blobPathOf 하나로 모였고, 그것은 우리 저장소의
+   * 호스트(공개 · 비공개)만 받는다. 라우트의 호스트 검사는 그대로 남아 있다(겹쳐도 해가 없다).
+   */
+  it('남의 호스트는 null — 경로 모양이 같아도', () => {
+    expect(stagedPathnameOf('https://evil.example.com/intake-stage/ecoelec/a.zip', ME)).toBeNull();
+    expect(stagedPathnameOf('https://abc123.private.blob.vercel-storage.com/intake-stage/ecoelec/a.zip', ME)).toBe('intake-stage/ecoelec/a.zip');
   });
 
   it('주소가 아니면 null', () => {

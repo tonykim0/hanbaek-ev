@@ -12,7 +12,6 @@
  * 따로 라우트를 두면 비밀번호 확인·경로 검사·덮어쓰기 방지가 두 벌이 된다.
  * 이름만 · 분류만 · 둘 다 — 무엇을 넘기든 안 넘긴 쪽은 그대로다.
  */
-import { copy, del, head } from '@vercel/blob';
 import { NextResponse } from 'next/server';
 import {
   MATERIALS_PREFIX,
@@ -21,6 +20,7 @@ import {
   sanitizeFileName,
 } from '@/lib/materials-meta';
 import { requireAdmin } from '@/lib/auth/guard';
+import { copyBlob, deleteBlobs, statBlob } from '@/lib/blob/server';
 
 export async function POST(request: Request) {
   // 페이지 게이트만으로는 부족하다 — API 는 직접 호출될 수 있다
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: '없는 분류입니다.' }, { status: 400 });
     }
 
-    const info = await head(url);
+    const info = await statBlob(url);
     if (!isValidMaterialPath(info.pathname)) {
       return NextResponse.json({ error: '자료실 파일이 아닙니다.' }, { status: 400 });
     }
@@ -99,7 +99,7 @@ export async function POST(request: Request) {
     // 같은 이름이 이미 있으면 덮어쓰지 않고 멈춥니다
     let exists = false;
     try {
-      await head(nextPath);
+      await statBlob(nextPath);
       exists = true;
     } catch {
       exists = false;
@@ -111,8 +111,8 @@ export async function POST(request: Request) {
       );
     }
 
-    await copy(url, nextPath, { access: 'public', addRandomSuffix: false });
-    await del(url);
+    await copyBlob(url, nextPath, { addRandomSuffix: false });
+    await deleteBlobs(url);
 
     return NextResponse.json({ ok: true, pathname: nextPath });
   } catch (error) {

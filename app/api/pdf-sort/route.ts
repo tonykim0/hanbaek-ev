@@ -10,13 +10,12 @@
  * 현장에 붙이지 않는다. 여기서 나오는 것은 사람이 받아 가는 파일이고, 임시 자리에
  * 두었다가 사흘 뒤 청소가 걷어간다(lib/intake-stage).
  */
-import { del } from '@vercel/blob';
-import { generateClientTokenFromReadWriteToken } from '@vercel/blob/client';
 import { NextResponse } from 'next/server';
 import { getSessionUser } from '@/lib/auth/session';
 import { canWrite, isHanbaek } from '@/lib/roles';
 import { sortPdf } from '@/lib/pdf-sort';
 import { stagedPathnameOf, stagePrefix, sweepStaleStaging } from '@/lib/intake-stage';
+import { clientUploadToken, dropBlob, readBlob } from '@/lib/blob/server';
 
 /** 방향 보정 + 판독 + 자르기까지 도는 경로라 길다. 접수 ZIP 과 같은 예산. */
 export const maxDuration = 300;
@@ -65,8 +64,7 @@ export async function POST(request: Request) {
 
     const pathname = `${stagePrefix(session.id)}/sort-${Date.now()}.pdf`;
     try {
-      const token = await generateClientTokenFromReadWriteToken({
-        token: process.env.BLOB_READ_WRITE_TOKEN!,
+      const token = await clientUploadToken({
         pathname,
         // 큰 스캔본은 오래 걸린다 — 기본 30초면 올리는 중에 만료된다
         validUntil: Date.now() + 15 * 60 * 1000,
@@ -129,9 +127,7 @@ export async function POST(request: Request) {
 
       try {
         send({ phase: 'fetch', message: '올린 PDF 를 읽는 중' });
-        const res = await fetch(blobUrl);
-        if (!res.ok) throw new Error(`올린 파일을 읽지 못했습니다 (${res.status})`);
-        const pdf = Buffer.from(await res.arrayBuffer());
+        const pdf = await readBlob(blobUrl);
 
         const result = await sortPdf(pdf, name, prefix, (step) => send(step));
         send({ phase: 'done', result });
@@ -141,7 +137,7 @@ export async function POST(request: Request) {
       } finally {
         clearInterval(keepalive);
         /* 올린 원본은 지운다 — 가른 파일이 따로 올라갔으므로 더 쓸 일이 없다 */
-        await del(blobUrl, { token: process.env.BLOB_READ_WRITE_TOKEN }).catch(() => {});
+        await dropBlob(blobUrl);
         try { controller.close(); } catch { /* 이미 닫힘 */ }
       }
     },

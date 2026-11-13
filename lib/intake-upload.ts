@@ -11,6 +11,7 @@
  */
 import { docContentType } from '@/types/project';
 import type { AutoIntakeResult } from '@/lib/intake-auto';
+import { BLOB_ACCESS } from '@/lib/blob/path';
 
 async function blobToken(url: string, body: unknown): Promise<{ token: string; pathname: string }> {
   const res = await fetch(url, {
@@ -34,7 +35,7 @@ export async function uploadIntakeZip(
   // 서버가 준 경로 그대로 올린다 — 토큰이 그 경로 하나에만 유효하다
   const { put } = await import('@vercel/blob/client');
   const blob = await put(pathname, zip, {
-    access: 'public',
+    access: BLOB_ACCESS,
     token,
     contentType: zip.type || 'application/zip',
     onUploadProgress: ({ percentage }) => onPhase(`올리는 중 ${Math.round(percentage)}%`),
@@ -91,7 +92,7 @@ export async function uploadIntakeFile(
 
   const { put } = await import('@vercel/blob/client');
   const blob = await put(pathname, file, {
-    access: 'public',
+    access: BLOB_ACCESS,
     token,
     // 확장자로 정한다 — 한컴오피스 xlsx(application/haansoftxlsx)가 거절당했다
     contentType: docContentType(file.name, file.type),

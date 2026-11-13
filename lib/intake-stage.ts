@@ -13,7 +13,8 @@
  *   1) 접수되면 옮긴다 (moveStagedTo) — 임시 자리에는 붙지 않은 것만 남는다
  *   2) 붙지 않은 채 사흘이 지난 것은 지운다 (sweepStaleStaging) — 사람이 나가버려도 정리된다
  */
-import { copy, del, head, list } from '@vercel/blob';
+import { blobPathOf } from '@/lib/blob/path';
+import { copyBlob, deleteBlobs, dropBlob as dropOne, headBlob, listBlobs } from '@/lib/blob/server';
 
 export const STAGE_ROOT = 'intake-stage';
 
@@ -28,7 +29,6 @@ export const stagePrefix = (userId: string) => `${STAGE_ROOT}/${userId}`;
  */
 export const STAGE_TTL_MS = 72 * 60 * 60 * 1000;
 
-const token = () => process.env.BLOB_READ_WRITE_TOKEN;
 
 /**
  * Blob 주소에서 저장소 안의 경로를 꺼낸다.
@@ -44,24 +44,13 @@ const token = () => process.env.BLOB_READ_WRITE_TOKEN;
  * 지울 때도 그 주소가 그대로 del() 로 나간다. 서류 붙이기가 하던 검사를 여기로 올려
  * 세금계산서도 같은 것을 보게 한다(2026-08-30 검토에서 갈려 있던 것이 드러났다).
  */
-const BLOB_HOST_RE = /(^|\.)blob\.vercel-storage\.com$/;
 
 export function ourBlobPathname(blobUrl: string): string | null {
-  try {
-    const u = new URL(blobUrl);
-    if (u.protocol !== 'https:' || !BLOB_HOST_RE.test(u.hostname)) return null;
-    return decodeURIComponent(u.pathname).replace(/^\//, '');
-  } catch {
-    return null;
-  }
+  return blobPathOf(blobUrl);
 }
 
 export function pathnameOfBlobUrl(blobUrl: string): string | null {
-  try {
-    return decodeURIComponent(new URL(blobUrl).pathname).replace(/^\//, '');
-  } catch {
-    return null;
-  }
+  return blobPathOf(blobUrl);
 }
 
 /**
@@ -83,7 +72,9 @@ export function stagedPathnameOf(blobUrl: string, userId: string): string | null
  * 주소(호스트 모양이 같다)를 들고 와도 여기서 걸린다. 돌려주는 주소는 늘 우리 것이다.
  */
 export async function ourBlob(pathname: string) {
-  return head(pathname, { token: token() });
+  const info = await headBlob(pathname);
+  if (!info) throw new Error(`저장소에 없는 파일입니다: ${pathname}`);
+  return info;
 }
 
 /**
@@ -115,11 +106,7 @@ export const contentTypeOf = (pathname: string): string =>
  */
 export async function moveStagedTo(stagedUrl: string, toPathname: string): Promise<string> {
   // copy 는 메타데이터를 옮겨주지 않으므로 내용 종류를 여기서 준다
-  const moved = await copy(stagedUrl, toPathname, {
-    access: 'public',
-    contentType: contentTypeOf(stagedUrl),
-    token: token(),
-  });
+  const moved = await copyBlob(stagedUrl, toPathname, { contentType: contentTypeOf(stagedUrl) });
   return moved.url;
 }
 
@@ -131,7 +118,7 @@ export async function moveStagedTo(stagedUrl: string, toPathname: string): Promi
  * 접수를 막는 것보다 낫다.
  */
 export async function dropBlob(url: string): Promise<void> {
-  await del(url, { token: token() }).catch(() => {});
+  await dropOne(url);
 }
 
 /**
@@ -149,21 +136,12 @@ export async function sweepStaleStaging(
 ): Promise<{ deleted: number; bytes: number }> {
   const stale: string[] = [];
   let bytes = 0;
-  let cursor: string | undefined;
-
-  do {
-    const page = await list({ prefix: `${STAGE_ROOT}/`, cursor, limit: 1000, token: token() });
-    for (const blob of page.blobs) {
-      if (now - blob.uploadedAt.getTime() < ttlMs) continue;
-      stale.push(blob.url);
-      bytes += blob.size;
-    }
-    cursor = page.hasMore ? page.cursor : undefined;
-  } while (cursor);
-
-  // 한 번에 다 넘기면 요청이 너무 커진다. 25개씩 끊는다.
-  for (let i = 0; i < stale.length; i += 25) {
-    await del(stale.slice(i, i + 25), { token: token() });
+  for (const blob of await listBlobs(`${STAGE_ROOT}/`)) {
+    if (now - blob.uploadedAt.getTime() < ttlMs) continue;
+    stale.push(blob.pathname);
+    bytes += blob.size;
   }
+  // 한 번에 다 넘기면 요청이 너무 커진다 — deleteBlobs 가 25개씩 끊는다
+  await deleteBlobs(stale);
   return { deleted: stale.length, bytes };
 }

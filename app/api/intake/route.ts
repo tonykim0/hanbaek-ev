@@ -9,7 +9,6 @@
  *            또는 { phase: 'error', error, code }
  */
 import { NextRequest } from 'next/server';
-import { del } from '@vercel/blob';
 import { extractAndHashFromZipBuffer, isZipBuffer, isPdfFile } from '@/lib/files';
 import { classifyAndExtract } from '@/lib/claude';
 import {
@@ -21,6 +20,7 @@ import {
 } from '@/lib/notion';
 import type { IntakeSuccessResponse } from '@/types/intake';
 import { INTAKE_CLOSED } from '@/lib/portal-intake';
+import { deleteBlobs, readBlob } from '@/lib/blob/server';
 
 // Vercel Pro: 대용량 ZIP·다파일 접수의 중간 종료(부분 저장) 방지를 위해 여유 확보
 export const maxDuration = 180;
@@ -253,20 +253,16 @@ function isAllowedBlobUrl(blobUrl: string): boolean {
 }
 
 async function downloadZipBuffer(blobUrl: string): Promise<Buffer> {
-  const zipRes = await fetch(blobUrl);
-  if (!zipRes.ok) {
-    throw new IntakeRouteError(
-      `업로드 파일을 불러오지 못했습니다 (${zipRes.status})`,
-      'BLOB_DOWNLOAD_ERROR'
-    );
+  try {
+    return await readBlob(blobUrl);
+  } catch {
+    throw new IntakeRouteError('업로드 파일을 불러오지 못했습니다', 'BLOB_DOWNLOAD_ERROR');
   }
-
-  return Buffer.from(await zipRes.arrayBuffer());
 }
 
 async function deleteBlobQuietly(blobUrl: string): Promise<void> {
   try {
-    await del(blobUrl);
+    await deleteBlobs(blobUrl);
   } catch {
     // Blob 정리 실패는 사용자 응답을 깨뜨리지 않도록 무시한다.
   }

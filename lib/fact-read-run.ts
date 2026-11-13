@@ -26,6 +26,7 @@ import { withRegionPrefix } from '@/lib/region';
 import { askPdfJson, preparePdfs } from '@/lib/vision-ask';
 import { splitPdf } from '@/lib/pdf-split';
 import type { DocFile, FactField, FilledFacts } from '@/types/project';
+import { readBlob } from '@/lib/blob/server';
 
 interface Read {
   /** 이 중 하나라도 비어야 읽는다 */
@@ -94,9 +95,7 @@ export async function fillFactNow(projectId: string, kind: string): Promise<Fact
   for (const f of ((d?.files ?? []) as DocFile[]).filter((x) => x?.url)) {
     if (blank(now, r.need).length === 0) break;
     try {
-      const res = await fetch(f.url);
-      if (!res.ok) throw new Error(`파일을 읽지 못했습니다 (${res.status})`);
-      const read = await readFact(kind, { name: f.name, buffer: Buffer.from(await res.arrayBuffer()) });
+      const read = await readFact(kind, { name: f.name, buffer: await readBlob(f.url) });
       // 읽는 사이 사람이 적었으면 덮지 않는다
       const fresh = await factsNow(projectId);
       if (!fresh) return put;

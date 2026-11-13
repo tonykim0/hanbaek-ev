@@ -13,6 +13,7 @@ import {
   type MaterialGroup,
 } from '@/lib/materials-meta';
 import { Confirm, FIELD } from '@/components/ui';
+import { BLOB_ACCESS } from '@/lib/blob/path';
 
 const PASSWORD_STORAGE_KEY = 'materials-admin-password';
 /** 이 크기를 넘으면 분할 업로드 — 대용량 파일 실패 시 해당 조각만 재시도됩니다 */
@@ -85,7 +86,7 @@ export default function MaterialsAdmin({ groups }: { groups: MaterialGroup[] }) 
         }
 
         await put(pathname, file, {
-          access: 'public',
+          access: BLOB_ACCESS,
           token: tokenData.token,
           multipart: file.size > MULTIPART_THRESHOLD,
           onUploadProgress: ({ percentage }) => {

@@ -44,6 +44,7 @@ import { AgentMark, Clip, FileChip, LINK, Spark } from './kit';
 import { MailCard } from './MailCard';
 import { AgitCard, type AgitAccountState } from './AgitCard';
 import type { AgitPostRecord } from '@/lib/agit/post';
+import { BLOB_ACCESS, fileHref } from '@/lib/blob/path';
 
 type Phase = 'idle' | 'sending' | 'thinking';
 
@@ -185,7 +186,7 @@ export function AgentRoom({ agentId, agentName, home, messages, mails, connected
       if (!res.ok || !json.token || !json.pathname) throw new Error(json.error ?? '올리지 못했습니다');
       const { put } = await import('@vercel/blob/client');
       await put(json.pathname, file, {
-        access: 'public',
+        access: BLOB_ACCESS,
         token: json.token,
         ...(file.type ? { contentType: file.type } : {}),
         multipart: file.size > 8 * 1024 * 1024,
@@ -497,7 +498,8 @@ function Linked({ text }: { text: string }) {
   return (
     <>
       {parts.map((p, i) => (i % 2 === 1 ? (
-        <a key={i} href={p} target="_blank" rel="noreferrer" className={`break-all ${LINK}`}>{p}</a>
+        // 말에 적힌 우리 파일 주소는 파일 문으로 — 비공개 저장소라 맨 주소는 403 이다
+        <a key={i} href={fileHref(p)} target="_blank" rel="noreferrer" className={`break-all ${LINK}`}>{p}</a>
       ) : p))}
     </>
   );
