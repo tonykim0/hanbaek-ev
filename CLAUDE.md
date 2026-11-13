@@ -41,14 +41,16 @@
 
 ### 다음 할 일 (위에서부터 — "계속해" = 맨 위를 진행한다)
 
-000. **파일 비공개 전환 — 진행 중** (2026-11-14 사용자 「그래 비공개로 전환해줘」 · 설계는 아래 「파일(Vercel Blob)」)
+000. **파일 비공개 전환 — ④만 남았다** (2026-11-14 사용자 「그래 비공개로 전환해줘」 · 설계는 아래 「파일(Vercel Blob)」)
     차례(되돌릴 수 없는 것은 마지막 하나):
-    ① ~~새 저장소 둘(서울 · 비공개) 만들기~~ · 콘솔에 연결(접두사 PRIVATE_BLOB — 운영 열쇠를 쓰는 일이라 사용자가 `!` 로)
-    ② 배포 1 — 옮기는 크론(`app/api/cron/blob-copy` MODE 'mirror', 5분마다): 콘솔이 옛 저장소에 쓰는 동안 새 저장소를 같게 맞춘다.
-       로그 `npx vercel logs --environment production --query blob-copy` 에서 「남음 0」이 이어지면 다 맞춘 것
-    ③ 배포 2 — 콘솔 전체를 비공개로(파일 문 · 서버 읽기 · 올리기). 같은 배포에서 크론 MODE 를 'finish' 로(넘어가기 직전 1분치만
-       마저 옮기고 표지를 남겨 멈춘다 — 계속 돌면 새 저장소에서 지운 파일을 되살린다). 배포 직후 화면에서 서류 · 사진 · 계산서 ·
-       자료실 · 에이전트 파일을 열어 본다. 백업(mirror.mjs)을 백업 문으로 바꾸고 BACKUP_FILES_SECRET 을 넣는다
+    ① ~~새 저장소 둘(서울 · 비공개) 만들기 · 콘솔에 연결(접두사 PRIVATE_BLOB — 운영 열쇠를 쓰는 일이라 사용자가 `!` 로)~~ 11-14
+    ② ~~배포 1 — 옮기는 크론(`app/api/cron/blob-copy` MODE 'mirror', 5분마다)~~ 11-14 01:09 — 옛 저장소 4,005개(DB 에 없는 자료실 ·
+       보관본 · 임시 자리 포함)를 50분에 다 옮겼다(한 번에 약 430개 · 실패 0). 로그 `npx vercel logs --environment production --query blob-copy`
+    ③ ~~배포 2 — 콘솔 전체를 비공개로 · 크론 'finish'~~ 11-14 02:12(aa2cc21) — 02:15 finish 가 「옮김 0 · 남음 0」으로 표지를 남겼다.
+       확인: 백업 문으로 자리마다(projects · partner-docs · tax-invoices · agent-files · notice-files · solar-proposals · survey-drafts)
+       운영 파일을 받아 이 Mac 의 백업 사본과 바이트가 같고 · 맨 주소 403 · 로그인 없는 파일 문 401 · 틀린 비밀 401. BACKUP_FILES_SECRET
+       (운영 · ~/hanbaek-backups/.env.backup-files)과 mirror.mjs(비공개 주소는 백업 문으로)는 넣어 두었다
+    ★④ 전까지는 옛 공개 주소가 여전히 열린다★ — 퍼진 옛 주소를 닫는 것은 옛 저장소를 지우는 것뿐이다
     ④ 1주쯤 본 뒤 — 옛 공개 저장소(`hanbaek-uploads-2`) · 옛 개발 저장소(`hanbaek-dev2` · `hanbaek-dev`) 지우기(사용자 확인 —
        되돌릴 수 없다), `BLOB_READ_WRITE_TOKEN` 환경변수 · 크론 · `lib/blob/sync` 걷기
 
