@@ -29,7 +29,7 @@ async function submitted(id: string): Promise<void> {
   await repo.setProcessStatus(id, '계약서 제출', admin);
 }
 
-describe('환경부 승인일을 따라 단계가 오간다', () => {
+describe('기후부 승인일을 따라 단계가 오간다', () => {
   it('★적으면 기후부 승인으로, 지우면 계약서 제출로★', async () => {
     await withPayableProject(async ({ id }) => {
       await submitted(id);
@@ -57,7 +57,7 @@ describe('환경부 승인일을 따라 단계가 오간다', () => {
       for (const to of ['기후부 승인', '행위신고']) {
         const r = await move(id, to);
         expect(r.status, to).toBe(422);
-        expect(JSON.stringify(r.json), to).toContain('환경부 승인일');
+        expect(JSON.stringify(r.json), to).toContain('기후부 승인일');
       }
       expect(await statusOf(id)).toBe('계약서 제출');
     });
@@ -128,7 +128,7 @@ describe('승인 취소 — 잘못 넣은 승인일을 지운다', () => {
       await repo.updateProcess(id, { envApprovalDate: '2026-09-01' }, admin);
       await repo.setSettlementClaimed(id, 1, '2026-10-05', admin);
 
-      await expect(repo.updateProcess(id, { envApprovalDate: null }, admin)).rejects.toThrow(/1차\(환경부 승인\)를 이미 청구했습니다/);
+      await expect(repo.updateProcess(id, { envApprovalDate: null }, admin)).rejects.toThrow(/1차\(기후부 승인\)를 이미 청구했습니다/);
       expect(await statusOf(id)).toBe('기후부 승인');
 
       await repo.setSettlementClaimed(id, 1, null, admin);
@@ -171,7 +171,7 @@ describe('승인 취소 — 잘못 넣은 승인일을 지운다', () => {
       await repo.setSettlementClaimed(id, 1, '2026-10-05', admin);
 
       await expect(repo.setProcessStatus(id, '계약서 제출', admin))
-        .rejects.toThrow(/환경부 승인이 취소됩니다[\s\S]*이미 청구했습니다/);
+        .rejects.toThrow(/기후부 승인이 취소됩니다[\s\S]*이미 청구했습니다/);
       const p = await repo.getProject(id, adminView);
       expect(p!.process.status).toBe('기후부 승인');
       expect(p!.process.envApprovalDate).toBe('2026-09-01');
@@ -215,7 +215,7 @@ describe('승인 취소의 알림', () => {
       expect((await setDate(id, null)).status).toBe(200);
       expect(await mine(USERS.navy, id), '안 읽은 승인 알림은 거둔다').toEqual([]);
       expect(await mine(USERS.ecoelec, id), '읽은 사람에게는 취소가 그 자리에 선다').toEqual([
-        { kind: 'approvalCancel', title: '환경부 승인 취소', body: '승인일 2026-11-10 입력 취소 — 아직 승인 전', read: false },
+        { kind: 'approvalCancel', title: '기후부 승인 취소', body: '승인일 2026-11-10 입력 취소 — 아직 승인 전', read: false },
       ]);
       expect(await mine(USERS.admin, id), '지운 사람은 받지 않는다').toEqual([]);
 
@@ -223,7 +223,7 @@ describe('승인 취소의 알림', () => {
       expect((await setDate(id, '2026-11-20')).status).toBe(200);
       for (const u of [USERS.navy, USERS.ecoelec]) {
         expect(await mine(u, id), u.id).toEqual([
-          { kind: 'approval', title: '환경부 승인', body: '승인일 2026-11-20 — 환경부 승인 완료', read: false },
+          { kind: 'approval', title: '기후부 승인', body: '승인일 2026-11-20 — 기후부 승인 완료', read: false },
         ]);
       }
     }, { salesOrg: USERS.navy.org, gcOrg: USERS.ecoelec.org, bizType: '환경부' });

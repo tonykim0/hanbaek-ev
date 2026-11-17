@@ -48,7 +48,7 @@ describe('쓰기 라우트의 껍데기 — /api/projects/[id]/process', () => {
     });
   });
 
-  it('그 현장의 시공사도 한백 전용 칸(환경부 승인일)은 못 적는다 — 422', async () => {
+  it('그 현장의 시공사도 한백 전용 칸(기후부 승인일)은 못 적는다 — 422', async () => {
     await withProject(async (id) => {
       await signIn(USERS.daesang);
       const r = await call(POST, { body: { envApprovalDate: '2026-09-08' }, params: { id } });

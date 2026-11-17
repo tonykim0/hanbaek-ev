@@ -28,15 +28,15 @@ const doc = (kind: string) => ({ kind, status: 'uploaded' });
 describe('advanceBlockers — 진행 단추를 막는 것들', () => {
   it('행위신고: 아무것도 없으면 대상 여부부터 고르라고 한다', () => {
     expect(advanceBlockers('충전기 발주', 'notifyDoneAt', P(), ENV))
-      .toEqual(['행위신고 대상 여부 선택', '환경부 승인일 (한백 입력)']);
+      .toEqual(['행위신고 대상 여부 선택', '기후부 승인일 (한백 입력)']);
   });
 
   it('행위신고: 대상을 고르면 신고일·파일을 묻는다', () => {
     expect(advanceBlockers('충전기 발주', 'notifyDoneAt', P({ notifyRequiredAt: '2026-08-27' }), ENV))
-      .toEqual(['행위신고일', '신고 파일', '환경부 승인일 (한백 입력)']);
+      .toEqual(['행위신고일', '신고 파일', '기후부 승인일 (한백 입력)']);
   });
 
-  it('행위신고: 대상 아님 + 환경부 승인일이면 열린다', () => {
+  it('행위신고: 대상 아님 + 기후부 승인일이면 열린다', () => {
     expect(advanceBlockers('충전기 발주', 'notifySkippedAt',
       P({ notifySkippedAt: '2026-08-27', envApprovalDate: '2026-08-01' }), ENV)).toEqual([]);
   });
@@ -101,7 +101,7 @@ describe('자체투자 — 환경부 승인이 없는 현장 (한백 2026-08-28)
   it('환경부 사업은 그대로 승인일을 묻는다 — 같은 현장 값, 사업구분만 다르다', () => {
     const p = P({ notifySkippedAt: '2026-08-28' });
     expect(advanceBlockers('충전기 발주', 'notifySkippedAt', p, SELF)).toEqual([]);
-    expect(advanceBlockers('충전기 발주', 'notifySkippedAt', p, ENV)).toEqual(['환경부 승인일 (한백 입력)']);
+    expect(advanceBlockers('충전기 발주', 'notifySkippedAt', p, ENV)).toEqual(['기후부 승인일 (한백 입력)']);
   });
 
   it('서버도 같이 연다 — 화면만 열리면 눌렀을 때 거절된다', () => {
@@ -131,7 +131,7 @@ describe('canEnter — 서버가 막는 자리', () => {
   it('막힌 이유는 사람이 읽는 말이다', () => {
     const r = canEnter('충전기 발주', P({ status: '행위신고' }), ENV);
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.blockedBy).toBe('환경부 승인일 (한백 입력) · 행위신고 대상 여부');
+    if (!r.ok) expect(r.blockedBy).toBe('기후부 승인일 (한백 입력) · 행위신고 대상 여부');
   });
 });
 
@@ -627,7 +627,7 @@ describe('기설치 연동이 실제로 앞으로 간다', () => {
     const r = canEnter('착공', notified, ctxOf('환경부'));
     expect(r.ok).toBe(false);
     /* 환경부는 승인일부터 막힌다(발주 칸의 조건) — 연동에는 없는 문이다 */
-    expect((r as { blockedBy: string }).blockedBy).toContain('환경부 승인일');
+    expect((r as { blockedBy: string }).blockedBy).toContain('기후부 승인일');
   });
 
   it('환경부는 수령 완료 없이 착공에 못 간다', () => {
@@ -700,7 +700,7 @@ describe('체크를 풀면 물러난다 — canEnter 로 물으면 안 되는 �
     expect(canEnter('충전기 발주', bare, ENVC)).toEqual({ ok: true });
     /* 그런데 그 칸의 게이트는 실제로 막고 있다 — 되돌림은 이것을 봐야 한다 */
     expect(STATUS_GATES['충전기 발주']?.(bare, ENVC).map((b) => b.label))
-      .toEqual(['환경부 승인일 (한백 입력)', '행위신고 대상 여부']);
+      .toEqual(['기후부 승인일 (한백 입력)', '행위신고 대상 여부']);
   });
 
   it('선언을 풀면 그 칸의 게이트가 다시 막는다 — 물러날 근거가 생긴다', () => {
@@ -858,7 +858,7 @@ describe('hasKepcoWork — 한전 외선공사 · 계량기 부설이 있는 현
  * 들어오는 조건은 환경부 승인일 하나고, 받을 승인이 없는 사업구분(자체투자·기설치 연동)은 그 칸을 안 지난다.
  * 운영의 행위신고 30건 중 환경부 사업 17건이 전부 승인일이 있었다 — 그 사실을 문으로 세운 것이다.
  */
-describe('기후부 승인 — 환경부 승인일이 있어야 서고, 그 뒤가 행위신고다', () => {
+describe('기후부 승인 — 기후부 승인일이 있어야 서고, 그 뒤가 행위신고다', () => {
   const at = (o: Record<string, unknown> = {}) => P({ status: '계약서 제출', ...o });
 
   it('계약서 제출 다음이 사업구분으로 갈린다', () => {
@@ -875,12 +875,12 @@ describe('기후부 승인 — 환경부 승인일이 있어야 서고, 그 뒤�
   });
 
   it('승인일이 없으면 못 선다 — 있으면 선다', () => {
-    expect(canEnter('기후부 승인', at(), ENV)).toEqual({ ok: false, blockedBy: '환경부 승인일 (한백 입력)' });
+    expect(canEnter('기후부 승인', at(), ENV)).toEqual({ ok: false, blockedBy: '기후부 승인일 (한백 입력)' });
     expect(canEnter('기후부 승인', at({ envApprovalDate: '2026-11-10' }), ENV)).toEqual({ ok: true });
   });
 
   it('★승인 없이 행위신고로 건너뛸 수 없다★ — 지나는 칸의 조건을 다 묻는다', () => {
-    expect(canEnter('행위신고', at(), ENV)).toEqual({ ok: false, blockedBy: '환경부 승인일 (한백 입력)' });
+    expect(canEnter('행위신고', at(), ENV)).toEqual({ ok: false, blockedBy: '기후부 승인일 (한백 입력)' });
     expect(canEnter('행위신고', at({ envApprovalDate: '2026-11-10' }), ENV)).toEqual({ ok: true });
   });
 
@@ -931,9 +931,9 @@ describe('approvalCancelBlock — 승인일을 지울 수 있나', () => {
   });
 
   it('★그 승인으로 연 기성을 청구·수금했으면 못 지운다★ — 조건 없는 청구가 남는다', () => {
-    expect(approvalCancelBlock('기후부 승인', ENV, [step('claimed')])).toMatch(/1차\(환경부 승인\)를 이미 청구했습니다/);
+    expect(approvalCancelBlock('기후부 승인', ENV, [step('claimed')])).toMatch(/1차\(기후부 승인\)를 이미 청구했습니다/);
     expect(approvalCancelBlock('기후부 승인', ENV, [step('collected', '환경부 승인', 2)]))
-      .toMatch(/2차\(환경부 승인\)를 이미 수금했습니다/);
+      .toMatch(/2차\(기후부 승인\)를 이미 수금했습니다/);
   });
 
   it('다른 트리거의 차수는 상관없다 — 착공으로 연 차수를 청구했어도 승인일은 지운다', () => {

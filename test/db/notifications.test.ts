@@ -112,7 +112,7 @@ describe('진행현황 알림', () => {
     expect((await repo.listNotifications(me(USERS.navy))).filter((x) => x.projectId === id && x.kind === 'ask')).toHaveLength(0);
   }, site));
 
-  it('환경부 승인일을 처음 넣으면 그 현장 사람들에게 — 고쳐도 또 가지 않는다', () => withProject(async (id) => {
+  it('기후부 승인일을 처음 넣으면 그 현장 사람들에게 — 고쳐도 또 가지 않는다', () => withProject(async (id) => {
     const approvals = async (u: (typeof USERS)[keyof typeof USERS]) =>
       (await repo.listNotifications(me(u))).filter((x) => x.projectId === id && x.kind === 'approval');
     await signIn(USERS.admin);
@@ -120,8 +120,8 @@ describe('진행현황 알림', () => {
     for (const u of [USERS.navy, USERS.ecoelec]) {
       const got = await approvals(u);
       expect(got).toHaveLength(1);
-      expect(got[0]).toMatchObject({ author: '한백', scope: '시공', title: '환경부 승인', read: false });
-      expect(got[0].body).toBe('승인일 2026-10-12 — 환경부 승인 완료');
+      expect(got[0]).toMatchObject({ author: '한백', scope: '시공', title: '기후부 승인', read: false });
+      expect(got[0].body).toBe('승인일 2026-10-12 — 기후부 승인 완료');
     }
     expect(await approvals(USERS.admin), '넣은 사람은 받지 않는다').toHaveLength(0);
     expect(await approvals(USERS.viewer)).toHaveLength(0);
@@ -130,14 +130,14 @@ describe('진행현황 알림', () => {
       expect((await call(processPOST, { params: { id }, body: { envApprovalDate } })).status).toBe(200);
     }
     expect(await approvals(USERS.navy)).toHaveLength(1);
-    expect((await approvals(USERS.navy))[0].body, '처음 간 글 그대로다').toBe('승인일 2026-10-12 — 환경부 승인 완료');
+    expect((await approvals(USERS.navy))[0].body, '처음 간 글 그대로다').toBe('승인일 2026-10-12 — 기후부 승인 완료');
     // 시공 탭을 열면 읽힌다
     await signIn(USERS.ecoelec);
     await call(readPOST, { method: 'POST', body: { projectId: id, scope: '시공' } });
     expect((await approvals(USERS.ecoelec))[0].read).toBe(true);
   }, site));
 
-  it('환경부 대기번호도 처음 넣으면 그 현장 사람들에게 — 고치거나 지웠다 다시 넣어도 또 가지 않는다', () => withProject(async (id) => {
+  it('기후부 대기번호도 처음 넣으면 그 현장 사람들에게 — 고치거나 지웠다 다시 넣어도 또 가지 않는다', () => withProject(async (id) => {
     const queued = async (u: (typeof USERS)[keyof typeof USERS]) =>
       (await repo.listNotifications(me(u))).filter((x) => x.projectId === id && x.kind === 'queue');
     await signIn(USERS.admin);
@@ -145,8 +145,8 @@ describe('진행현황 알림', () => {
     for (const u of [USERS.navy, USERS.ecoelec]) {
       const got = await queued(u);
       expect(got).toHaveLength(1);
-      expect(got[0]).toMatchObject({ author: '한백', scope: '시공', title: '환경부 대기번호', read: false });
-      expect(got[0].body).toBe('대기번호 2026-595 — 환경부 접수 완료');
+      expect(got[0]).toMatchObject({ author: '한백', scope: '시공', title: '기후부 대기번호', read: false });
+      expect(got[0].body).toBe('대기번호 2026-595 — 기후부 접수 완료');
     }
     expect(await queued(USERS.admin), '넣은 사람은 받지 않는다').toHaveLength(0);
     for (const value of ['2026-596', null, '2026-597']) {

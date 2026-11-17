@@ -57,9 +57,9 @@ export function triggerDate(
 ): string | null {
   switch (trigger) {
     /*
-     * 화면에서는 「환경부 승인일」 한 칸이다 (한백 2026-08-27) — 운영사 시공승인도 같은
-     * 날로 본다. 트리거 이름은 그대로 둔다: 정산 규칙에 글자로 저장돼 있어서 이름을
-     * 바꾸면 이미 걸린 규칙이 어느 트리거인지 못 찾는다.
+     * 화면에서는 「기후부 승인일」 한 칸이다 (한백 2026-08-27 · 이름은 2026-11-17 까지 「환경부 승인일」) — 운영사
+     * 시공승인도 같은 날로 본다. 트리거의 저장값은 그대로 둔다: 정산 규칙에 글자로 저장돼 있어서 이름을
+     * 바꾸면 이미 걸린 규칙이 어느 트리거인지 못 찾는다. 화면에는 triggerLabel 로 적는다.
      */
     case '환경부 승인':
       return process.envApprovalDate || null;
@@ -81,10 +81,19 @@ export function triggerMet(
   return triggerDate(trigger, process, closeDate) !== null;
 }
 
+/**
+ * 트리거를 화면에 적는 이름 — ★저장값은 「환경부 승인」 그대로고 화면만 「기후부 승인」이다★ (한백 2026-11-17 「기후부로 바꿔」).
+ * 저장값을 못 바꾸는 까닭: 정산 규칙의 id 가 단계(트리거 글자 포함)의 해시다(settlementRuleIdOf) — 글자를 바꾸면 같은 규칙이
+ * 다른 id 가 되어 현장에 걸린 규칙을 못 찾는다. 그래서 화면 · 문구 · 규칙 이름은 전부 이 함수를 거친다.
+ */
+export function triggerLabel(trigger: Trigger): string {
+  return trigger === '환경부 승인' ? '기후부 승인' : trigger;
+}
+
 /** 트리거의 근거가 어디서 오는지 — 화면 설명용 */
 export function triggerSource(trigger: Trigger): string {
   switch (trigger) {
-    case '환경부 승인': return '환경부 승인일';
+    case '환경부 승인': return '기후부 승인일';
     case '착공': return '실착공일';
     case '준공마감': return '준공마감일 (한백 지정)';
     case '해당없음': return '—';
@@ -292,7 +301,7 @@ export function settlementRuleNameOf(steps: SettlementStepRule[]): string {
         b.kind === '고정' ? `${b.unit.toLocaleString('ko-KR')}원`
           : b.kind === '비율' ? `${Math.round(b.ratio * 1000) / 10}%`
             : '잔액';
-      return `${s.trigger} ${amount}`;
+      return `${triggerLabel(s.trigger)} ${amount}`;
     })
     .join(' → ');
 }
@@ -334,7 +343,7 @@ export function checkSettlementSteps(steps: SettlementStepRule[], turnkey: numbe
   steps.forEach((s, i) => {
     const no = `${i + 1}차`;
     if (!s || !RECEIVE_TRIGGERS.includes(s.trigger)) {
-      bad.push(`${no} 트리거는 환경부 승인 · 착공 · 준공마감 중 하나여야 합니다.`);
+      bad.push(`${no} 트리거는 ${RECEIVE_TRIGGERS.map(triggerLabel).join(' · ')} 중 하나여야 합니다.`);
       return;
     }
     const b = s.basis;
@@ -436,7 +445,7 @@ export function stepClaimBlock(
   if (!step || step.state === 'na') return `${step?.no ?? ''}차는 이 현장의 정산 규칙에 없습니다.`;
   if (step.state === 'collected') return `${step.no}차는 이미 수금됐습니다 — 수금을 되돌린 뒤 청구일을 고치세요.`;
   if (step.state === 'waiting' || !step.claimableFrom) {
-    return `${step.no}차(${step.trigger})는 아직 조건이 차지 않았습니다.`;
+    return `${step.no}차(${triggerLabel(step.trigger)})는 아직 조건이 차지 않았습니다.`;
   }
   if (at < step.claimableFrom) {
     return `${step.no}차는 ${step.claimableFrom}부터 청구할 수 있습니다 — 조건이 찬 다음 달부터입니다.`;
@@ -455,7 +464,7 @@ export function stepCollectBlock(
   at: string
 ): string | null {
   if (!step || step.state === 'na') return `${step?.no ?? ''}차는 이 현장의 정산 규칙에 없습니다.`;
-  if (step.state === 'waiting') return `${step.no}차(${step.trigger})는 아직 조건이 차지 않았습니다.`;
+  if (step.state === 'waiting') return `${step.no}차(${triggerLabel(step.trigger)})는 아직 조건이 차지 않았습니다.`;
   if (step.state === 'scheduled' || step.state === 'open') {
     return `${step.no}차는 청구를 먼저 기록해야 수금을 적을 수 있습니다.`;
   }

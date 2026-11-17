@@ -21,12 +21,12 @@ describe('진행현황 글은 그 현장의 기록을 같이 쓰는 사람 모�
 
 describe('환경부 승인 알림의 글', () => {
   it('승인일과 승인 완료 한 줄뿐이다 — 기성은 말하지 않는다', () => {
-    expect(approvalNotice('2026-10-12')).toEqual({ title: '환경부 승인', body: '승인일 2026-10-12 — 환경부 승인 완료' });
+    expect(approvalNotice('2026-10-12')).toEqual({ title: '기후부 승인', body: '승인일 2026-10-12 — 기후부 승인 완료' });
   });
 });
 
-describe('환경부 대기번호 알림의 글', () => {
+describe('기후부 대기번호 알림의 글', () => {
   it('번호와 접수 완료 한 줄뿐이다', () => {
-    expect(queueNotice('2026-595')).toEqual({ title: '환경부 대기번호', body: '대기번호 2026-595 — 환경부 접수 완료' });
+    expect(queueNotice('2026-595')).toEqual({ title: '기후부 대기번호', body: '대기번호 2026-595 — 기후부 접수 완료' });
   });
 });

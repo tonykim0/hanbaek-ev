@@ -10,7 +10,7 @@ import { phaseOfProject } from '@/lib/board';
 import { won } from '@/lib/format';
 import { daysSince } from '@/lib/date';
 import {
-  closeDateNeeded, closingSteps, safetyFeeApplies, safetyFeeDue, safetyFeeStateOf,
+  closeDateNeeded, closingSteps, safetyFeeApplies, safetyFeeDue, safetyFeeStateOf, triggerLabel,
 } from '@/lib/settlement';
 import type { SettlementStep, SettlementSummary } from '@/types/project';
 import type { TodoItem } from '@/lib/todo-types';
@@ -234,4 +234,4 @@ const nosOf = (steps: SettlementStep[]): string => `${steps.map((s) => s.no).joi
 
 /** 무엇이 찼나 — 같은 트리거가 겹치면 한 번만 적는다 */
 const triggersOf = (steps: SettlementStep[]): string =>
-  [...new Set(steps.map((s) => s.trigger))].join('·');
+  [...new Set(steps.map((s) => triggerLabel(s.trigger)))].join('·');

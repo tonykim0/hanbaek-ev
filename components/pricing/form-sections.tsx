@@ -8,7 +8,7 @@
  */
 import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import type { Trigger } from '@/types/project';
-import { RECEIVE_TRIGGERS } from '@/lib/settlement';
+import { RECEIVE_TRIGGERS, triggerLabel } from '@/lib/settlement';
 import { won } from '@/lib/format';
 import { Btn, Err, FIELD, FIELD_CELL, Tag } from '@/components/ui';
 import { Field, FormSection } from './form-parts';
@@ -52,7 +52,7 @@ export function StepsSection({
               {stepsLocked ? (
                 /* 모양은 운영사 것 — 트리거·방식은 글자로 굳히고 고정액만 연다 (화면 규칙 4번) */
                 <span className="font-bold text-slate-700">
-                  {s.trigger}
+                  {triggerLabel(s.trigger)}
                   <span className="ml-1.5 text-tiny font-semibold text-slate-400">
                     {s.kind === '고정' ? '고정액' : s.kind === '비율' ? `${s.value}%` : '잔액'}
                   </span>
@@ -64,7 +64,7 @@ export function StepsSection({
                     onChange={(e) => setStep(i, { trigger: e.target.value as Trigger })}
                     className={FIELD_CELL}
                   >
-                    {RECEIVE_TRIGGERS.map((t) => <option key={t} value={t}>{t}</option>)}
+                    {RECEIVE_TRIGGERS.map((t) => <option key={t} value={t}>{triggerLabel(t)}</option>)}
                   </select>
                   <select
                     value={s.kind}

@@ -23,7 +23,7 @@ import type { SettlementRule } from '@/types/project';
 export const SETTLEMENT_RULES: SettlementRule[] = [
   {
     id: 'pl-2step',
-    name: '환경부 승인 200,000원 → 준공마감 잔액',
+    name: '기후부 승인 200,000원 → 준공마감 잔액',
     steps: [
       { trigger: '환경부 승인', basis: { kind: '고정', unit: 200_000 } },
       { trigger: '준공마감', basis: { kind: '잔액' } },
@@ -53,7 +53,7 @@ export const SETTLEMENT_RULES: SettlementRule[] = [
   },
   {
     id: 'env-40-60',
-    name: '환경부 승인 40% → 준공마감 60%',
+    name: '기후부 승인 40% → 준공마감 60%',
     steps: [
       { trigger: '환경부 승인', basis: { kind: '비율', ratio: 0.4 } },
       { trigger: '준공마감', basis: { kind: '비율', ratio: 0.6 } },
@@ -63,7 +63,7 @@ export const SETTLEMENT_RULES: SettlementRule[] = [
   },
   {
     id: 'hec-3step',
-    name: '환경부 승인 300,000원 → 착공 800,000원 → 준공마감 1,200,000원',
+    name: '기후부 승인 300,000원 → 착공 800,000원 → 준공마감 1,200,000원',
     steps: [
       { trigger: '환경부 승인', basis: { kind: '고정', unit: 300_000 } },
       { trigger: '착공', basis: { kind: '고정', unit: 800_000 } },

@@ -39,13 +39,13 @@ export const PICKABLE = [
   { key: 'gc', label: '시공사', attr: 'gc', group: '기본' },
   { key: 'created', label: '접수일', attr: 'month', group: '기본' },
   // 영업(계약) 단계에서 다루는 속성
-  { key: 'queue', label: '환경부 대기번호', attr: 'queue', group: '영업' },
+  { key: 'queue', label: '기후부 대기번호', attr: 'queue', group: '영업' },
   { key: 'biz', label: '사업유형', attr: 'biz', group: '영업' },
   { key: 'bldg', label: '건축물', attr: 'bldg', group: '영업' },
   // 시공 마일스톤 — 날짜의 유무가 곧 그 일의 여부다. 완료 체크는 ✓ 로 얹는다.
-  // 한 칸 — 환경부 승인과 운영사 시공승인을 같은 날로 본다 (한백 2026-08-27)
+  // 한 칸 — 기후부 승인과 운영사 시공승인을 같은 날로 본다 (한백 2026-08-27 · 이름은 2026-11-17 까지 「환경부 승인일」)
   // ★일이 일어나는 차례다★ — 시공 탭의 구간 · 상자 차례와 같다(2026-11-05 기록 날짜를 더하며 맞췄다)
-  { key: 'envApproval', label: '환경부 승인일', group: '시공' },
+  { key: 'envApproval', label: '기후부 승인일', group: '시공' },
   { key: 'notify', label: '행위신고 신청', group: '시공' },
   { key: 'notifyCert', label: '행위신고 완료', group: '시공' },
   { key: 'chargerOrder', label: '충전기 발주', group: '시공' },
@@ -215,7 +215,7 @@ const noKepco = (p: ProjectSummary) => !hasKepcoWork(p.powerType);
 export const DATE_COLS: Partial<Record<ColKey, DateCol>> = {
   /* 날짜 열마다 정의가 있다 — 빠지면 그 열의 필터(presenceOf)가 설 자리가 없다. satisfies 가 컴파일 때 본다 */
   envApproval: {
-    field: 'envApprovalDate', name: '환경부 승인일', step: '환경부 승인', date: (p) => m(p).envApprovalDate,
+    field: 'envApprovalDate', name: '기후부 승인일', step: '기후부 승인', date: (p) => m(p).envApprovalDate,
     na: (p) => !subsidized(p.bizType),
   },
   notify: { field: 'notifyDate', name: '행위신고 신청일', date: (p) => m(p).notifyDate, na: (p) => m(p).notifySkipped },

@@ -103,7 +103,7 @@ export const ATTRS: Attr[] = [
   { key: 'gc', label: '시공사', valuesOf: (p) => one(p.gcOrg) },
   {
     key: 'queue',
-    label: '환경부 대기번호',
+    label: '기후부 대기번호',
     /*
      * 번호 자체로 거를 일은 없다 — 「받았나 아직인가」가 실제 질문이다.
      *
@@ -182,12 +182,21 @@ export type AttrFilters = Partial<Record<AttrKey, string[]>>;
  * 거르는 열쇠가 칸 이름이라, 칸 이름을 바꾸면(2026-11-17 「운영사 계약서 제출」 → 「계약서 제출」) 걸어 둔 필터가 없는 값을
  * 가리킨다 — 「필터 1」이 걸린 채 0건이 뜨고, 그 값은 판에 없어 무엇이 걸렸는지도 안 보인다.
  */
-const RENAMED_COLS: Record<string, string> = { '운영사 계약서 제출': '계약서 제출' };
+const RENAMED_VALUES: Partial<Record<AttrKey, Record<string, string>>> = {
+  col: { '운영사 계약서 제출': '계약서 제출' },
+  /* 최근 완료의 값은 일 이름이다 — 「환경부 승인」을 「기후부 승인」으로 바꿨다(2026-11-17 한백 「기후부로 바꿔」 · lib/project-table DATE_COLS) */
+  lastDone: { '환경부 승인': '기후부 승인' },
+};
 
-/** 읽어 온 필터(주소 · 저장분)의 옛 칸 이름을 지금 이름으로 — 다른 축은 그대로다 */
-export function renameSavedCols(attrs: AttrFilters): AttrFilters {
-  if (!attrs.col?.some((v) => v in RENAMED_COLS)) return attrs;
-  return { ...attrs, col: [...new Set(attrs.col.map((v) => RENAMED_COLS[v] ?? v))] };
+/** 읽어 온 필터(주소 · 저장분)의 옛 값 이름을 지금 이름으로 — 이름이 바뀐 적 없는 축은 그대로다 */
+export function renameSavedValues(attrs: AttrFilters): AttrFilters {
+  let out = attrs;
+  for (const [key, renamed] of Object.entries(RENAMED_VALUES) as [AttrKey, Record<string, string>][]) {
+    const picked = attrs[key];
+    if (!picked?.some((v) => v in renamed)) continue;
+    out = { ...out, [key]: [...new Set(picked.map((v) => renamed[v] ?? v))] };
+  }
+  return out;
 }
 
 /** 이 자료에 실제로 있는 값만 고를 수 있게 한다 — 없는 값을 고르는 자리를 두지 않는다 */

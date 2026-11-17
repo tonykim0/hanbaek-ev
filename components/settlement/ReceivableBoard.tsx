@@ -27,7 +27,7 @@ import type { SettlementSummary } from '@/types/project';
 import {
   claimMonthLabel, closeDateNeeded, receivableMoneyOf,
   safetyFeeApplies, safetyFeeDue, safetyFeeReceiptState, safetyFeeStateOf,
-  STEP_LABEL, STEP_TONE,
+  STEP_LABEL, STEP_TONE, triggerLabel,
 } from '@/lib/settlement';
 import { today } from '@/lib/date';
 import {
@@ -677,7 +677,7 @@ function StepCell({
   const note = step.state === 'collected' ? step.collectedAt
     : step.state === 'claimed' ? `${step.claimedAt} 청구`
       : step.state === 'scheduled' && step.claimableFrom ? `${claimMonthLabel(step.claimableFrom)}부터`
-        : step.trigger;
+        : triggerLabel(step.trigger);
   return (
     <Td className="whitespace-nowrap">
       <Badge tone={STEP_TONE[step.state]}>{STEP_LABEL[step.state]}</Badge>

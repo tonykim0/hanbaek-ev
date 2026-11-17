@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  ATTR_BY_KEY, ATTRS, countActive, optionsOf, panelAttrKeys, passesAttrs, renameSavedCols, restStartOf, valueLabelOf,
+  ATTR_BY_KEY, ATTRS, countActive, optionsOf, panelAttrKeys, passesAttrs, renameSavedValues, restStartOf, valueLabelOf,
   type AttrFilters,
 } from '@/lib/project-filter';
 import {
@@ -46,7 +46,7 @@ describe('날짜 축 — 날짜 열마다 하나', () => {
       expect(ATTR_BY_KEY.get(key)?.label, key).toBe(labelOf(key));
     }
     expect(ATTR_BY_KEY.get('start')?.label).toBe('착공');
-    expect(ATTR_BY_KEY.get('envApproval')?.label).toBe('환경부 승인일');
+    expect(ATTR_BY_KEY.get('envApproval')?.label).toBe('기후부 승인일');
   });
 
   it('축 이름이 겹치지 않는다 — 주소 · 저장분의 열쇠라 겹치면 한 축이 다른 축을 덮는다', () => {
@@ -222,14 +222,23 @@ describe('단계 — 필터 판의 맨 앞 축 (2026-11-11 「필터에 현재 �
    * 「필터 1」이 걸린 채 0건이 뜬다. 주소 · 브라우저에서 읽어 올 때 지금 이름으로 받는다.
    */
   it('옛 칸 이름으로 걸어 둔 필터는 지금 이름으로 받는다 — 0건이 뜨지 않게', () => {
-    expect(renameSavedCols({ col: ['운영사 계약서 제출', '착공'], cpo: ['나이스인프라'] }))
+    expect(renameSavedValues({ col: ['운영사 계약서 제출', '착공'], cpo: ['나이스인프라'] }))
       .toEqual({ col: ['계약서 제출', '착공'], cpo: ['나이스인프라'] });
     // 옛 이름과 새 이름이 같이 있으면 하나로
-    expect(renameSavedCols({ col: ['운영사 계약서 제출', '계약서 제출'] })).toEqual({ col: ['계약서 제출'] });
+    expect(renameSavedValues({ col: ['운영사 계약서 제출', '계약서 제출'] })).toEqual({ col: ['계약서 제출'] });
     // 손댈 것이 없으면 그 객체 그대로다(상태를 괜히 새로 만들지 않는다)
     const same = { col: ['착공'] };
-    expect(renameSavedCols(same)).toBe(same);
-    expect(passesAttrs(site({ status: '계약서 제출' }), renameSavedCols({ col: ['운영사 계약서 제출'] }))).toBe(true);
+    expect(renameSavedValues(same)).toBe(same);
+    expect(passesAttrs(site({ status: '계약서 제출' }), renameSavedValues({ col: ['운영사 계약서 제출'] }))).toBe(true);
+  });
+
+  /* 최근 완료의 값은 일 이름이다 — 「환경부 승인」이 「기후부 승인」이 됐다(2026-11-17 한백 「기후부로 바꿔」) */
+  it('최근 완료를 옛 일 이름으로 걸어 둔 필터도 지금 이름으로 받는다', () => {
+    expect(renameSavedValues({ lastDone: ['환경부 승인', '착공'], col: ['운영사 계약서 제출'] }))
+      .toEqual({ lastDone: ['기후부 승인', '착공'], col: ['계약서 제출'] });
+    // 다른 축의 같은 글자는 건드리지 않는다 — 사업유형의 값 「환경부」는 그대로다
+    const biz = { biz: ['환경부'] };
+    expect(renameSavedValues(biz)).toBe(biz);
   });
 });
 

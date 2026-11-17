@@ -19,7 +19,7 @@ import type {
 import { PAYOUT_CATEGORIES, replLabel } from '@/types/project';
 import {
   adjustEntriesOf, collectionRate, distributionUnit, entryTypeOf, payoutSideOf, payoutStepsOf,
-  STEP_LABEL, STEP_TONE, triggerSource, turnkeyUnit,
+  STEP_LABEL, STEP_TONE, triggerLabel, triggerSource, turnkeyUnit,
   claimMonthLabel, safetyFeeApplies, safetyFeeDue, safetyFeeReceiptState, safetyFeeStateOf,
 } from '@/lib/settlement';
 import type { Visibility } from '@/lib/roles';
@@ -181,7 +181,7 @@ export function ReceivableTab({
             <span className="w-10 shrink-0 text-tiny font-bold text-slate-400">{s.no}차</span>
             <div className="min-w-0 flex-1">
               <p className="text-lead font-bold text-slate-800">
-                {s.trigger === '해당없음' ? '해당없음' : `${s.trigger} · ${s.basisLabel}`}
+                {s.trigger === '해당없음' ? '해당없음' : `${triggerLabel(s.trigger)} · ${s.basisLabel}`}
               </p>
               <p className="text-tiny text-slate-500">
                 {s.state === 'na' ? '해당 차수 없음' : triggerSource(s.trigger)}

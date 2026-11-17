@@ -10,7 +10,7 @@ import {
   payoutPrerequisiteBlockersOf, payoutUnitOf,
   payoutReleaseOf,
   checkSettlementSteps, payInstallments, payoutStepsOf, stepAmounts, stepUnits,
-  settlementRuleNameOf, settlementStepsKeyOf, siteRuleOf, turnkeyUnit,
+  settlementRuleIdOf, settlementRuleNameOf, settlementStepsKeyOf, siteRuleOf, triggerLabel, triggerSource, turnkeyUnit,
 } from '@/lib/settlement';
 import type { PayoutMilestones, SettlementRule, SettlementStepRule } from '@/types/project';
 
@@ -203,7 +203,22 @@ describe('payInstallments · payoutStepsOf — 협력사 지급 회차 (70/30)',
 
 describe('규칙 이름·키 — 같은 모양이면 같은 규칙이다', () => {
   it('이름은 단계에서 유도한다', () => {
-    expect(settlementRuleNameOf(env4060)).toBe('환경부 승인 40% → 준공마감 잔액');
+    expect(settlementRuleNameOf(env4060)).toBe('기후부 승인 40% → 준공마감 잔액');
+  });
+
+  /*
+   * ★저장값은 「환경부 승인」, 화면은 「기후부 승인」★ (한백 2026-11-17 「기후부로 바꿔」). 규칙의 id 가 단계(트리거 글자)의
+   * 해시라 저장값을 바꾸면 현장에 걸린 규칙을 못 찾는다 — 그래서 id · 키는 옛 글자로 그대로여야 한다.
+   */
+  it('트리거는 화면에만 「기후부 승인」이다 — 키와 id 는 저장값 그대로', () => {
+    expect(triggerLabel('환경부 승인')).toBe('기후부 승인');
+    expect(triggerLabel('착공')).toBe('착공');
+    expect(triggerSource('환경부 승인')).toBe('기후부 승인일');
+    expect(settlementStepsKeyOf(env4060)).toContain('환경부 승인|비율|0.4');
+    expect(settlementRuleIdOf(env4060)).toBe(settlementRuleIdOf([
+      { trigger: '환경부 승인', basis: { kind: '비율', ratio: 0.4 } },
+      { trigger: '준공마감', basis: { kind: '잔액' } },
+    ]));
   });
 
   it('트리거·방식·금액이 같으면 키가 같다', () => {

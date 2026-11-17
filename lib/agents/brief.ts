@@ -116,7 +116,7 @@ function operatorBrief(data: ScopeData, cpo: CpoName): string {
     s.what !== s.column ? s.what : null,
     `${s.units}대`,
     s.queueNo ? `대기번호 ${s.queueNo}` : null,
-    s.envApproval ? `환경부 승인 ${s.envApproval}` : null,
+    s.envApproval ? `기후부 승인 ${s.envApproval}` : null,
   ].filter(Boolean).join(' | '));
   return [
     `[${cpo} 현장 — ${data.today} 콘솔 기준]`,
@@ -124,7 +124,7 @@ function operatorBrief(data: ScopeData, cpo: CpoName): string {
     `칸별: ${byColumn || '없음'}`,
     '',
     `진행 중인 현장 (정체가 긴 순${live.length > SITE_LIMIT ? `, 앞 ${SITE_LIMIT}곳 — 외 ${live.length - SITE_LIMIT}곳` : ''}):`,
-    `관리번호 | 현장 | 칸 | 차례 | 정체 | 지금 할 일 | 대수 | 대기번호 | 환경부 승인`,
+    `관리번호 | 현장 | 칸 | 차례 | 정체 | 지금 할 일 | 대수 | 대기번호 | 기후부 승인`,
     ...(lines.length ? lines.map((l) => `- ${l}`) : ['- 없음']),
   ].join('\n');
 }

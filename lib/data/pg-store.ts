@@ -503,7 +503,7 @@ export const pgRepository: ProjectRepository = {
 
 
   async setEnvQueueNo(projectId, value, actor): Promise<void> {
-    assertAdmin(actor, '환경부 대기번호 입력');
+    assertAdmin(actor, '기후부 대기번호 입력');
 
     const db = getDb();
     await db.transaction(async (tx) => {
@@ -518,7 +518,7 @@ export const pgRepository: ProjectRepository = {
        * 화면에서 입력칸을 주지 않지만 여기서도 막는다 — 라우트는 직접 부를 수 있다.
        */
       if (!subsidized(row.bizType as BizType | null) && value !== null) {
-        throw new Error(`${row.bizType} 현장은 환경부 대기번호가 없습니다.`);
+        throw new Error(`${row.bizType} 현장은 기후부 대기번호가 없습니다.`);
       }
       if (row.envQueueNo === value) return;
 
@@ -528,7 +528,7 @@ export const pgRepository: ProjectRepository = {
         .where(eq(projects.id, projectId));
 
       await writeAudit(tx, {
-        projectId, actor, action: '환경부 대기번호 변경',
+        projectId, actor, action: '기후부 대기번호 변경',
         field: 'envQueueNo', oldValue: row.envQueueNo, newValue: value,
       });
 

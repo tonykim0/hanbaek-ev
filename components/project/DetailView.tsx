@@ -927,7 +927,7 @@ function ApprovalFacts({
         </div>
       )}
       <EditableFact
-        label="환경부 대기번호"
+        label="기후부 대기번호"
         value={envQueueNo}
         canEdit={canReview}
         url={`/api/projects/${projectId}/env-queue`}
@@ -938,19 +938,20 @@ function ApprovalFacts({
         na={isSelfInvest}
       />
       {/*
-        * 「환경부 승인일」 한 칸 — 운영사 시공승인도 같은 날로 본다(한백 2026-08-27).
-        * 이름은 원래 쓰던 그대로다(한백 2026-08-27) — 한백이 이 날짜를 부르는 말이
-        * 「환경부 승인일」이라, 줄여 적으면 현장에서 쓰는 말과 화면이 갈린다.
+        * 「기후부 승인일」 한 칸 — 운영사 시공승인도 같은 날로 본다(한백 2026-08-27).
+        * 이름은 한백이 이 날짜를 부르는 말 그대로다 — 줄여 적으면 현장에서 쓰는 말과 화면이 갈린다.
+        * 2026-11-17 까지 「환경부 승인일」 · 「환경부 대기번호」였다(한백 「기후부로 바꿔」 — 승인일 · 대기번호 · 알림 · 기성 차수의
+        * 이름을 바꿨다. 사업구분의 값 「환경부」와 서류 이름의 「(환경부)」는 저장값과 묶여 있어 그대로다).
         */}
       <DateFact
-        label="환경부 승인일"
+        label="기후부 승인일"
         value={process.envApprovalDate}
         canEdit={edit === 'all'}
         busy={busyKey === 'envApprovalDate'}
         onSave={(v) => save('envApprovalDate', v)}
         /* 승인이 난 뒤 얼마나 지났나 — 발주가 안 나간 채 몇 주가 흐르는 일이 있다 */
         elapsed
-        hint="기성 「환경부 승인」 트리거와 「기후부 승인」 단계가 이 날짜로 열립니다"
+        hint="「기후부 승인」 단계와 그 기성 차수가 이 날짜로 열립니다"
         undo={canCancelApproval ? { label: '승인 취소', onClick: () => setCancelling(true) } : undefined}
         /*
          * 자체투자·연동에는 환경부 승인이 없다 (한백 2026-08-28) — 대기번호와 같은 자리다.
@@ -969,7 +970,7 @@ function ApprovalFacts({
         */}
       <Confirm
         open={cancelling}
-        title="환경부 승인을 취소할까요?"
+        title="기후부 승인을 취소할까요?"
         detail={`승인일 ${process.envApprovalDate ?? ''} 을 지웁니다.${
           process.status === APPROVED_STATUS ? ' 현장은 「계약서 제출」 단계로 돌아갑니다.' : ''
         } 승인 알림을 이미 읽은 사람에게는 취소 알림이 갑니다.`}

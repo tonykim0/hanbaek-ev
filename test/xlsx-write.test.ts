@@ -95,7 +95,7 @@ describe('tableSheet — 화면에서 보는 그대로', () => {
     expect(columns.map((c) => c.header)).toEqual([
       // 최근 완료는 둘로 — 일 이름과 그 날(lib/project-table tableSheet)
       '현장명', '관리번호', '주소', '단계', '최근 완료', '최근 완료일', '대수', '계약연수', '운영사', '전력인입', '영업사', '시공사',
-      '환경부 승인일', '행위신고 신청일', '행위신고 완료일', '충전기 발주일', '충전기 수령일',
+      '기후부 승인일', '행위신고 신청일', '행위신고 완료일', '충전기 발주일', '충전기 수령일',
       '착공서류 제출일', '착공일', '기초 및 배관/배선일', '충전기 및 캐노피 설치일', '설치완료일',
       '전기사용신청일', '사용전점검/검사일', '한전 외선공사일', '계량기 부설일', '지자체 사용검사 신청일',
       '개통완료일', '준공서류 제출일',
@@ -119,8 +119,8 @@ describe('tableSheet — 화면에서 보는 그대로', () => {
     const none = new Set<ColKey>();
     const self = tableSheet([site({ bizType: '자체투자' })], none, 'construction');
     const at = (h: string) => self.columns.findIndex((c) => c.header === h);
-    expect(self.rows[0][at('환경부 승인일')]).toBe('해당없음');
-    expect(self.rows[0][at('환경부 대기번호')]).toBe('해당없음');
+    expect(self.rows[0][at('기후부 승인일')]).toBe('해당없음');
+    expect(self.rows[0][at('기후부 대기번호')]).toBe('해당없음');
     const link = tableSheet([site({ bizType: '기설치 연동' })], none, 'construction');
     expect(link.rows[0][at('충전기 발주일')]).toBe('해당없음');
     expect(link.rows[0][at('충전기 수령일')]).toBe('해당없음');

@@ -65,9 +65,9 @@ describe('최근 완료 — 일의 차례에서 가장 뒤의 적힌 일', () =>
   });
 
   it('일 이름 — 열 이름이 일 이름이 아닌 둘만 따로(환경부 승인 · 준공서류 제출)', () => {
-    expect(lastDoneOf(site({}, { envApprovalDate: '2026-02-18' }))?.step).toBe('환경부 승인');
+    expect(lastDoneOf(site({}, { envApprovalDate: '2026-02-18' }))?.step).toBe('기후부 승인');
     expect(lastDoneOf(site({}, { completionSubmitAt: '2026-06-30' }))?.step).toBe('준공서류 제출');
-    expect(LAST_DONE_STEPS[0]).toBe('환경부 승인');
+    expect(LAST_DONE_STEPS[0]).toBe('기후부 승인');
     expect(LAST_DONE_STEPS.at(-1)).toBe('준공서류 제출');
     expect(LAST_DONE_STEPS).toContain(labelOf('chargerInstall'));
   });
@@ -89,7 +89,7 @@ describe('표 · 필터 · 엑셀이 같은 값을 본다', () => {
   it('필터 값은 일 이름 · 차례는 일의 차례 · 안 적힌 현장은 (없음)이 끝', () => {
     expect(ATTR_BY_KEY.get('lastDone')?.valuesOf(installed)).toEqual(['설치완료']);
     expect(ATTR_BY_KEY.get('lastDone')?.valuesOf(none)).toEqual([EMPTY]);
-    expect(optionsOf(all, 'lastDone')).toEqual(['환경부 승인', '착공', '설치완료', EMPTY]);
+    expect(optionsOf(all, 'lastDone')).toEqual(['기후부 승인', '착공', '설치완료', EMPTY]);
     const picked = all.filter((p) => passesAttrs(p, { lastDone: ['착공'] })).map((p) => p.id);
     expect(picked.sort()).toEqual(['c', 'd']);
   });

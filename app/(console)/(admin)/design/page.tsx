@@ -67,7 +67,7 @@ const TYPE: Array<[string, string, string]> = [
 /* 빈 값 네 가지 — 무엇이 없는지가 아니라 「왜 없는지」로 갈린다 */
 const EMPTY_KINDS: Array<[React.ReactNode, string, string]> = [
   [<Empty key="m" kind="miss" />, '넣어야 하는데 안 넣음', '영업사 이름 · 단가 케이스 — 노랑이라 눈에 걸린다'],
-  [<Empty key="w" kind="wait" />, '아직 올 때가 아님', '환경부 대기번호 — 접수 뒤에 오는 값'],
+  [<Empty key="w" kind="wait" />, '아직 올 때가 아님', '기후부 대기번호 — 접수 뒤에 오는 값'],
   [<Empty key="n" kind="na" />, '이 현장에는 규칙상 없음', '자체투자의 대기번호 · 기설치 조사'],
   [<span key="z" className="font-bold text-slate-800">0건</span>, '세었고 없음', '「아직 없습니다」라고 적지 않는다 — 0건이 그 말이다'],
 ];

@@ -41,10 +41,13 @@ export const TAB_OF_SCOPE: Record<NoteScope, 'intake' | 'construction' | 'receiv
  * 받는 사람은 시공 탭 글과 같다(noteAudience '시공') — 누르면 시공 탭으로 간다. 대기번호도 같다(queueNotice).
  *
  * ★한 줄뿐이다★ (한백 2026-10-15 「승인 알림도 한 줄로」 — 대기번호 알림과 같은 꼴). 할 일은 붙이지 않는다.
- * 기성은 말하지 않는다 — 이 날짜가 기성 「환경부 승인」 차수를 열지만 기성은 한백만 보는 탭이다.
+ * 기성은 말하지 않는다 — 이 날짜가 기성 「기후부 승인」 차수를 열지만 기성은 한백만 보는 탭이다.
+ *
+ * ★글의 「환경부」는 2026-11-17 부터 「기후부」다★ (한백 「기후부로 바꿔」 — 승인 · 승인 취소 · 대기번호 셋 다).
+ * 이미 나간 알림의 제목 · 글도 migrations/0134 가 옮겼다 — 목록의 꼬리표가 저장된 제목이라 두 이름이 섞여 서지 않게.
  */
 export function approvalNotice(date: string): { title: string; body: string } {
-  return { title: '환경부 승인', body: `승인일 ${date} — 환경부 승인 완료` };
+  return { title: '기후부 승인', body: `승인일 ${date} — 기후부 승인 완료` };
 }
 
 /**
@@ -52,7 +55,7 @@ export function approvalNotice(date: string): { title: string; body: string } {
  * (한백 지시 2026-11-17 · store/notifications retractApproval). 승인 알림과 같은 한 줄 꼴이다.
  */
 export function approvalCancelNotice(date: string): { title: string; body: string } {
-  return { title: '환경부 승인 취소', body: `승인일 ${date} 입력 취소 — 아직 승인 전` };
+  return { title: '기후부 승인 취소', body: `승인일 ${date} 입력 취소 — 아직 승인 전` };
 }
 
 /**
@@ -63,5 +66,5 @@ export function approvalCancelNotice(date: string): { title: string; body: strin
  * ★한 줄뿐이다★ (한백 2026-10-13 「대기번호 2026-595 — 환경부 접수 완료, 위 메시지만」) — 할 일은 붙이지 않는다.
  */
 export function queueNotice(no: string): { title: string; body: string } {
-  return { title: '환경부 대기번호', body: `대기번호 ${no} — 환경부 접수 완료` };
+  return { title: '기후부 대기번호', body: `대기번호 ${no} — 기후부 접수 완료` };
 }

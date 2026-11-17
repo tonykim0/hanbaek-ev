@@ -32,7 +32,7 @@ function row(over: Partial<SettlementSummary> = {}): SettlementSummary {
   return {
     id: 'p1', name: '테스트아파트', cpo: '에버온', qty: 3,
     stage: 'construction', status: '착공' as ProcessStatus,
-    ruleName: '환경부 승인 300,000원 → 준공마감 잔액',
+    ruleName: '기후부 승인 300,000원 → 준공마감 잔액',
     steps: [step({ no: 1 }), step({ no: 2 }), step({ no: 3 })],
     planTotal: 900_000, collectedTotal: 0, cpoCloseDate: null,
     passThrough: false,
@@ -71,7 +71,7 @@ describe('기성 청구 — 청구할 수 있는데 아직 청구하지 않은 �
     })], 오늘);
     expect(t.kind).toBe('기성 청구');
     expect(t.group).toBe('기성');
-    expect(t.what).toBe('1차 기성 300,000원 · 환경부 승인 충족');
+    expect(t.what).toBe('1차 기성 300,000원 · 기후부 승인 충족');
     expect(t.href).toBe('/projects/p1?tab=receivable');
   });
 
@@ -84,7 +84,7 @@ describe('기성 청구 — 청구할 수 있는데 아직 청구하지 않은 �
       ],
     })], 오늘);
     expect(items).toHaveLength(1);
-    expect(items[0].what).toBe('1·2차 기성 800,000원 · 환경부 승인·착공 충족');
+    expect(items[0].what).toBe('1·2차 기성 800,000원 · 기후부 승인·착공 충족');
   });
 
   it('급함은 ★가장 오래 청구 가능했던 차수★로 잰다 — 청구할 수 있게 된 날(다음 달 1일)부터, 하루 = 1', () => {
@@ -122,7 +122,7 @@ describe('기성 청구 — 청구할 수 있는데 아직 청구하지 않은 �
     const [t] = receivableTodos([row({
       steps: [청구가능({ no: 1, planAmount: null }), step({ no: 2 }), step({ no: 3 })],
     })], 오늘);
-    expect(t.what).toBe('1차 기성 금액 미정 · 환경부 승인 충족');
+    expect(t.what).toBe('1차 기성 금액 미정 · 기후부 승인 충족');
   });
 });
 

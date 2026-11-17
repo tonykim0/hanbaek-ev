@@ -97,7 +97,7 @@ export const processStore: Pick<
         const was = String(before?.envApprovalDate);
         await retractApproval(tx, { projectId, actorId: actor.id, ...approvalCancelNotice(was) });
         await writeAudit(tx, {
-          projectId, actor, action: '환경부 승인 취소',
+          projectId, actor, action: '기후부 승인 취소',
           field: 'process.envApprovalDate', oldValue: was, newValue: null,
         });
       }
@@ -213,7 +213,7 @@ export const processStore: Pick<
         await lockReceivable(tx, projectId);
         const [full] = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
         const why = full ? approvalCancelBlock(status, ctx, await stepsNow(full)) : null;
-        if (why) throw new Error(`${status} 로 되돌리면 환경부 승인이 취소됩니다 — ${why}`);
+        if (why) throw new Error(`${status} 로 되돌리면 기후부 승인이 취소됩니다 — ${why}`);
       }
       const approvalStamp = unapprove ? { envApprovalDate: null } : {};
       if (row) {
@@ -250,7 +250,7 @@ export const processStore: Pick<
       if (unapprove) {
         await retractApproval(tx, { projectId, actorId: actor.id, ...approvalCancelNotice(String(approvedOn)) });
         await writeAudit(tx, {
-          projectId, actor, action: '환경부 승인 취소',
+          projectId, actor, action: '기후부 승인 취소',
           field: 'process.envApprovalDate', oldValue: String(approvedOn), newValue: null,
         });
       }
@@ -331,13 +331,13 @@ async function followApproval(projectId: string, date: string | null, actor: Act
     if (nextStatusOf(cur, ctx) !== APPROVED_STATUS) return;        // 「계약서 제출」에 서 있을 때만
     if (!canEnter(APPROVED_STATUS, record.process, ctx).ok) return;
     if (toDetail(record, await ruleMap(), await settleMap()).stage === 'intake') return;
-    await moveStatus(projectId, cur, APPROVED_STATUS, actor, '진행 단계 변경 (환경부 승인일 입력)');
+    await moveStatus(projectId, cur, APPROVED_STATUS, actor, '진행 단계 변경 (기후부 승인일 입력)');
     return;
   }
   if (cur !== APPROVED_STATUS) return;
   const back = prevStatusOf(cur, ctx);
   if (!back) return;
-  await moveStatus(projectId, cur, back, actor, '진행 단계 되돌림 (환경부 승인 취소)', { progress: false });
+  await moveStatus(projectId, cur, back, actor, '진행 단계 되돌림 (기후부 승인 취소)', { progress: false });
 }
 
 /**

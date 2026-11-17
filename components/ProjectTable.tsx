@@ -282,7 +282,7 @@ export default function ProjectTable({
               {show('qty') && head('대수', { sort: 'qty' })}
               {show('term') && head('계약연수', { sort: 'term', attr: 'term' })}
               {show('cpo') && head('운영사', { attr: 'cpo' })}
-              {show('queue') && head('환경부 대기번호', { attr: 'queue' })}
+              {show('queue') && head('기후부 대기번호', { attr: 'queue' })}
               {show('biz') && head('사업유형', { attr: 'biz' })}
               {show('bldg') && head('건축물', { attr: 'bldg' })}
               {show('powerIn') && head('전력인입', { attr: 'power' })}
@@ -613,7 +613,7 @@ function QueueCell({ p, canEdit }: { p: ProjectSummary; canEdit: boolean }) {
        * 되저장해 남의 편집을 덮었다 (감사 M7). 값이 바뀌면 칸을 새로 만든다.
        */
       key={p.envQueueNo ?? ''}
-      aria-label={`${p.name} 환경부 대기번호`}
+      aria-label={`${p.name} 기후부 대기번호`}
       defaultValue={p.envQueueNo ?? ''}
       placeholder="2026-595"
       disabled={busy}

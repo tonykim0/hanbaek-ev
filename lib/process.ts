@@ -115,7 +115,7 @@ export const STATUS_GATES: Record<ProcessStatus, StatusGate | null> = {
    * 자체투자·기설치 연동은 이 칸을 안 지나므로(stepsOf) 여기서 묻지 않는다 — 그래도 한 번 더 가른다.
    */
   '기후부 승인': (p, ctx) => missing([
-    ctx.subsidized && !p.envApprovalDate && { key: 'envApprovalDate', label: '환경부 승인일 (한백 입력)' },
+    ctx.subsidized && !p.envApprovalDate && { key: 'envApprovalDate', label: '기후부 승인일 (한백 입력)' },
   ]),
   // 승인이 났으면(자체투자는 계약서를 냈으면) 시작할 수 있다 — 행위신고 접수를 언제 넣을지는 시공팀 판단이라 조건이 없다
   '행위신고': null,
@@ -140,7 +140,7 @@ export const STATUS_GATES: Record<ProcessStatus, StatusGate | null> = {
      */
     (p, ctx) => missing([
       // 자체투자·연동에는 환경부 승인이 없다 — 없는 것을 기다리게 두지 않는다
-      ctx.subsidized && !p.envApprovalDate && { key: 'envApprovalDate', label: '환경부 승인일 (한백 입력)' },
+      ctx.subsidized && !p.envApprovalDate && { key: 'envApprovalDate', label: '기후부 승인일 (한백 입력)' },
       !p.notifyDoneAt && !p.notifySkippedAt
         && { key: 'notifyDoneAt', label: '행위신고 대상 여부' },
     ]),
@@ -243,13 +243,13 @@ export function approvalCancelBlock(
   steps: ReadonlyArray<{ no: number; trigger: string; state: string }>
 ): string | null {
   if (ctx.subsidized && statusIndex(cur) > statusIndex(APPROVED_STATUS)) {
-    return `이미 ${cur} 까지 진행돼 환경부 승인일을 지울 수 없습니다 — 단계를 ${APPROVED_STATUS} 까지 먼저 되돌리세요.`;
+    return `이미 ${cur} 까지 진행돼 기후부 승인일을 지울 수 없습니다 — 단계를 ${APPROVED_STATUS} 까지 먼저 되돌리세요.`;
   }
   const used = steps.find((st) => st.trigger === '환경부 승인' && (st.state === 'claimed' || st.state === 'collected'));
   if (!used) return null;
   return used.state === 'collected'
-    ? `기성 ${used.no}차(환경부 승인)를 이미 수금했습니다 — 수금과 청구를 먼저 되돌려야 승인일을 지울 수 있습니다.`
-    : `기성 ${used.no}차(환경부 승인)를 이미 청구했습니다 — 청구를 먼저 취소해야 승인일을 지울 수 있습니다.`;
+    ? `기성 ${used.no}차(기후부 승인)를 이미 수금했습니다 — 수금과 청구를 먼저 되돌려야 승인일을 지울 수 있습니다.`
+    : `기성 ${used.no}차(기후부 승인)를 이미 청구했습니다 — 청구를 먼저 취소해야 승인일을 지울 수 있습니다.`;
 }
 
 /**
@@ -542,7 +542,7 @@ export const HANBAEK_ONLY_PROCESS_FIELDS = [
 ] as const;
 
 const HANBAEK_ONLY_LABEL: Record<(typeof HANBAEK_ONLY_PROCESS_FIELDS)[number], string> = {
-  envApprovalDate: '환경부 승인일',
+  envApprovalDate: '기후부 승인일',
   chargerOrderDate: '충전기 발주일',
   chargerShipDate: '충전기 출고일',
   cpoSubmitDate: '계약서 제출',

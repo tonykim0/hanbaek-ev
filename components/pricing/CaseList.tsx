@@ -14,7 +14,7 @@ import {
   startKey,
 } from '@/lib/pricing-match';
 import {
-  stepUnits,
+  stepUnits, triggerLabel,
 } from '@/lib/settlement';
 import {
   Badge, Blank, Btn, Confirm, Empty, Err, FIELD, FIELD_CELL, PANEL, Tag, Td, Th,
@@ -271,7 +271,7 @@ function Row({
               {step ? (
                 <>
                   <p className="font-bold tabular-nums text-slate-800">{won(stepAmount[i])}</p>
-                  <p className="break-keep text-tiny text-slate-400">{step.trigger}</p>
+                  <p className="break-keep text-tiny text-slate-400">{triggerLabel(step.trigger)}</p>
                 </>
               ) : (
                 // 이 운영사에는 없는 차수다 — 값이 빠진 것이 아니다
