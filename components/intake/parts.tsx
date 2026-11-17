@@ -222,17 +222,19 @@ export function QtyGrid<R extends string>({
 }
 
 export function Select({
-  value, onChange, options, blank,
+  value, onChange, options, blank, labelOf,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: readonly string[];
   blank?: boolean;
+  /** 보이는 이름이 저장값과 다를 때 — 사업구분의 「환경부」는 「기후부」로 보인다(types/project bizLabel) */
+  labelOf?: (v: string) => string;
 }) {
   return (
     <select value={value} onChange={(e) => onChange(e.target.value)} className={FIELD}>
       {blank && <option value="">선택</option>}
-      {options.map((o) => <option key={o} value={o}>{o}</option>)}
+      {options.map((o) => <option key={o} value={o}>{labelOf ? labelOf(o) : o}</option>)}
     </select>
   );
 }

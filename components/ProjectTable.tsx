@@ -22,7 +22,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type RefObject } from '
 import { useAction } from '@/lib/use-action';
 import Link from 'next/link';
 import type { ProcessStatus, ProjectSummary } from '@/types/project';
-import { PROCESS_STATUSES, subsidized } from '@/types/project';
+import { bizLabel, PROCESS_STATUSES, subsidized } from '@/types/project';
 import { isHanbaekOnlyProcessField, processEditOf, type ProcessEdit } from '@/lib/process';
 import { DatePicker } from '@/components/DatePicker';
 import {
@@ -355,7 +355,7 @@ export default function ProjectTable({
                       <QueueCell p={p} canEdit={canMove} />
                     </td>
                   )}
-                  {show('biz') && <Cell value={p.bizType} />}
+                  {show('biz') && <Cell value={bizLabel(p.bizType)} />}
                   {show('bldg') && <Cell value={p.bldgType} />}
                   {show('powerIn') && <Cell value={p.powerType} />}
                   {show('sales') && <Cell value={p.salesOrg} />}

@@ -25,7 +25,7 @@ import { useRouter } from 'next/navigation';
 import type {
   BizType, BuildingType, ContractParty, CpoName, InstallLoc, IntakeDraft, PowerType, PreInstall, ReplType,
 } from '@/types/project';
-import { CONTRACT_PARTIES, MAX_DOC_BYTES, MAX_INTAKE_ZIP_BYTES, replLabel } from '@/types/project';
+import { bizLabel, CONTRACT_PARTIES, MAX_DOC_BYTES, MAX_INTAKE_ZIP_BYTES, replLabel } from '@/types/project';
 import { carryQty, cellKey, cellsOf, linesOf, powerColsOf, replRowsOf } from '@/lib/intake-qty';
 import { canShrink, shrink } from '@/lib/shrink';
 import { uploadIntakeFile, uploadIntakeZip } from '@/lib/intake-upload';
@@ -754,6 +754,7 @@ export default function IntakeForm({ org, isAdmin = false, knownOrgs = [] }: {
               value={bizType ?? ''}
               onChange={(v) => { settleQty(); setBizType((v || null) as BizType | null); touched('bizType'); }}
               options={BIZ}
+              labelOf={(v) => bizLabel(v as BizType)}
               blank
             />
           </Field>

@@ -4,7 +4,7 @@ import {
   useEffect, useRef, useState, type ReactNode,
 } from 'react';
 import { BUILDING_TYPES, bizTypeOfRepl, CHANNELS, CPO_NAMES, powerTypesOfRepl, replTypesOf, type BuildingType, type Channel, type CpoName, type ReplType, type BizType, type PromoStep, type SettlementRule, type SettlementStepRule } from '@/types/project';
-import { replLabel } from '@/types/project';
+import { bizLabel, replLabel } from '@/types/project';
 import { won } from '@/lib/format';
 import { useAction } from '@/lib/use-action';
 
@@ -372,7 +372,7 @@ export function CaseForm({
               {CPO_NAMES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           </Field>
-          <Field label="교체유형" hint={`사업구분 ${bizType}`}>
+          <Field label="교체유형" hint={`사업구분 ${bizLabel(bizType)}`}>
             <select
               value={replType}
               onChange={(e) => {

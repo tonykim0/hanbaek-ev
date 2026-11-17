@@ -6,7 +6,7 @@
  * 값을 「어떻게 그리나」(달력 · 배지 · ✓)는 그대로 표 부품의 일이고, 여기는 「무슨 값인가」만 정한다.
  */
 import type { ProjectSummary } from '@/types/project';
-import { subsidized } from '@/types/project';
+import { bizLabel, subsidized } from '@/types/project';
 import { BOARD_COLUMNS, boardColumnOf, constructionLabelOf } from '@/lib/board';
 import type { AttrKey } from '@/lib/project-filter';
 import { hasKepcoWork, stepsOf } from '@/lib/process';
@@ -345,7 +345,7 @@ function cellOf(p: ProjectSummary, key: ColKey, tab: TableTab): XlsxCell {
     case 'term': { const t = termsOf(p); return t === '—' ? null : t; }
     case 'cpo': return p.cpo ?? null;
     case 'queue': return subsidized(p.bizType) ? (p.envQueueNo ?? null) : NA;
-    case 'biz': return p.bizType ?? null;
+    case 'biz': return bizLabel(p.bizType);
     case 'bldg': return p.bldgType ?? null;
     case 'powerIn': return p.powerType ?? null;
     case 'sales': return p.salesOrg ?? null;

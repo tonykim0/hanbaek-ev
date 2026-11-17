@@ -15,7 +15,7 @@
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ProcessStatus, ProjectSummary } from '@/types/project';
-import { PROCESS_STATUSES } from '@/types/project';
+import { bizLabel, PROCESS_STATUSES } from '@/types/project';
 import { BOARD_COLUMNS, boardColumnOf, isMyCourt, partnerWaitingOf, waitingSinceOf, type BoardColumn } from '@/lib/board';
 import type { Role } from '@/lib/roles';
 import { APPROVED_STATUS, prevStatusOf, statusIndex } from '@/lib/process';
@@ -310,7 +310,7 @@ function Card({
           사업구분 — 카드마다 적는다 (한백 지시 2026-09-30). 환경부 사업과 자체투자는 서류·기성·
           조사가 다 갈리는데, 카드에서는 열어 보기 전까지 어느 쪽인지 알 수 없었다.
         */}
-        {' · '}<span className="font-bold text-slate-700">{p.bizType ?? '사업구분 미지정'}</span>
+        {' · '}<span className="font-bold text-slate-700">{bizLabel(p.bizType) ?? '사업구분 미지정'}</span>
         {/*
           전력인입(수전방식)도 카드마다 (한백 지시 2026-11-06 「보드랑 필터표에 전력인입도 넣어줘. 모자분리랑 한전불입」) —
           한전불입이면 시공 뒤 외선공사 · 계량기 부설까지 가는 현장이라 열기 전에 갈라 보인다. 빈 값도 자리를 지킨다(규칙 6).

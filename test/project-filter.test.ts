@@ -218,6 +218,19 @@ describe('단계 — 필터 판의 맨 앞 축 (2026-11-11 「필터에 현재 �
   });
 
   /*
+   * 사업유형의 「환경부」는 화면에서 「기후부」다 — 저장값 · 거르는 열쇠 · 주소(?biz=환경부)는 그대로(2026-11-17 한백 「둘다 해」 · types/project bizLabel)
+   */
+  it('사업유형은 「기후부」로 보이고, 거르는 값은 저장값 그대로 — 표 칸 · 엑셀도 같은 이름', () => {
+    expect(valueLabelOf('biz', '환경부', 'intake')).toBe('기후부');
+    expect(valueLabelOf('biz', '자체투자', 'construction')).toBe('자체투자');
+    const p = site({ bizType: '환경부' });
+    expect(optionsOf([p], 'biz')).toEqual(['환경부']);
+    expect(passesAttrs(p, { biz: ['환경부'] })).toBe(true);
+    const t = tableSheet([p], new Set(), 'intake');
+    expect(t.rows[0][t.columns.findIndex((c) => c.header === '사업유형')]).toBe('기후부');
+  });
+
+  /*
    * 칸 이름이 거르는 열쇠라, 이름을 바꾸면(2026-11-17 「운영사 계약서 제출」 → 「계약서 제출」) 걸어 둔 필터가 없는 값을 가리킨다 —
    * 「필터 1」이 걸린 채 0건이 뜬다. 주소 · 브라우저에서 읽어 올 때 지금 이름으로 받는다.
    */

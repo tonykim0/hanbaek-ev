@@ -33,7 +33,7 @@ import type {
   BizType, CpoName, NewPayoutEntry, NoticeFile, PayoutCategory, PayoutKind, PayoutRow,
   ReplType, SettlementStep, SettlementSummary,
 } from '@/types/project';
-import { BIZ_TYPES, CPO_NAMES, normalizeRepl, POWER_TYPES, TERM_YEARS } from '@/types/project';
+import { BIZ_TYPES, bizLabel, bizTypeOf, CPO_NAMES, normalizeRepl, POWER_TYPES, TERM_YEARS } from '@/types/project';
 import type { Actor, PaymentPatch, ProjectRepository } from '../repository';
 import {
   accessWhere, assertAdmin, lockReceivable, recordsOf, resolveSettlementRule, ruleMap, settleMap, stepsNow,
@@ -102,8 +102,11 @@ export const payoutStore: Pick<
     if (patch.cpo !== undefined && !(CPO_NAMES as readonly string[]).includes(patch.cpo)) {
       throw new Error(`운영사는 ${CPO_NAMES.join('·')} 중 하나입니다.`);
     }
-    if (patch.bizType !== undefined && !(BIZ_TYPES as readonly string[]).includes(patch.bizType)) {
-      throw new Error(`사업구분은 ${BIZ_TYPES.join('·')} 중 하나입니다.`);
+    if (patch.bizType !== undefined) {
+      // 머리말의 「사업구분」은 화면 이름(기후부)을 보낸다 — 저장값(환경부)으로 받는다(types/project bizTypeOf)
+      const biz = typeof patch.bizType === 'string' ? bizTypeOf(patch.bizType) : null;
+      if (!biz) throw new Error(`사업구분은 ${BIZ_TYPES.map((b) => bizLabel(b)).join('·')} 중 하나입니다.`);
+      patch = { ...patch, bizType: biz };
     }
     if (patch.powerType != null && !(POWER_TYPES as readonly string[]).includes(patch.powerType)) {
       throw new Error(`수전방식은 ${POWER_TYPES.join('·')} 중 하나입니다.`);

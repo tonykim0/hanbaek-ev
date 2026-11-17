@@ -29,6 +29,7 @@
 import { Fragment, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import type { PayoutKind, PayoutRow, TaxInvoice } from '@/types/project';
+import { bizLabel } from '@/types/project';
 import type { PartnerDetailsView } from '@/lib/auth/partner-details';
 import { HANBAEK } from '@/lib/hanbaek';
 import { formatKoreanBizIdInput } from '@/lib/bizid';
@@ -373,7 +374,7 @@ function ItemRow({
       {showKind && <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">{r.kind}</td>}
       {/* 현장 기본정보 — 라인이 갈리면 여럿을 그대로 적는다(「7·10년」이 섞였다는 뜻이다) */}
       <td className="whitespace-nowrap px-2 py-2.5 text-slate-600">
-        {r.site.bizTypes.length > 0 ? r.site.bizTypes.join('·') : <Empty kind="miss" />}
+        {r.site.bizTypes.length > 0 ? r.site.bizTypes.map((b) => bizLabel(b)).join('·') : <Empty kind="miss" />}
       </td>
       <td className="whitespace-nowrap px-2 py-2.5 tabular-nums text-slate-600">
         {r.site.termYears.length > 0 ? `${r.site.termYears.join('·')}년` : <Empty kind="miss" />}

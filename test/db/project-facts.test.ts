@@ -219,6 +219,17 @@ describe('단가·흐름의 축 고치기', () => {
     });
   });
 
+  /*
+   * 머리말의 「사업구분」은 화면 이름(기후부)을 보인다 — 「수정」을 누르면 그 이름이 입력칸에 들고, 후보도 화면 이름이다.
+   * 저장소가 두 이름을 다 받아 저장값(환경부)으로 적는다(2026-11-17 한백 「둘다 해」 · types/project bizTypeOf).
+   */
+  it('사업구분은 화면 이름 「기후부」로 보내도 저장값 「환경부」로 적힌다', async () => {
+    await withProject(async (id) => {
+      await repo.setProjectAxes(id, { bizType: '기후부' as never }, admin);
+      expect((await factOf(id)).bizType).toBe('환경부');
+    }, { bizType: '자체투자' });
+  });
+
   it('목록 밖의 값은 거절한다', async () => {
     await withProject(async (id) => {
       await expect(repo.setProjectAxes(id, { cpo: '없는운영사' as never }, admin)).rejects.toThrow(/운영사/);

@@ -10,7 +10,7 @@
  * 실제로 필요한 질문이다. 그래서 빈 값에도 이름을 준다(EMPTY).
  */
 import type { ProcessStatus, ProjectSummary } from '@/types/project';
-import { subsidized } from '@/types/project';
+import { bizLabel, bizTypeOf, subsidized } from '@/types/project';
 import { BOARD_COLUMNS, boardColumnOf, constructionLabelOf } from './board';
 /*
  * 날짜 열의 정의(무슨 값 · 언제 해당없음)는 표가 쥔다 — 날짜 축 · 최근 완료 축은 그것을 그대로 읽는다.
@@ -232,7 +232,10 @@ export function optionsOf(projects: ProjectSummary[], key: AttrKey): string[] {
  * 이름인데 필터만 「계약서 제출」이면 둘이 다른 칸처럼 읽힌다(표의 칸은 감사 L3 에서 맞췄고 머리글 ▾ 는 남아 있었다).
  */
 export function valueLabelOf(key: AttrKey, value: string, tab: TableTab): string {
-  return key === 'col' && tab === 'construction' ? constructionLabelOf(value as ProcessStatus) : value;
+  if (key === 'col' && tab === 'construction') return constructionLabelOf(value as ProcessStatus);
+  // 사업유형은 화면 이름으로 — 거르는 열쇠 · 주소는 저장값(?biz=환경부) 그대로다(types/project bizLabel)
+  if (key === 'biz') return bizLabel(bizTypeOf(value)) ?? value;
+  return value;
 }
 
 /**

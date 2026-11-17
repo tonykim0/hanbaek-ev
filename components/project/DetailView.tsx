@@ -17,7 +17,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { BatchFinal, ContractState, NoteScope, ProjectDetail, SettlementRuleChoice } from '@/types/project';
 import {
-  BIZ_TYPES, CPO_NAMES, INSTALL_LOCS, POWER_TYPES, subsidized, TERM_YEARS,
+  BIZ_TYPES, bizLabel, CPO_NAMES, INSTALL_LOCS, POWER_TYPES, subsidized, TERM_YEARS,
 } from '@/types/project';
 import { isPassThroughSite, safetyFeeApplies } from '@/lib/settlement';
 import { useAction } from '@/lib/use-action';
@@ -675,13 +675,13 @@ function SiteHeader({
         />
         <EditableFact
           label="사업구분"
-          value={project.bizType}
+          value={bizLabel(project.bizType)}
           canEdit={canEditAxes}
           lockNote={lockNote}
           url={`/api/projects/${project.id}/axes`}
           field="bizType"
           empty="미지정"
-          suggestions={[...BIZ_TYPES]}
+          suggestions={BIZ_TYPES.map((b) => bizLabel(b))}
         />
       </dl>
 

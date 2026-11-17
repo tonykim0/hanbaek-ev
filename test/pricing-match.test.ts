@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { checkPricingRule, matchingRules, pricingRuleId, startKey } from '@/lib/pricing-match';
-import { powerTypesOfRepl, replLabel, SPLITS_SELF_REPL } from '@/types/project';
+import { bizLabel, bizTypeOf, powerTypesOfRepl, replLabel, SPLITS_SELF_REPL } from '@/types/project';
 import type { NewPricingRule, PricingRule } from '@/types/project';
 
 const 케이스 = (o: Partial<PricingRule>): PricingRule => ({
@@ -143,8 +143,9 @@ describe('replLabel — 교체유형을 안 가르는 운영사', () => {
     expect(replLabel('에버온', '자체투자 (제자리교체)')).toBe('자체투자 (제자리교체)');
   });
 
-  it('환경부 신규는 어느 운영사든 그대로다', () => {
-    expect(replLabel('나이스인프라', '환경부 신규')).toBe('환경부 신규');
+  it('환경부 신규는 어느 운영사든 「기후부 신규」로 적는다 — 저장값은 그대로(2026-11-17 한백 「둘다 해」)', () => {
+    expect(replLabel('나이스인프라', '환경부 신규')).toBe('기후부 신규');
+    expect(replLabel('SK일렉링크', '환경부 신규')).toBe('기후부 신규');
   });
 });
 
@@ -170,5 +171,26 @@ describe('startKey — 적용 시작을 견줄 수 있는 값으로', () => {
     expect(startKey({ startDate: '2026년 1월 20일', bizYear: 2026 })).toBe('2026-01-20');
     expect(startKey({ startDate: '2026년 하반기', bizYear: 2026 })).toBe('2026-07-00');
     expect(startKey({ startDate: '2026-08-22', bizYear: 2026 })).toBe('2026-08-22');
+  });
+});
+
+/*
+ * 사업구분의 화면 이름 — 저장값 「환경부」는 「기후부」로 보이고, 사람이 적은 글은 두 이름 다 받는다
+ * (2026-11-17 한백 「둘다 해」 — 머리말의 「사업구분」 수정이 화면 이름을 보낸다 · store setProjectAxes)
+ */
+describe('bizLabel · bizTypeOf — 사업구분은 화면에만 「기후부」', () => {
+  it('저장값 「환경부」는 「기후부」로 적고, 나머지는 그대로다', () => {
+    expect(bizLabel('환경부')).toBe('기후부');
+    expect(bizLabel('자체투자')).toBe('자체투자');
+    expect(bizLabel('기설치 연동')).toBe('기설치 연동');
+    expect(bizLabel(null)).toBeNull();
+  });
+
+  it('적은 글은 화면 이름 · 저장값을 둘 다 저장값으로 받는다 — 모르는 글은 null', () => {
+    expect(bizTypeOf('기후부')).toBe('환경부');
+    expect(bizTypeOf(' 환경부 ')).toBe('환경부');
+    expect(bizTypeOf('자체투자')).toBe('자체투자');
+    expect(bizTypeOf('기후부 신규')).toBeNull();
+    expect(bizTypeOf('')).toBeNull();
   });
 });

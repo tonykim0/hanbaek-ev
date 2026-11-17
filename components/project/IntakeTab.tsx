@@ -9,7 +9,7 @@
 import { useState } from 'react';
 import { reviewKindLabel } from '@/lib/review-labels';
 import type { ContractState, ProcessStatus, ProjectDetail, ProjectDocument } from '@/types/project';
-import { BUILDING_TYPES, CONTRACT_PARTIES, replLabel, TERM_YEARS } from '@/types/project';
+import { bizLabel, BUILDING_TYPES, CONTRACT_PARTIES, replLabel, TERM_YEARS } from '@/types/project';
 import {
   APPROVED_STATUS, canEnter, contractDocsLockedWhy, gateContextOf, nextStatusOf, prevStatusOf,
 } from '@/lib/process';
@@ -113,7 +113,7 @@ function SiteFacts(
      *   계약서 수령일·접수·확인 — 사람이 한 일의 기록이다. 각자 단추가 따로 있다.
      */
     { label: '현장관리번호', value: project.mgmtNo },
-    { label: '사업구분', value: project.bizType },
+    { label: '사업구분', value: bizLabel(project.bizType) },
     { label: '수전방식', value: project.powerType },
     // 안 가르는 운영사는 괄호를 떼고 「자체투자」 — 다른 화면과 같은 함수를 본다(replLabel)
     { label: '교체유형', value: project.replType

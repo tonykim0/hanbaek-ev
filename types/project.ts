@@ -83,6 +83,27 @@ export type BizType = '환경부' | '자체투자' | '기설치 연동';
 export const BIZ_TYPES = ['환경부', '자체투자', '기설치 연동'] as const satisfies readonly BizType[];
 
 /**
+ * 화면에 적는 사업구분 — ★저장값 「환경부」는 화면에서 「기후부」다★ (한백 2026-11-17 「응 둘다 해」 — 사업구분도 기후부로,
+ * 저장값은 두고 표기만). 저장값을 옮기지 않는 까닭: 단가 케이스(pricing_rules.biz_type) · 현장 · 계약 묶음 · 서류 필수 규칙 ·
+ * 판독 지시문이 그 글자를 같이 보고, 배포 중 옛 코드와 새 값이 어긋나면 단가가 안 맞는다. 그래서 거르는 열쇠 · 주소(?biz=환경부)도 그대로다.
+ * ★사업구분을 화면에 날것으로 찍지 않는다★ — 카드 · 표 · 엑셀 · 필터 · 머리말 · 접수 폼 · 명세서가 이 함수를 거친다.
+ */
+export const BIZ_LABEL: Record<BizType, string> = { 환경부: '기후부', 자체투자: '자체투자', '기설치 연동': '기설치 연동' };
+
+export function bizLabel(b: BizType): string;
+export function bizLabel(b: BizType | null | undefined): string | null;
+export function bizLabel(b: BizType | null | undefined): string | null {
+  return b ? BIZ_LABEL[b] ?? b : null;
+}
+
+/** 사람이 적은 사업구분 — 화면 이름(기후부)과 저장값(환경부)을 둘 다 받아 저장값으로. 모르는 글자면 null */
+export function bizTypeOf(input: string): BizType | null {
+  const s = input.trim();
+  if ((BIZ_TYPES as readonly string[]).includes(s)) return s as BizType;
+  return BIZ_TYPES.find((b) => BIZ_LABEL[b] === s) ?? null;
+}
+
+/**
  * 교체유형이 허용하는 수전방식 — ★한전불입이 붙는 것은 환경부 신규뿐이다.★
  *
  * 연동은 모자분리 전제다(SK 부속합의서·PL 정책 모두 명시). 자체투자도 마찬가지다 —
@@ -150,6 +171,7 @@ export const SPLITS_SELF_REPL: ReadonlySet<CpoName> = new Set(['에버온', 'SK�
  * 한다. 한 곳만 고치면 같은 케이스가 두 얼굴로 뜬다.
  */
 export function replLabel(cpo: CpoName, repl: ReplType): string {
+  if (repl === '환경부 신규') return '기후부 신규'; // 사업구분과 같은 이름 — 저장값은 그대로다(bizLabel · 2026-11-17)
   return repl.startsWith('자체투자') && !SPLITS_SELF_REPL.has(cpo) ? '자체투자' : repl;
 }
 

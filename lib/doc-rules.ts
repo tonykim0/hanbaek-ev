@@ -374,8 +374,8 @@ export const PROCESS_DOCS = [
    * ★받을 기성은 열리는데 내려줄 2차 지급은 안 열린다★(준공완료가 complete_done_at 을
    * 찍는다). 나머지 넷은 관공서 서류라 사업구분과 무관하게 다 받는다(한백 확인).
    */
-  { key: 'completeConfirm', name: '설치완료확인서 (환경부)', only: (c: ProcessDocCtx) => subsidized(c.bizType) },
-  { key: 'costSurvey', name: '원가조사서 (환경부)', only: (c: ProcessDocCtx) => subsidized(c.bizType) },
+  { key: 'completeConfirm', name: '설치완료확인서 (기후부)', only: (c: ProcessDocCtx) => subsidized(c.bizType) },
+  { key: 'costSurvey', name: '원가조사서 (기후부)', only: (c: ProcessDocCtx) => subsidized(c.bizType) },
   // 대관서류 — 관공서에 내는 넷. 이름은 실제 파일 이름과 같게 적는다
   /*
    * ★점검과 검사를 한 이름에 담는다★ (한백 지시 2026-09-08). 한전불입은 75kW 미만이면
