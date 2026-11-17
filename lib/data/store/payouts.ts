@@ -36,24 +36,17 @@ import type {
 import { BIZ_TYPES, CPO_NAMES, normalizeRepl, POWER_TYPES, TERM_YEARS } from '@/types/project';
 import type { Actor, PaymentPatch, ProjectRepository } from '../repository';
 import {
-  accessWhere, assertAdmin, recordsOf, resolveSettlementRule, ruleMap, settleMap,
+  accessWhere, assertAdmin, lockReceivable, recordsOf, resolveSettlementRule, ruleMap, settleMap, stepsNow,
 } from './shared';
 import type { TxLike } from './shared';
 
 /*
  * ── 기성 청구·수금의 칸 (2026-11-02) ──────────────────────────────────────────
  * 차수 번호(1·2·3)로 칸을 고른다. 청구·수금은 같은 현장의 같은 줄을 읽고 판정한 뒤 쓴다 —
- * 청구 취소와 수금 기록이 엇갈려 「청구 없는 수금」이 남지 않게 현장 단위 자문 잠금을 쥔다.
+ * 청구 취소와 수금 기록이 엇갈려 「청구 없는 수금」이 남지 않게 현장 단위 자문 잠금을 쥔다
+ * (lockReceivable · stepsNow — store/shared, 승인 취소도 같이 쓴다).
  */
 const CLAIM_KEY = { 1: 'claimed1At', 2: 'claimed2At', 3: 'claimed3At' } as const;
-const lockReceivable = (tx: TxLike, projectId: string) =>
-  tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hb_receivable:${projectId}`}))`);
-
-/** 지금 이 현장의 차수 — 조건·청구·수금 판정의 정본(조립)을 그대로 쓴다 */
-async function stepsNow(row: typeof projects.$inferSelect): Promise<SettlementStep[]> {
-  const [record] = await recordsOf([row]);
-  return toDetail(record, await ruleMap(), await settleMap()).admin?.steps ?? [];
-}
 
 /** pgRepository 가 펼쳐 담는 조각 — 이름과 시그니처는 인터페이스가 정한다 */
 export const payoutStore: Pick<

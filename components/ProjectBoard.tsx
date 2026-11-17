@@ -18,7 +18,7 @@ import type { ProcessStatus, ProjectSummary } from '@/types/project';
 import { PROCESS_STATUSES } from '@/types/project';
 import { BOARD_COLUMNS, boardColumnOf, isMyCourt, partnerWaitingOf, waitingSinceOf, type BoardColumn } from '@/lib/board';
 import type { Role } from '@/lib/roles';
-import { prevStatusOf, statusIndex } from '@/lib/process';
+import { APPROVED_STATUS, prevStatusOf, statusIndex } from '@/lib/process';
 import { Btn, Tag } from '@/components/ui';
 import { StopControl } from '@/components/project/StopControl';
 
@@ -78,7 +78,7 @@ export default function ProjectBoard({
    * (lib/board showsOnBoard). 시공 보드에 빈 칸을 두면 두 칸이 갈려 있는 것처럼 보인다.
    */
   /*
-   * 맞물리는 칸(운영사 계약서 제출)은 양쪽 보드에 선다 — 계약의 끝이자 시공의 시작이라
+   * 맞물리는 칸(계약서 제출 · 기후부 승인)은 양쪽 보드에 선다 — 계약의 끝이자 시공의 시작이라
    * 한쪽에만 두면 다른 쪽에서 현장이 통째로 사라진다(한백 지시 2026-08-29).
    * PROCESS_STATUSES 순서를 그대로 따르므로 시공 보드에서는 행위신고 앞에 붙는다.
    */
@@ -239,7 +239,7 @@ function Card({
    * 되돌리는 걸음 — 미는 자리에 되돌리는 자리를 같이 둔다(화면 규칙 7).
    *
    * 카드의 「넘기기 →」는 한 번 누르면 옮겨지는데, 되돌리는 길은 상세의 스테퍼뿐이었다.
-   * 게다가 시공의 첫 칸(행위신고)은 스테퍼에 앞 칸이 없다 — 운영사 계약서 제출은 계약
+   * 게다가 시공의 첫 칸(행위신고)은 스테퍼에 앞 칸이 없다 — 계약서 제출은 계약
    * 국면이라 시공 스테퍼에 그리지 않는다. 그래서 보드에서 잘못 넘긴 현장이 시공 첫 칸에
    * 갇혔다(휴먼서희스타힐스 2026-08-25).
    *
@@ -249,8 +249,12 @@ function Card({
    * 계약 칸으로 돌아가면 이 카드는 시공 페이지에서 사라진다(계약 페이지에 선다) —
    * 그것이 되돌아갔다는 표시다. 어디로 가는지는 단추 이름이 이미 말한다.
    */
+  /*
+   * ★「기후부 승인」 카드에는 되돌리기가 없다★ (2026-11-17) — 그 칸에서 되돌리는 것은 승인 취소다(저장소가 승인일을 같이
+   * 지우고 협력사에게 취소 알림이 간다). 카드의 작은 단추 한 번으로 나갈 일이 아니라 현장 상세의 「승인 취소」가 되묻고 한다.
+   */
   const back =
-    p.stage !== 'intake' && !p.holdState
+    p.stage !== 'intake' && !p.holdState && p.status !== APPROVED_STATUS
       /* 앞 칸도 그 현장이 지나는 것 중에서 — 기설치 연동은 건너뛰는 칸이 있다 */
       ? prevStatusOf(p.status, { bizType: p.bizType })
       : null;
@@ -268,7 +272,7 @@ function Card({
    * 카드 밑에 적을 한 줄. 없으면 아무것도 안 적는다.
    *
    * ★「X 준비됨」을 지웠다(한백 지시 2026-08-26).★ 협력사 화면에서만 나오던 말이다 —
-   * 한백은 준비되면 그 자리에 넘기는 단추가 뜨니까. 운영사 계약서 제출 칸의 협력사가
+   * 한백은 준비되면 그 자리에 넘기는 단추가 뜨니까. 계약서 제출 칸의 협력사가
    * 「행위신고 준비됨」을 읽고 있었는데, 단계를 옮기는 것은 한백이라 그 말로 할 수 있는
    * 일이 없다. 조건이 없어서 열려 있다는 것은 우리 사정이지 그쪽의 다음 걸음이 아니다.
    *

@@ -649,7 +649,7 @@ function StageCell({
   onMove: (p: ProjectSummary, status: ProcessStatus) => void;
   busy: boolean;
   /**
-   * 시공관리 표인가 — 그러면 맞물리는 칸을 보드와 같은 이름(「환경부 승인 대기」)으로 부른다(감사 L3).
+   * 시공관리 표인가 — 그러면 맞물리는 칸을 보드와 같은 이름(「기후부 승인 대기」)으로 부른다(감사 L3).
    * 같은 현장을 보드와 표가 다른 이름으로 부르면 둘이 다른 칸처럼 읽힌다(lib/board constructionLabelOf).
    */
   construction?: boolean;
@@ -838,7 +838,7 @@ function ColumnFilter({
   attr, tab, label, options, picked, onChange,
 }: {
   attr: AttrKey;
-  /** 값의 이름을 가른다 — 시공관리의 단계는 보드와 같은 「환경부 승인 대기」(valueLabelOf · 필터 판과 같은 이름) */
+  /** 값의 이름을 가른다 — 시공관리의 단계는 보드와 같은 「기후부 승인 대기」(valueLabelOf · 필터 판과 같은 이름) */
   tab: TableTab;
   label: string;
   options: string[];

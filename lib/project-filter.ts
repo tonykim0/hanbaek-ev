@@ -58,7 +58,7 @@ export const ATTRS: Attr[] = [
   { key: 'col', label: '단계', valuesOf: (p) => [boardColumnOf(p)], order: BOARD_COLUMNS.map((c) => c.key) },
   /*
    * 최근 완료 — 날짜가 적힌 일 중 공정 순서상 가장 뒤의 일(lib/project-table lastDoneOf · 한백 2026-11-11). 일의 차례로 고른다.
-   * 아무것도 안 적힌 현장은 「(없음)」 — 「환경부 승인 대기인데 승인일이 아직」을 거르는 값이다.
+   * 아무것도 안 적힌 현장은 「(없음)」 — 「기후부 승인 대기인데 승인일이 아직」을 거르는 값이다.
    */
   {
     key: 'lastDone',
@@ -176,6 +176,20 @@ export function panelAttrKeys(filters: AttrFilters): AttrKey[] {
 /** 축별로 고른 값. 빈 배열이면 그 축은 안 걸린 것이다. */
 export type AttrFilters = Partial<Record<AttrKey, string[]>>;
 
+/**
+ * 이름이 바뀐 칸의 옛 값 — 주소 · 브라우저에 남은 필터를 지금 이름으로 받는다.
+ *
+ * 거르는 열쇠가 칸 이름이라, 칸 이름을 바꾸면(2026-11-17 「운영사 계약서 제출」 → 「계약서 제출」) 걸어 둔 필터가 없는 값을
+ * 가리킨다 — 「필터 1」이 걸린 채 0건이 뜨고, 그 값은 판에 없어 무엇이 걸렸는지도 안 보인다.
+ */
+const RENAMED_COLS: Record<string, string> = { '운영사 계약서 제출': '계약서 제출' };
+
+/** 읽어 온 필터(주소 · 저장분)의 옛 칸 이름을 지금 이름으로 — 다른 축은 그대로다 */
+export function renameSavedCols(attrs: AttrFilters): AttrFilters {
+  if (!attrs.col?.some((v) => v in RENAMED_COLS)) return attrs;
+  return { ...attrs, col: [...new Set(attrs.col.map((v) => RENAMED_COLS[v] ?? v))] };
+}
+
 /** 이 자료에 실제로 있는 값만 고를 수 있게 한다 — 없는 값을 고르는 자리를 두지 않는다 */
 export function optionsOf(projects: ProjectSummary[], key: AttrKey): string[] {
   const attr = ATTR_BY_KEY.get(key);
@@ -205,8 +219,8 @@ export function optionsOf(projects: ProjectSummary[], key: AttrKey): string[] {
 /**
  * 고르는 값의 보이는 이름 — 거르는 값(주소 열쇠 · 저장분)은 그대로 두고 이름만 바꾼다. 필터 판과 표 머리글 ▾ 가 같이 쓴다.
  *
- * 시공관리의 단계는 맞물리는 칸을 「환경부 승인 대기」로 부른다(lib/board constructionLabelOf) — 보드 · 표의 단계 칸이 그
- * 이름인데 필터만 「운영사 계약서 제출」이면 둘이 다른 칸처럼 읽힌다(표의 칸은 감사 L3 에서 맞췄고 머리글 ▾ 는 남아 있었다).
+ * 시공관리의 단계는 맞물리는 칸을 「기후부 승인 대기」로 부른다(lib/board constructionLabelOf) — 보드 · 표의 단계 칸이 그
+ * 이름인데 필터만 「계약서 제출」이면 둘이 다른 칸처럼 읽힌다(표의 칸은 감사 L3 에서 맞췄고 머리글 ▾ 는 남아 있었다).
  */
 export function valueLabelOf(key: AttrKey, value: string, tab: TableTab): string {
   return key === 'col' && tab === 'construction' ? constructionLabelOf(value as ProcessStatus) : value;

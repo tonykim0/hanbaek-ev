@@ -26,7 +26,7 @@ import { Badge, Btn, Confirm, Empty, Err, FIELD, Tag, type Tone, Val } from '@/c
 import { buildDocContext, evaluateDocs, processDocsFor, PROCESS_DOCS, submittedOnOf } from '@/lib/doc-rules';
 import { BAND_TONE, bandOfColumn, boardColumnOf, phaseOfProject } from '@/lib/board';
 import type { BoardBand, BoardColumn } from '@/lib/board';
-import { gateContextOf, statusIndex, type ProcessEdit } from '@/lib/process';
+import { APPROVED_STATUS, gateContextOf, statusIndex, type ProcessEdit } from '@/lib/process';
 import { shownProcessDocs } from './construction/milestones';
 import type { Visibility } from '@/lib/roles';
 import type { RuleOptions } from '@/lib/pricing-match';
@@ -114,7 +114,7 @@ export default function ProjectDetailView({
   /*
    * 주소에 탭이 없으면 국면이 정한다 — stage 를 그대로 쓰지 않는다.
    *
-   * 계약완료·운영사 계약서 제출은 stage 가 construction 이지만 ★계약 국면★이다
+   * 계약완료·계약서 제출·기후부 승인은 stage 가 construction 이지만 ★계약 국면★이다
    * (보드에서도 계약 페이지의 칸이다, BAND_OF_STATUS). stage 로 탭을 정하면 운영사
    * 제출을 기다리는 현장을 눌렀을 때 시공 탭이 열려서, 아직 아무 일도 없는 공정
    * 스테퍼를 본다(한백 지적 2026-08-24). 판정은 보드와 같은 함수를 쓴다.
@@ -372,6 +372,7 @@ export default function ProjectDetailView({
               canEditDocs={canEditDocs}
               canFillEmpty={canFillEmpty}
               status={process.status}
+              process={process}
               lines={lines}
               preinstallCheck={detail.preinstallCheck ?? null}
               parkingCheck={detail.parkingCheck ?? null}
@@ -616,7 +617,7 @@ function SiteHeader({
         *   (계약일은 계약서에 적힌 날, 계약접수일은 받은 날이라 나란히 둔다 — 한백 지시 2026-10-08)
         *   (사업구분을 1줄로 올렸다 — 설치위치가 들며 2줄이 여섯 칸이 되어 계약접수일이
         *    혼자 셋째 줄로 밀렸다. 한 줄 다섯 칸이 넓은 화면의 격자다. 한백 지시 2026-09-30)
-        *   3·4줄 — 승인 흐름 (ApprovalFacts): 운영사 계약서 제출 / 대기번호 · 환경부 승인일
+        *   3·4줄 — 승인 흐름 (ApprovalFacts): 계약서 제출 / 대기번호 · 환경부 승인일
         *
         * ★구성은 그대로 두고 읽히는 꼴만 고쳤다 (2026-08-27).★ 전에는 네 줄이 다
         * flex-wrap 이었는데, 줄 안 간격(gap-y-1.5)과 줄 사이 간격(mt-2)이 거의 같아서
@@ -805,7 +806,7 @@ function SiteHeader({
 /**
  * 승인 흐름 두 줄 — 머리말 3·4줄이다 (한백 확인 2026-08-21, 2026-08-27 개정).
  *
- *   3줄: 운영사 계약서 제출   (한백만 본다 — 협력사는 몰라도 되는 값이라 줄을 안 그린다)
+ *   3줄: 계약서 제출   (한백만 본다 — 협력사는 몰라도 되는 값이라 줄을 안 그린다)
  *   4줄: 환경부 대기번호 · 환경부 승인일
  *
  * ★승인 날짜는 한 칸이다 (한백 2026-08-27).★ 전에는 「환경부 승인일」과 「운영사 시공승인일」
@@ -841,7 +842,7 @@ function ApprovalFacts({
     });
 
   // 낸 것은 그 칸에 들어섰다는 뜻이다 — 날짜는 언제 냈는지일 뿐 여부가 아니다
-  const cpoSubmitted = statusIndex(process.status) >= statusIndex('운영사 계약서 제출');
+  const cpoSubmitted = statusIndex(process.status) >= statusIndex('계약서 제출');
   /*
    * ★되돌리는 자리를 그 사실 옆에 둔다★ (한백 지적 2026-08-31 「계약확인 완료 후
    * 운영사제출로 넘어가면 다시 계약확인 완료로 못 돌아가네」).
@@ -853,7 +854,21 @@ function ApprovalFacts({
    * ★그 칸에 서 있을 때만 준다.★ 이미 지나가서 착공·설치완료에 있는 현장에 「제출 취소」를
    * 두면 한 번 눌러 공정을 여러 칸 되돌리는 꼴이다 — 그것은 보드에서 한 칸씩 한다.
    */
-  const canUndoSubmit = edit === 'all' && process.status === '운영사 계약서 제출';
+  const canUndoSubmit = edit === 'all' && process.status === '계약서 제출';
+  /*
+   * ★승인 취소★ (한백 지시 2026-11-17 「승인일 잘못 입력해서 승인나지 않았는데 취소해야할 경우가 있어」).
+   *
+   * 승인일을 지우는 것이 곧 취소다 — 「기후부 승인」에 서 있던 현장은 「계약서 제출」로 돌아가고, 나간 승인 알림을 걷는다
+   * (store/process followApproval · store/notifications retractApproval). 달력의 「지우기」로도 되지만 그 자리는
+   * 「수정」 안이라, 무르는 일이 어디 있는지 보이지 않았다 — 사실 옆에 되돌리는 자리를 둔다(화면 규칙 7).
+   *
+   * ★행위신고 뒤로 간 현장에는 안 준다★ — 저장소가 거절한다(단계를 먼저 되돌려야 한다). 「제출 취소」와 같은 까닭이다:
+   * 지나간 현장에 두면 한 번 눌러 여러 칸을 무르는 단추가 된다. 자체투자는 승인일 칸이 「해당없음」이라 자리가 없다.
+   */
+  const canCancelApproval =
+    edit === 'all' && !isSelfInvest && Boolean(process.envApprovalDate)
+    && statusIndex(process.status) <= statusIndex(APPROVED_STATUS);
+  const [cancelling, setCancelling] = useState(false);
 
   return (
     /*
@@ -864,7 +879,7 @@ function ApprovalFacts({
      */
     <div className="mt-5 border-t border-slate-100 pt-4">
       {/*
-        * 적는 자리가 아니라 보는 자리다 — 보드에서 「운영사 계약서 제출 로 넘기기」를
+        * 적는 자리가 아니라 보는 자리다 — 보드에서 「계약서 제출 로 넘기기」를
         * 누르면 저장소가 옮기면서 찍고(pg-store setProcessStatus), 여기는 그 결과만 읽는다.
         * 체크칸이던 동안은 같은 사실을 두 번 말해야 했다: 여기서 체크해야 보드에 단추가
         * 뜨고, 그걸 또 눌러야 옮겨졌다(화면 규칙 5, 한백 지시 2026-08-25).
@@ -885,7 +900,7 @@ function ApprovalFacts({
     <dl className={FACT_GRID}>
       {edit === 'all' && (
         <div className="min-w-0">
-          <dt className="text-tiny font-bold tracking-[0.04em] text-slate-400">운영사 계약서 제출</dt>
+          <dt className="text-tiny font-bold tracking-[0.04em] text-slate-400">계약서 제출</dt>
           <dd className={`mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 break-keep font-bold ${cpoSubmitted ? 'text-slate-800' : 'text-amber-700'}`}>
             <span>
               {cpoSubmitted
@@ -935,7 +950,8 @@ function ApprovalFacts({
         onSave={(v) => save('envApprovalDate', v)}
         /* 승인이 난 뒤 얼마나 지났나 — 발주가 안 나간 채 몇 주가 흐르는 일이 있다 */
         elapsed
-        hint="기성 「환경부 승인」 트리거와 「충전기 발주」 조건이 이 날짜로 열립니다"
+        hint="기성 「환경부 승인」 트리거와 「기후부 승인」 단계가 이 날짜로 열립니다"
+        undo={canCancelApproval ? { label: '승인 취소', onClick: () => setCancelling(true) } : undefined}
         /*
          * 자체투자·연동에는 환경부 승인이 없다 (한백 2026-08-28) — 대기번호와 같은 자리다.
          * 빈 칸으로 두면 「아직 안 왔다(—)」로 읽혀 기다리게 된다. 「충전기 발주」 조건에서도
@@ -944,15 +960,38 @@ function ApprovalFacts({
         na={isSelfInvest}
       />
       {/* 실패 문구는 누른 칸 옆이 아니라 그 줄 끝이다 — 격자 한 칸에 들어가면 잘린다 */}
-      <Err className="col-span-full self-center">{error}</Err>
+      {/* 되묻는 창이 떠 있으면 그 창이 까닭을 적는다 — 같은 말을 두 자리에 두지 않는다 */}
+      <Err className="col-span-full self-center">{cancelling ? null : error}</Err>
     </dl>
+      {/*
+        * 되묻고 무른다 — 단계가 돌아가고 협력사에게 「승인 취소」가 간다. 「수정」 바로 옆이라 스치는 클릭에 나가면 안 된다.
+        * 못 무르는 까닭(이미 청구한 기성 등)은 저장소가 말하고 이 창에 그대로 뜬다.
+        */}
+      <Confirm
+        open={cancelling}
+        title="환경부 승인을 취소할까요?"
+        detail={`승인일 ${process.envApprovalDate ?? ''} 을 지웁니다.${
+          process.status === APPROVED_STATUS ? ' 현장은 「계약서 제출」 단계로 돌아갑니다.' : ''
+        } 승인 알림을 이미 읽은 사람에게는 취소 알림이 갑니다.`}
+        confirmLabel="승인 취소"
+        busy={busyKey === 'envApprovalDate'}
+        busyLabel="취소하는 중…"
+        error={error}
+        onConfirm={() => void run({
+          url: `/api/projects/${projectId}/process`,
+          body: { envApprovalDate: null },
+          fail: '승인을 취소하지 못했습니다.',
+          key: 'envApprovalDate',
+        }).then((ok) => { if (ok) setCancelling(false); })}
+        onCancel={() => setCancelling(false)}
+      />
     </div>
   );
 }
 
 /** 머리말의 날짜 사실 — 평소엔 글자, 고칠 때만 달력(화면 규칙 4). EditableFact 의 날짜판. */
 function DateFact({
-  label, value, canEdit, busy, onSave, hint, na = false, elapsed = false,
+  label, value, canEdit, busy, onSave, hint, na = false, elapsed = false, undo,
 }: {
   label: string;
   value: string | null;
@@ -960,6 +999,8 @@ function DateFact({
   busy: boolean;
   onSave: (v: string | null) => void;
   hint?: string;
+  /** 그 사실을 무르는 자리 — 「수정」 옆에 선다(환경부 승인 취소). 주는 쪽이 설 수 있을 때만 준다 */
+  undo?: { label: string; onClick: () => void };
   /**
    * 그날부터 며칠 지났는지 같이 적는가 (한백 지시 2026-09-02).
    *
@@ -1035,6 +1076,7 @@ function DateFact({
               {value ? '수정' : '입력'}
             </Btn>
           )}
+          {undo && <Btn size="sm" kind="quiet" disabled={busy} onClick={undo.onClick}>{undo.label}</Btn>}
         </dd>
       )}
     </div>

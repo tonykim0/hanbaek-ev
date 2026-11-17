@@ -224,7 +224,7 @@ describe('정산 규칙 미지정 — 기성이 계산조차 안 되는 자리',
 
   it('계약완료·운영사 제출은 시공 stage 라도 ★계약 국면★이다 (보드와 같은 판정)', () => {
     expect(receivableTodos([row({
-      ruleName: null, steps: [], stage: 'construction', status: '운영사 계약서 제출',
+      ruleName: null, steps: [], stage: 'construction', status: '계약서 제출',
     })], 오늘)).toHaveLength(0);
   });
 

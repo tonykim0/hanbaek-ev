@@ -101,6 +101,9 @@ export async function notifyReview(tx: TxLike, input: {
 /**
  * 환경부 대기번호·승인을 펼친다 — 그 값을 적는 트랜잭션 안에서(setEnvQueueNo · updateProcess), 빈 칸에서 값이 될 때.
  * ★현장마다 갈래별로 한 번이다★ — 지웠다 다시 넣어도 또 가지 않는다(한백 「처음 넣으면」). 받는 사람은 시공 탭 글과 같다.
+ *
+ * ★승인은 「살아 있는 승인 알림」이 있을 때만 건너뛴다★ (2026-11-17) — 승인 취소(retractApproval)가 승인 알림을 다 걷으므로,
+ * 잘못 넣었다 지운 뒤의 진짜 승인은 다시 간다. 그때 아직 안 읽은 「승인 취소」는 거둔다 — 승인이 난 지금은 지난 말이다.
  */
 export async function notifyMilestone(tx: TxLike, input: {
   projectId: string; kind: 'approval' | 'queue'; actorId: string; title: string; body: string;
@@ -108,8 +111,37 @@ export async function notifyMilestone(tx: TxLike, input: {
   const [sent] = await tx.select({ id: notifications.id }).from(notifications)
     .where(and(eq(notifications.projectId, input.projectId), eq(notifications.kind, input.kind))).limit(1);
   if (sent) return 0;
+  if (input.kind === 'approval') {
+    await tx.delete(notifications).where(and(
+      eq(notifications.projectId, input.projectId), eq(notifications.kind, 'approvalCancel'), isNull(notifications.readAt),
+    ));
+  }
   return insertFor(tx, await projectRecipients(tx, input.projectId, '시공', input.actorId), {
     projectId: input.projectId, kind: input.kind, scope: '시공', title: input.title, body: input.body,
+  });
+}
+
+/**
+ * 승인 취소 — 잘못 넣은 환경부 승인일을 지울 때, updateProcess 의 트랜잭션 안에서 (한백 지시 2026-11-17
+ * 「승인일 잘못 입력해서 승인나지 않았는데 취소해야할 경우가 있어」).
+ *
+ * 그 현장의 승인 알림을 ★다 걷는다★ — 안 읽은 것은 그냥 거두고(없던 일을 알리면 거짓말이다 — 반려를 거두는 것과 같다),
+ * 이미 읽은 사람에게는 그 자리에 「승인 취소」 한 줄을 준다: 승인이 난 줄 알고 있는 사람이다. 지운 본인은 뺀다.
+ * 승인 알림이 남지 않으므로 진짜 승인이 나면 알림이 다시 간다(notifyMilestone).
+ */
+export async function retractApproval(tx: TxLike, input: {
+  projectId: string; actorId: string; title: string; body: string;
+}): Promise<number> {
+  const gone = await tx.delete(notifications)
+    .where(and(eq(notifications.projectId, input.projectId), eq(notifications.kind, 'approval')))
+    .returning({ userId: notifications.userId, readAt: notifications.readAt });
+  const readers = [...new Set(gone.filter((r) => r.readAt !== null && r.userId !== input.actorId).map((r) => r.userId))];
+  /* 같은 현장에서 취소가 두 번이면(넣고 지우기를 되풀이) 안 읽은 앞 취소는 거둔다 — 같은 말이 둘 서지 않게 */
+  await tx.delete(notifications).where(and(
+    eq(notifications.projectId, input.projectId), eq(notifications.kind, 'approvalCancel'), isNull(notifications.readAt),
+  ));
+  return insertFor(tx, readers, {
+    projectId: input.projectId, kind: 'approvalCancel', scope: '시공', title: input.title, body: input.body,
   });
 }
 
@@ -184,7 +216,7 @@ export async function retractReview(tx: TxLike, input: {
   await tx.delete(notifications).where(and(...conds));
 }
 
-const KINDS: NotificationKind[] = ['note', 'reject', 'ask', 'notice', 'approval', 'queue', 'agent', 'remind'];
+const KINDS: NotificationKind[] = ['note', 'reject', 'ask', 'notice', 'approval', 'approvalCancel', 'queue', 'agent', 'remind'];
 
 export const notificationStore: Pick<
   ProjectRepository,

@@ -7,7 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  advanceBlockers, advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES,
+  advanceBlockers, advanceTargetOf, approvalCancelBlock, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES,
   CHECK_AT, CHECK_HOME, entryOkOf, nextStatusOf, prevStatusOf, STATUS_GATES, stepsOf,
   COURT_AFTER_STATUS, declarationBlockers, isHanbaekOnlyProcessField, mayForceDeclaration, mayForceStatus, statusIndex,
   canChangeContractDocs, CONTRACT_DOCS_LOCK_AT, contractDocsLockedWhy, PARTNER_DOCS_CLOSED_AT, processEditOf, hasKepcoWork,
@@ -354,7 +354,7 @@ describe('canChangeContractDocs — 운영사에 낸 뒤로 계약 서류는 잠
    * ★고쳐 오라고 해 놓고 고칠 자리를 잠가 두지 않는다★ (한백 지적 2026-08-31
    * 「협력사에 반려해서 보완요청했는데 협력사는 파일 추가가 안 돼」).
    *
-   * 반려·보완요청은 계약 확인만 푼다 — 공정 단계는 그대로 「운영사 계약서 제출」에
+   * 반려·보완요청은 계약 확인만 푼다 — 공정 단계는 그대로 「계약서 제출」에
    * 남는다. 그래서 단계로만 재면 계속 잠겨 있었다. 프로덕션에서 2건이 그렇게 갇혔다.
    */
   it('★반려로 계약 확인이 풀리면 협력사가 다시 올릴 수 있다★', () => {
@@ -552,17 +552,17 @@ describe('기설치 연동은 발주·수령을 안 지난다', () => {
    */
   it('빠지는 것은 충전기 발주·수령 둘뿐이다 — 착공은 남는다', () => {
     expect(stepsOf(LINK)).toEqual([
-      '계약완료', '운영사 계약서 제출', '행위신고', '착공',
+      '계약완료', '계약서 제출', '행위신고', '착공',
       '개통 및 통신확인', '준공서류 접수/검토', '준공보완', '준공완료',
     ]);
   });
 
-  it('환경부·자체투자는 전부 지난다 — 예전 그대로다', () => {
+  it('환경부는 전부 지난다 · 자체투자는 기후부 승인만 안 지난다', () => {
     expect(stepsOf(ENVC)).toEqual([
-      '계약완료', '운영사 계약서 제출', '행위신고', '충전기 발주', '충전기 수령', '착공',
+      '계약완료', '계약서 제출', '기후부 승인', '행위신고', '충전기 발주', '충전기 수령', '착공',
       '개통 및 통신확인', '준공서류 접수/검토', '준공보완', '준공완료',
     ]);
-    expect(stepsOf({ bizType: '자체투자' })).toEqual(stepsOf(ENVC));
+    expect(stepsOf({ bizType: '자체투자' })).toEqual(stepsOf(ENVC).filter((st) => st !== '기후부 승인'));
   });
 
   it('★행위신고 다음이 갈린다★ — 그래서 +1 로 세면 안 된다', () => {
@@ -848,5 +848,95 @@ describe('hasKepcoWork — 한전 외선공사 · 계량기 부설이 있는 현
     expect(hasKepcoWork('한전불입+모자분리')).toBe(true);
     expect(hasKepcoWork('모자분리')).toBe(false);
     expect(hasKepcoWork(null)).toBe(true);
+  });
+});
+
+
+/**
+ * 기후부 승인 — 「계약서 제출」과 「행위신고」 사이의 칸 (한백 지시 2026-11-17).
+ *
+ * 들어오는 조건은 환경부 승인일 하나고, 받을 승인이 없는 사업구분(자체투자·기설치 연동)은 그 칸을 안 지난다.
+ * 운영의 행위신고 30건 중 환경부 사업 17건이 전부 승인일이 있었다 — 그 사실을 문으로 세운 것이다.
+ */
+describe('기후부 승인 — 환경부 승인일이 있어야 서고, 그 뒤가 행위신고다', () => {
+  const at = (o: Record<string, unknown> = {}) => P({ status: '계약서 제출', ...o });
+
+  it('계약서 제출 다음이 사업구분으로 갈린다', () => {
+    expect(nextStatusOf('계약서 제출', { bizType: '환경부' })).toBe('기후부 승인');
+    expect(nextStatusOf('계약서 제출', { bizType: null })).toBe('기후부 승인'); // 모르면 환경부로 본다(subsidized)
+    expect(nextStatusOf('계약서 제출', { bizType: '자체투자' })).toBe('행위신고');
+    expect(nextStatusOf('계약서 제출', { bizType: '기설치 연동' })).toBe('행위신고');
+  });
+
+  it('행위신고의 앞 칸도 갈린다 — 되돌리면 지나온 칸으로 간다', () => {
+    expect(prevStatusOf('행위신고', { bizType: '환경부' })).toBe('기후부 승인');
+    expect(prevStatusOf('행위신고', { bizType: '자체투자' })).toBe('계약서 제출');
+    expect(prevStatusOf('기후부 승인', { bizType: '환경부' })).toBe('계약서 제출');
+  });
+
+  it('승인일이 없으면 못 선다 — 있으면 선다', () => {
+    expect(canEnter('기후부 승인', at(), ENV)).toEqual({ ok: false, blockedBy: '환경부 승인일 (한백 입력)' });
+    expect(canEnter('기후부 승인', at({ envApprovalDate: '2026-11-10' }), ENV)).toEqual({ ok: true });
+  });
+
+  it('★승인 없이 행위신고로 건너뛸 수 없다★ — 지나는 칸의 조건을 다 묻는다', () => {
+    expect(canEnter('행위신고', at(), ENV)).toEqual({ ok: false, blockedBy: '환경부 승인일 (한백 입력)' });
+    expect(canEnter('행위신고', at({ envApprovalDate: '2026-11-10' }), ENV)).toEqual({ ok: true });
+  });
+
+  it('자체투자는 승인 없이 행위신고로 간다 — 그 칸이 길에 없다', () => {
+    expect(canEnter('행위신고', at(), SELF)).toEqual({ ok: true });
+    expect(canEnter('기후부 승인', at({ envApprovalDate: '2026-11-10' }), SELF).ok).toBe(false); // 안 지나는 칸
+    expect(entryOkOf(at(), SELF)).not.toContain('기후부 승인');
+  });
+
+  it('이미 행위신고에 선 현장은 그대로다 — 지나온 자리는 다시 묻지 않는다', () => {
+    expect(canEnter('행위신고', P({ status: '행위신고' }), ENV)).toEqual({ ok: true });
+    // 발주의 승인일 조건은 남는다 — 이 칸이 생기기 전에 넘어온 현장이 있을 수 있다
+    expect(canEnter('충전기 발주', P({ status: '행위신고', notifySkippedAt: 'd' }), ENV).ok).toBe(false);
+  });
+
+  it('승인이 난 칸은 한백 차례다 — 시공으로 넘기는 것은 한백이 한다', () => {
+    expect(COURT_AFTER_STATUS['계약서 제출']).toBe('운영사');
+    expect(COURT_AFTER_STATUS['기후부 승인']).toBe('한백');
+  });
+
+  it('옛 이름으로 저장된 값은 지금 이름으로 읽는다 — 공정 맨 앞으로 튕기지 않는다', () => {
+    expect(asProcessStatus('운영사 계약서 제출')).toBe('계약서 제출');
+    expect(asProcessStatus('기후부 승인')).toBe('기후부 승인');
+    expect(asProcessStatus('없는 칸')).toBe('계약완료');
+  });
+});
+
+/**
+ * 승인 취소 — 잘못 넣은 환경부 승인일을 지울 수 있나 (한백 지시 2026-11-17).
+ * 그 날짜가 연 것(뒤 단계 · 기성 차수)이 이미 움직였으면 그쪽을 먼저 되돌려야 한다.
+ */
+describe('approvalCancelBlock — 승인일을 지울 수 있나', () => {
+  const step = (state: string, trigger = '환경부 승인', no = 1) => ({ no, trigger, state });
+
+  it('기후부 승인까지는 지울 수 있다 — 거기 서 있으면 저장소가 계약서 제출로 되돌린다', () => {
+    for (const cur of ['계약완료', '계약서 제출', '기후부 승인'] as const) {
+      expect(approvalCancelBlock(cur, ENV, [step('open')]), cur).toBeNull();
+    }
+  });
+
+  it('★행위신고 뒤로 간 현장은 못 지운다★ — 승인 없이 지나간 현장이 남는다', () => {
+    expect(approvalCancelBlock('행위신고', ENV, [])).toMatch(/행위신고 까지 진행돼[\s\S]*기후부 승인 까지 먼저 되돌리세요/);
+    expect(approvalCancelBlock('착공', ENV, [])).toMatch(/착공 까지 진행돼/);
+  });
+
+  it('자체투자는 어디서든 지운다 — 승인이 그 현장의 조건이 아니다', () => {
+    expect(approvalCancelBlock('착공', SELF, [])).toBeNull();
+  });
+
+  it('★그 승인으로 연 기성을 청구·수금했으면 못 지운다★ — 조건 없는 청구가 남는다', () => {
+    expect(approvalCancelBlock('기후부 승인', ENV, [step('claimed')])).toMatch(/1차\(환경부 승인\)를 이미 청구했습니다/);
+    expect(approvalCancelBlock('기후부 승인', ENV, [step('collected', '환경부 승인', 2)]))
+      .toMatch(/2차\(환경부 승인\)를 이미 수금했습니다/);
+  });
+
+  it('다른 트리거의 차수는 상관없다 — 착공으로 연 차수를 청구했어도 승인일은 지운다', () => {
+    expect(approvalCancelBlock('기후부 승인', ENV, [step('claimed', '착공'), step('waiting')])).toBeNull();
   });
 });

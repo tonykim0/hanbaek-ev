@@ -30,11 +30,12 @@ function hrefOf(n: NoteNotification, biz: Biz): string {
 }
 
 /**
- * 꼬리표의 색 — 열린 일(환경부 대기번호·승인)은 초록, 정해진 날에 사람이 할 일(담당의 정기 알림)은 노랑, 막힌 것(반려·보완요청·
- * 담당이 못 한 일)은 빨강(ui.tsx 말투)
+ * 꼬리표의 색 — 열린 일(환경부 대기번호·승인)은 초록, 정해진 날에 사람이 할 일(담당의 정기 알림)과 되돌려진 일(승인 취소 —
+ * 막힌 것이 아니라 아직 기다리는 중이다)은 노랑, 막힌 것(반려·보완요청·담당이 못 한 일)은 빨강(ui.tsx 말투)
  */
 const toneOf = (n: NoteNotification) =>
-  n.kind === 'approval' || n.kind === 'queue' ? 'ok' : n.kind === 'remind' ? 'warn' : 'stop';
+  n.kind === 'approval' || n.kind === 'queue' ? 'ok'
+    : n.kind === 'remind' || n.kind === 'approvalCancel' ? 'warn' : 'stop';
 
 /** 줄의 머리와 갈래 — 공지 메모는 그 공지 · 「공지」, 담당의 정기 알림은 그 담당 · 「AI에이전트」, 나머지는 현장 · 탭 */
 const headOf = (n: NoteNotification) =>

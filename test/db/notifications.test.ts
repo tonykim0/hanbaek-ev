@@ -112,7 +112,7 @@ describe('진행현황 알림', () => {
     expect((await repo.listNotifications(me(USERS.navy))).filter((x) => x.projectId === id && x.kind === 'ask')).toHaveLength(0);
   }, site));
 
-  it('환경부 승인일을 처음 넣으면 그 현장 사람들에게 — 고치거나 지웠다 다시 넣어도 또 가지 않는다', () => withProject(async (id) => {
+  it('환경부 승인일을 처음 넣으면 그 현장 사람들에게 — 고쳐도 또 가지 않는다', () => withProject(async (id) => {
     const approvals = async (u: (typeof USERS)[keyof typeof USERS]) =>
       (await repo.listNotifications(me(u))).filter((x) => x.projectId === id && x.kind === 'approval');
     await signIn(USERS.admin);
@@ -125,11 +125,12 @@ describe('진행현황 알림', () => {
     }
     expect(await approvals(USERS.admin), '넣은 사람은 받지 않는다').toHaveLength(0);
     expect(await approvals(USERS.viewer)).toHaveLength(0);
-    // 고치기 · 지우기 · 다시 넣기 — 현장마다 한 번이다
-    for (const envApprovalDate of ['2026-10-13', null, '2026-10-14']) {
+    // 고치기 — 현장마다 한 번이다. 지우는 것은 승인 취소라 따로 본다(approval-flow.test — 알림을 거두고, 다시 승인하면 다시 간다)
+    for (const envApprovalDate of ['2026-10-13', '2026-10-14']) {
       expect((await call(processPOST, { params: { id }, body: { envApprovalDate } })).status).toBe(200);
     }
     expect(await approvals(USERS.navy)).toHaveLength(1);
+    expect((await approvals(USERS.navy))[0].body, '처음 간 글 그대로다').toBe('승인일 2026-10-12 — 환경부 승인 완료');
     // 시공 탭을 열면 읽힌다
     await signIn(USERS.ecoelec);
     await call(readPOST, { method: 'POST', body: { projectId: id, scope: '시공' } });

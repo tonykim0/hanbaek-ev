@@ -171,7 +171,7 @@ export function sortProjects(projects: ProjectSummary[], sort: SortKey, desc: bo
   });
 }
 
-/** 단계 이름 — 시공관리에서는 맞물리는 칸을 보드와 같은 이름(「환경부 승인 대기」)으로 부른다(lib/board) */
+/** 단계 이름 — 시공관리에서는 맞물리는 칸을 보드와 같은 이름(「기후부 승인 대기」)으로 부른다(lib/board) */
 export function stageLabelOf(p: ProjectSummary, tab: TableTab): string {
   const col = boardColumnOf(p);
   return tab === 'construction' ? constructionLabelOf(col as ProcessStatus) : col;

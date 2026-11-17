@@ -202,7 +202,7 @@ describe('단가·흐름의 축 고치기', () => {
    */
   it('★지금 서 있는 칸이 새 흐름에 없으면 거절한다★ — 기설치 연동은 충전기 발주를 안 지난다', async () => {
     await withPayableProject(async ({ id }) => {
-      await repo.setProcessStatus(id, '운영사 계약서 제출', admin);
+      await repo.setProcessStatus(id, '계약서 제출', admin);
       await repo.setProcessStatus(id, '행위신고', admin);
       await repo.updateProcess(id, { notifySkippedAt: '2026-09-01' }, admin);
       if ((await repo.getProject(id, adminView))!.process.status !== '충전기 발주') {

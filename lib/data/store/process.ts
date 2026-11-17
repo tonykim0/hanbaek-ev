@@ -14,7 +14,8 @@ import { writeAudit } from '@/lib/db/audit';
 import { processDocuments, processes, projects } from '@/lib/db/schema';
 import { today } from '@/lib/date';
 import {
-  advanceTargetOf, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES, CHECK_HOME,
+  advanceTargetOf, approvalCancelBlock, APPROVED_STATUS, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES,
+  CHECK_HOME,
   COURT_AFTER_STATUS, nextStatusOf, prevStatusOf, STATUS_GATES, type GateContext,
   declarationBlockers, gateContextOf, mayForceDeclaration, mayForceStatus, statusIndex,
 } from '@/lib/process';
@@ -22,9 +23,11 @@ import { PROCESS_STATUSES } from '@/types/project';
 import type { ProcessStatus } from '@/types/project';
 import type { Actor, ProcessPatch, ProjectRepository } from '../repository';
 import { toDetail } from '../assemble';
-import { assertAdmin, recordsOf, ruleMap, settleMap, toProcess, type TxLike } from './shared';
-import { approvalNotice } from '@/lib/notify';
-import { notifyMilestone } from './notifications';
+import {
+  assertAdmin, lockReceivable, recordsOf, ruleMap, settleMap, stepsNow, toProcess, type TxLike,
+} from './shared';
+import { approvalCancelNotice, approvalNotice } from '@/lib/notify';
+import { notifyMilestone, retractApproval } from './notifications';
 
 /** pgRepository 가 펼쳐 담는 조각 — 이름과 시그니처는 인터페이스가 정한다 */
 export const processStore: Pick<
@@ -63,6 +66,11 @@ export const processStore: Pick<
       /* as never — 위 select 가 문자열로 읽어 온다(363행이 같은 방식이다) */
       checkStepWindow(fields, patch, before, unchecked, gateContextOf(project as never));
       await checkDeclarations(tx, projectId, project, fields, patch, before, actor);
+      /* 승인 취소 — 적혀 있던 환경부 승인일을 지우는가. 지울 수 있는지는 저장 전에 본다(체크 해제와 같다) */
+      const cancelsApproval = patch.envApprovalDate === null && Boolean(before?.envApprovalDate);
+      if (cancelsApproval) {
+        await checkApprovalCancel(tx, projectId, asProcessStatus(before?.status), gateContextOf(project as never));
+      }
 
       // 공정 행이 없는 현장이 있다 — update 는 0행을 조용히 지나가므로 없으면 만들어 넣는다
       if (before) {
@@ -79,6 +87,18 @@ export const processStore: Pick<
       if (patch.envApprovalDate && !before?.envApprovalDate) {
         await notifyMilestone(tx, {
           projectId, kind: 'approval', actorId: actor.id, ...approvalNotice(patch.envApprovalDate),
+        });
+      }
+      /*
+       * 승인 취소 — 나간 승인 알림을 걷는다(안 읽은 것은 거두고, 읽은 사람에게는 「승인 취소」 한 줄).
+       * 따로 남기는 감사 줄은 「왜 승인일이 지워졌나」를 되짚는 자리다 — 공정 입력 변경 줄만으로는 고친 것과 무른 것이 안 갈린다.
+       */
+      if (cancelsApproval) {
+        const was = String(before?.envApprovalDate);
+        await retractApproval(tx, { projectId, actorId: actor.id, ...approvalCancelNotice(was) });
+        await writeAudit(tx, {
+          projectId, actor, action: '환경부 승인 취소',
+          field: 'process.envApprovalDate', oldValue: was, newValue: null,
         });
       }
 
@@ -98,6 +118,8 @@ export const processStore: Pick<
     // 완료 체크는 선언이자 전이다(한백 확인) — 조건이 차 있으면 다음 단계로 저절로 넘어간다
     await advanceAfterCheck(projectId, patch, actor);
     if (unchecked) await retreatAfterUncheck(projectId, unchecked, actor);
+    // 환경부 승인일도 그렇다 — 적으면 「기후부 승인」으로, 지우면 「계약서 제출」로
+    if ('envApprovalDate' in patch) await followApproval(projectId, patch.envApprovalDate ?? null, actor);
   },
 
   async setProcessStatus(projectId, status, actor): Promise<void> {
@@ -126,7 +148,7 @@ export const processStore: Pick<
     }
 
     /*
-     * 「운영사 계약서 제출」은 넘기는 것이 곧 선언이다 — 낸 날을 여기서 찍는다.
+     * 「계약서 제출」은 넘기는 것이 곧 선언이다 — 낸 날을 여기서 찍는다.
      *
      * 조건(STATUS_GATES)을 걷어내면서 이 칸을 적는 자리가 화면에서 사라졌다. 날짜는
      * 남긴다 — 언제 냈는지는 상세가 보여준다. 이미 찍혀 있으면 덮지 않는다.
@@ -139,9 +161,9 @@ export const processStore: Pick<
      */
     const before = record.process.cpoSubmitDate;
     const stamp =
-      status === '운영사 계약서 제출' && !before
+      status === '계약서 제출' && !before
         ? { cpoSubmitDate: today() }
-        : statusIndex(status) < statusIndex('운영사 계약서 제출') && before
+        : statusIndex(status) < statusIndex('계약서 제출') && before
           ? { cpoSubmitDate: null }
           : {};
 
@@ -152,6 +174,20 @@ export const processStore: Pick<
      * 되돌려 내려가면 지운다 — 되돌리기는 「그 일이 없던 것으로」다(화면 규칙 7).
      * 지우지 않으면 2차 지급 조건이 찬 채로 남아 돈이 나갈 수 있다.
      */
+    /*
+     * ★「기후부 승인」 앞으로 되돌리면 승인도 무른다★ (한백 지시 2026-11-17 — 승인 취소).
+     *
+     * 그 칸은 환경부 승인일이 있어야 서는 자리다 — 승인일을 지우면 현장이 「계약서 제출」로 돌아가듯(followApproval),
+     * 현장을 「계약서 제출」로 되돌리면 승인일도 지운다. 한쪽만 하면 「승인일은 있는데 승인 대기 칸」에 선 현장이 남는다 —
+     * 그 칸을 세운 까닭이 바로 그 현장들이었다(운영 5건). 되돌리기는 「그 일이 없던 것으로」다(화면 규칙 7).
+     * 자체투자·기설치 연동은 그 칸을 안 지나므로 승인일을 건드리지 않는다.
+     */
+    const ctx = gateContextOf(record.project);
+    const approvedOn = record.process.envApprovalDate;
+    const unapprove = ctx.subsidized && Boolean(approvedOn)
+      && statusIndex(record.process.status) >= statusIndex(APPROVED_STATUS)
+      && statusIndex(status) < statusIndex(APPROVED_STATUS);
+
     const doneBefore = record.process.completeDoneAt;
     const doneStamp =
       status === '준공완료' && !doneBefore
@@ -171,9 +207,18 @@ export const processStore: Pick<
        * 공정 행이 없는 현장이 있다 — 접수만 되고 아직 공정이 만들어지지 않은 경우다.
        * update 는 0행을 조용히 지나가므로 없으면 만들어 넣는다.
        */
+      if (row?.status === status) return;
+      /* 승인을 무르는 되돌리기 — 그 승인으로 연 기성을 청구·수금했으면 거절한다(날짜를 지울 때와 같은 판정) */
+      if (unapprove) {
+        await lockReceivable(tx, projectId);
+        const [full] = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+        const why = full ? approvalCancelBlock(status, ctx, await stepsNow(full)) : null;
+        if (why) throw new Error(`${status} 로 되돌리면 환경부 승인이 취소됩니다 — ${why}`);
+      }
+      const approvalStamp = unapprove ? { envApprovalDate: null } : {};
       if (row) {
-        if (row.status === status) return;
-        await tx.update(processes).set({ status, ...stamp, ...doneStamp }).where(eq(processes.projectId, projectId));
+        await tx.update(processes).set({ status, ...stamp, ...doneStamp, ...approvalStamp })
+          .where(eq(processes.projectId, projectId));
       } else {
         await tx.insert(processes).values({ projectId, status, ...stamp, ...doneStamp });
       }
@@ -196,9 +241,17 @@ export const processStore: Pick<
       }
       if ('cpoSubmitDate' in stamp) {
         await writeAudit(tx, {
-          projectId, actor, action: '운영사 계약서 제출',
+          projectId, actor, action: '계약서 제출',
           field: 'process.cpoSubmitDate',
           oldValue: before, newValue: stamp.cpoSubmitDate,
+        });
+      }
+      /* 승인을 물렀다 — 나간 승인 알림을 걷고(store/notifications retractApproval) 무른 날짜를 남긴다 */
+      if (unapprove) {
+        await retractApproval(tx, { projectId, actorId: actor.id, ...approvalCancelNotice(String(approvedOn)) });
+        await writeAudit(tx, {
+          projectId, actor, action: '환경부 승인 취소',
+          field: 'process.envApprovalDate', oldValue: String(approvedOn), newValue: null,
         });
       }
       /* 2차 지급의 조건이 되는 날이라 남긴다 — 돈이 걸린 값은 언제 바뀌었는지 물을 수 있어야 한다 */
@@ -246,6 +299,61 @@ async function advanceAfterCheck(projectId: string, patch: ProcessPatch, actor: 
   if (!canEnter(target, record.process, ctx).ok) return;         // 조건이 아직 안 찼다
   if (toDetail(record, await ruleMap(), await settleMap()).stage === 'intake') return;
   await moveStatus(projectId, cur, target, actor, '진행 단계 변경 (완료 체크)');
+}
+
+/**
+ * 환경부 승인일을 따라 단계가 오간다 (한백 지시 2026-11-17 「기후부 승인 단계를 하나 더」 · 「승인일 잘못 입력해서
+ * 승인나지 않았는데 취소해야할 경우」).
+ *
+ *   적으면  「계약서 제출」에 서 있던 현장이 「기후부 승인」으로 — 그 날짜가 곧 그 칸의 조건이다(STATUS_GATES)
+ *   지우면  「기후부 승인」에 서 있던 현장이 「계약서 제출」로 — 승인이 없던 것이 됐으니 다시 기다리는 자리다
+ *
+ * ★날짜 입력은 전이가 아니다(CHECK_ADVANCES 머리말)의 예외다.★ 그 규칙은 현장이 적는 날짜(착공일·수령일)가 잘못 적힌
+ * 하루로 현장을 밀지 않게 하려는 것이다. 승인일은 한백만 적고, 「승인이 났다」는 사실이 그 날짜 말고는 적히는 자리가 없다 —
+ * 날짜를 적고 넘기기를 또 누르게 하면 같은 사실을 두 번 말한다(운영 5건이 승인일이 있는데 앞 칸에 남아 있었다).
+ * 잘못 적은 하루는 지우면 그대로 되돌아온다.
+ *
+ * ★거꾸로도 같다★ — 현장을 「기후부 승인」 앞으로 되돌리면 승인일을 지운다(setProcessStatus). 날짜와 칸이 한 사실이다.
+ *
+ * 한 걸음만이다 — 그 칸에 서 있을 때만 오간다(체크의 오르내림과 같다). 계약완료에서 적은 승인일은 현장을 밀지 않고
+ * (아직 계약서를 안 냈다), 행위신고 뒤로 간 현장은 지우기 전에 저장소가 거절한다(checkApprovalCancel).
+ * 자체투자·기설치 연동은 그 칸을 안 지나므로(stepsOf) 아무 일도 없다. 계약이 다시 열린 현장도 공정을 움직이지 않는다.
+ */
+async function followApproval(projectId: string, date: string | null, actor: Actor): Promise<void> {
+  const rows = await getDb().select().from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!rows[0]) return;
+  const [record] = await recordsOf(rows);
+  if (!record) return;
+
+  const ctx = gateContextOf(record.project);
+  const cur = record.process.status;
+  if (date) {
+    if (nextStatusOf(cur, ctx) !== APPROVED_STATUS) return;        // 「계약서 제출」에 서 있을 때만
+    if (!canEnter(APPROVED_STATUS, record.process, ctx).ok) return;
+    if (toDetail(record, await ruleMap(), await settleMap()).stage === 'intake') return;
+    await moveStatus(projectId, cur, APPROVED_STATUS, actor, '진행 단계 변경 (환경부 승인일 입력)');
+    return;
+  }
+  if (cur !== APPROVED_STATUS) return;
+  const back = prevStatusOf(cur, ctx);
+  if (!back) return;
+  await moveStatus(projectId, cur, back, actor, '진행 단계 되돌림 (환경부 승인 취소)', { progress: false });
+}
+
+/**
+ * 승인 취소를 받을 수 있나 — 아니면 던진다. ★거절은 저장 전에 한다★ (체크 해제와 같다 — checkStepWindow).
+ *
+ * 판정은 lib/process approvalCancelBlock 한 곳이다(단계가 더 갔는가 · 그 승인으로 연 기성 차수를 청구·수금했는가).
+ * 기성 잠금을 쥐고 본다 — 지우는 사이에 청구가 끼어들면 「조건 없는 청구」가 남는다(store/shared lockReceivable).
+ */
+async function checkApprovalCancel(
+  tx: TxLike, projectId: string, cur: ProcessStatus, ctx: GateContext
+): Promise<void> {
+  await lockReceivable(tx, projectId);
+  const [row] = await tx.select().from(projects).where(eq(projects.id, projectId)).limit(1);
+  if (!row) return;
+  const why = approvalCancelBlock(cur, ctx, await stepsNow(row));
+  if (why) throw new Error(why);
 }
 
 /**

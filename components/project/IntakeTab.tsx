@@ -10,8 +10,10 @@ import { useState } from 'react';
 import { reviewKindLabel } from '@/lib/review-labels';
 import type { ContractState, ProcessStatus, ProjectDetail, ProjectDocument } from '@/types/project';
 import { BUILDING_TYPES, CONTRACT_PARTIES, replLabel, TERM_YEARS } from '@/types/project';
-import { contractDocsLockedWhy, gateContextOf, nextStatusOf, prevStatusOf } from '@/lib/process';
-import { HANDOFF_STATUS } from '@/lib/board';
+import {
+  APPROVED_STATUS, canEnter, contractDocsLockedWhy, gateContextOf, nextStatusOf, prevStatusOf,
+} from '@/lib/process';
+import { HANDOFF_STATUSES } from '@/lib/board';
 import { evaluateDocs, needsPreInstallCheck, type DocReq } from '@/lib/doc-rules';
 import { bundledAsPdf, checkedFilesOf, preCheckBlocker } from '@/lib/preinstall-check';
 import { parkingBlocker, parkingFilesOf, registerRejectOf } from '@/lib/parking-check';
@@ -420,7 +422,7 @@ function FactGroup(
 
 export function IntakeTab({
   project, evaluated, byKind, contract, projectId, siteName, canReview, canSubmit, canEditDocs,
-  canFillEmpty = false, knownOrgs, status, lines, preinstallCheck = null, parkingCheck = null, niceMail = null,
+  canFillEmpty = false, knownOrgs, status, process, lines, preinstallCheck = null, parkingCheck = null, niceMail = null,
 }: {
   /** 나이스인프라 현장 · 한백 관리자에게만 — 계약서 초안 메일(components/project/NiceSubmit) */
   niceMail?: NiceMailState | null;
@@ -453,6 +455,8 @@ export function IntakeTab({
   canFillEmpty?: boolean;
   /** 지금 서 있는 진행 단계 — 계약완료면 여기서 다음 걸음을 민다 */
   status: ProcessStatus;
+  /** 공정 값 — 다음 걸음의 조건(기후부 승인의 환경부 승인일)이 찼는지 게이트에 묻는다 */
+  process: ProjectDetail['process'];
   /** 설치 기수를 센다 — 나이스 제출 정보(NiceSubmitInfo)가 쓴다 */
   lines: ProjectDetail['lines'];
 }) {
@@ -464,14 +468,14 @@ export function IntakeTab({
    * 칸과 보이는 칸이 어긋나서, 다 채운 것처럼 보이는데 접수가 막히거나 그 반대가 된다.
    */
   /*
-   * 확인 뒤의 다음 걸음 — 계약완료에서 운영사 계약서 제출로.
+   * 확인 뒤의 다음 걸음 — 계약완료에서 계약서 제출로.
    *
    * 미는 자리가 보드 카드뿐이었다(한백 지시 2026-08-26). 상세에서 서류를 열여섯 칸 보고
    * 확인을 누른 사람이 그 걸음을 하려고 보드로 돌아가야 했다. 시공 탭에도 없다 —
    * 그 두 칸은 ★계약 국면★이라 시공 스테퍼가 행위신고부터 그린다(ConstructionTab).
    *
-   * ★계약 국면의 두 칸에서 민다 — 계약완료와 운영사 계약서 제출★ (한백 지시 2026-09-22
-   * 「운영사 계약서 제출 단계에 있는 현장에 행위신고로 넘기기 버튼 추가해줘」).
+   * ★계약 국면의 칸에서 민다 — 계약완료 · 계약서 제출 · 기후부 승인★ (한백 지시 2026-09-22
+   * 「운영사 계약서 제출 단계에 있는 현장에 행위신고로 넘기기 버튼 추가해줘」 · 2026-11-17 기후부 승인 칸이 사이에 섰다).
    *
    * 그 둘은 시공 스테퍼가 그리지 않는 칸이다(ConstructionTab 은 행위신고부터 그린다) —
    * 그래서 「두 자리에서 민다」가 아니다. 운영사가 승인을 알려 오면 그 소식을 듣는 사람은
@@ -485,27 +489,40 @@ export function IntakeTab({
    * 가리킨다 — 시공 탭은 이미 nextStatusOf 로 묻는다(ConstructionTab).
    */
   const gate = gateContextOf(project);
-  const pushesFrom = (st: ProcessStatus | null) => st === '계약완료' || st === HANDOFF_STATUS;
+  const pushesFrom = (st: ProcessStatus | null) =>
+    st !== null && (st === '계약완료' || HANDOFF_STATUSES.includes(st));
   const nextStep = pushesFrom(status) ? nextStatusOf(status, gate) : null;
+  /*
+   * 다음 칸의 조건이 안 찼으면 단추에 그 까닭을 적는다(화면 규칙 3) — 「기후부 승인」은 환경부 승인일이 있어야 선다.
+   * 승인일을 적으면 저장소가 그 자리에서 옮기므로(store/process followApproval) 이 단추는 보통 흐린 채로 사라진다:
+   * 눌리는 것은 승인일이 먼저 적혀 있던 현장뿐이다(계약완료에서 적었거나 계약이 다시 열렸던 현장).
+   */
+  const nextEntry = nextStep ? canEnter(nextStep, process, gate) : null;
+  const nextBlocked = nextEntry && !nextEntry.ok ? nextEntry.blockedBy : null;
 
   /*
    * ★밀었으면 되돌릴 자리도 같이 둔다★ (한백 지적 2026-09-01, 화면 규칙 7).
    *
-   * 이 탭에는 앞으로 미는 단추만 있었다 — 「운영사 계약서 제출 로 넘기기 →」. 잘못 밀면
+   * 이 탭에는 앞으로 미는 단추만 있었다 — 「계약서 제출 로 넘기기 →」. 잘못 밀면
    * 되돌릴 길이 이 화면에 없어서, 「확인 취소」를 눌러 ★계약검토까지★ 내려갔다가 다시
    * 확인하는 수밖에 없었다(한 걸음 되돌리려고 두 걸음을 무른다). 되돌리는 자리는 시공
    * 탭에 있었는데, 계약 보드를 보고 있는 사람이 시공 탭을 열어 볼 이유가 없다.
    *
    * ★이 탭이 밀어 들어간 칸마다 선다 — 앞 칸이 미는 자리(pushesFrom)면 되돌린다★ (한백 지적 2026-10-30
-   * 「운영사 계약제출에서 행위신고 넘어갔다가 취소하면 … 계약검토로 넘어가네」). 되돌리기를 「운영사 계약서 제출일
+   * 「운영사 계약제출에서 행위신고 넘어갔다가 취소하면 … 계약검토로 넘어가네」). 되돌리기를 「계약서 제출일
    * 때」로 따로 적어 두었더니, 2026-09-22 에 「행위신고 로 넘기기」를 더할 때 행위신고에서 되돌리는 자리가 같이
    * 안 생겨 위와 같은 일이 그 칸에서 다시 났다 — 남은 「취소」가 확인 취소뿐이었다. 확인 취소는 공정 칸을 그대로
    * 둔다(착공 뒤 서류를 고치게 계약을 다시 여는 단추라 공정을 지우면 안 된다) — 그래서 다시 확인하면 행위신고로
    * 돌아갔다. 미는 자리에서 끌어내므로 미는 칸이 늘면 되돌리기도 같이 는다. 그 뒤 칸은 이 탭이 밀지 않으니 시공
    * 탭 스테퍼가 밀고 되돌린다(화면 규칙 5).
    */
+  /*
+   * ★「기후부 승인」에서는 이 단추를 세우지 않는다★ (2026-11-17) — 그 칸에서 되돌리는 것은 승인 취소이고(저장소가 승인일을
+   * 같이 지운다), 그 자리는 머리말의 승인일 옆 「승인 취소」다: 협력사에게 취소 알림이 가는 일이라 되묻고 무른다.
+   * 같은 걸음을 두 자리에 두면 되묻는 쪽과 안 묻는 쪽이 갈린다(화면 규칙 5).
+   */
   const prevStep = prevStatusOf(status, gate);
-  const backStep = pushesFrom(prevStep) ? prevStep : null;
+  const backStep = pushesFrom(prevStep) && status !== APPROVED_STATUS ? prevStep : null;
 
   const requiredHere = evaluated.filter((d) => d.req === 'm' && !d.preinstall);
   const requiredDone = requiredHere.filter((d) => {
@@ -959,7 +976,7 @@ export function IntakeTab({
           * 눈이 옮겨 다니지 않는다. 확인 단추가 사라지면 그 자리를 이 단추가 잇는다.
           */}
         {canReview && project.contractConfirmedAt && nextStep && (
-          <AdvanceStage projectId={projectId} next={nextStep} />
+          <AdvanceStage projectId={projectId} next={nextStep} blocked={nextBlocked} />
         )}
 
         {/* 되돌리는 것은 곁다리 동작이라 테두리 단추다 — 미는 것과 무게가 달라야 한다 */}
@@ -1268,13 +1285,18 @@ function ConfirmContract({
  * 막는 것을 이름에 적지 않는다 — 이 걸음에는 조건이 없다(STATUS_GATES 의 운영사 계약서
  * 제출은 null). 넘기는 것이 곧 「우리가 냈다」는 선언이고, 낸 날은 저장소가 찍는다.
  */
-function AdvanceStage({ projectId, next, back = false }: {
+function AdvanceStage({ projectId, next, back = false, blocked = null }: {
   projectId: string;
   next: ProcessStatus;
   /** 되돌리는 걸음인가 — 이름과 무게가 갈린다(미는 것은 주 단추, 되돌리는 것은 곁다리) */
   back?: boolean;
+  /** 그 칸의 조건 중 아직 없는 것 — 있으면 단추가 흐리고 이름에 적힌다(lib/process canEnter 의 말 그대로) */
+  blocked?: string | null;
 }) {
   const { busy, error, run } = useAction();
+
+  /* 조건이 안 차도 단추는 자리에 둔다 — 무엇이 없는지 그 줄만 보고 안다(시공 탭의 「다음 — …」과 같은 꼴) */
+  if (blocked) return <Btn disabled className="self-start">{next} 로 넘기기 — {blocked} 필요</Btn>;
 
   /* 여백은 줄을 쥔 쪽(위 flex)이 준다 — ConfirmContract 와 같은 규칙이다 */
   return (

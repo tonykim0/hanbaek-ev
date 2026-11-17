@@ -58,10 +58,11 @@ export function turnIsMine(
  * 할 일로 세우지 않는 칸 (감사 L1) — 조립(lib/todos)이 거르고 할 일 화면(TodoBoard)도 칸을 안 그린다. 둘이 다른 목록을
  * 보면 어떤 사람에게도 영영 비는 칸이 선다(준공완료가 그랬다).
  *   준공완료 — 끝난 현장. 남은 일(준공마감·기성 수금)은 기성 할 일이 따로 세운다
- *   운영사 계약서 제출 — 운영사 회신을 기다리는 칸, 기다리는 것은 할 일이 아니다(한백 지시 2026-08-29)
+ *   계약서 제출 — 기후부 승인 회신을 기다리는 칸, 기다리는 것은 할 일이 아니다(한백 지시 2026-08-29).
+ *     승인이 나면 「기후부 승인」 칸으로 옮겨 가고 그때부터가 할 일이다(행위신고로 넘기기 — 아래 whatOf)
  *   계약중단 — 누구 차례도 아니다
  */
-export const NON_TODO_COLUMNS: readonly string[] = ['준공완료', '운영사 계약서 제출', '계약중단'];
+export const NON_TODO_COLUMNS: readonly string[] = ['준공완료', '계약서 제출', '계약중단'];
 
 /** 밀림의 문턱 — 이만큼 정체했거나 날이 지난 일이 「밀린 것만」에 걸린다 */
 export const OVERDUE_DAYS = 7;
@@ -152,6 +153,8 @@ export function whatOf(column: BoardColumn, p: {
    * 그래서 이제 그 칸은 아래 return 으로 빠진다.
    */
   if (column === '계약완료') return '운영사에 계약서 제출'; // 한백의 일(COURT_AFTER_STATUS)
+  /* 승인이 났다는 것은 상태다 — 거기서 한백이 할 일은 시공으로 넘기는 것이다(2026-11-17) */
+  if (column === '기후부 승인') return '행위신고로 넘기기';
   if (column === '준공서류 접수/검토') return '준공서류 검수'; // 「접수/검토」는 칸 이름이지 일이 아니다
   return column;
 }

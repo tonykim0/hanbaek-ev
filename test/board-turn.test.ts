@@ -35,7 +35,7 @@ describe('누구 차례인가', () => {
 
   it('★운영사 칸은 아무의 차례도 아니다★ — 우리 손 밖이라 기다리는 자리다', () => {
     for (const r of ['admin', 'viewer', 'salesCons', 'cons', 'sales'] as const) {
-      expect(isMyCourt('운영사 계약서 제출', r), r).toBe(false);
+      expect(isMyCourt('계약서 제출', r), r).toBe(false);
     }
   });
 

@@ -16,7 +16,7 @@
  * 이 줄에 끼워 넣으면 한 현장이 두 칸에 있어야 한다.
  */
 import type { Court, HoldState, ProcessStatus, Stage } from '@/types/project';
-import { COURT_AFTER_STATUS } from '@/lib/process';
+import { APPROVED_STATUS, COURT_AFTER_STATUS } from '@/lib/process';
 import { daysSince } from '@/lib/date';
 import { isHanbaek, type Role } from '@/lib/roles';
 import { PROCESS_STATUSES } from '@/types/project';
@@ -51,23 +51,24 @@ export interface BoardColumnDef {
   /**
    * 다른 보드에도 서는 칸 — 그쪽에서 부르는 이름과 함께.
    *
-   * ★계약의 끝이 곧 시공의 시작인 칸이 하나 있다★ (한백 지시 2026-08-29):
-   * 「운영사 계약서 제출」. 계약 쪽에서는 「우리가 냈다」는 뜻이고, 시공 쪽에서는
-   * 「환경부 승인을 기다리는 중」이다 — 같은 자리를 양쪽에서 다르게 본다.
-   * 한 칸만 세워 두면 한쪽 보드에서는 현장이 통째로 사라진다.
+   * ★계약의 끝이 곧 시공의 시작인 칸이 둘 있다★ (한백 지시 2026-08-29 · 2026-11-17):
+   * 「계약서 제출」과 「기후부 승인」. 앞 칸은 계약 쪽에서 「우리가 냈다」는 뜻이고 시공 쪽에서는
+   * 「기후부 승인을 기다리는 중」이다 — 같은 자리를 양쪽에서 다르게 본다. 뒤 칸은 양쪽이 같은 이름이다
+   * (승인이 났다 — 시공으로 넘길 차례). 한쪽에만 세워 두면 다른 쪽 보드에서는 현장이 통째로 사라진다.
    */
   alsoOn?: { band: BoardBand; label: string };
 }
 
 /**
- * 계약완료·운영사 계약서 제출까지가 계약이다(한백 확인) — 운영사에 내는 것은 계약 일의
- * 끝이고, 시공은 환경부 승인·운영사 시공승인 뒤에 시작한다. 페이지를 가르는 판정
+ * 계약완료·계약서 제출·기후부 승인까지가 계약이다(한백 확인 · 2026-11-17 「계약관리 칸반에 기후부 승인」) —
+ * 운영사에 내고 승인을 받는 것까지가 계약 일의 끝이고, 시공은 그 뒤에 시작한다. 페이지를 가르는 판정
  * (phaseOfProject)도 이 매핑을 따른다 — stage 로만 가르면 계약완료 현장이 시공 페이지로
  * 넘어가 버린다.
  */
 const BAND_OF_STATUS: Record<ProcessStatus, BoardBand> = {
   '계약완료': '계약',
-  '운영사 계약서 제출': '계약',
+  '계약서 제출': '계약',
+  '기후부 승인': '계약',
   '행위신고': '시공',   // 시공팀의 첫 일 — 시공 보드의 첫 칸이다
   '충전기 발주': '시공',
   '충전기 수령': '시공',
@@ -88,22 +89,33 @@ export function phaseOfProject(p: { stage: Stage; status: ProcessStatus }): '계
 }
 
 /**
- * 계약과 시공이 맞물리는 칸 — 양쪽 보드에 선다.
+ * 계약과 시공이 맞물리는 첫 칸 — 시공 보드·스테퍼가 여기서 시작한다.
  *
- * 우리가 운영사에 계약서를 낸 뒤의 일은 우리 손 밖이다: 운영사가 환경부에 접수하고,
- * 환경부가 승인해 운영사에 알리고, 운영사가 승인일과 함께 우리에게 알려준다(한백 설명).
- * 그 기다림이 계약 보드의 마지막 칸이자 시공 보드의 첫 칸이다.
+ * 우리가 운영사에 계약서를 낸 뒤의 일은 우리 손 밖이다: 운영사가 기후부(환경부)에 접수하고,
+ * 기후부가 승인해 운영사에 알리고, 운영사가 승인일과 함께 우리에게 알려준다(한백 설명).
+ * 그 기다림이 계약 보드의 끝자락이자 시공 보드의 첫 칸이다.
  */
-export const HANDOFF_STATUS = '운영사 계약서 제출' as const;
+export const HANDOFF_STATUS = '계약서 제출' as const;
 
-/** 시공 쪽에서 부르는 이름 — 냈다(계약)와 기다린다(시공)는 같은 자리의 두 얼굴이다 */
-const CONSTRUCTION_LABEL: Record<typeof HANDOFF_STATUS, string> = {
-  '운영사 계약서 제출': '환경부 승인 대기',
+/**
+ * 양쪽 보드에 서는 칸 — 계약서를 낸 자리와 승인이 난 자리 (한백 지시 2026-11-17).
+ *
+ * 승인이 난 현장을 계약 보드에만 두면, 시공 보드에서는 「승인 대기」에 서 있던 카드가 승인이 나는 순간 사라졌다가
+ * 한백이 행위신고로 넘겨야 다시 나타난다 — 시공 쪽이 가장 궁금한 때(승인이 났다)에 화면에 없다.
+ */
+export const HANDOFF_STATUSES: readonly ProcessStatus[] = [HANDOFF_STATUS, APPROVED_STATUS];
+
+/**
+ * 시공 쪽에서 부르는 이름 — 냈다(계약)와 기다린다(시공)는 같은 자리의 두 얼굴이다.
+ * 「환경부 승인 대기」였다 — 바로 옆에 「기후부 승인」 칸이 서면서 같은 기관을 두 이름으로 부르게 되어 맞췄다(2026-11-17).
+ */
+const CONSTRUCTION_LABEL: Partial<Record<ProcessStatus, string>> = {
+  '계약서 제출': '기후부 승인 대기',
 };
 
 /** 시공 화면에서 부르는 칸 이름 — 스테퍼도 보드도 같은 말을 쓴다 */
 export function constructionLabelOf(status: ProcessStatus): string {
-  return status === HANDOFF_STATUS ? CONSTRUCTION_LABEL[status] : status;
+  return CONSTRUCTION_LABEL[status] ?? status;
 }
 
 /**
@@ -124,7 +136,7 @@ export function showsOnBoard(
    */
   if (p.holdState) return band === '계약';
   if (phaseOfProject(p) === band) return true;
-  return p.status === HANDOFF_STATUS && band === '시공' && p.stage !== 'intake';
+  return HANDOFF_STATUSES.includes(p.status) && band === '시공' && p.stage !== 'intake';
 }
 
 export const BOARD_COLUMNS: BoardColumnDef[] = [
@@ -155,8 +167,8 @@ export const BOARD_COLUMNS: BoardColumnDef[] = [
     label: s,
     band: BAND_OF_STATUS[s],
     droppable: true,
-    ...(s === HANDOFF_STATUS
-      ? { alsoOn: { band: '시공' as const, label: CONSTRUCTION_LABEL[s] } }
+    ...(HANDOFF_STATUSES.includes(s)
+      ? { alsoOn: { band: '시공' as const, label: constructionLabelOf(s) } }
       : {}),
   })),
   /*
@@ -186,7 +198,7 @@ export function bandOfColumn(key: BoardColumn): BoardBand {
  * 서류를 올리면 한백, 반려하면 영업사, 접수 선언하면 한백, 단계를 옮기면
  * COURT_AFTER_STATUS. 그러다 보니 ★칸과 담당이 서로 다른 말★을 했다. 프로덕션에서
  * 계약 할 일 29건 중 10건이 그랬다(2026-09-04 실측):
- *   · 운영사 계약서 제출 6건 — 계약이 끝난 뒤 견적서·실사보고서를 올렸더니 담당이
+ *   · 계약서 제출(그때 이름 「운영사 계약서 제출」) 6건 — 계약이 끝난 뒤 견적서·실사보고서를 올렸더니 담당이
  *     한백으로 넘어왔다. 그 칸은 운영사·환경부를 기다리는 자리다.
  *   · 계약보완 3건 — 반려가 남았는데 협력사가 접수 선언을 눌러 담당만 한백이 됐다.
  *
@@ -211,7 +223,7 @@ export function courtOfColumn(key: BoardColumn): Court {
  * 카드마다 붙이면 같은 칸의 모든 카드에 같은 표시가 반복돼 아무것도 도드라지지 않는다.
  *
  * 턴키는 영업과 시공을 다 한다 — 두 담당을 다 맡는다. 「운영사」는 아무의 차례도 아니다:
- * 우리 손 밖이라 기다리는 자리다(운영사 계약서 제출).
+ * 우리 손 밖이라 기다리는 자리다(계약서 제출).
  */
 export function courtsOfRole(role: Role): readonly Court[] {
   if (isHanbaek(role)) return ['한백'];
@@ -324,7 +336,7 @@ const PARTNER_WAITING: Partial<Record<ProcessStatus, string>> = {
    * 「운영사 접수 대기 중」이라고 적어 두었는데, 아직 내지도 않은 것을 운영사가 받기를
    * 기다린다고 말하는 셈이었다(한백 지시 2026-08-25 — 계약완료면 협력사는 할 게 없다).
    */
-  '운영사 계약서 제출': '한백 제출 대기 중',
+  '계약서 제출': '한백 제출 대기 중',
   /*
    * ★「준공서류 접수/검토」 항목을 지웠다★ (2026-09-08 검증) — 그 칸을 여는 것은
    * 시공사가 개통 상자에서 누르는 「다음 단계로 진행」(openDoneAt)이다. 한백 일이 아닌데

@@ -151,10 +151,10 @@ describe('tableSheet — 화면에서 보는 그대로', () => {
   });
 
   it('시공관리에서는 맞물리는 칸을 보드와 같은 이름으로', () => {
-    const p = site({ status: '운영사 계약서 제출' });
+    const p = site({ status: '계약서 제출' });
     const stage = (tab: 'intake' | 'construction') => tableSheet([p], hidden, tab).rows[0][3];
-    expect(stage('construction')).toBe('환경부 승인 대기');
-    expect(stage('intake')).toBe('운영사 계약서 제출');
+    expect(stage('construction')).toBe('기후부 승인 대기');
+    expect(stage('intake')).toBe('계약서 제출');
   });
 });
 

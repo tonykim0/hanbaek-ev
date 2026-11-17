@@ -27,10 +27,10 @@ import type {
   BizType, BuildingType, InstallLoc, ContractLine, CpoName, DocStatus, HoldState, PayoutEntry, PowerType,
   Court, DocFile, ContractParty, PayoutCategory, PayoutKind,
   PreInstall, PricingRule, ProcessInfo, ProcessStatus, Project, ProjectDocument, PromoExtendOption,
-  PromoStep, ReplType, Settlement, SettlementRule, SettlementStepRule,
+  PromoStep, ReplType, Settlement, SettlementRule, SettlementStep, SettlementStepRule,
 } from '@/types/project';
 import type { Viewer } from '@/lib/auth/types';
-import { ALL_DOC_KEYS } from '../assemble';
+import { ALL_DOC_KEYS, toDetail } from '../assemble';
 import type { ProjectRecord, RuleMap, SettleMap } from '../assemble';
 import type { Actor } from '../repository';
 
@@ -444,4 +444,19 @@ export async function ruleMap(): Promise<RuleMap> {
 export async function settleMap(): Promise<SettleMap> {
   const rows = await getDb().select().from(settlementRules);
   return new Map(rows.map((r) => [r.id, rowToSettle(r)]));
+}
+
+/*
+ * ── 기성 청구·수금의 문 (2026-11-02) ──────────────────────────────────────────
+ * 청구·수금은 같은 현장의 같은 줄을 읽고 판정한 뒤 쓴다 — 청구 취소와 수금 기록이 엇갈려 「청구 없는 수금」이
+ * 남지 않게 현장 단위 자문 잠금을 쥔다. 승인 취소(store/process — 환경부 승인일을 지움)도 같은 잠금을 쥔다:
+ * 그 날짜가 기성 차수를 열기 때문에, 지우는 사이에 청구가 끼어들면 「조건 없는 청구」가 남는다(2026-11-17).
+ */
+export const lockReceivable = (tx: TxLike, projectId: string) =>
+  tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`hb_receivable:${projectId}`}))`);
+
+/** 지금 이 현장의 차수 — 조건·청구·수금 판정의 정본(조립)을 그대로 쓴다 */
+export async function stepsNow(row: typeof projects.$inferSelect): Promise<SettlementStep[]> {
+  const [record] = await recordsOf([row]);
+  return toDetail(record, await ruleMap(), await settleMap()).admin?.steps ?? [];
 }

@@ -7,7 +7,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  ATTR_BY_KEY, ATTRS, countActive, optionsOf, panelAttrKeys, passesAttrs, restStartOf, valueLabelOf, type AttrFilters,
+  ATTR_BY_KEY, ATTRS, countActive, optionsOf, panelAttrKeys, passesAttrs, renameSavedCols, restStartOf, valueLabelOf,
+  type AttrFilters,
 } from '@/lib/project-filter';
 import {
   DATE_COLS, DATE_KEYS, filterAttrOf, labelOf, MILESTONE_KEYS, PICKABLE, presenceOf, tableSheet, type MilestoneKey,
@@ -207,13 +208,28 @@ describe('단계 — 필터 판의 맨 앞 축 (2026-11-11 「필터에 현재 �
   });
 
   it('시공관리에서는 맞물리는 칸이 보드와 같은 이름 — 거르는 값(주소 · 저장분)은 칸 열쇠 그대로', () => {
-    expect(valueLabelOf('col', '운영사 계약서 제출', 'construction')).toBe('환경부 승인 대기');
-    expect(valueLabelOf('col', '운영사 계약서 제출', 'intake')).toBe('운영사 계약서 제출');
+    expect(valueLabelOf('col', '계약서 제출', 'construction')).toBe('기후부 승인 대기');
+    expect(valueLabelOf('col', '계약서 제출', 'intake')).toBe('계약서 제출');
     expect(valueLabelOf('col', '착공', 'construction')).toBe('착공');
     // 다른 축의 값은 그대로다
     expect(valueLabelOf('cpo', '나이스인프라', 'construction')).toBe('나이스인프라');
-    const p = site({ status: '운영사 계약서 제출' });
-    expect(passesAttrs(p, { col: ['운영사 계약서 제출'] })).toBe(true);
+    const p = site({ status: '계약서 제출' });
+    expect(passesAttrs(p, { col: ['계약서 제출'] })).toBe(true);
+  });
+
+  /*
+   * 칸 이름이 거르는 열쇠라, 이름을 바꾸면(2026-11-17 「운영사 계약서 제출」 → 「계약서 제출」) 걸어 둔 필터가 없는 값을 가리킨다 —
+   * 「필터 1」이 걸린 채 0건이 뜬다. 주소 · 브라우저에서 읽어 올 때 지금 이름으로 받는다.
+   */
+  it('옛 칸 이름으로 걸어 둔 필터는 지금 이름으로 받는다 — 0건이 뜨지 않게', () => {
+    expect(renameSavedCols({ col: ['운영사 계약서 제출', '착공'], cpo: ['나이스인프라'] }))
+      .toEqual({ col: ['계약서 제출', '착공'], cpo: ['나이스인프라'] });
+    // 옛 이름과 새 이름이 같이 있으면 하나로
+    expect(renameSavedCols({ col: ['운영사 계약서 제출', '계약서 제출'] })).toEqual({ col: ['계약서 제출'] });
+    // 손댈 것이 없으면 그 객체 그대로다(상태를 괜히 새로 만들지 않는다)
+    const same = { col: ['착공'] };
+    expect(renameSavedCols(same)).toBe(same);
+    expect(passesAttrs(site({ status: '계약서 제출' }), renameSavedCols({ col: ['운영사 계약서 제출'] }))).toBe(true);
   });
 });
 

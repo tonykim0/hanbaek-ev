@@ -48,9 +48,17 @@ export function approvalNotice(date: string): { title: string; body: string } {
 }
 
 /**
+ * 환경부 승인 취소 알림의 글 — 잘못 넣은 승인일을 지우면, 승인 알림을 ★이미 읽은★ 사람에게만 간다
+ * (한백 지시 2026-11-17 · store/notifications retractApproval). 승인 알림과 같은 한 줄 꼴이다.
+ */
+export function approvalCancelNotice(date: string): { title: string; body: string } {
+  return { title: '환경부 승인 취소', body: `승인일 ${date} 입력 취소 — 아직 승인 전` };
+}
+
+/**
  * 환경부 대기번호 알림의 글 — 한백이 대기번호를 ★처음★ 넣으면 그 현장 사람들에게 간다
  * (한백 지시 2026-10-12 「대기번호 입력했을 때도 알림 가게」). 승인 알림과 같은 규칙이다: 현장마다 한 번,
- * 받는 사람은 시공 탭 글과 같다(시공 보드의 첫 칸이 「환경부 승인 대기」다).
+ * 받는 사람은 시공 탭 글과 같다(시공 보드의 첫 칸이 「기후부 승인 대기」다).
  *
  * ★한 줄뿐이다★ (한백 2026-10-13 「대기번호 2026-595 — 환경부 접수 완료, 위 메시지만」) — 할 일은 붙이지 않는다.
  */

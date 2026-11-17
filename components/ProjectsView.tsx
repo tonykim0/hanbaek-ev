@@ -19,7 +19,7 @@ import { FIELD, Note, PANEL } from '@/components/ui';
 import type { ProcessStatus, ProjectSummary } from '@/types/project';
 import { type BoardColumn } from '@/lib/board';
 import {
-  ATTR_BY_KEY, ATTRS, countActive, optionsOf, panelAttrKeys, passesAttrs, valueLabelOf,
+  ATTR_BY_KEY, ATTRS, countActive, optionsOf, panelAttrKeys, passesAttrs, renameSavedCols, valueLabelOf,
   type AttrFilters, type AttrKey,
 } from '@/lib/project-filter';
 import type { TableTab } from '@/lib/project-table';
@@ -113,7 +113,7 @@ export default function ProjectsView({
   org: string | null;
 }) {
   const sp = useSearchParams();
-  /** 이 페이지의 표 열쇠 — 열 · 엑셀 · 표, 그리고 필터 값의 이름(시공관리의 「환경부 승인 대기」)이 같이 본다 */
+  /** 이 페이지의 표 열쇠 — 열 · 엑셀 · 표, 그리고 필터 값의 이름(시공관리의 「기후부 승인 대기」)이 같이 본다 */
   const tab: TableTab = band === '계약' ? 'intake' : 'construction';
 
   const [view, setView] = useState<ViewKey>(() => (sp.get('view') === 'table' ? 'table' : 'board'));
@@ -128,7 +128,7 @@ export default function ProjectsView({
       const v = split(sp.get(a.key));
       if (v.length) init[a.key] = v;
     }
-    return init;
+    return renameSavedCols(init);
   });
   /*
    * 사업연도는 필터가 아니라 범위다 — 걸면 「전체 N건」의 N 자체가 그 해의 건수가 된다.
@@ -161,7 +161,7 @@ export default function ProjectsView({
   useEffect(() => {
     const saved = urlHadFilters ? null : readSaved(band);
     if (saved) {
-      if (saved.attrs && Object.keys(saved.attrs).length > 0) setAttrs(saved.attrs);
+      if (saved.attrs && Object.keys(saved.attrs).length > 0) setAttrs(renameSavedCols(saved.attrs));
       if (saved.flags?.length) setFlags(saved.flags);
     }
     restored.current = true;

@@ -107,8 +107,17 @@ export const STATUS_GATES: Record<ProcessStatus, StatusGate | null> = {
    *
    * 낸 날은 저장소가 넘길 때 찍는다(cpoSubmitDate) — 화면은 제출됨/미제출만 보여준다.
    */
-  '운영사 계약서 제출': null,
-  // 계약서를 냈으면 시작할 수 있다 — 행위신고 접수를 언제 넣을지는 시공팀 판단이라 조건이 없다
+  '계약서 제출': null,
+  /*
+   * ★환경부 승인일이 있어야 선다★ (한백 지시 2026-11-17 「기후부 승인 단계를 하나 더 — 행위신고 전에」).
+   * 승인일은 한백만 적는 칸이고(HANBAEK_ONLY_PROCESS_FIELDS), 적는 것이 곧 이 칸으로 오는 일이다 —
+   * 「계약서 제출」에 서 있으면 저장소가 그 자리에서 옮긴다(store/process followApproval). 지우면 되돌아간다.
+   * 자체투자·기설치 연동은 이 칸을 안 지나므로(stepsOf) 여기서 묻지 않는다 — 그래도 한 번 더 가른다.
+   */
+  '기후부 승인': (p, ctx) => missing([
+    ctx.subsidized && !p.envApprovalDate && { key: 'envApprovalDate', label: '환경부 승인일 (한백 입력)' },
+  ]),
+  // 승인이 났으면(자체투자는 계약서를 냈으면) 시작할 수 있다 — 행위신고 접수를 언제 넣을지는 시공팀 판단이라 조건이 없다
   '행위신고': null,
   /*
    * 환경부 승인일과 행위신고 완료 체크 — 둘 다 있어야 한다 (그 한 칸이 운영사
@@ -218,6 +227,32 @@ export const STATUS_GATES: Record<ProcessStatus, StatusGate | null> = {
 };
 
 /**
+ * 환경부 승인일을 지울 수 있나 — 안 되면 그 까닭 (한백 지시 2026-11-17 「승인일 잘못 입력해서 승인나지 않았는데
+ * 취소해야할 경우가 있어」). 저장소가 저장 전에 묻는다(store/process — 승인 취소).
+ *
+ * 승인일은 두 가지를 연다: 「기후부 승인」 뒤의 단계와 기성의 「환경부 승인」 차수(lib/settlement triggerDate).
+ * 그 둘이 이미 움직였으면 날짜만 지워서는 안 된다 —
+ *   · 행위신고 뒤로 간 현장: 승인 없이 지나간 현장이 남는다(canEnter 는 지나온 자리를 다시 묻지 않는다).
+ *     단계를 먼저 「기후부 승인」까지 되돌린다. 자체투자·기설치 연동은 승인이 조건이 아니라 묻지 않는다.
+ *   · 그 차수를 청구했거나 수금한 현장: 조건이 사라진 청구·수금이 남아 미수금이 거짓이 된다. 그쪽을 먼저 되돌린다.
+ * 날짜를 ★고치는★ 것은 여기 오지 않는다 — 잘못 적은 날을 바로잡는 길은 늘 열려 있다.
+ */
+export function approvalCancelBlock(
+  cur: ProcessStatus,
+  ctx: Pick<GateContext, 'subsidized'>,
+  steps: ReadonlyArray<{ no: number; trigger: string; state: string }>
+): string | null {
+  if (ctx.subsidized && statusIndex(cur) > statusIndex(APPROVED_STATUS)) {
+    return `이미 ${cur} 까지 진행돼 환경부 승인일을 지울 수 없습니다 — 단계를 ${APPROVED_STATUS} 까지 먼저 되돌리세요.`;
+  }
+  const used = steps.find((st) => st.trigger === '환경부 승인' && (st.state === 'claimed' || st.state === 'collected'));
+  if (!used) return null;
+  return used.state === 'collected'
+    ? `기성 ${used.no}차(환경부 승인)를 이미 수금했습니다 — 수금과 청구를 먼저 되돌려야 승인일을 지울 수 있습니다.`
+    : `기성 ${used.no}차(환경부 승인)를 이미 청구했습니다 — 청구를 먼저 취소해야 승인일을 지울 수 있습니다.`;
+}
+
+/**
  * 저장된 문자열을 진행현황으로 좁힌다.
  *
  * 상태 목록이 바뀌면 DB 에는 이제 없는 값이 남는다. 그걸 그대로 통과시키면
@@ -225,10 +260,21 @@ export const STATUS_GATES: Record<ProcessStatus, StatusGate | null> = {
  * 사라지는 것보다 첫 칸에 서 있는 편이 낫다 — 눈에 보이면 고칠 수 있다.
  */
 export function asProcessStatus(value: string | null | undefined): ProcessStatus {
-  return (PROCESS_STATUSES as readonly string[]).includes(value ?? '')
-    ? (value as ProcessStatus)
+  const now = LEGACY_STATUS[value ?? ''] ?? value;
+  return (PROCESS_STATUSES as readonly string[]).includes(now ?? '')
+    ? (now as ProcessStatus)
     : PROCESS_STATUSES[0];
 }
+
+/**
+ * 이름이 바뀐 칸의 옛 저장값 — 읽을 때 지금 이름으로 받는다.
+ *
+ * 저장값은 마이그레이션이 옮기지만(0133), 마이그레이션은 새 코드보다 먼저 돈다 — 그 사이 1~2분은 옛 코드가 살아 있어
+ * 옛 이름으로 다시 적을 수 있다. 그 줄을 「모르는 값」으로 보면 현장이 공정 맨 앞(계약완료)으로 튕긴다.
+ */
+const LEGACY_STATUS: Record<string, ProcessStatus> = {
+  '운영사 계약서 제출': '계약서 제출',
+};
 
 export function statusIndex(status: ProcessStatus): number {
   return PROCESS_STATUSES.indexOf(status);
@@ -241,8 +287,9 @@ export function statusIndex(status: ProcessStatus): number {
  * 게이트가 두 벌이 된다. 대신 현장마다 ★지나는 칸의 부분집합★을 고른다. 두 흐름 다
  * 같은 순서로 올라가므로 한 줄기로 표현된다:
  *
- *   환경부·자체투자  운영사 계약서 제출 → 행위신고 → 발주 → 수령 → 착공 → 개통 → 준공…
- *   기설치 연동      운영사 계약서 제출 → 행위신고 →           착공 → 개통 → 준공…
+ *   환경부        계약서 제출 → 기후부 승인 → 행위신고 → 발주 → 수령 → 착공 → 개통 → 준공…
+ *   자체투자      계약서 제출 →              행위신고 → 발주 → 수령 → 착공 → 개통 → 준공…
+ *   기설치 연동   계약서 제출 →              행위신고 →              착공 → 개통 → 준공…
  *
  * 「다음 칸」을 +1 로 세지 않는 이유가 이것이다 — 건너뛰는 칸이 있으면 +1 이 없는 칸을
  * 가리킨다. 이웃은 nextStatusOf·prevStatusOf 로만 구한다.
@@ -272,10 +319,21 @@ const NOT_FOR_LINK: readonly ProcessStatus[] = ['충전기 발주', '충전기 �
  */
 const BRANCH_ONLY: readonly ProcessStatus[] = ['준공보완'];
 
+/**
+ * 기후부(환경부) 승인이 난 자리 — 환경부 사업만 지난다 (한백 지시 2026-11-17).
+ *
+ * ★자체투자·기설치 연동은 받을 승인이 없다★ (types/project subsidized) — 그 현장은 「계약서 제출」에서 바로 행위신고로 간다.
+ * 칸을 세워 두면 없는 승인을 기다리는 자리가 된다(자체투자 16건이 「충전기 발주」의 승인일 조건에 갇혔던 것과 같은 일).
+ */
+export const APPROVED_STATUS = '기후부 승인' as const satisfies ProcessStatus;
+
 /** 이 현장이 지나는 칸 — 순서는 PROCESS_STATUSES 그대로다 */
 export function stepsOf(ctx: Pick<GateContext, 'bizType'>): ProcessStatus[] {
   const link = ctx.bizType === '기설치 연동';
-  return link ? PROCESS_STATUSES.filter((st) => !NOT_FOR_LINK.includes(st)) : [...PROCESS_STATUSES];
+  const approval = subsidized(ctx.bizType);
+  return PROCESS_STATUSES.filter(
+    (st) => !(link && NOT_FOR_LINK.includes(st)) && !(st === APPROVED_STATUS && !approval)
+  );
 }
 
 /** 이 현장에서 그 칸 다음 — 없으면 null(마지막) */
@@ -303,7 +361,7 @@ export function prevStatusOf(cur: ProcessStatus, ctx: Pick<GateContext, 'bizType
  * 화면이 달라지고, 무엇을 냈는지 아무도 답할 수 없게 된다. 한백은 계속 바꿀 수 있다 —
  * 운영사가 반려해 다시 내는 길이 있어야 하고, 그때 고치는 것은 한백의 일이다.
  */
-export const CONTRACT_DOCS_LOCK_AT: ProcessStatus = '운영사 계약서 제출';
+export const CONTRACT_DOCS_LOCK_AT: ProcessStatus = '계약서 제출';
 
 /**
  * 계약 서류(계약 묶음·기설치 조사)를 지금 바꿀 수 있나.
@@ -469,7 +527,7 @@ export function canEnter(
  *     겸한다, 2026-08-27).
  *     지급을 여는 날짜라(기성 「환경부 승인」 트리거) 더욱 시공사가 적을 자리가 아니다.
  *   충전기 발주일·출고일 — 발주는 한백이 하고, 출고도 한백이 통보받는다.
- *   운영사 계약서 제출 — 한백이 내는 것이다. 이제 화면에서 적는 자리가 없다(보드에서
+ *   계약서 제출 — 한백이 내는 것이다. 이제 화면에서 적는 자리가 없다(보드에서
  *     넘길 때 저장소가 찍는다). 잠금은 남겨 둔다 — 경로가 열려 있는 한 판정도 있어야 한다.
  * 수령일부터는 현장의 일이다 — 시공사가 적는다 (한백 확인, 2026-08-21).
  */
@@ -487,7 +545,7 @@ const HANBAEK_ONLY_LABEL: Record<(typeof HANBAEK_ONLY_PROCESS_FIELDS)[number], s
   envApprovalDate: '환경부 승인일',
   chargerOrderDate: '충전기 발주일',
   chargerShipDate: '충전기 출고일',
-  cpoSubmitDate: '운영사 계약서 제출',
+  cpoSubmitDate: '계약서 제출',
   chargerOrderQty: '발주 충전기 수량',
   modemOrderQty: '발주 모뎀 수량',
   chargerModelId: '충전기 모델',
@@ -755,7 +813,8 @@ export function advanceBlockers(
  */
 export const COURT_AFTER_STATUS: Record<ProcessStatus, Court> = {
   '계약완료': '한백',             // 다음 일: 운영사에 계약서 제출 — 한백이 한다
-  '운영사 계약서 제출': '운영사', // 시공승인 회신을 기다린다
+  '계약서 제출': '운영사',       // 기후부 승인 회신을 기다린다 — 우리 손 밖이다
+  '기후부 승인': '한백',         // 승인이 났다 — 시공으로 넘길 차례(행위신고로 넘기기는 한백이 한다)
   '행위신고': '시공사',           // 시공팀이 접수한다 (1~2주)
   '충전기 발주': '한백',          // 발주·출고·모델·발주 수량은 한백이 적는다
   '충전기 수령': '시공사',        // 충전기를 받고 수량을 세는 것은 현장이다

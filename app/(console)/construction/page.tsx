@@ -16,7 +16,7 @@ export default async function ConstructionPage() {
   const session = await getSessionUser();
   if (!session) redirect('/login?next=/construction');
   const all = await getRepository().listProjects(viewerOf(session));
-  // 충전기 발주부터가 시공이다 — 계약완료·운영사 계약서 제출은 계약 페이지에 있다(한백 확인)
+  // 충전기 발주부터가 시공이다 — 계약완료·계약서 제출·기후부 승인은 계약 페이지에 있다(한백 확인)
   const projects = all.filter((p) => showsOnBoard(p, '시공'));
 
   return (
