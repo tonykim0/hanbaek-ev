@@ -2,7 +2,7 @@ import { notFound } from 'next/navigation';
 import ProjectDetailView, { type TabKey } from '@/components/project/DetailView';
 import { getRepository } from '@/lib/data';
 import { actorOf, getSessionUser, viewerOf } from '@/lib/auth/session';
-import { canWrite, effectiveVisibility, isHanbaek } from '@/lib/roles';
+import { canWrite, effectiveVisibility, isHanbaek, seesPay } from '@/lib/roles';
 import { NICE_DRAFT_MAIL } from '@/lib/nice-submit';
 import { canChangeContractDocs, processEditOf, type ProcessEdit } from '@/lib/process';
 import { matchingRules, type RuleOptions } from '@/lib/pricing-match';
@@ -20,14 +20,14 @@ import type { Role } from '@/lib/roles';
  * 인자에 대해 요청 단위로 결과를 재사용한다. ★인자는 원시값이어야 한다★ —
  * viewer 객체를 그대로 넘기면 매번 새 객체라 키가 달라져 캐시가 듣지 않는다.
  */
-const loadDetail = cache((id: string, role: Role, org: string | null) =>
-  getRepository().getProject(id, { role, org })
+const loadDetail = cache((id: string, role: Role, org: string | null, hidePay = false) =>
+  getRepository().getProject(id, { role, org, hidePay })
 );
 
 export async function generateMetadata({ params }: { params: { id: string } }) {
   const session = await getSessionUser();
   if (!session) return { title: '현장 관리' };
-  const detail = await loadDetail(params.id, session.role, session.org);
+  const detail = await loadDetail(params.id, session.role, session.org, session.hidePay === true);
   return { title: detail ? `${detail.project.name}` : '현장 관리' };
 }
 
@@ -52,7 +52,7 @@ export default async function ProjectPage({
 
   // 권한 밖 현장은 「없음」과 구분되지 않게 404 로 돌려준다 — 존재 여부가 새지 않게
   // generateMetadata 가 이미 불렀으면 그 결과를 그대로 쓴다(위 loadDetail 주석)
-  const detail = await loadDetail(params.id, session.role, session.org);
+  const detail = await loadDetail(params.id, session.role, session.org, session.hidePay === true);
   if (!detail) notFound();
 
   /*
@@ -120,11 +120,13 @@ export default async function ProjectPage({
   return (
     <ProjectDetailView
       detail={detail}
-      vis={effectiveVisibility(session.role, session.org, detail.project)}
+      vis={effectiveVisibility(session.role, session.org, detail.project, session.hidePay === true)}
       // 검수·담당는 한백만 한다. vis.cost 로 유추하지 않고 명시적으로 넘긴다.
       canReview={canEdit}
       // 기성 탭은 한백의 눈이면 본다(열람 전용 포함) — 검수 권한과 다르다 (감사 M29)
       canSeeReceivable={seesAll}
+      // 협력사 정산관리 탭 — 「정산 안 보기」 계정(users.hide_pay)에게는 탭이 없다(금액은 저장소가 이미 지웠다)
+      canSeePay={seesPay(session)}
       /*
        * 진행현황을 남길 때 붙는 이름. 서버(addNote)가 실제로 쓰는 값과 같은 규칙이다 —
        * 화면이 「한백으로 남깁니다」라고 하고 서버가 다른 이름을 적으면 기록을 믿을 수 없다.

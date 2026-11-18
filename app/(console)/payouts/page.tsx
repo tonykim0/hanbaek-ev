@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getRepository } from '@/lib/data';
 import { actorOf, getSessionUser, viewerOf } from '@/lib/auth/session';
 import PayoutWorkBoard from '@/components/settlement/PayoutWorkBoard';
-import { isHanbaek } from '@/lib/roles';
+import { isHanbaek, seesPay } from '@/lib/roles';
 
 export const metadata = { title: '협력사 지급관리' };
 
@@ -16,6 +16,8 @@ export const metadata = { title: '협력사 지급관리' };
 export default async function PayoutsPage() {
   const session = await getSessionUser();
   if (!session) redirect('/login?next=/payouts');
+  // 「정산 안 보기」 계정(users.hide_pay)에게는 이 화면이 없다 — 지급은 같은 소속의 턴키 계정이 맡는다(lib/roles seesPay)
+  if (!seesPay(session)) redirect('/projects');
   /*
    * 여기서 눈과 손이 갈린다.
    *   눈(isHanbaek) — 전 협력사의 줄을 보는가, 자기 몫만 보는가.

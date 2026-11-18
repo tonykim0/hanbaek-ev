@@ -22,7 +22,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import type { Role } from '@/lib/roles';
-import { canWrite, isHanbaek, ROLE_LABEL } from '@/lib/roles';
+import { canWrite, isHanbaek, ROLE_LABEL, seesPay } from '@/lib/roles';
 import { TODO_GROUPS, type TodoGroup } from '@/lib/todo-types';
 import { BIZ_COOKIE, BIZ_FRAME, BIZ_HOME, BIZ_LABEL, BIZ_TITLE, BIZES, bizOf, isShared, type Biz } from '@/lib/biz';
 import TopBar from '@/components/TopBar';
@@ -44,6 +44,8 @@ interface Item {
   adminOnly?: boolean;
   /** 쓰는 사람만 — 열람 전용에게만 안 보인다 */
   writerOnly?: boolean;
+  /** 정산을 보는 계정만 — 「정산 안 보기」(users.hide_pay) 계정에게는 안 보인다(lib/roles seesPay) */
+  payOnly?: boolean;
   /** 이 화면에서 처리하는 할 일 업무 — 사이드바 오른쪽에 그 업무의 건수를 단다 */
   todoGroup?: TodoGroup;
 }
@@ -104,7 +106,7 @@ const GROUPS: Group[] = [
        * 이름이 아래 「정산」 묶음과 겹친다. 그 묶음은 돈을 움직이는 작업대(지급관리·
        * 명세서·기성관리)고 이 항목은 그 결과를 세는 집계다 — 한백이 부르는 이름이 그것이다.
        */
-      { href: '/finance', label: '정산 현황', short: '정산' },
+      { href: '/finance', label: '정산 현황', short: '정산', payOnly: true },
     ],
   },
   {
@@ -185,7 +187,7 @@ const GROUPS: Group[] = [
        * 월별 그래프는 거래명세서 맨 위로 올렸다.
        */
       // 협력사도 연다(한백 확인) — 자기가 받을 지급의 회차·금액·지급시기를 본다
-      { href: '/payouts', label: '협력사 지급관리', short: '지급' },
+      { href: '/payouts', label: '협력사 지급관리', short: '지급', payOnly: true },
       /*
        * 거래명세서를 지급관리 바로 밑에 둔다 (한백 요청 2026-08-24) — 지급관리에서 만든
        * 배치가 여기서 명세서 한 장이 된다. 사이에 운영사 기성관리(받는 쪽)가 끼면
@@ -193,7 +195,7 @@ const GROUPS: Group[] = [
        *
        * 배치를 만들고 보관하는 작업대다 — 협력사도 자기 배치(최종 확인분)를 여기서 본다.
        */
-      { href: '/statements', label: '협력사 거래명세서', short: '명세', todoGroup: '지급' },
+      { href: '/statements', label: '협력사 거래명세서', short: '명세', todoGroup: '지급', payOnly: true },
       {
         href: '/receivables',
         label: '운영사 기성관리',
@@ -306,10 +308,12 @@ const SOLAR_GROUPS: Group[] = [
 ];
 
 export default function ConsoleShell({
-  org, role, solar = false, actAs = null, lastBiz = 'ev', children,
+  org, role, solar = false, hidePay = false, actAs = null, lastBiz = 'ev', children,
 }: {
   org: string | null;
   role: Role;
+  /** 정산 안 보기(users.hide_pay) — 정산 메뉴(정산 현황 · 지급관리 · 거래명세서)를 걷는다 */
+  hidePay?: boolean;
   /** 태양광을 보는가(lib/biz seesSolar) — 한백 · 태양광 참여 협력사. 아니면 사업 전환이 없고 틀은 늘 전기차다 */
   solar?: boolean;
   /** 대행 중이면 그 계정 이름 — 관리자가 협력사의 눈으로 보고 있다 */
@@ -400,11 +404,14 @@ export default function ConsoleShell({
    * 묶음과 항목이 같은 판정을 쓴다 — 묶음만 열고 항목을 안 걸러 두면 빈 제목이 남는다.
    * 항목을 다 거른 묶음은 제목째 사라진다(아래 filter).
    */
-  const allow = (x: { hanbaekOnly?: boolean; adminOnly?: boolean; writerOnly?: boolean; partnerOnly?: boolean }) =>
+  const allow = (x: {
+    hanbaekOnly?: boolean; adminOnly?: boolean; writerOnly?: boolean; partnerOnly?: boolean; payOnly?: boolean;
+  }) =>
     (!x.hanbaekOnly || isHanbaek(role))
     && (!x.adminOnly || role === 'admin')
     && (!x.writerOnly || canWrite(role))
-    && (!x.partnerOnly || !isHanbaek(role));
+    && (!x.partnerOnly || !isHanbaek(role))
+    && (!x.payOnly || seesPay({ role, hidePay }));
 
   const groups = (biz === 'solar' ? SOLAR_GROUPS : GROUPS)
     .filter(allow)

@@ -3,7 +3,7 @@ import { thisMonth as seoulMonth } from '@/lib/date';
 import { getRepository } from '@/lib/data';
 import { allSlots } from '@/lib/data/db-slot';
 import { getSessionUser, viewerOf } from '@/lib/auth/session';
-import { isHanbaek } from '@/lib/roles';
+import { isHanbaek, seesPay } from '@/lib/roles';
 import { receivableMoneyOf, safetyFeeApplies, safetyFeeDue } from '@/lib/settlement';
 import { won, wonCompact } from '@/lib/format';
 import YearTabs from '@/components/YearTabs';
@@ -55,6 +55,8 @@ export default async function FinancePage({
 }) {
   const session = await getSessionUser();
   if (!session) redirect('/login?next=/finance');
+  // 「정산 안 보기」 계정(users.hide_pay)에게는 이 화면이 없다 — 지급은 같은 소속의 턴키 계정이 맡는다(lib/roles seesPay)
+  if (!seesPay(session)) redirect('/projects');
 
   const viewer = viewerOf(session);
   const repo = getRepository();

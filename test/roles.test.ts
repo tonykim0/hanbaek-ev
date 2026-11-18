@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-  canAccessProject, canWrite, effectiveVisibility, isHanbaek, normalizeOrg, visibilityOf,
+  canAccessProject, canWrite, effectiveVisibility, isHanbaek, normalizeOrg, seesPay, visibilityOf,
 } from '@/lib/roles';
 
 const 현장 = { salesOrg: '에코일렉', gcOrg: '대광이브이' };
@@ -99,5 +99,30 @@ describe('normalizeOrg — 소속 문자열이 접근 키다', () => {
   it('빈 값은 null 이다 — 빈 문자열이 소속으로 남으면 남의 현장에 걸린다', () => {
     expect(normalizeOrg('   ')).toBeNull();
     expect(normalizeOrg(null)).toBeNull();
+  });
+});
+
+/*
+ * 정산 안 보기(users.hide_pay, 2026-11-18) — 지급은 같은 소속의 턴키 계정이 맡고 이 계정은 현장 · 시공만 본다
+ * (「이브이솔루션(시공)은 협력사 정산관리랑 지급관리만 안보이면돼. 그대신 모든 현장은 보여야해」)
+ */
+describe('정산 안 보기 — 현장은 보고 돈은 안 본다', () => {
+  const site = { salesOrg: '갑', gcOrg: '갑' };
+
+  it('켜면 제 현장이어도 어느 쪽 돈도 안 보인다', () => {
+    expect(effectiveVisibility('cons', '갑', site, true)).toEqual({ sales: false, cons: false, cost: false });
+    expect(effectiveVisibility('salesCons', '갑', site, true)).toEqual({ sales: false, cons: false, cost: false });
+    expect(effectiveVisibility('cons', '갑', site)).toEqual({ sales: false, cons: true, cost: false });
+  });
+
+  it('현장은 그대로 본다 — 접근은 소속이 정한다', () => {
+    expect(canAccessProject('cons', '갑', site)).toBe(true);
+  });
+
+  it('한백은 늘 본다 · 협력사는 켰을 때만 안 본다', () => {
+    expect(effectiveVisibility('viewer', null, site, true)).toEqual({ sales: true, cons: true, cost: true });
+    expect(seesPay({ role: 'admin', hidePay: true })).toBe(true);
+    expect(seesPay({ role: 'cons', hidePay: true })).toBe(false);
+    expect(seesPay({ role: 'cons' })).toBe(true);
   });
 });

@@ -299,7 +299,7 @@ export const pgRepository: ProjectRepository = {
     return {
       ...redactForViewer(
         toDetail(record, rules, settles),
-        effectiveVisibility(viewer.role, viewer.org, row)
+        effectiveVisibility(viewer.role, viewer.org, row, viewer.hidePay)
       ),
       // 금액이 없는 값이라 가리지 않는다 — 협력사가 어긋난 곳을 보고 고친다
       preinstallCheck,

@@ -54,6 +54,7 @@ export default function ProjectDetailView({
   vis,
   canReview,
   canSeeReceivable,
+  canSeePay = true,
   noteAuthor,
   unread = { noteIds: [], scopes: [] },
   knownOrgs,
@@ -74,6 +75,11 @@ export default function ProjectDetailView({
   canReview: boolean;
   /** 운영사 기성관리 탭을 보는가 — 한백의 눈(관리자·열람 전용). 검수(canReview)는 손이라 여기 쓰지 않는다 (감사 M29) */
   canSeeReceivable: boolean;
+  /**
+   * 협력사 정산관리 탭을 보는가 — 「정산 안 보기」 계정(users.hide_pay)만 false 다(lib/roles seesPay). 그 계정은 금액을 하나도
+   * 안 받으므로 탭째 없다 — 빈 탭을 두면 「정산이 없는 현장」으로 읽힌다.
+   */
+  canSeePay?: boolean;
   /** 진행현황을 남길 때 붙는 이름 (한백 · 협력사 이름) */
   noteAuthor: string;
   /**
@@ -119,10 +125,12 @@ export default function ProjectDetailView({
    * 제출을 기다리는 현장을 눌렀을 때 시공 탭이 열려서, 아직 아무 일도 없는 공정
    * 스테퍼를 본다(한백 지적 2026-08-24). 판정은 보드와 같은 함수를 쓴다.
    */
-  const byPhase: TabKey =
+  const phaseTab: TabKey =
     phaseOfProject({ stage: detail.stage, status: detail.process.status }) === '계약'
       ? 'intake'
       : detail.stage;
+  // 정산 국면이어도 정산 탭이 없는 계정(정산 안 보기)은 시공 탭에 선다
+  const byPhase: TabKey = phaseTab === 'settlement' && !canSeePay ? 'construction' : phaseTab;
 
   // 잠긴 시공 탭은 URL 로도 못 연다 — 화면에서 못 누르는 것은 주소로도 안 된다.
   // 기성 탭도 같다 — 한백이 아니면 탭이 없으므로 주소로도 안 열린다.
@@ -130,6 +138,7 @@ export default function ProjectDetailView({
     if (!initialTab) return byPhase;
     if (initialTab === 'construction' && detail.stage === 'intake') return byPhase;
     if (initialTab === 'receivable' && !canSeeReceivable) return byPhase;
+    if (initialTab === 'settlement' && !canSeePay) return byPhase;
     return initialTab;
   });
   /**
@@ -230,12 +239,14 @@ export default function ProjectDetailView({
           ? '단가 미지정'
           : undefined,
     },
-    {
-      key: 'settlement',
-      label: '협력사 정산관리',
-      count: '',
-      locked: false,
-    },
+    ...(canSeePay
+      ? [{
+          key: 'settlement' as TabKey,
+          label: '협력사 정산관리',
+          count: '',
+          locked: false,
+        }]
+      : []),
     // 기성은 한백만 — 운영사에게서 받는 돈이라 협력사에게는 탭 자체가 없다
     ...(canSeeReceivable
       ? [{

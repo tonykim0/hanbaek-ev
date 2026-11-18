@@ -556,13 +556,13 @@ export function payoutPlansOf(
   settles: SettleMap
 ): PayoutPlanRow[] {
   const detail = toDetail(r, rules, settles);
-  const vis = effectiveVisibility(viewer.role, viewer.org, detail.project);
+  const vis = effectiveVisibility(viewer.role, viewer.org, detail.project, viewer.hidePay);
   return payoutsOfDetail(redactForViewer(detail, vis), vis);
 }
 
 export function payoutRowsOf(r: ProjectRecord, viewer: Viewer, rules: RuleMap, settles: SettleMap): PayoutRow[] {
   const d = toDetail(r, rules, settles);
-  const vis = effectiveVisibility(viewer.role, viewer.org, d.project);
+  const vis = effectiveVisibility(viewer.role, viewer.org, d.project, viewer.hidePay);
 
   /*
    * 현장 기본정보 — 거래명세서가 적는다. 라인 여럿을 합친다: 대수는 더하고,

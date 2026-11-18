@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { getRepository } from '@/lib/data';
 import { actorOf, getSessionUser, viewerOf } from '@/lib/auth/session';
-import { isHanbaek } from '@/lib/roles';
+import { isHanbaek, seesPay } from '@/lib/roles';
 import { canAttachInvoice } from '@/lib/payout-board';
 import { PAYOUT_KINDS } from '@/types/project';
 import { getPartnerDetails } from '@/lib/auth/partner-details';
@@ -41,6 +41,8 @@ export default async function StatementPage({
 }) {
   const session = await getSessionUser();
   if (!session) redirect('/login?next=/payments');
+  // 「정산 안 보기」 계정(users.hide_pay)에게는 이 화면이 없다 — 지급은 같은 소속의 턴키 계정이 맡는다(lib/roles seesPay)
+  if (!seesPay(session)) redirect('/projects');
 
   const date = searchParams.date ?? '';
   if (!DATE_RE.test(date)) redirect('/payments');

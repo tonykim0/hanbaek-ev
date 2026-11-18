@@ -23,7 +23,7 @@
 import type { Role } from '@/lib/roles';
 import { canAccessProject, isHanbaek } from '@/lib/roles';
 
-export type FileViewer = { id: string; role: Role; org: string | null; solar?: boolean };
+export type FileViewer = { id: string; role: Role; org: string | null; solar?: boolean; hidePay?: boolean };
 
 /** 경로가 말하는 자리 — DB 를 봐야 판정이 끝나는 것은 열쇠를 같이 준다 */
 export type FileScope =
@@ -93,7 +93,8 @@ export function canReadFile(v: FileViewer, scope: FileScope, facts: FileFacts): 
     case 'partnerDoc':
       return hanbaek || (!!facts.partnerOwner && facts.partnerOwner === v.id);
     case 'taxInvoice':
-      return hanbaek || (!!v.org && !!facts.invoiceOrg && facts.invoiceOrg === v.org);
+      // 정산 안 보기 계정(users.hide_pay)은 같은 소속의 계산서도 못 받는다 — 지급은 그 소속의 턴키 계정이 맡는다(lib/roles seesPay)
+      return hanbaek || (v.hidePay !== true && !!v.org && !!facts.invoiceOrg && facts.invoiceOrg === v.org);
     case 'agent':
       return v.role === 'admin';
     case 'notice':

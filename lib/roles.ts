@@ -86,15 +86,30 @@ export function visibilityOf(role: Role): Visibility {
 export function effectiveVisibility(
   role: Role,
   org: string | null,
-  project: { salesOrg: string | null; gcOrg: string | null }
+  project: { salesOrg: string | null; gcOrg: string | null },
+  /** 계정의 「정산 안 보기」(users.hide_pay) — 켜져 있으면 어느 쪽 돈도 안 보인다(seesPay) */
+  hidePay = false
 ): Visibility {
   const base = visibilityOf(role);
   if (isHanbaek(role)) return base;
+  if (hidePay) return { sales: false, cons: false, cost: false };
   return {
     sales: base.sales && org !== null && org === project.salesOrg,
     cons: base.cons && org !== null && org === project.gcOrg,
     cost: false,
   };
+}
+
+/**
+ * 정산을 보는 계정인가 — 금액 · 협력사 정산관리 탭 · 지급관리 · 거래명세서 · 정산 현황.
+ *
+ * ★「정산 안 보기」(users.hide_pay, 2026-11-18)를 켠 협력사 계정만 false 다★. 한 회사가 영업 · 시공 계정을 따로 쓰는데 지급은
+ * 턴키 계정이 다 맡을 때 시공 계정이 그 상태다(이브이솔루션 — 「이브이솔루션(시공)은 협력사 정산관리랑 지급관리만 안보이면돼.
+ * 그대신 모든 현장은 보여야해」). 그 계정은 턴키 계정과 같은 소속이라 현장을 다 보고 시공을 적는다 — 돈만 이것이 가린다.
+ * 금액은 저장소가 지우고(effectiveVisibility 의 hidePay), 화면 · 메뉴 · 할 일은 이것으로 닫는다. 한백은 늘 본다.
+ */
+export function seesPay(s: { role: Role; hidePay?: boolean }): boolean {
+  return isHanbaek(s.role) || s.hidePay !== true;
 }
 
 /** 이 현장이 이 협력사의 현장인가 */

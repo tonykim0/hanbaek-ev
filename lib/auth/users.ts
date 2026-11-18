@@ -39,6 +39,12 @@ export interface UserStore {
    */
   setSolar(loginId: string, on: boolean, actor: Actor): Promise<void>;
   /**
+   * 정산 안 보기 켜고 끄기. [한백 전용] 협력사 계정만 — 켜면 그 계정에 금액 · 정산 화면이 하나도 안 보인다.
+   * 지급은 같은 소속의 턴키 계정이 맡고 이 계정은 현장 · 시공만 볼 때(2026-11-18 「이브이솔루션(시공)은 협력사 정산관리랑 지급관리만
+   * 안보이면돼」).
+   */
+  setHidePay(loginId: string, hide: boolean, actor: Actor): Promise<void>;
+  /**
    * 구분·소속·이름 고치기. [한백 전용]
    *
    * ★고칠 수 있어야 하는 이유★
@@ -146,7 +152,7 @@ async function findInDb(id: string): Promise<DbLookup> {
     if (!row) return 'missing';
     if (!row.active) return 'disabled';
     return {
-      id: row.id, name: row.name, role: row.role as Role, org: row.org, solar: row.solar,
+      id: row.id, name: row.name, role: row.role as Role, org: row.org, solar: row.solar, hidePay: row.hidePay,
       hash: row.passwordHash,
     };
   } catch (err) {
@@ -175,7 +181,9 @@ const findInFile = (id: string): StoredUser | null =>
  */
 export async function accountForSession(
   loginId: string
-): Promise<{ name: string; role: Role; org: string | null; solar: boolean } | 'gone' | 'unknown'> {
+): Promise<
+  { name: string; role: Role; org: string | null; solar: boolean; hidePay: boolean } | 'gone' | 'unknown'
+> {
   const id = loginId.trim().toLowerCase();
   const inDb = await findInDb(id);
 
@@ -183,14 +191,14 @@ export async function accountForSession(
   /* 못 본 것은 판정하지 않는다. 파일에 있으면 그 값을 쓰고, 없으면 세션을 그대로 둔다. */
   if (inDb === 'unavailable') {
     const file = findInFile(id);
-    return file ? { name: file.name, role: file.role, org: file.org, solar: file.solar ?? false } : 'unknown';
+    return file ? { name: file.name, role: file.role, org: file.org, solar: file.solar ?? false, hidePay: false } : 'unknown';
   }
   /* 확인했고 없다 — 파일에도 없으면 지워진 계정이다 */
   if (inDb === 'missing') {
     const file = findInFile(id);
-    return file ? { name: file.name, role: file.role, org: file.org, solar: file.solar ?? false } : 'gone';
+    return file ? { name: file.name, role: file.role, org: file.org, solar: file.solar ?? false, hidePay: false } : 'gone';
   }
-  return { name: inDb.name, role: inDb.role, org: inDb.org, solar: inDb.solar ?? false };
+  return { name: inDb.name, role: inDb.role, org: inDb.org, solar: inDb.solar ?? false, hidePay: inDb.hidePay ?? false };
 }
 
 function assertAdmin(actor: Actor, what: string): void {
@@ -230,7 +238,7 @@ export const userStore: UserStore = {
 
     const rows = await getDb().select().from(users);
     const fromDb: AccountView[] = rows.map((r) => ({
-      id: r.id, name: r.name, role: r.role as Role, org: r.org, solar: r.solar,
+      id: r.id, name: r.name, role: r.role as Role, org: r.org, solar: r.solar, hidePay: r.hidePay,
       active: r.active, createdAt: dayOf(r.createdAt), source: 'db',
     }));
     // 같은 ID 가 양쪽에 있으면 DB 가 이긴다 — find 와 같은 순서여야 화면이 사실을 말한다
@@ -407,6 +415,28 @@ export const userStore: UserStore = {
       field: 'solar',
       oldValue: row.solar ? '참여' : '안 함',
       newValue: on ? '참여' : '안 함',
+    });
+  },
+
+  async setHidePay(loginId, hide, actor) {
+    assertAdmin(actor, '정산 보기 바꾸기');
+    if (!hasDatabase()) throw new Error('계정 저장소(DB)가 연결되지 않았습니다.');
+    const id = loginId.trim().toLowerCase();
+    const db = getDb();
+    const [row] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    if (!row) {
+      throw new Error('DB 에 없는 계정입니다 — 배포 설정(AUTH_USERS)에 있는 계정은 여기서 못 바꿉니다.');
+    }
+    if (isHanbaek(row.role as Role)) throw new Error('한백 계정은 정산을 늘 봅니다 — 끌 것이 없습니다.');
+    if (row.hidePay === hide) return;
+    await db.update(users).set({ hidePay: hide }).where(eq(users.id, id));
+    await writeAudit(db, {
+      projectId: null,
+      actor,
+      action: `계정 ${id}`,
+      field: 'hidePay',
+      oldValue: row.hidePay ? '안 봄' : '봄',
+      newValue: hide ? '안 봄' : '봄',
     });
   },
 

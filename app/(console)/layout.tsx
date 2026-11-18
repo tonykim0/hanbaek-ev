@@ -37,6 +37,7 @@ export default async function ConsoleLayout({ children }: { children: React.Reac
       org={session.org}
       role={session.role}
       solar={seesSolar(session)}
+      hidePay={session.hidePay === true}
       actAs={session.via ? { name: session.name } : null}
       // 마지막에 있던 사업(전기차 · 태양광) — 같이 쓰는 화면(공지 · 알림 · 협력사 정보 · 계정설정)의 틀을 첫 그림부터 맞춘다
       lastBiz={asBiz(cookies().get(BIZ_COOKIE)?.value)}

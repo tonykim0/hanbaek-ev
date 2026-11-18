@@ -15,7 +15,7 @@ import { getRepository } from '@/lib/data';
 import { bandOfColumn, boardColumnOf, courtOfColumn } from '@/lib/board';
 import { batchesOf, batchKey, batchStateOf } from '@/lib/payout-board';
 import { actorOf, viewerOf } from '@/lib/auth/session';
-import { isHanbaek } from '@/lib/roles';
+import { isHanbaek, seesPay } from '@/lib/roles';
 import { NON_TODO_COLUMNS, OVERDUE_DAYS, turnIsMine, whatOf } from '@/lib/todo-types';
 import { won } from '@/lib/format';
 import { today } from '@/lib/date';
@@ -34,7 +34,8 @@ export async function todosOf(session: SessionPayload): Promise<TodoItem[]> {
    * 화면을 옮길 때마다 불리므로(TopBar) 두 읽기를 한꺼번에 시작한다 —
    * 하나를 기다렸다 다음을 읽으면 걸리는 시간이 그대로 더해진다.
    */
-  const wantsInvoices = !isHanbaek(session.role) && session.org !== null;
+  // 정산 안 보기 계정(users.hide_pay)은 계산서를 끊지 않는다 — 같은 소속의 턴키 계정이 끊는다(lib/roles seesPay)
+  const wantsInvoices = !isHanbaek(session.role) && session.org !== null && seesPay(session);
   /* 확정 누락도 한백의 눈이 보는 것이다 — 열람 전용은 확정을 못 할 뿐 봐야 안다 */
   const wantsMissed = isHanbaek(session.role);
   const wantsBatches = wantsInvoices || wantsMissed;

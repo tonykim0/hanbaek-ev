@@ -18,6 +18,11 @@ export interface User {
    * (lib/biz seesSolar). 파일 계정(배포 설정 · 개발 시드)에는 없다 — 꺼짐이다.
    */
   solar?: boolean;
+  /**
+   * 정산 안 보기(users.hide_pay, 2026-11-18) — 협력사 계정에만 뜻이 있다. 켜면 금액 · 정산 화면이 하나도 안 보인다(lib/roles seesPay).
+   * 파일 계정에는 없다 — 꺼짐(본다)이다.
+   */
+  hidePay?: boolean;
 }
 
 /** 세션 쿠키에 담기는 것 (비밀번호 해시는 절대 안 들어간다) */
@@ -41,6 +46,8 @@ export interface SessionPayload {
    * 켠 것이 다시 로그인할 때까지 안 먹는다.
    */
   solar?: boolean;
+  /** 정산 안 보기 — 태양광 참여처럼 쿠키에 싣지 않고 매 요청 그 계정의 지금 값으로 채운다 */
+  hidePay?: boolean;
 }
 
 /**
@@ -58,6 +65,8 @@ export interface Actor {
 export interface Viewer {
   role: Role;
   org: string | null;
+  /** 정산 안 보기 — 켜져 있으면 저장소가 금액을 하나도 안 준다(lib/roles effectiveVisibility) */
+  hidePay?: boolean;
 }
 
 /**

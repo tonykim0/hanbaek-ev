@@ -51,6 +51,10 @@ describe('협력사 서류 · 세금계산서', () => {
     expect(can(eco, 'tax-invoices/u.pdf', { invoiceOrg: '에코일렉' })).toBe(true);
     expect(can(navy, 'tax-invoices/u.pdf', { invoiceOrg: '에코일렉' })).toBe(false);
     expect(can(orgless, 'tax-invoices/u.pdf', { invoiceOrg: null })).toBe(false);
+    // 정산 안 보기 계정(users.hide_pay)은 같은 소속의 계산서도 못 받는다 — 현장 서류는 그대로 받는다(2026-11-18)
+    const ecoCons: FileViewer = { id: 'eco-cons', role: 'cons', org: '에코일렉', hidePay: true };
+    expect(can(ecoCons, 'tax-invoices/u.pdf', { invoiceOrg: '에코일렉' })).toBe(false);
+    expect(can(ecoCons, 'projects/HB-2026-001/contract/a.pdf', ecoSite)).toBe(true);
   });
 });
 

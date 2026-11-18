@@ -1,6 +1,6 @@
 import { getRepository } from '@/lib/data';
 import { actorOf, getSessionUser, viewerOf } from '@/lib/auth/session';
-import { isHanbaek } from '@/lib/roles';
+import { isHanbaek, seesPay } from '@/lib/roles';
 import { redirect } from 'next/navigation';
 import { thisMonth as seoulMonth } from '@/lib/date';
 import PayChart, { type MonthBar } from '@/components/settlement/PayChart';
@@ -31,6 +31,8 @@ export const dynamic = 'force-dynamic';
 export default async function StatementsPage() {
   const session = await getSessionUser();
   if (!session) redirect('/login?next=/statements');
+  // 「정산 안 보기」 계정(users.hide_pay)에게는 이 화면이 없다 — 지급은 같은 소속의 턴키 계정이 맡는다(lib/roles seesPay)
+  if (!seesPay(session)) redirect('/projects');
 
   const seesAll = isHanbaek(session.role);
   const [{ history }, finals, invoices] = await Promise.all([

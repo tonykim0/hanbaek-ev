@@ -159,6 +159,7 @@ export default function AccountAdmin({
                   <Th>구분</Th>
                   <Th>소속</Th>
                   <Th>태양광</Th>
+                  <Th>정산</Th>
                   <Th>만든 날</Th>
                   <Th>상태</Th>
                   <Th>동작</Th>
@@ -171,7 +172,7 @@ export default function AccountAdmin({
                 {rows.length === 0 && (
                   <tr>
                     {/* 세었고 없다 — 「아직 없습니다」라고 적지 않는다(규칙 6·10번) */}
-                    <td colSpan={8} className="px-3 py-6 text-small font-bold text-slate-400">
+                    <td colSpan={9} className="px-3 py-6 text-small font-bold text-slate-400">
                       0건
                     </td>
                   </tr>
@@ -488,6 +489,23 @@ function AccountRow({
           ) : (
             <Choice on={!!a.solar} disabled={busy} onClick={() => patch({ solar: !a.solar })}>
               {a.solar ? '참여' : '안 함'}
+            </Choice>
+          )}
+        </Td>
+
+        {/*
+          * 정산 보기(2026-11-18 「이브이솔루션(시공)은 협력사 정산관리랑 지급관리만 안보이면돼. 그대신 모든 현장은 보여야해」) — 끄면
+          * 그 계정은 금액 · 협력사 정산관리 탭 · 지급관리 · 거래명세서 · 정산 현황을 안 본다(lib/roles seesPay). 같은 소속의 턴키
+          * 계정이 지급을 다 맡고 이 계정은 현장 · 시공만 볼 때 끈다. 한백은 늘 본다(해당없음).
+          */}
+        <Td>
+          {isHanbaek(a.role) ? (
+            <Empty kind="na" />
+          ) : a.source === '파일' ? (
+            a.hidePay ? '안 봄' : '봄'
+          ) : (
+            <Choice on={!a.hidePay} disabled={busy} onClick={() => patch({ hidePay: !a.hidePay })}>
+              {a.hidePay ? '안 봄' : '봄'}
             </Choice>
           )}
         </Td>

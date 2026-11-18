@@ -34,6 +34,11 @@ export const users = pgTable('users', {
   solarNoticesReadAt: timestamp('solar_notices_read_at', { withTimezone: true }),
   /** 태양광 사업 참여 — 켜면 사업 전환이 보이고 제 소속의 태양광 현장을 본다(migrations/0105). 한백은 안 봐도 늘 본다 */
   solar: boolean('solar').notNull().default(false),
+  /**
+   * 정산 안 보기 — 켜면 그 계정은 금액을 하나도 안 받고 협력사 정산관리 탭 · 지급관리 · 거래명세서 · 정산 현황이 안 보인다
+   * (migrations/0137). 지급은 같은 소속의 턴키 계정이 맡고 이 계정은 현장 · 시공만 보는 회사가 있다(이브이솔루션 2026-11-18)
+   */
+  hidePay: boolean('hide_pay').notNull().default(false),
 });
 
 /**
