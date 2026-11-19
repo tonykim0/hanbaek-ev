@@ -17,8 +17,8 @@ import { useRouter } from 'next/navigation';
 import type { ProcessStatus, ProjectSummary } from '@/types/project';
 import { bizLabel, PROCESS_STATUSES } from '@/types/project';
 import { BOARD_COLUMNS, boardColumnOf, isMyCourt, partnerWaitingOf, waitingSinceOf, type BoardColumn } from '@/lib/board';
-import type { Role } from '@/lib/roles';
-import { APPROVED_STATUS, prevStatusOf, statusIndex } from '@/lib/process';
+import { canWrite, isHanbaek, type Role } from '@/lib/roles';
+import { APPROVED_STATUS, partnerMayMove, prevStatusOf, statusIndex } from '@/lib/process';
 import { Btn, Tag } from '@/components/ui';
 import { StopControl } from '@/components/project/StopControl';
 
@@ -41,6 +41,7 @@ export default function ProjectBoard({
   onMove: (p: ProjectSummary, status: ProcessStatus) => void;
   busyId: string | null;
 }) {
+  const partner = canWrite(role) && !isHanbaek(role);
   const columns = useMemo(() => {
     const byKey = new Map<BoardColumn, ProjectSummary[]>();
     for (const p of projects) {
@@ -183,6 +184,7 @@ export default function ProjectBoard({
                             p={p}
                             busy={busyId === p.id}
                             canMove={canMove}
+                            partner={partner}
                             onMove={onMove}
                             tab={tab}
                             column={col.key}
@@ -212,11 +214,13 @@ export default function ProjectBoard({
  * 키보드로도 들어갈 수 있게 role·tabIndex·Enter 를 둔다.
  */
 function Card({
-  p, busy, canMove, onMove, tab, column,
+  p, busy, canMove, partner, onMove, tab, column,
 }: {
   p: ProjectSummary;
   busy: boolean;
   canMove: boolean;
+  /** 손이 있는 협력사 계정인가 — 그 현장의 「기후부 승인 → 행위신고」 하나는 협력사도 민다(lib/process partnerMayMove) */
+  partner: boolean;
   onMove: (p: ProjectSummary, status: ProcessStatus) => void;
   /** 상세를 열 때 먼저 보일 탭 — 이 보드의 국면을 따라간다 */
   tab: 'intake' | 'construction';
@@ -266,7 +270,12 @@ function Card({
    * 선 협력사가 아직 자기 손에 있는 준공서류를 두고 「한백 준공마감 대기 중」을 읽었다.
    * 그 말이 실제로 막는 것을 덮어썼다(아래 hint 의 ?? 순서).
    */
-  const waiting = !canMove && next?.ready ? partnerWaitingOf(next.status) : null;
+  /*
+   * ★넘기기 단추는 한백의 것이다 — 협력사는 「기후부 승인 → 행위신고」 하나만★ (한백 지시 2026-11-19 「기후부 승인에 있는
+   * 것들은 협력사들도 행위신고로 넘길게 있게 해줘」). 협력사의 보드는 제 현장만 싣는다 — 저장소가 그 현장의 협력사인지 다시 본다.
+   */
+  const pushes = Boolean(next?.ready) && (canMove || (partner && next !== null && partnerMayMove(p.status, next.status)));
+  const waiting = !pushes && next?.ready ? partnerWaitingOf(next.status) : null;
 
   /*
    * 카드 밑에 적을 한 줄. 없으면 아무것도 안 적는다.
@@ -356,7 +365,7 @@ function Card({
       </div>
 
       {next && (
-        next.ready && canMove ? (
+        pushes ? (
           <button
             type="button"
             disabled={busy}

@@ -17,14 +17,14 @@ import {
   advanceTargetOf, approvalCancelBlock, APPROVED_STATUS, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES,
   CHECK_HOME,
   COURT_AFTER_STATUS, nextStatusOf, prevStatusOf, STATUS_GATES, type GateContext,
-  declarationBlockers, gateContextOf, mayForceDeclaration, mayForceStatus, statusIndex,
+  declarationBlockers, gateContextOf, mayForceDeclaration, mayForceStatus, mayMoveStatus, statusIndex,
 } from '@/lib/process';
 import { PROCESS_STATUSES } from '@/types/project';
 import type { ProcessStatus } from '@/types/project';
 import type { Actor, ProcessPatch, ProjectRepository } from '../repository';
 import { toDetail } from '../assemble';
 import {
-  assertAdmin, lockReceivable, recordsOf, ruleMap, settleMap, stepsNow, toProcess, type TxLike,
+  lockReceivable, recordsOf, ruleMap, settleMap, stepsNow, toProcess, type TxLike,
 } from './shared';
 import { approvalCancelNotice, approvalNotice } from '@/lib/notify';
 import { notifyMilestone, retractApproval } from './notifications';
@@ -123,13 +123,21 @@ export const processStore: Pick<
   },
 
   async setProcessStatus(projectId, status, actor): Promise<void> {
-    assertAdmin(actor, '진행 단계 옮기기');
-
     const rows = await getDb().select().from(projects).where(eq(projects.id, projectId)).limit(1);
     if (!rows[0]) throw new Error('현장을 찾을 수 없습니다.');
     const [record] = await recordsOf(rows);
     if (!record) throw new Error('현장을 찾을 수 없습니다.');
     if (record.process.status === status) return;
+    /*
+     * ★손으로 옮기는 것은 한백이다 — 협력사는 「기후부 승인 → 행위신고」 하나만★ (한백 지시 2026-11-19 · lib/process
+     * mayMoveStatus). 그 현장의 협력사가 아니면 옮길 걸음이 없다. 조건(canEnter)은 아래에서 누구에게나 같이 본다.
+     */
+    const from = record.process.status;
+    if (!mayMoveStatus(actor, rows[0], from, status)) {
+      throw new Error(actor.role === 'admin' || actor.role === 'viewer'
+        ? '진행 단계를 옮길 수 없습니다.'
+        : `진행 단계는 한백이 옮깁니다 — 협력사는 ${APPROVED_STATUS}에서 행위신고로 넘기기만 합니다.`);
+    }
 
     // 계약이 끝나지 않은 현장은 공정에 없다 — 상세의 시공 탭이 잠기는 것과 같은 규칙이다
     if (toDetail(record, await ruleMap(), await settleMap()).stage === 'intake') {
@@ -208,6 +216,10 @@ export const processStore: Pick<
        * update 는 0행을 조용히 지나가므로 없으면 만들어 넣는다.
        */
       if (row?.status === status) return;
+      /* 협력사의 걸음은 칸이 정한다 — 읽은 뒤 누가 옮겼으면(한백이 되돌림 등) 그 사이의 칸으로 판정하지 않는다 */
+      if (actor.role !== 'admin' && row?.status !== from) {
+        throw new Error('그 사이에 진행 단계가 바뀌었습니다 — 화면을 새로 고쳐 다시 보세요.');
+      }
       /* 승인을 무르는 되돌리기 — 그 승인으로 연 기성을 청구·수금했으면 거절한다(날짜를 지울 때와 같은 판정) */
       if (unapprove) {
         await lockReceivable(tx, projectId);

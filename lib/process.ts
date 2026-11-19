@@ -782,6 +782,37 @@ export function mayForceStatus(status: ProcessStatus, role: Role): boolean {
 }
 
 /**
+ * 협력사가 손으로 옮기는 걸음 — 「기후부 승인 → 행위신고」 하나뿐이다 (한백 지시 2026-11-19 「기후부 승인에 있는 것들은
+ * 협력사들도 행위신고로 넘길게 있게 해줘」).
+ *
+ * 진행 단계를 손으로 옮기는 것(보드 · 표 · 계약 탭의 「… 로 넘기기」)은 한백의 일이다 — 협력사의 걸음은 완료 선언이 옮긴다
+ * (CHECK_ADVANCES). 이 걸음만 예외인 까닭: 승인은 이미 났고(승인일은 한백만 적는다 — 그것이 이 칸의 조건이다) 다음 일인
+ * 행위신고는 현장이 하는 일이라, 승인 소식을 들은 협력사가 한백이 넘겨 주기를 기다릴 이유가 없다.
+ *
+ * ★앞으로 한 걸음만이다★ — 되돌리기(행위신고 → 기후부 승인)는 한백이다: 잘못 넘겼으면 한백이 되돌린다.
+ * 누가: 그 현장의 협력사(영업사 · 시공사 · 턴키 — 소속이 현장의 영업사나 시공사). 열람 전용은 손이 없다.
+ * 판정은 여기 한 곳 — 저장소(setProcessStatus)가 부르고 화면은 단추를 세울지만 묻는다.
+ */
+export function partnerMayMove(from: ProcessStatus, to: ProcessStatus): boolean {
+  return from === APPROVED_STATUS && to === '행위신고';
+}
+
+/** 이 사람이 이 현장을 from → to 로 손으로 옮길 수 있는가 — 한백 관리자는 늘(조건은 canEnter 가 따로 본다) */
+export function mayMoveStatus(
+  actor: { role: Role; org: string | null },
+  project: { salesOrg: string | null; gcOrg: string | null },
+  from: ProcessStatus,
+  to: ProcessStatus
+): boolean {
+  if (actor.role === 'admin') return true;
+  if (isHanbaek(actor.role) || !canWrite(actor.role)) return false;
+  const org = normalizeOrg(actor.org);
+  if (!org) return false;
+  const mine = org === normalizeOrg(project.salesOrg) || org === normalizeOrg(project.gcOrg);
+  return mine && partnerMayMove(from, to);
+}
+
+/**
  * 화면의 「다음 단계로 진행」 단추를 막는 것들 — 없으면 빈 배열이고, 그때 단추가 열린다.
  *
  * ★화면은 판정하지 않는다★ — 조건을 화면에도 적으면 두 벌이 되고 어긋난다(2026-08-26 에
@@ -814,7 +845,7 @@ export function advanceBlockers(
 export const COURT_AFTER_STATUS: Record<ProcessStatus, Court> = {
   '계약완료': '한백',             // 다음 일: 운영사에 계약서 제출 — 한백이 한다
   '계약서 제출': '운영사',       // 기후부 승인 회신을 기다린다 — 우리 손 밖이다
-  '기후부 승인': '한백',         // 승인이 났다 — 시공으로 넘길 차례(행위신고로 넘기기는 한백이 한다)
+  '기후부 승인': '한백',         // 승인이 났다 — 시공으로 넘길 차례(행위신고로 넘기기 — 그 현장의 협력사도 한다, partnerMayMove)
   '행위신고': '시공사',           // 시공팀이 접수한다 (1~2주)
   '충전기 발주': '한백',          // 발주·출고·모델·발주 수량은 한백이 적는다
   '충전기 수령': '시공사',        // 충전기를 받고 수량을 세는 것은 현장이다

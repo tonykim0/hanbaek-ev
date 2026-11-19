@@ -229,3 +229,55 @@ describe('승인 취소의 알림', () => {
     }, { salesOrg: USERS.navy.org, gcOrg: USERS.ecoelec.org, bizType: '환경부' });
   });
 });
+
+/**
+ * 협력사도 「기후부 승인 → 행위신고」를 넘긴다 (한백 지시 2026-11-19 「기후부 승인에 있는 것들은 협력사들도 행위신고로 넘길게 있게 해줘」).
+ * 판정은 lib/process mayMoveStatus — 그 현장의 협력사 · 앞으로 그 한 걸음만. 되돌리기와 다른 걸음은 여전히 한백이다.
+ */
+describe('협력사의 「행위신고로 넘기기」', () => {
+  /** 시공사를 에코일렉(개발 DB 계정)으로 둔 승인 난 현장 */
+  async function approvedFor(id: string): Promise<void> {
+    await submitted(id);
+    await repo.setOrgs(id, { gcOrg: USERS.ecoelec.org }, admin);
+    await repo.updateProcess(id, { envApprovalDate: '2026-11-10' }, admin);
+  }
+
+  it('★그 현장의 협력사는 기후부 승인에서 행위신고로 넘긴다★ — 되돌리기는 못 한다', async () => {
+    await withPayableProject(async ({ id }) => {
+      await approvedFor(id);
+      expect(await statusOf(id)).toBe('기후부 승인');
+      await signIn(USERS.ecoelec);
+      expect((await move(id, '행위신고')).status).toBe(200);
+      expect(await statusOf(id)).toBe('행위신고');
+      // 행위신고는 현장의 차례다
+      expect((await repo.getProject(id, adminView))!.court).toBe('시공사');
+
+      const back = await move(id, '기후부 승인');
+      expect(back.status).toBe(422);
+      expect(JSON.stringify(back.json)).toContain('한백이 옮깁니다');
+      expect(await statusOf(id)).toBe('행위신고');
+    });
+  });
+
+  it('다른 걸음 · 남의 현장 · 열람 전용은 못 한다', async () => {
+    await withPayableProject(async ({ id }) => {
+      await submitted(id);
+      await repo.setOrgs(id, { gcOrg: USERS.ecoelec.org }, admin);
+      await signIn(USERS.ecoelec);
+      // 승인 전 — 계약서 제출에서 옮기는 것은 한백이다
+      expect((await move(id, '기후부 승인')).status).toBe(422);
+      expect(await statusOf(id)).toBe('계약서 제출');
+
+      await repo.updateProcess(id, { envApprovalDate: '2026-11-10' }, admin);
+      // 한 칸 건너뛰기도 안 된다
+      expect((await move(id, '충전기 발주')).status).toBe(422);
+      // 남의 현장
+      await signIn(USERS.navy);
+      expect((await move(id, '행위신고')).status).toBe(422);
+      // 열람 전용 — 쓰기 껍데기가 막는다
+      await signIn(USERS.viewer);
+      expect((await move(id, '행위신고')).status).toBe(403);
+      expect(await statusOf(id)).toBe('기후부 승인');
+    });
+  });
+});

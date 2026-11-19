@@ -10,7 +10,7 @@ import {
   advanceBlockers, advanceTargetOf, approvalCancelBlock, asProcessStatus, assertProcessWrite, canEnter, CHECK_ADVANCES,
   CHECK_AT, CHECK_HOME, entryOkOf, nextStatusOf, prevStatusOf, STATUS_GATES, stepsOf,
   COURT_AFTER_STATUS, declarationBlockers, isHanbaekOnlyProcessField, mayForceDeclaration, mayForceStatus, statusIndex,
-  canChangeContractDocs, CONTRACT_DOCS_LOCK_AT, contractDocsLockedWhy, PARTNER_DOCS_CLOSED_AT, processEditOf, hasKepcoWork,
+  canChangeContractDocs, CONTRACT_DOCS_LOCK_AT, contractDocsLockedWhy, PARTNER_DOCS_CLOSED_AT, processEditOf, hasKepcoWork, mayMoveStatus, partnerMayMove,
 } from '@/lib/process';
 import type { GateContext } from '@/lib/process';
 import type { ProcessInfo, ProcessStatus } from '@/types/project';
@@ -938,5 +938,26 @@ describe('approvalCancelBlock — 승인일을 지울 수 있나', () => {
 
   it('다른 트리거의 차수는 상관없다 — 착공으로 연 차수를 청구했어도 승인일은 지운다', () => {
     expect(approvalCancelBlock('기후부 승인', ENV, [step('claimed', '착공'), step('waiting')])).toBeNull();
+  });
+});
+
+describe('손으로 옮기기 — 한백 · 협력사는 「기후부 승인 → 행위신고」 하나 (한백 2026-11-19)', () => {
+  const site = { salesOrg: '에코일렉', gcOrg: '대상전력' };
+  it('그 걸음만 협력사에게 열린다', () => {
+    expect(partnerMayMove('기후부 승인', '행위신고')).toBe(true);
+    expect(partnerMayMove('행위신고', '기후부 승인')).toBe(false);
+    expect(partnerMayMove('계약서 제출', '기후부 승인')).toBe(false);
+    expect(partnerMayMove('기후부 승인', '충전기 발주')).toBe(false);
+    expect(partnerMayMove('행위신고', '충전기 발주')).toBe(false);
+  });
+  it('그 현장의 협력사(영업 · 시공 · 턴키)만 · 열람 전용은 없다 · 한백 관리자는 모든 걸음', () => {
+    for (const [role, org] of [['sales', '에코일렉'], ['cons', '대상전력'], ['salesCons', ' 대상전력']] as const) {
+      expect(mayMoveStatus({ role, org }, site, '기후부 승인', '행위신고'), `${role} ${org}`).toBe(true);
+      expect(mayMoveStatus({ role, org }, site, '행위신고', '기후부 승인'), `${role} 되돌리기`).toBe(false);
+    }
+    expect(mayMoveStatus({ role: 'cons', org: '네이비인프라' }, site, '기후부 승인', '행위신고')).toBe(false);
+    expect(mayMoveStatus({ role: 'cons', org: null }, site, '기후부 승인', '행위신고')).toBe(false);
+    expect(mayMoveStatus({ role: 'viewer', org: null }, site, '기후부 승인', '행위신고')).toBe(false);
+    expect(mayMoveStatus({ role: 'admin', org: null }, site, '행위신고', '기후부 승인')).toBe(true);
   });
 });

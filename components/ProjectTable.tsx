@@ -23,7 +23,8 @@ import { useAction } from '@/lib/use-action';
 import Link from 'next/link';
 import type { ProcessStatus, ProjectSummary } from '@/types/project';
 import { bizLabel, PROCESS_STATUSES, subsidized } from '@/types/project';
-import { isHanbaekOnlyProcessField, processEditOf, type ProcessEdit } from '@/lib/process';
+import { isHanbaekOnlyProcessField, partnerMayMove, processEditOf, type ProcessEdit } from '@/lib/process';
+import { canWrite, isHanbaek, type Role } from '@/lib/roles';
 import { DatePicker } from '@/components/DatePicker';
 import {
   BAND_TONE, bandOfColumn, boardColumnOf, constructionLabelOf, type BoardColumn,
@@ -197,6 +198,7 @@ export default function ProjectTable({
   sort: TableSort;
 }) {
   const { sort, desc, setSort, setDesc } = sorting;
+  const partner = canWrite(viewer.role as Role) && !isHanbaek(viewer.role as Role);
 
   const { hidden } = columns;
   const show = (k: ColKey) => !hidden.has(k);
@@ -329,7 +331,7 @@ export default function ProjectTable({
                   </td>
                   {show('stage') && (
                     <td className="px-3 py-2.5">
-                      <StageCell p={p} col={col} canMove={canMove} onMove={onMove} busy={busy} construction={tab === 'construction'} />
+                      <StageCell p={p} col={col} canMove={canMove} partner={partner} onMove={onMove} busy={busy} construction={tab === 'construction'} />
                     </td>
                   )}
                   {show('lastDone') && <LastDoneCell p={p} />}
@@ -641,11 +643,13 @@ function QueueCell({ p, canEdit }: { p: ProjectSummary; canEdit: boolean }) {
  * 공정 단계는 조건이 찬 것만 목록에 올린다. 못 고르는 값을 올려놓고 거절하지 않는다.
  */
 function StageCell({
-  p, col, canMove, onMove, busy, construction = false,
+  p, col, canMove, partner, onMove, busy, construction = false,
 }: {
   p: ProjectSummary;
   col: BoardColumn;
   canMove: boolean;
+  /** 손이 있는 협력사 계정인가 — 「기후부 승인 → 행위신고」 하나는 협력사도 고른다(lib/process partnerMayMove · 한백 2026-11-19) */
+  partner: boolean;
   onMove: (p: ProjectSummary, status: ProcessStatus) => void;
   busy: boolean;
   /**
@@ -655,14 +659,19 @@ function StageCell({
   construction?: boolean;
 }) {
   const name = (s: string) => (construction ? constructionLabelOf(s as ProcessStatus) : s);
-  const fixed = !canMove || p.stage === 'intake' || p.holdState !== null;
+  /* 협력사는 그 한 걸음만 고른다 — 조건(entryOk)이 찬 것만 올리는 것은 한백과 같다 */
+  const partnerTo: ProcessStatus | null =
+    !canMove && partner && partnerMayMove(p.status, '행위신고') && p.entryOk.includes('행위신고') ? '행위신고' : null;
+  const fixed = (!canMove && !partnerTo) || p.stage === 'intake' || p.holdState !== null;
   if (fixed) {
     // 색으로 계약·시공·멈춤을 가른다 — 138줄을 훑을 때 글자보다 색이 먼저 읽힌다
     return (
       <Badge tone={BAND_TONE[bandOfColumn(col)]}>{name(col)}</Badge>
     );
   }
-  const options = PROCESS_STATUSES.filter((s) => s === p.status || p.entryOk.includes(s));
+  const options = partnerTo
+    ? [p.status, partnerTo]
+    : PROCESS_STATUSES.filter((s) => s === p.status || p.entryOk.includes(s));
   return (
     <>
       <label className="sr-only" htmlFor={`stage-${p.id}`}>

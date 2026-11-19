@@ -11,7 +11,7 @@ import { reviewKindLabel } from '@/lib/review-labels';
 import type { ContractState, ProcessStatus, ProjectDetail, ProjectDocument } from '@/types/project';
 import { bizLabel, BUILDING_TYPES, CONTRACT_PARTIES, replLabel, TERM_YEARS } from '@/types/project';
 import {
-  APPROVED_STATUS, canEnter, contractDocsLockedWhy, gateContextOf, nextStatusOf, prevStatusOf,
+  APPROVED_STATUS, canEnter, contractDocsLockedWhy, gateContextOf, nextStatusOf, partnerMayMove, prevStatusOf,
 } from '@/lib/process';
 import { HANDOFF_STATUSES } from '@/lib/board';
 import { evaluateDocs, needsPreInstallCheck, type DocReq } from '@/lib/doc-rules';
@@ -499,6 +499,12 @@ export function IntakeTab({
    */
   const nextEntry = nextStep ? canEnter(nextStep, process, gate) : null;
   const nextBlocked = nextEntry && !nextEntry.ok ? nextEntry.blockedBy : null;
+  /*
+   * ★협력사도 미는 걸음 하나 — 「기후부 승인 → 행위신고」★ (한백 지시 2026-11-19 「기후부 승인에 있는 것들은 협력사들도
+   * 행위신고로 넘길게 있게 해줘」 · lib/process partnerMayMove). 이 상세를 여는 협력사는 그 현장의 협력사다(접근이 이미 걸렀다) —
+   * 손(canSubmit = 열람 전용이 아님)만 본다. 되돌리기는 한백이라 backStep 은 그대로 한백의 것이다.
+   */
+  const partnerPush = !canReview && canSubmit && nextStep !== null && partnerMayMove(status, nextStep);
 
   /*
    * ★밀었으면 되돌릴 자리도 같이 둔다★ (한백 지적 2026-09-01, 화면 규칙 7).
@@ -975,7 +981,7 @@ export function IntakeTab({
           * 보고 나서 판정하는 줄이고, 그 판정의 다음 걸음도 같은 자리에서 이어져야
           * 눈이 옮겨 다니지 않는다. 확인 단추가 사라지면 그 자리를 이 단추가 잇는다.
           */}
-        {canReview && project.contractConfirmedAt && nextStep && (
+        {(canReview || partnerPush) && project.contractConfirmedAt && nextStep && (
           <AdvanceStage projectId={projectId} next={nextStep} blocked={nextBlocked} />
         )}
 
@@ -1277,7 +1283,7 @@ function ConfirmContract({
 }
 
 /**
- * 확인된 계약을 다음 단계로 — 한백만.
+ * 확인된 계약을 다음 단계로 — 한백. 「기후부 승인 → 행위신고」 하나는 그 현장의 협력사도(partnerPush · 2026-11-19).
  *
  * 「계약 확인 완료」가 서 있던 자리를 그대로 잇는다. 모양도 같다(주 단추 + 그 밑 실패
  * 문구) — 같은 줄에서 이어지는 걸음이라 크기가 달라지면 다른 종류의 일로 읽힌다.
