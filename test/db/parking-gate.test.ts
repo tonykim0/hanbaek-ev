@@ -59,7 +59,7 @@ describe('건축물대장 대조 — 계약 확인의 조건', () => {
 
       // 주소·발급일을 견주기 전(버전 1)의 결과는 맞음이어도 다시 대조해야 한다 — 그 항목을 안 봤다
       await repo.saveParkingCheck(id, checkOf(await filesNow(id), { version: undefined }), admin);
-      await expect(repo.confirmContract(id, true, admin)).rejects.toThrow(/건축물대장 다시 대조 — 주소·발급일 확인 추가/);
+      await expect(repo.confirmContract(id, true, admin)).rejects.toThrow(/건축물대장 다시 대조 — 주소·발급일·연락처 확인 추가/);
 
       // 발급일을 견준 뒤 한백이 계약접수일을 고치면 다시 대조해야 한다 — 그 결과는 옛 날짜로 본 것이다
       const receivedOn = (await repo.getProject(id, viewerOf(USERS.admin)))!.project.createdAt;

@@ -11,8 +11,12 @@
  *   6) 건축물대장은 ★계약접수일로부터 3개월 안에 발급한 것★이어야 한다 — 발급일이 계약접수일의 3개월 전보다 이르면 짚는다
  *      (한백 지시 2026-10-30 「건축물대장 발급일자가 계약접수일로부터 3개월이내인지」). 계약접수일 뒤에 뗀 것(보완하며 새로
  *      발급받은 것)은 맞다 — 낡은 것을 거르는 규칙이라서다. 계약접수일은 현장 머리말의 그 칸(createdAt)이다.
+ *   7) 계약서 · 사전현장컨설팅 결과서 · 설치신청서의 ★전화번호가 같아야 한다★(한백 지시 2026-11-19 「설치신청서, 계약서,
+ *      사전현장컨설팅 결과서에 있는 전화번호가 항상 일치해야해」). 견주는 칸은 셋 다 아파트(신청자) 쪽이다 — 계약서의
+ *      부지제공자(신청자) 전화번호 · 결과서 「1. 신청자 정보」 연락처 · 신청서 「신청자」 연락처. 운영사·조사자·모집대행사의
+ *      번호가 아니다. 그래서 대조가 계약서 칸도 읽는다(앞 몇 쪽만 — lib/parking-run).
  *
- * 숫자와 열람용 여부·발급일은 판독이 읽어 오고(lib/parking-read), 맞는지는 여기서 가른다 — 같은 입력이면 같은 답이다.
+ * 숫자와 열람용 여부·발급일·전화번호는 판독이 읽어 오고(lib/parking-read), 맞는지는 여기서 가른다 — 같은 입력이면 같은 답이다.
  * ★판정이 반려하지는 않는다★ — 짚기만 한다. 막는 것은 계약 확인이다(parkingBlocker, 한백 결정 「막는다」):
  * 짚을 것이 없거나 한백이 결과를 보고 「확인하고 넘기기」를 눌러야 열린다. 기설치 대조(lib/preinstall-check)와 같은 꼴이다.
  */
@@ -20,10 +24,10 @@
 import { shiftMonths } from './date';
 
 /** 대조가 읽는 칸 — 이 칸들의 파일이 「대조에 쓴 파일」과 같아야 결과를 믿는다 */
-export const PARKING_SLOTS = ['bldgreg', 'consult', 'apply'] as const;
+export const PARKING_SLOTS = ['bldgreg', 'consult', 'apply', 'contract'] as const;
 export type ParkingSlot = (typeof PARKING_SLOTS)[number];
 
-export const PARKING_DOCS = ['건축물대장', 'K-apt', '공문', '결과서', '신청서', '기타'] as const;
+export const PARKING_DOCS = ['건축물대장', 'K-apt', '공문', '결과서', '신청서', '계약서', '기타'] as const;
 export type ParkingDoc = (typeof PARKING_DOCS)[number];
 
 /** 파일 안의 문서 하나에서 판독이 읽은 것 — 한 파일에 문서가 여럿 묶여 오기도 한다(건축물대장 + K-apt) */
@@ -48,15 +52,24 @@ export interface ParkingRead {
    * 발급일을 읽기 전(버전 3 전)의 결과에는 없다.
    */
   issued?: string | null;
+  /**
+   * 아파트(신청자) 쪽 전화번호 — 적힌 그대로. 계약서는 부지제공자(신청자) 칸, 결과서는 「1. 신청자 정보」, 신청서는 「신청자」 줄.
+   * 칸에 번호가 여럿이면 「, 」로 잇는다. 다른 문서·안 보이면 null. 전화번호를 읽기 전(버전 4 전)의 결과에는 없다.
+   */
+  tel?: string | null;
   /** 읽은 파일의 주소 — 다음 자동 대조가 같은 파일을 다시 읽지 않게(reusableReads). 2026-10-30 전의 결과에는 없다 */
   url?: string;
 }
+
+/** 전화번호를 견주는 서류(7번 규칙) — 이름은 짚는 글과 화면에 그대로 쓴다 */
+export type TelDoc = '계약서' | '결과서' | '설치신청서';
 
 export type ParkingIssueKey =
   | 'no-register' | 'view-only' | 'no-basis' | 'split'
   | 'no-consult' | 'consult-diff' | 'no-apply' | 'apply-diff'
   | 'no-apply-address' | 'apply-not-road' | 'no-register-address' | 'address-diff'
-  | 'no-issued' | 'issued-old';
+  | 'no-issued' | 'issued-old'
+  | 'no-tel' | 'tel-diff';
 
 export interface ParkingIssue {
   key: ParkingIssueKey;
@@ -88,6 +101,12 @@ export interface ParkingCheck {
    * (계약접수일의 3개월 전) · oldest: 읽은 발급일 중 가장 이른 것, 못 읽었으면 null · ok: from 이후인가, 모르면 null.
    */
   issued?: { receivedOn: string; from: string; oldest: string | null; ok: boolean | null } | null;
+  /**
+   * 세 서류의 전화번호(7번 규칙) — ★견준 서류만★(안 낸 서류 · 견주지 않는 신청서는 없다 — 「못 읽음」과 「안 냄」을 가른다).
+   * tel: 적힌 그대로(장마다 다르면 「, 」로 잇는다), 못 읽었으면 null. match: 견준 서류가 모두 같은 번호를 하나라도 갖는가 —
+   * 번호를 읽은 서류가 둘이 안 되면 null. 버전 4 전의 결과에는 없다.
+   */
+  tel?: { docs: Array<{ doc: TelDoc; tel: string | null }>; match: boolean | null } | null;
   issues: ParkingIssue[];
   /** 판독이 못 읽은 파일 */
   unread: string[];
@@ -95,21 +114,21 @@ export interface ParkingCheck {
   accepted?: { by: string; at: string } | null;
   /**
    * 무엇을 견준 결과인가 — 견주는 것이 늘면 올린다. 지금보다 낮으면 계약 확인을 다시 막는다(그 항목을 안 본 결과다).
-   * 1(없음) = 주차면·열람용 · 2 = 주소까지(2026-10-16) · 3 = 건축물대장 발급일까지(2026-10-30).
+   * 1(없음) = 주차면·열람용 · 2 = 주소까지(2026-10-16) · 3 = 건축물대장 발급일까지(2026-10-30) · 4 = 전화번호까지(2026-11-19).
    */
   version?: number;
 }
 
 /** 지금 대조가 견주는 것의 판 — 이보다 낮은 결과는 「다시 대조」다 */
-export const PARKING_CHECK_VERSION = 3;
+export const PARKING_CHECK_VERSION = 4;
 
 /** 판마다 더한 것 — 낮은 판의 결과가 무엇을 안 봤는지 단추·꼬리표에 적는다(「주소·발급일 확인 추가」) */
-const ADDED_IN: ReadonlyArray<readonly [number, string]> = [[2, '주소'], [3, '발급일']];
+const ADDED_IN: ReadonlyArray<readonly [number, string]> = [[2, '주소'], [3, '발급일'], [4, '연락처']];
 
 /** 견주는 것이 늘기 전의 결과인가 */
 export const outdatedCheck = (c: ParkingCheck): boolean => (c.version ?? 1) < PARKING_CHECK_VERSION;
 
-/** 낮은 판의 결과가 안 본 것 — 「주소·발급일」 */
+/** 낮은 판의 결과가 안 본 것 — 「주소·발급일·연락처」 */
 export const missedOf = (c: ParkingCheck): string =>
   ADDED_IN.filter(([v]) => (c.version ?? 1) < v).map(([, what]) => what).join('·');
 
@@ -160,6 +179,31 @@ export function roadKeyOf(addr: string | null | undefined): string | null {
 export const isRoadAddress = (addr: string | null | undefined): boolean => roadKeyOf(addr) !== null;
 
 /**
+ * 적힌 전화번호에서 번호들을 숫자만으로 — 「054-334-2120」·「054) 334-2120」·「0543342120」은 같은 번호다.
+ * 한 칸에 둘을 적었으면(「, 」·「/」로 판독이 잇는다) 둘 다. 국가번호 82 는 0 으로 · 숫자가 7~12자리가 아니면 번호가 아니다.
+ */
+export function telNumbersOf(tel: string | null | undefined): string[] {
+  if (!tel) return [];
+  const out: string[] = [];
+  for (const part of tel.normalize('NFC').split(/[,，/;|·]|\s(?:또는|및)\s/)) {
+    let d = part.replace(/\D/g, '');
+    if (/^82[1-9]/.test(d) && d.length >= 10) d = `0${d.slice(2)}`;
+    if (d.length >= 7 && d.length <= 12 && !out.includes(d)) out.push(d);
+  }
+  return out;
+}
+
+/**
+ * 두 번호가 같은가 — 숫자가 같거나, 한쪽이 지역번호를 빼고 적었다(「334-2120」 ↔ 「054-334-2120」).
+ * 빼고 적은 쪽은 2~9 로 시작하는 7~8자리(국번 + 번호)일 때만 — 15xx·010 의 꼬리만 같은 남의 번호를 같다고 하지 않는다.
+ */
+export function sameTel(a: string, b: string): boolean {
+  if (a === b) return true;
+  const [short, long] = a.length < b.length ? [a, b] : [b, a];
+  return /^[2-9]\d{6,7}$/.test(short) && long.startsWith('0') && long.endsWith(short);
+}
+
+/**
  * 판독이 읽은 것으로 판정한다.
  *
  * 기준은 건축물대장이다. 건축물대장에 주차면이 없을 때만(칸이 비었거나 0) 같은 칸의 K-apt·공문을 본다 —
@@ -176,7 +220,7 @@ export function judgeParking(
     /** 계약접수일 YYYY-MM-DD — 건축물대장 발급일을 여기에 견준다(6번 규칙) */
     receivedOn: string;
   }
-): Pick<ParkingCheck, 'basis' | 'consult' | 'apply' | 'applyChecked' | 'address' | 'issued' | 'issues'> {
+): Pick<ParkingCheck, 'basis' | 'consult' | 'apply' | 'applyChecked' | 'address' | 'issued' | 'tel' | 'issues'> {
   const issues: ParkingIssue[] = [];
   const inSlot = (slot: ParkingSlot, doc: ParkingDoc) => reads.filter((r) => r.slot === slot && r.doc === doc);
 
@@ -289,7 +333,43 @@ export function judgeParking(
     }
   }
 
-  return { basis, consult, apply, applyChecked, address, issued, issues };
+  // 7 — 계약서 · 결과서 · 신청서의 전화번호가 같은가. 신청서는 견주는 현장(applyChecked)만.
+  //     서류를 안 냈으면 그 서류는 빼고 견준다(안 낸 것은 서류 규칙이 막는다). 결과서·신청서에서 문서 자체를 못 찾았으면
+  //     위 주차면이 이미 「읽지 못했습니다」로 짚었다 — 같은 것을 두 번 짚지 않는다.
+  const telDocs = [
+    { slot: 'contract', doc: '계약서', name: '계약서', on: ctx.filed.contract },
+    { slot: 'consult', doc: '결과서', name: '결과서', on: ctx.filed.consult },
+    { slot: 'apply', doc: '신청서', name: '설치신청서', on: applyChecked && ctx.filed.apply },
+  ] as const;
+  const tel: NonNullable<ParkingCheck['tel']> = { docs: [], match: null };
+  const telRead: Array<{ name: string; tel: string; numbers: string[] }> = [];
+  for (const t of telDocs) {
+    if (!t.on) continue;
+    const found = inSlot(t.slot, t.doc);
+    const written = [...new Set(
+      found.map((r) => r.tel ?? null).filter((v): v is string => !!v && telNumbersOf(v).length > 0)
+    )];
+    tel.docs.push({ doc: t.name, tel: written.length > 0 ? written.join(', ') : null });
+    if (written.length === 0) {
+      if (found.length > 0 || t.slot === 'contract') {
+        issues.push({ key: 'no-tel', text: `${t.name}에서 전화번호를 읽지 못했습니다` });
+      }
+      continue;
+    }
+    telRead.push({ name: t.name, tel: written.join(', '), numbers: [...new Set(written.flatMap(telNumbersOf))] });
+  }
+  if (telRead.length >= 2) {
+    // 모두가 같이 가진 번호가 하나라도 있으면 같다 — 한 칸에 사무소·휴대폰을 같이 적은 서류가 있다
+    tel.match = telRead[0].numbers.some((n) => telRead.every((t) => t.numbers.some((m) => sameTel(n, m))));
+    if (!tel.match) {
+      issues.push({
+        key: 'tel-diff',
+        text: `전화번호가 서류마다 다릅니다 — ${telRead.map((t) => `${t.name} ${t.tel}`).join(' · ')}`,
+      });
+    }
+  }
+
+  return { basis, consult, apply, applyChecked, address, issued, tel, issues };
 }
 
 /** 짚을 것의 수 — 화면 꼬리표와 계약 확인 단추가 같은 수를 센다 */
@@ -326,7 +406,7 @@ export function reusableReads<F extends { name: string; url: string; slot: Parki
   return { kept, toRead };
 }
 
-/** 세 칸의 지금 파일 주소 — 화면과 저장소(계약 확인)가 같은 값을 만든다 */
+/** 대조가 읽는 칸(건축물대장 · 결과서 · 신청서 · 계약서)의 지금 파일 주소 — 화면과 저장소(계약 확인)가 같은 값을 만든다 */
 export function parkingFilesOf(documents: Array<{ kind: string; files: Array<{ url: string }> }>): string[] {
   return PARKING_SLOTS.flatMap((k) => documents.find((d) => d.kind === k)?.files.map((f) => f.url) ?? []);
 }
@@ -372,9 +452,10 @@ export function parkingBlocker(input: {
   if (!input.needed) return null;
   const c = input.check;
   if (!c) return '건축물대장 대조 전';
-  if (!sameParkingFiles(c.files, input.currentFiles)) return '건축물대장 대조 서류 바뀜 — 다시 대조';
-  // 견주는 것이 늘기 전의 결과 — 그 항목을 안 봤다. 넘긴 것(accepted)도 그때 본 것까지다
+  // 견주는 것이 늘기 전의 결과 — 그 항목을 안 봤다. 넘긴 것(accepted)도 그때 본 것까지다.
+  // 파일보다 먼저 본다 — 판이 오르며 읽는 칸이 늘면(4판의 계약서) 옛 결과는 파일 목록부터 다르다. 까닭은 「서류 바뀜」이 아니다
   if (outdatedCheck(c)) return `건축물대장 다시 대조 — ${missedOf(c)} 확인 추가`;
+  if (!sameParkingFiles(c.files, input.currentFiles)) return '건축물대장 대조 서류 바뀜 — 다시 대조';
   // 발급일을 견준 계약접수일을 그 뒤에 고쳤다 — 넘긴 것도 그 날짜로 본 것이다
   if (redatedCheck(c, input.receivedOn)) return '건축물대장 다시 대조 — 계약접수일 바뀜';
   const left = parkingIssueCount(c);

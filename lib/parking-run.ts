@@ -1,11 +1,12 @@
 /**
- * 건축물대장 대조(주차면·주소·발급일)를 돌린다 — 한 곳 (서버 전용).
+ * 건축물대장 대조(주차면·주소·발급일·전화번호)를 돌린다 — 한 곳 (서버 전용).
  *
  * 한백 지시 2026-10-16 「계약단계에서 건축물대장에 대한 에이전트를 하나 더」. 건축물대장 칸(K-apt·공문이 같이 온다)·
  * 사전현장컨설팅 결과서·설치신청서의 주차면·열람용 여부·주소와 건축물대장 발급일을 판독이 읽고(lib/parking-read), 맞는지는
- * 코드가 가른다(lib/parking-check — 발급일은 현장의 계약접수일에 견준다). 부르는 곳 둘 — 기설치 대조(lib/preinstall-run)와 같다:
+ * 코드가 가른다(lib/parking-check — 발급일은 현장의 계약접수일에 견준다). 2026-11-19 부터 계약서 칸도 읽는다 — 세 서류의
+ * 아파트(신청자) 쪽 전화번호가 같은지(7번 규칙). 부르는 곳 둘 — 기설치 대조(lib/preinstall-run)와 같다:
  *   · 한백이 「대조」를 누를 때 — app/api/projects/[id]/parking/check
- *   · ★접수 단계에서 저절로★ — 세 칸에 파일이 들고 날 때와 협력사가 「계약서 접수」를 누를 때(scheduleParkingCheck).
+ *   · ★접수 단계에서 저절로★ — 네 칸에 파일이 들고 날 때와 협력사가 「계약서 접수」를 누를 때(scheduleParkingCheck).
  *     판독이 수십 초라 접수를 기다리게 하지 않고 응답 뒤에 돈다(lib/background). 이때는 바뀐 파일만 읽는다(reusableReads).
  * 반려(열람용 등)는 결과를 보고 사람이 누른다 — 판독이 틀린 반려가 협력사에게 저절로 가지 않게.
  */
@@ -22,8 +23,20 @@ import {
   sameParkingFiles, type ParkingCheck, type ParkingSlot,
 } from '@/lib/parking-check';
 import { background } from '@/lib/background';
+import { splitPdf } from '@/lib/pdf-split';
 import { AUTO, fetchAll, named, SETTLE_MS } from '@/lib/check-kit';
 import type { DocFile, ProjectDetail } from '@/types/project';
+
+/**
+ * 계약서는 앞 몇 쪽만 보낸다 — 부지제공자 전화번호는 첫 장에 있다(현대엔지니어링 · SK · 플러그링크 「부지제공자」, 나이스
+ * 「제1조 계약 당사자」 · 실제 계약서). 뒤의 약관 · 묶어 스캔한 회의록 · 건축물대장까지 보내면 판독비만 늘고 20MB 를 넘기도
+ * 한다(운영사 직인 읽기 lib/cpo-seal-run 과 같은 까닭).
+ */
+const CONTRACT_HEAD_PAGES = 3;
+const headOf = async <F extends { name: string; slot: ParkingSlot; buffer: Buffer }>(f: F): Promise<F> =>
+  f.slot === 'contract' && /\.pdf$/i.test(f.name)
+    ? { ...f, buffer: await splitPdf(f.buffer, Array.from({ length: CONTRACT_HEAD_PAGES }, (_, i) => i + 1)) }
+    : f;
 
 /**
  * @param reuse 지난 결과 — 주면 같은 파일의 판독을 그대로 쓰고 바뀐 파일만 읽는다(자동 대조 · parking-check reusableReads).
@@ -36,7 +49,7 @@ export async function runParkingCheck(
   const p = detail.project;
   const filesOf = (slot: ParkingSlot) => detail.documents.find((d) => d.kind === slot)?.files ?? [];
   const bySlot = PARKING_SLOTS.map((slot) => ({ slot, files: filesOf(slot) }));
-  /* 이름은 세 칸을 통틀어 겹치지 않게 — 판독의 답을 파일(과 그 칸)에 되짚는다 */
+  /* 이름은 네 칸을 통틀어 겹치지 않게 — 판독의 답을 파일(과 그 칸)에 되짚는다 */
   const all = named(bySlot.flatMap(({ slot, files }) => files.map((f) => ({ ...f, slot }))));
 
   /* 설치신청서는 환경부 사업의 필수 서류다 — 서류 규칙(doc-rules)이 정한 것을 그대로 본다 */
@@ -49,7 +62,8 @@ export async function runParkingCheck(
 
   const { kept, toRead } = reusableReads(reuse, all);
   const { got, failed } = await fetchAll(toRead);
-  const { reads: fresh, unread } = got.length > 0 ? await readParking(got, pick) : { reads: [], unread: [] };
+  const heads = await Promise.all(got.map(headOf));
+  const { reads: fresh, unread } = heads.length > 0 ? await readParking(heads, pick) : { reads: [], unread: [] };
   // 칸·파일 차례로 — 다시 쓴 판독과 새로 읽은 판독이 섞여도 늘 같은 순서로 보인다
   const order = new Map(all.map((f, i) => [f.name, i]));
   const reads = [...kept, ...fresh].sort((a, b) => (order.get(a.file) ?? 0) - (order.get(b.file) ?? 0));
@@ -68,7 +82,7 @@ export async function runParkingCheck(
 
 const isParkingSlot = (kind: string) => (PARKING_SLOTS as readonly string[]).includes(kind);
 
-/** 지금 세 칸의 파일 주소 */
+/** 지금 네 칸의 파일 주소 */
 async function currentFiles(projectId: string): Promise<string[]> {
   const docs = await getDb().select({ kind: documents.kind, files: documents.files }).from(documents)
     .where(and(eq(documents.projectId, projectId), inArray(documents.kind, [...PARKING_SLOTS])));
@@ -80,7 +94,7 @@ async function currentFiles(projectId: string): Promise<string[]> {
  * 잠깐 기다렸다가 그때도 칸이 같을 때만 돈다(여러 장을 연달아 올리면 마지막 올림 하나만) · 이미 이 서류로 대조했으면
  * 다시 돌지 않는다 · 도는 사이 서류가 바뀌었으면 결과를 버린다.
  *
- * @param kind 바뀐 칸 — 세 칸이 아니면 할 일이 없다. 없으면(계약서 접수) 칸을 가리지 않는다.
+ * @param kind 바뀐 칸 — 네 칸이 아니면 할 일이 없다. 없으면(계약서 접수) 칸을 가리지 않는다.
  */
 export function scheduleParkingCheck(projectId: string, kind?: string, settleMs = SETTLE_MS): Promise<void> | void {
   if (kind && !isParkingSlot(kind)) return;

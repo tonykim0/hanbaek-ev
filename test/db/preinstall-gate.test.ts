@@ -133,6 +133,8 @@ describe('기설치 대조 — 계약 확인의 조건', () => {
       await repo.uploadDocument({ projectId: id, kind: 'contract', filename: 'contract-3.pdf', blobUrl: urlOf(id, 'contract', '3') }, partner);
       expect(await fixAsked()).not.toBeNull();
       await repo.savePreInstallCheck(id, checkOf(await filesNow(id)), admin);
+      // 계약서가 바뀌었으니 건축물대장 대조(연락처 — 2026-11-19 부터 계약서도 읽는다)도 다시 맞아야 한다. 운영에서는 자동 대조가 돈다
+      await passParking(id);
       await repo.confirmContract(id, true, admin);
       expect(await fixAsked()).toBeNull();
     });

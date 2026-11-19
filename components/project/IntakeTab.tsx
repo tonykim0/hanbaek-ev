@@ -558,7 +558,7 @@ export function IntakeTab({
   const missing = evaluated.filter((d) => d.req === 'm' && !byKind.get(d.key)?.blobUrl);
   /* 서류 묶음 — 보이는 것만 센다(빈 묶음을 건너뛰면 1·3 으로 튄다). 건축물대장 대조가 그다음 번호를 받는다 */
   const shownGroups = DOC_GROUPS.filter((g) => evaluated.some((d) => d.req === g.req && !d.preinstall));
-  /* 건축물대장 대조가 보는 세 칸(건축물대장·결과서·신청서)의 지금 파일 — 지난 대조와 견준다 */
+  /* 건축물대장 대조가 보는 네 칸(건축물대장·결과서·신청서·계약서)의 지금 파일 — 지난 대조와 견준다 */
   const parkingFiles = parkingFilesOf([...byKind.values()]);
   /* 대조가 열람용이나 오래된 발급일을 짚었으면 건축물대장 칸의 반려가 그 사유를 들고 연다(기설치의 직인 없음과 같다) */
   const registerReject = registerRejectOf(parkingCheck, parkingFiles, project.createdAt);

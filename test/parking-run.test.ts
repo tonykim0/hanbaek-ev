@@ -18,12 +18,16 @@ const file = (slot: ParkingSlot, name: string) => ({ slot, name, url: `https://b
 const REG = file('bldgreg', '건축물대장.pdf');
 const CONSULT = file('consult', '결과서.pdf');
 const APPLY = file('apply', '신청서.pdf');
+const CONTRACT = file('contract', '계약서.pdf');
 
-/** 판독 흉내 — 받은 파일마다 문서 하나를 읽은 것으로(주차면 249 · 같은 도로명 · 안쪽 발급일) */
+/** 판독 흉내 — 받은 파일마다 문서 하나를 읽은 것으로(주차면 249 · 같은 도로명 · 안쪽 발급일 · 같은 전화번호 — 지어낸 번호) */
+const DOC = { bldgreg: '건축물대장', consult: '결과서', apply: '신청서', contract: '계약서' } as const;
 const readOf = (f: { name: string; slot: ParkingSlot; url: string }): ParkingRead => ({
-  file: f.name, slot: f.slot, url: f.url, parking: 249, viewOnly: f.slot === 'bldgreg' ? false : null,
-  doc: f.slot === 'bldgreg' ? '건축물대장' : f.slot === 'consult' ? '결과서' : '신청서',
-  address: f.slot === 'consult' ? null : '전라남도 광양시 광양읍 예구1길 8', issued: f.slot === 'bldgreg' ? '2026-10-02' : null,
+  file: f.name, slot: f.slot, url: f.url, parking: f.slot === 'contract' ? null : 249,
+  viewOnly: f.slot === 'bldgreg' ? false : null, doc: DOC[f.slot],
+  address: f.slot === 'consult' || f.slot === 'contract' ? null : '전라남도 광양시 광양읍 예구1길 8',
+  issued: f.slot === 'bldgreg' ? '2026-10-02' : null,
+  tel: f.slot === 'bldgreg' ? null : '031-123-4567',
 });
 
 const detailOf = (files: Array<ReturnType<typeof file>>) => ({
@@ -32,7 +36,7 @@ const detailOf = (files: Array<ReturnType<typeof file>>) => ({
     preInstall: '없음', bizType: '환경부', createdAt: '2026-10-16',
   },
   lines: [],
-  documents: (['bldgreg', 'consult', 'apply'] as const).map((kind) => ({
+  documents: (['bldgreg', 'consult', 'apply', 'contract'] as const).map((kind) => ({
     kind, files: files.filter((f) => f.slot === kind).map(({ name, url }) => ({ name, url })),
   })),
 }) as never;
@@ -72,5 +76,17 @@ describe('건축물대장 대조를 돌린다', () => {
     const { runParkingCheck } = await import('@/lib/parking-run');
     await runParkingCheck(detailOf([REG, CONSULT, APPLY]));
     expect(readParking.mock.calls[0][0].map((f: { name: string }) => f.name)).toEqual([REG.name, CONSULT.name, APPLY.name]);
+  });
+
+  /* 2026-11-19 연락처 규칙 — 계약서·결과서·신청서의 아파트 쪽 전화번호가 같아야 한다. 계약서 칸도 대조가 읽는다 */
+  it('계약서 칸도 읽는다 — 세 서류의 전화번호를 견주고 계약서 파일도 「대조에 쓴 파일」이다', async () => {
+    const { runParkingCheck } = await import('@/lib/parking-run');
+    const check = await runParkingCheck(detailOf([REG, CONSULT, APPLY, CONTRACT]));
+    expect(readParking.mock.calls[0][0].map((f: { name: string }) => f.name))
+      .toEqual([REG.name, CONSULT.name, APPLY.name, CONTRACT.name]);
+    expect(check.files).toEqual([REG.url, CONSULT.url, APPLY.url, CONTRACT.url]);
+    expect(check.tel?.docs.map((d) => d.doc)).toEqual(['계약서', '결과서', '설치신청서']);
+    expect(check.tel?.match).toBe(true);
+    expect(check.issues).toEqual([]);
   });
 });

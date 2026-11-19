@@ -1,12 +1,13 @@
 'use client';
 
 /**
- * 건축물대장 대조 — 주차면·주소·발급일 (한백 지시 2026-10-16 「계약단계에서 건축물대장에 대한 에이전트를 하나 더」).
+ * 건축물대장 대조 — 주차면·주소·발급일·연락처 (한백 지시 2026-10-16 「계약단계에서 건축물대장에 대한 에이전트를 하나 더」).
  *   주차면: 건축물대장(K-apt·공문) = 사전현장컨설팅 결과서 = 설치신청서 · 열람용 아님
  *   주소:   설치신청서 주소가 도로명 주소 · 건축물대장 도로명주소와 같음
  *   발급일: 건축물대장이 계약접수일로부터 3개월 안에 발급한 것 (2026-10-30)
+ *   연락처: 계약서 = 결과서 = 설치신청서의 아파트(신청자) 쪽 전화번호 (2026-11-19)
  *
- * 계약 탭 서류 묶음 밑에 선다 — 대조하는 것이 그 위의 서류 칸 셋이고, 그 밑이 「계약 확인 완료」다(막는 자리 바로 위).
+ * 계약 탭 서류 묶음 밑에 선다 — 대조하는 것이 그 위의 서류 칸 넷이고, 그 밑이 「계약 확인 완료」다(막는 자리 바로 위).
  * 기설치 대조(PreInstallCheck)와 같은 꼴이다: 머리(상태·대조 시각·다시 대조) → 서류마다 읽은 값 → 짚을 것 → 넘기기.
  * 판정 말은 맞음 · 어긋남 · 확인 필요(못 읽음). 반려는 칸의 「반려」 하나다(열람용이면 건축물대장 칸의 반려가 사유를
  * 채워 연다 — IntakeTab).
@@ -39,7 +40,7 @@ function Count({ value, basis }: { value: number | null; basis: number | null })
 
 /** 어긋남(빨강) — 서류가 서로 다르거나 받을 수 없는 서류다. 나머지(못 읽음·빠짐)는 확인 필요(주황) */
 const DIFF_KEYS: ParkingIssueKey[] = [
-  'consult-diff', 'apply-diff', 'view-only', 'split', 'address-diff', 'apply-not-road', 'issued-old',
+  'consult-diff', 'apply-diff', 'view-only', 'split', 'address-diff', 'apply-not-road', 'issued-old', 'tel-diff',
 ];
 
 /**
@@ -84,6 +85,32 @@ function Issued({ check }: { check: ParkingCheck }) {
   );
 }
 
+/**
+ * 연락처 줄 — 계약서 · 결과서 · 신청서의 아파트(신청자) 쪽 전화번호가 같은가(lib/parking-check 7번 규칙). 다 읽었고 같으면
+ * 번호 한 번만(규칙 5), 아니면 견준 서류마다(안 낸 서류는 결과에 없다). 전화번호를 보기 전의 결과(버전 4 전)는 「—」다.
+ */
+function Tel({ check }: { check: ParkingCheck }) {
+  const t = check.tel;
+  if (!t || t.docs.length === 0) return <span className="text-slate-500">—</span>;
+  const verdict = t.match === true ? <b className={`whitespace-nowrap ${TONE.ok}`}>맞음</b>
+    : t.match === false ? <b className={`whitespace-nowrap ${TONE.diff}`}>어긋남</b>
+    : null;
+  if (t.match === true && t.docs.every((d) => d.tel)) {
+    return <span className="tabular-nums"><b className="whitespace-nowrap">{t.docs[0].tel}</b> {verdict}</span>;
+  }
+  return (
+    <span className="break-keep tabular-nums">
+      {t.docs.map((d, i) => (
+        <span key={d.doc}>
+          {i > 0 && ' · '}{d.doc}{' '}
+          {d.tel ? <b className="whitespace-nowrap">{d.tel}</b> : <b className={TONE.unknown}>못 읽음</b>}
+        </span>
+      ))}
+      {verdict && <> {verdict}</>}
+    </span>
+  );
+}
+
 /** 건축물대장 줄 — 발급용·열람용과, 주차면이 없으면 받친 것(K-apt·공문) */
 function Register({ check }: { check: ParkingCheck }) {
   const regs = check.reads.filter((r) => r.slot === 'bldgreg' && r.doc === '건축물대장');
@@ -107,7 +134,7 @@ export function ParkingCheckBlock({
 }: {
   projectId: string;
   check: ParkingCheck | null | undefined;
-  /** 지금 세 칸(건축물대장·결과서·신청서)의 파일 주소 — 지난 대조와 다르면 「서류가 바뀜」 */
+  /** 지금 네 칸(건축물대장·결과서·신청서·계약서)의 파일 주소 — 지난 대조와 다르면 「서류가 바뀜」 */
   currentFiles: string[];
   /** 지금 계약접수일 — 대조가 발급일을 견준 날짜와 다르면 「계약접수일 바뀜」 */
   receivedOn: string;
@@ -119,14 +146,17 @@ export function ParkingCheckBlock({
   const { busy, error, run } = useAction();
   const accepting = useAction();
 
-  const stale = !!check && !sameParkingFiles(check.files, currentFiles);
-  /* 견주는 것이 늘기 전의 결과(주소·발급일 없음) — 다시 돌려야 계약 확인이 열린다(parkingBlocker) */
-  const outdated = !!check && !stale && outdatedCheck(check);
+  /*
+   * 견주는 것이 늘기 전의 결과(주소·발급일·연락처 없음) — 다시 돌려야 계약 확인이 열린다(parkingBlocker). 「서류가 바뀜」보다
+   * 먼저다 — 판이 오르며 읽는 칸이 늘면(4판의 계약서) 옛 결과는 파일 목록부터 다르다
+   */
+  const outdated = !!check && outdatedCheck(check);
+  const stale = !!check && !outdated && !sameParkingFiles(check.files, currentFiles);
   /* 발급일을 견준 계약접수일을 그 뒤에 고쳤다 — 그 날짜로 다시 대조해야 계약 확인이 열린다(parkingBlocker) */
   const redated = !!check && !stale && !outdated && redatedCheck(check, receivedOn);
   const n = check ? parkingIssueCount(check) : 0;
   /* 넘긴 것은 그 결과의 일이다 — 서류가 바뀌면 넘긴 것도 같이 무효다(parkingBlocker) */
-  const accepted = check && !stale ? check.accepted ?? null : null;
+  const accepted = check && !stale && !outdated ? check.accepted ?? null : null;
   const accept = (on: boolean) => accepting.run({
     url: `/api/projects/${projectId}/parking/check/accept`,
     body: { checkedAt: check?.checkedAt, accept: on },
@@ -156,8 +186,8 @@ export function ParkingCheckBlock({
       >
         {!check
           ? <Tag tone={canRun ? 'warn' : 'mute'}>대조 전</Tag>
-          : stale ? <Tag tone="warn">서류가 바뀜 — 다시 대조</Tag>
           : outdated ? <Tag tone="warn">{missedOf(check)} 확인 추가 — 다시 대조</Tag>
+          : stale ? <Tag tone="warn">서류가 바뀜 — 다시 대조</Tag>
           : redated ? <Tag tone="warn">계약접수일 바뀜 — 다시 대조</Tag>
           : n === 0 ? <Tag tone="ok">맞음{basis !== null ? ` · ${basis}면` : ''}</Tag>
           : (
@@ -185,6 +215,8 @@ export function ParkingCheckBlock({
           </dd>
           <dt className={TEXT.label}>신청서 주소</dt>
           <dd className={TEXT.body}><Address check={check} /></dd>
+          <dt className={TEXT.label}>연락처</dt>
+          <dd className={TEXT.body}><Tel check={check} /></dd>
           {check.unread.length > 0 && (
             <>
               <dt className={TEXT.label}>못 읽은 파일</dt>
@@ -217,8 +249,10 @@ export function ParkingCheckBlock({
                 {r.file} — {r.doc}
                 {r.viewOnly === true && ' · 열람용'}
                 {r.issued && ` · 발급 ${r.issued}`}
-                {r.parking !== null ? ` · ${r.parking}면` : ' · 주차면 없음'}
+                {/* 계약서는 전화번호만 읽는다 — 주차면 없음이라 적지 않는다 */}
+                {r.doc !== '계약서' && (r.parking !== null ? ` · ${r.parking}면` : ' · 주차면 없음')}
                 {r.address && ` · ${r.address}`}
+                {r.tel && ` · 전화 ${r.tel}`}
               </li>
             ))}
           </ul>

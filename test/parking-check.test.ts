@@ -1,27 +1,28 @@
 /**
  * 건축물대장 대조의 판정 — 주차면: 건축물대장(K-apt·공문) = 사전현장컨설팅 결과서 = 설치신청서 · 열람용 아님 /
  * 주소: 설치신청서가 도로명 주소이고 건축물대장 도로명주소와 같음 (한백 지시 2026-10-16) /
- * 발급일: 건축물대장이 계약접수일로부터 3개월 안에 발급한 것 (2026-10-30).
+ * 발급일: 건축물대장이 계약접수일로부터 3개월 안에 발급한 것 (2026-10-30) /
+ * 연락처: 계약서 = 결과서 = 설치신청서의 아파트(신청자) 쪽 전화번호 (2026-11-19).
  * 현장 이름은 판정을 짠 실제 서류다(~/Downloads 의 계약 서류 묶음).
  */
 import { describe, expect, it } from 'vitest';
 import {
   isRoadAddress, judgeParking, PARKING_CHECK_VERSION, parkingBlocker, registerRejectOf, reusableReads, roadKeyOf,
-  VIEW_ONLY_REASON, type ParkingCheck, type ParkingRead,
+  sameTel, telNumbersOf, VIEW_ONLY_REASON, type ParkingCheck, type ParkingRead,
 } from '@/lib/parking-check';
 import { parkingReadsOf } from '@/lib/parking-read';
 import { nameOfAnswer, pinAnsweredNames, shownName } from '@/lib/check-kit';
 
 /*
- * 주소는 기본으로 같은 도로명을, 발급일은 계약접수일 안쪽 날을 단다 — 주차면 시험이 주소·발급일 판정에 걸리지 않게
- * (주소·발급일은 아래 묶음이 따로 본다)
+ * 주소는 기본으로 같은 도로명을, 발급일은 계약접수일 안쪽 날을, 전화번호는 같은 번호를 단다 — 주차면 시험이 주소·발급일·
+ * 연락처 판정에 걸리지 않게(셋은 아래 묶음이 따로 본다 · 번호는 지어낸 것이다)
  */
 const RECEIVED = '2026-10-16';
 const read = (over: Partial<ParkingRead>): ParkingRead => ({
   file: 'a.pdf', slot: 'bldgreg', doc: '건축물대장', viewOnly: false, parking: null,
-  address: '전라남도 광양시 광양읍 예구1길 8', issued: '2026-10-02', ...over,
+  address: '전라남도 광양시 광양읍 예구1길 8', issued: '2026-10-02', tel: '031-123-4567', ...over,
 });
-const all = { bldgreg: true, consult: true, apply: true };
+const all = { bldgreg: true, consult: true, apply: true, contract: false };
 const keys = (r: ReturnType<typeof judgeParking>) => r.issues.map((i) => i.key);
 
 describe('건축물대장 대조 — 주차면', () => {
@@ -39,7 +40,7 @@ describe('건축물대장 대조 — 주차면', () => {
       read({ file: '건축물대장+kapt.pdf', parking: null }),
       read({ file: '건축물대장+kapt.pdf', doc: 'K-apt', viewOnly: null, parking: 90 }),
       read({ file: 'c.pdf', slot: 'consult', doc: '결과서', viewOnly: null, parking: 90 }),
-    ], { applyRequired: false, filed: { bldgreg: true, consult: true, apply: false }, receivedOn: RECEIVED });
+    ], { applyRequired: false, filed: { bldgreg: true, consult: true, apply: false, contract: false }, receivedOn: RECEIVED });
     expect(r.basis).toEqual({ value: 90, from: 'K-apt' });
     expect(r.issues).toEqual([]);
     expect(r.applyChecked).toBe(false);
@@ -60,7 +61,7 @@ describe('건축물대장 대조 — 주차면', () => {
     const r = judgeParking([
       read({ parking: null }),
       read({ file: 'c.pdf', slot: 'consult', doc: '결과서', viewOnly: null, parking: 120 }),
-    ], { applyRequired: false, filed: { bldgreg: true, consult: true, apply: false }, receivedOn: RECEIVED });
+    ], { applyRequired: false, filed: { bldgreg: true, consult: true, apply: false, contract: false }, receivedOn: RECEIVED });
     expect(keys(r)).toEqual(['no-basis']);
     expect(r.basis).toBeNull();
   });
@@ -70,7 +71,7 @@ describe('건축물대장 대조 — 주차면', () => {
       read({ parking: 249 }),
       read({ doc: 'K-apt', viewOnly: null, parking: 250 }),
       read({ file: 'c.pdf', slot: 'consult', doc: '결과서', viewOnly: null, parking: 249 }),
-    ], { applyRequired: false, filed: { bldgreg: true, consult: true, apply: false }, receivedOn: RECEIVED });
+    ], { applyRequired: false, filed: { bldgreg: true, consult: true, apply: false, contract: false }, receivedOn: RECEIVED });
     expect(r.basis).toEqual({ value: 249, from: '건축물대장' });
     expect(r.issues).toEqual([]);
   });
@@ -95,10 +96,10 @@ describe('건축물대장 대조 — 주차면', () => {
 
   it('장마다 다르면 기준을 세우지 않는다 · 건축물대장이 없으면 짚는다 · 빠진 서류와 못 읽은 서류를 가른다', () => {
     expect(keys(judgeParking([read({ parking: 249 }), read({ file: 'b.pdf', parking: 250 })], {
-      applyRequired: false, filed: { bldgreg: true, consult: false, apply: false }, receivedOn: RECEIVED,
+      applyRequired: false, filed: { bldgreg: true, consult: false, apply: false, contract: false }, receivedOn: RECEIVED,
     }))).toEqual(['split', 'no-consult']);
     const onlyKapt = judgeParking([read({ doc: 'K-apt', viewOnly: null, parking: 90 })], {
-      applyRequired: true, filed: { bldgreg: true, consult: true, apply: false }, receivedOn: RECEIVED,
+      applyRequired: true, filed: { bldgreg: true, consult: true, apply: false, contract: false }, receivedOn: RECEIVED,
     });
     expect(onlyKapt.issues.map((i) => i.text)).toEqual([
       '건축물대장 칸에서 건축물대장을 찾지 못했습니다',
@@ -138,10 +139,18 @@ describe('건축물대장 대조 — 계약 확인의 조건', () => {
   });
 
   it('견주는 것이 늘기 전의 결과는 맞음이어도, 넘겼어도 다시 대조 — 안 본 것을 단추에 적는다', () => {
-    expect(block({ ...base, version: undefined })).toBe('건축물대장 다시 대조 — 주소·발급일 확인 추가');
-    expect(block({ ...flagged, version: 1, accepted })).toBe('건축물대장 다시 대조 — 주소·발급일 확인 추가');
-    expect(block({ ...base, version: 2 })).toBe('건축물대장 다시 대조 — 발급일 확인 추가');
-    expect(block({ ...flagged, version: 2, accepted })).toBe('건축물대장 다시 대조 — 발급일 확인 추가');
+    expect(block({ ...base, version: undefined })).toBe('건축물대장 다시 대조 — 주소·발급일·연락처 확인 추가');
+    expect(block({ ...flagged, version: 1, accepted })).toBe('건축물대장 다시 대조 — 주소·발급일·연락처 확인 추가');
+    expect(block({ ...base, version: 2 })).toBe('건축물대장 다시 대조 — 발급일·연락처 확인 추가');
+    expect(block({ ...flagged, version: 3, accepted })).toBe('건축물대장 다시 대조 — 연락처 확인 추가');
+  });
+
+  /*
+   * 4판(연락처)부터 계약서 칸도 읽는다 — 옛 결과의 파일 목록에는 계약서가 없어 「서류 바뀜」으로 보였을 것이다.
+   * 까닭은 서류가 아니라 견주는 것이 는 것이라 그 말이 먼저다.
+   */
+  it('읽는 칸이 늘어 파일 목록이 달라진 옛 결과는 「서류 바뀜」이 아니라 「연락처 확인 추가」다', () => {
+    expect(block({ ...base, version: 3 }, ['a', 'b', 'contract'])).toBe('건축물대장 다시 대조 — 연락처 확인 추가');
   });
 
   it('발급일을 견준 뒤 계약접수일을 고치면 다시 대조 — 넘긴 것도 그 날짜로 본 것이다 · 견준 발급일이 없으면 상관없다', () => {
@@ -234,27 +243,34 @@ describe('주차면 판독의 답 다듬기', () => {
       {
         originalName: '광혜원_건축물대장+kapt.pdf', doc: '건축물대장', viewOnly: false, parking: null,
         address: ' 충청북도 진천군 광혜원면 화랑6길 13 ', otherAddresses: ['충청북도 진천군 광혜원면 화랑6길 15', '', 3],
-        issued: '2026년 10월 7일',
+        issued: '2026년 10월 7일', tel: '031-123-4567',
       },
       {
         originalName: '광혜원_건축물대장+kapt.pdf', doc: 'K-apt', viewOnly: true, parking: '90', address: '광혜원리 418-2',
-        issued: '2026-10-07',
+        issued: '2026-10-07', tel: '031-123-4567',
       },
-      { originalName: '결과서', doc: '결과서', parking: '249면', address: '광양읍 예구1길 8' },
+      { originalName: '결과서', doc: '결과서', parking: '249면', address: '광양읍 예구1길 8', tel: ' 031-123-4567 ' },
       { originalName: '모르는.pdf', doc: '건축물대장', parking: 1 },
       { originalName: '결과서.pdf', doc: '등기부', parking: 0 },
     ] }, files)).toEqual([
       {
         file: '광혜원_건축물대장+kapt.pdf', slot: 'bldgreg', doc: '건축물대장', viewOnly: false, parking: null,
         address: '충청북도 진천군 광혜원면 화랑6길 13', otherAddresses: ['충청북도 진천군 광혜원면 화랑6길 15'], issued: '2026-10-07',
+        tel: null,
       },
-      // 주소는 건축물대장·신청서만 — K-apt·결과서의 주소는 버린다. 발급일은 건축물대장만
+      // 주소는 건축물대장·신청서만 — K-apt·결과서의 주소는 버린다. 발급일은 건축물대장만 · 전화번호는 계약서·결과서·신청서만
       {
         file: '광혜원_건축물대장+kapt.pdf', slot: 'bldgreg', doc: 'K-apt', viewOnly: null, parking: 90,
-        address: null, otherAddresses: [], issued: null,
+        address: null, otherAddresses: [], issued: null, tel: null,
       },
-      { file: '결과서.pdf', slot: 'consult', doc: '결과서', viewOnly: null, parking: 249, address: null, otherAddresses: [], issued: null },
-      { file: '결과서.pdf', slot: 'consult', doc: '기타', viewOnly: null, parking: null, address: null, otherAddresses: [], issued: null },
+      {
+        file: '결과서.pdf', slot: 'consult', doc: '결과서', viewOnly: null, parking: 249, address: null, otherAddresses: [], issued: null,
+        tel: '031-123-4567',
+      },
+      {
+        file: '결과서.pdf', slot: 'consult', doc: '기타', viewOnly: null, parking: null, address: null, otherAddresses: [], issued: null,
+        tel: null,
+      },
     ]);
     expect(parkingReadsOf(null, files)).toEqual([]);
   });
@@ -430,10 +446,95 @@ describe('건축물대장 대조 — 신청서 주소', () => {
       .toEqual(['no-register-address']);
   });
   it('신청서를 견주지 않는 현장은 주소도 보지 않는다 · 신청서가 아예 없으면 「없습니다」 한 번만', () => {
-    const noApplyFiled = { bldgreg: true, consult: true, apply: false };
+    const noApplyFiled = { bldgreg: true, consult: true, apply: false, contract: false };
     expect(judgeParking([reg('예구1길 8'), consult], { applyRequired: false, filed: noApplyFiled, receivedOn: RECEIVED }).address)
       .toBeNull();
     const noApply = judgeParking([reg('예구1길 8'), consult], { applyRequired: true, filed: noApplyFiled, receivedOn: RECEIVED });
     expect(noApply.issues.map((i) => i.key)).toEqual(['no-apply']);
+  });
+});
+
+/*
+ * 7번 규칙 — 계약서 · 결과서 · 신청서의 아파트(신청자) 쪽 전화번호가 같아야 한다(한백 지시 2026-11-19). 번호는 지어낸 것이다.
+ */
+describe('건축물대장 대조 — 연락처(계약서 = 결과서 = 신청서)', () => {
+  const reg = read({ parking: 101 });
+  const consult = (tel: string | null) =>
+    read({ file: 'c.pdf', slot: 'consult', doc: '결과서', viewOnly: null, parking: 101, issued: null, tel });
+  const apply = (tel: string | null) =>
+    read({ file: 'p.pdf', slot: 'apply', doc: '신청서', viewOnly: null, parking: 101, issued: null, tel });
+  const contract = (tel: string | null) =>
+    read({ file: 'k.pdf', slot: 'contract', doc: '계약서', viewOnly: null, parking: null, address: null, issued: null, tel });
+  const filed = { bldgreg: true, consult: true, apply: true, contract: true };
+  const judge = (reads: ParkingRead[], over: Partial<typeof filed> = {}, applyRequired = true) =>
+    judgeParking(reads, { applyRequired, filed: { ...filed, ...over }, receivedOn: RECEIVED });
+
+  it('셋이 같은 번호면 맞음 — 적은 모양(하이픈 · 괄호 · 붙여 씀)은 상관없다', () => {
+    const r = judge([reg, contract('031-123-4567'), consult('031) 123-4567'), apply('0311234567')]);
+    expect(r.issues).toEqual([]);
+    expect(r.tel).toEqual({
+      docs: [{ doc: '계약서', tel: '031-123-4567' }, { doc: '결과서', tel: '031) 123-4567' }, { doc: '설치신청서', tel: '0311234567' }],
+      match: true,
+    });
+  });
+
+  it('하나라도 다르면 어긋남 — 서류마다 적힌 번호를 같이 적는다', () => {
+    const r = judge([reg, contract('031-123-4567'), consult('031-123-4567'), apply('010-9876-5432')]);
+    expect(keys(r)).toEqual(['tel-diff']);
+    expect(r.issues[0].text).toBe('전화번호가 서류마다 다릅니다 — 계약서 031-123-4567 · 결과서 031-123-4567 · 설치신청서 010-9876-5432');
+    expect(r.tel?.match).toBe(false);
+  });
+
+  it('한 칸에 번호를 둘 적었으면 그중 하나가 모두에 있으면 맞음 · 지역번호를 뺀 번호도 같다', () => {
+    expect(keys(judge([reg, contract('031-123-4567, 010-9876-5432'), consult('010-9876-5432'), apply('010 9876 5432')]))).toEqual([]);
+    expect(keys(judge([reg, contract('031-234-5678'), consult('234-5678'), apply('031-234-5678')]))).toEqual([]);
+    // 지역번호 없는 꼬리만 같은 휴대폰은 같은 번호가 아니다
+    expect(keys(judge([reg, contract('010-1234-5678'), consult('1234-5678'), apply('010-1234-5678')]))).toEqual(['tel-diff']);
+  });
+
+  it('번호를 못 읽은 서류는 짚고, 읽은 서류끼리는 견준다', () => {
+    const r = judge([reg, contract(null), consult('031-123-4567'), apply('031-123-4567')]);
+    expect(keys(r)).toEqual(['no-tel']);
+    expect(r.issues[0].text).toBe('계약서에서 전화번호를 읽지 못했습니다');
+    expect(r.tel).toEqual({
+      docs: [{ doc: '계약서', tel: null }, { doc: '결과서', tel: '031-123-4567' }, { doc: '설치신청서', tel: '031-123-4567' }],
+      match: true,
+    });
+  });
+
+  it('신청서를 견주지 않는 현장은 계약서·결과서만 · 안 낸 계약서는 짚지 않는다(서류 규칙이 막는다)', () => {
+    const noApply = judge([reg, contract('031-123-4567'), consult('031-123-4567')], { apply: false }, false);
+    expect(noApply.issues).toEqual([]);
+    // 견준 서류만 남는다 — 안 낸 신청서는 「못 읽음」으로 보이지 않는다
+    expect(noApply.tel).toEqual({
+      docs: [{ doc: '계약서', tel: '031-123-4567' }, { doc: '결과서', tel: '031-123-4567' }], match: true,
+    });
+
+    const noContract = judge([reg, consult('031-123-4567'), apply('031-123-4567')], { contract: false });
+    expect(noContract.issues).toEqual([]);
+    expect(noContract.tel?.docs.map((d) => d.doc)).toEqual(['결과서', '설치신청서']);
+    expect(noContract.tel?.match).toBe(true);
+  });
+
+  it('결과서를 아예 못 찾았으면 주차면이 이미 짚었다 — 전화번호로 또 짚지 않는다 · 계약서 칸에서 계약서를 못 찾으면 짚는다', () => {
+    expect(keys(judge([reg, contract('031-123-4567'), apply('031-123-4567')]))).toEqual(['no-consult']);
+    expect(keys(judge([reg, consult('031-123-4567'), apply('031-123-4567')]))).toEqual(['no-tel']);
+  });
+
+  it('판독의 답 — 전화번호는 계약서·결과서·신청서만, 번호 모양이 아니면 버린다', () => {
+    const reads = parkingReadsOf({ docs: [
+      { originalName: 'k.pdf', doc: '계약서', tel: '031-123-4567' },
+      { originalName: 'k.pdf', doc: '건축물대장', tel: '031-123-4567' },
+      { originalName: 'p.pdf', doc: '신청서', tel: '관리사무소' },
+    ] }, [{ name: 'k.pdf', slot: 'contract' }, { name: 'p.pdf', slot: 'apply' }]);
+    expect(reads.map((r) => [r.doc, r.tel])).toEqual([['계약서', '031-123-4567'], ['건축물대장', null], ['신청서', null]]);
+  });
+
+  it('번호 꺼내기 — 국가번호 82 는 0 으로 · 너무 짧은 숫자는 번호가 아니다 · 지역번호를 뺀 번호', () => {
+    expect(telNumbersOf('+82 31-123-4567')).toEqual(['0311234567']);
+    expect(telNumbersOf('031-123-4567 / 010-9876-5432')).toEqual(['0311234567', '01098765432']);
+    expect(telNumbersOf('12-34')).toEqual([]);
+    expect(sameTel('0312345678', '2345678')).toBe(true);
+    expect(sameTel('01012345678', '12345678')).toBe(false);
   });
 });

@@ -2,7 +2,8 @@
  * 건축물대장 대조의 판독 — 건축물대장·K-apt·공문·사전현장컨설팅 결과서·설치신청서에 ★인쇄된 주차면 수★,
  * 건축물대장이 열람용인지, ★건축물대장의 도로명주소와 설치신청서의 주소★, 그리고 ★건축물대장의 발급일★을 읽는다(주소는
  * 한백 지시 2026-10-16 「설치신청서 주소가 도로명 주소인지 · 건축물대장 도로명 주소와 일치하는지」, 발급일은 2026-10-30
- * 「건축물대장 발급일자가 계약접수일로부터 3개월이내인지」). 맞는지는 코드가 가른다(lib/parking-check) —
+ * 「건축물대장 발급일자가 계약접수일로부터 3개월이내인지」), ★계약서 · 결과서 · 신청서의 아파트(신청자) 쪽 전화번호★를 읽는다
+ * (2026-11-19 「설치신청서, 계약서, 사전현장컨설팅 결과서에 있는 전화번호가 항상 일치해야해」). 맞는지는 코드가 가른다(lib/parking-check) —
  * 판독에게 「맞는지 봐 달라」고 묻지 않는다(기설치 대조 lib/legacy-evidence 와 같은 까닭). 주소도 「도로명인가」를 묻지 않고
  * 적힌 그대로 받아 코드가 가른다.
  *
@@ -28,12 +29,13 @@
 import { askPdfJson, preparePdfs, visionPickOf, type VisionPick } from './vision-ask';
 import { nameOfAnswer, shownName } from './check-kit';
 import { dayOf } from './fact-read';
-import { PARKING_DOCS, type ParkingDoc, type ParkingRead, type ParkingSlot } from './parking-check';
+import { PARKING_DOCS, telNumbersOf, type ParkingDoc, type ParkingRead, type ParkingSlot } from './parking-check';
 
 const SLOT_NAME: Record<ParkingSlot, string> = {
   bldgreg: '건축물대장 칸',
   consult: '사전현장컨설팅 결과서 칸',
   apply: '설치신청서 칸',
+  contract: '계약서 칸',
 };
 
 export function parkingPrompt(files: { name: string; slot: ParkingSlot }[]): string {
@@ -44,7 +46,7 @@ export function parkingPrompt(files: { name: string; slot: ParkingSlot }[]): str
 ${files.map((f, i) => `${i + 1}. ${shownName(f.name)} (${SLOT_NAME[f.slot]})`).join('\n')}
 
 ## 답 모양
-{"docs":[{"originalName":"…","doc":"건축물대장","viewOnly":false,"parking":249,"address":"전라남도 광양시 광양읍 예구1길 8","otherAddresses":[],"issued":"2026-10-07"}]}
+{"docs":[{"originalName":"…","doc":"건축물대장","viewOnly":false,"parking":249,"address":"전라남도 광양시 광양읍 예구1길 8","otherAddresses":[],"issued":"2026-10-07","tel":null}]}
 
 ## 항목
 - 한 파일에 문서가 여럿 묶여 있을 수 있습니다(예: 건축물대장 뒤에 K-apt 화면 캡처). 문서마다 한 항목.
@@ -55,6 +57,8 @@ ${files.map((f, i) => `${i + 1}. ${shownName(f.name)} (${SLOT_NAME[f.slot]})`).j
   공문 = 시·군·구청 등 지자체가 낸 공문.
   결과서 = 「사전 현장 컨설팅 결과서」(별지 제7호 서식).
   신청서 = 「전기자동차 완속충전시설 설치 신청서」(별지 제5호 서식).
+  계약서 = 충전기 설치·운영 계약서(「전기자동차 충전시설 구축 및 운영서비스 계약서」·「전기차 충전기 설치ㆍ운영 계약서」 등).
+    계약서 뒤에 붙은 약관 쪽은 같은 계약서 항목입니다.
 - viewOnly: 건축물대장만. 「열람용」이라는 글자가 있으면 true — 바탕에 크게 찍힌 「열람용」 글씨, 또는 아래쪽
   「이 건축물대장은 열람용이므로 출력하신 건축물대장은 법적 효력이 없습니다」. 그런 글자 없이 발급번호·
   「원본내용과 틀림없음을 증명합니다」가 있으면 false. 건축물대장이 아니면 null.
@@ -77,18 +81,29 @@ ${files.map((f, i) => `${i + 1}. ${shownName(f.name)} (${SLOT_NAME[f.slot]})`).j
   그 아래)의 「발급일: 2026년 10월 7일」을 YYYY-MM-DD 로 적습니다(→ "2026-10-07").
   맨 위의 「발급확인번호」·「발급번호」는 날짜가 아닙니다. 건축물 현황·변동사항 표의 날짜(허가일·사용승인일·변동일)도 발급일이
   아닙니다. 한 항목에 따로 발급한 장이 여럿 묶여 발급일이 여럿이면 가장 이른 날짜.
-  「발급일」이 안 보이면 null 입니다(뒤쪽 장만 있는 파일 등). 다른 문서는 null.`;
+  「발급일」이 안 보이면 null 입니다(뒤쪽 장만 있는 파일 등). 다른 문서는 null.
+- tel: ★아파트(신청자) 쪽 전화번호★를 적힌 그대로(「031-123-4567」). 한 칸에 번호가 둘이면 「, 」로 잇습니다. 안 보이면 null.
+  계약서: 부지제공자(신청자·신청고객) 칸의 「전화번호」·「연락처」 — ★충전사업자·공급자(운영사) 칸의 번호가 아닙니다★.
+  결과서: 「1. 신청자 정보」의 「연락처」 — 「7. 조사자」의 연락처가 아닙니다.
+  신청서: 「신청자」 줄의 「연락처」 — 「사업수행기관」·「모집대행사」 칸의 연락처가 아닙니다.
+  다른 문서는 null.`;
 }
 
 interface RawDoc {
   originalName?: unknown; doc?: unknown; viewOnly?: unknown; parking?: unknown;
-  address?: unknown; otherAddresses?: unknown; issued?: unknown;
+  address?: unknown; otherAddresses?: unknown; issued?: unknown; tel?: unknown;
 }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v.trim() : null);
 const count = (v: unknown): number | null => {
   const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v.replace(/[^\d.]/g, '')) : NaN;
   return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+};
+
+const TEL_DOCS: ParkingDoc[] = ['계약서', '결과서', '신청서'];
+const telOfRead = (v: unknown): string | null => {
+  const s = str(v);
+  return s && telNumbersOf(s).length > 0 ? s : null;
 };
 
 /** 판독의 답을 다듬는다 — 이름은 보낸 것 중 하나로, 종류는 정해진 것 중 하나로. 파일 주소가 있으면 같이 남긴다 */
@@ -113,13 +128,15 @@ export function parkingReadsOf(raw: unknown, files: { name: string; slot: Parkin
         : [],
       // 발급일은 건축물대장만 — 달력에 없는 날·먼 앞날은 잘못 읽은 것이라 버린다(fact-read dayOf)
       issued: doc === '건축물대장' ? dayOf(str(d.issued)) : null,
+      // 전화번호는 계약서·결과서·신청서만 — 번호 모양이 아닌 글(「관리사무소」만 적힌 칸)은 버린다
+      tel: TEL_DOCS.includes(doc) ? telOfRead(d.tel) : null,
       // 다음 자동 대조가 이 파일을 다시 읽지 않게(parking-check reusableReads)
       ...(f.url ? { url: f.url } : {}),
     }];
   });
 }
 
-/** 세 칸의 파일을 읽는다 — 못 읽은 파일은 unread 로(조용히 빠지지 않게). pick 은 한백의 「다시 대조」만 넘긴다(vision-ask CAREFUL_PICK) */
+/** 네 칸의 파일을 읽는다 — 못 읽은 파일은 unread 로(조용히 빠지지 않게). pick 은 한백의 「다시 대조」만 넘긴다(vision-ask CAREFUL_PICK) */
 export async function readParking(
   files: { name: string; slot: ParkingSlot; url: string; buffer: Buffer }[],
   pick: VisionPick = visionPickOf('parking-check')
