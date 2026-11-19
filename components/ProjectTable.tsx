@@ -120,8 +120,9 @@ export type TableSort = ReturnType<typeof useTableSort>;
  */
 const PIN_EDGE = 'shadow-[inset_-1px_0_0_theme(colors.slate.200)]';
 /*
- * 머리 줄 · 합계 줄의 가르는 선도 그림자다 — 둘 다 상자 위 · 아래에 붙는데(아래 useFitToScreen), 테두리는 붙지 않고 줄과 같이
- * 밀려 올라가 머리 줄 밑이 비었다. 붙은 현장 칸은 오른쪽 선과 같이 그린다.
+ * 머리 줄의 가르는 선도 그림자다 — 머리 줄은 상자 위에 붙는데(아래 useFitToScreen), 테두리는 붙지 않고 줄과 같이 밀려
+ * 올라가 머리 줄 밑이 비었다. 붙은 현장 칸은 오른쪽 선과 같이 그린다. 합계 줄은 붙지 않지만(아래 tfoot) 왼쪽에 붙는 합계 칸이
+ * 같은 까닭으로 윗선을 그림자로 그려서, 줄 전체를 그림자로 맞춘다.
  */
 const HEAD_LINE = 'shadow-[inset_0_-1px_0_theme(colors.slate.200)]';
 const FOOT_LINE = 'shadow-[inset_0_1px_0_theme(colors.slate.200)]';
@@ -133,7 +134,7 @@ const PIN_FOOT = 'sticky left-0 z-[1] bg-slate-50 shadow-[inset_-1px_0_0_theme(c
 const LEAD: readonly ColKey[] = ['stage', 'lastDone'];
 
 /*
- * ★표는 제 상자 안에서 스크롤한다 — 머리 줄 · 합계 줄 · 현장 열이 붙어 있게★ (한백 2026-11-11 「페이지 스크롤 내려도 맨위에있는
+ * ★표는 제 상자 안에서 스크롤한다 — 머리 줄 · 현장 열이 붙어 있게★ (한백 2026-11-11 「페이지 스크롤 내려도 맨위에있는
  * 속성들은 고정되게 해줘」). 머리 줄은 처음부터 sticky 였는데 붙지 않았다: 가로로 미는 상자(overflow-x-auto)는 세로로도 스크롤
  * 상자가 되어(한 축이 auto 면 다른 축도 auto), 머리 줄은 늘어나기만 하는 그 상자에 붙은 채 페이지와 같이 올라갔다.
  * 그래서 상자의 높이를 화면 아래 끝까지로 묶고 그 안에서 스크롤한다 — 위의 보기 · 필터 줄도 늘 보이고, 가로 스크롤 막대도
@@ -265,7 +266,7 @@ export default function ProjectTable({
   return (
     <div className="overflow-hidden rounded-panel border border-slate-200 bg-white">
       {/*
-        * 가로 · 세로 모두 이 상자 안에서 민다 — 머리 줄 · 합계 줄 · 현장 열이 상자 가장자리에 붙는다(useFitToScreen).
+        * 가로 · 세로 모두 이 상자 안에서 민다 — 머리 줄 · 현장 열이 상자 가장자리에 붙는다(useFitToScreen · 합계 줄은 안 붙는다, 아래 tfoot).
         * relative 가 있어야 한다: 줄마다의 화면 읽기 이름(단계 칸의 sr-only — absolute)이 상자 밖의 기준을 잡아 상자를 빠져나가,
         * 표가 상자 안에서 스크롤하는데도 페이지가 표 길이만큼 늘었다(복제한 120줄에서 페이지가 2,300px 더 스크롤했다).
         */}
@@ -390,9 +391,11 @@ export default function ProjectTable({
             * 합계 줄 — 지금 걸러 둔 줄의 건수와 대수 합(한백 지시 2026-11-06 「필터링 하면 현재 필터에서 총 대수 합계를
             * 볼 수 있게」). 대수는 대수 열 밑에 선다 — 그 열을 꺼 두면 건수 곁에 붙인다. 위 건수 줄(필터 줄 오른쪽 끝)과
             * 같은 줄 목록에서 세니 둘이 갈리지 않는다. 엑셀에는 넣지 않는다 — 합계 줄이 섞이면 엑셀의 필터 · 정렬이 그 줄까지 옮긴다.
-            * 상자 아래에 붙어 있다(2026-11-11 — 표가 제 상자 안에서 스크롤하게 되며) — 줄이 길어도 걸러 둔 합계가 늘 보인다.
+            * ★상자 아래에 붙이지 않는다★(한백 2026-11-19 「아래는 고정하고싶지않아 스크롤 할 때 보기 불편해」) — 11-11 에 표가
+            * 제 상자 안에서 스크롤하게 되며 아래에 붙였더니, 내려 읽는 동안 줄 하나 자리를 늘 가렸다. 마지막 줄 밑에 선다 —
+            * 걸러 둔 건수 · 대수는 필터 줄 오른쪽 끝에도 늘 보인다.
             */}
-          <tfoot className="sticky bottom-0 z-10 bg-slate-50">
+          <tfoot className="bg-slate-50">
             <tr>
               <td className={`px-3 py-2.5 text-left font-bold text-slate-700 ${PIN_FOOT}`}>
                 합계 <span className="tabular-nums">{rows.length.toLocaleString('ko-KR')}</span>건
