@@ -1,0 +1,71 @@
+# 코드 주인 — 아래 파일을 하나라도 건드린 PR 은 @tonykim0 의 승인이 있어야 main 에 들어간다(= 운영 배포).
+# 나머지 파일만 고친 PR 은 검사(check)만 통과하면 직원이 혼자 합친다.
+#
+# 2026-11-23 직원 합류 — 사용자 「운영에 나가는 건 2번」(위험한 곳만 승인 · 사무실 밖에서는 폰의 GitHub 앱으로 승인).
+# 규칙은 GitHub 저장소 설정의 ruleset 「main — PR · 코드 주인 승인」이 건다(승인 0명 + 코드 주인 승인 · 새로 밀면 승인이 풀린다).
+# 사용자 계정(저장소 관리자)은 그 ruleset 에서 빠져 지금처럼 바로 올린다 — 검사(check) 관문은 사용자에게도 그대로다.
+#
+# 문법은 gitignore 와 같고, 뒤에 적은 줄이 앞의 줄보다 앞선다. 묶음을 늘리거나 줄이면 이 파일만 고친다(이 파일도 묶여 있다).
+
+# ── 검사 · 배포 설정 — 풀려 있으면 검사를 끄거나 이 묶음을 지울 수 있다
+/.github/                    @tonykim0
+/.claude/                    @tonykim0
+/vercel.json                 @tonykim0
+/next.config.mjs             @tonykim0
+/package.json                @tonykim0
+/package-lock.json           @tonykim0
+/.eslintrc.json              @tonykim0
+/tsconfig.json               @tonykim0
+/vitest.config.mts           @tonykim0
+/vitest.db.config.mts        @tonykim0
+/test/conventions/           @tonykim0
+
+# ── DB 구조 · 데이터 — 운영 빌드가 먼저 돌리고, 되돌릴 수 없다
+/migrations/                 @tonykim0
+/scripts/migrate.ts          @tonykim0
+/lib/db/                     @tonykim0
+/drizzle.config.ts           @tonykim0
+
+# ── 저장소의 문 — 모든 쓰기가 지난다(권한 · 검증 · 동시성 잠금 · 협력사에게 금액 지우기)
+/lib/data/                   @tonykim0
+
+# ── 돈 — 기성 · 지급 회차 · 배치 · 단가 · 계좌 · 서류 필수 규칙(지급 조건)
+/lib/settlement.ts           @tonykim0
+/lib/payout-board.ts         @tonykim0
+/lib/pricing-match.ts        @tonykim0
+/lib/pricing-policy-*        @tonykim0
+/lib/bank-account.ts         @tonykim0
+/lib/doc-rules.ts            @tonykim0
+/app/api/payouts/            @tonykim0
+/app/api/receivables/        @tonykim0
+/app/api/statements/         @tonykim0
+/app/api/pricing/            @tonykim0
+
+# ── 권한 · 로그인 · 파일 열람 — 누가 무엇을 보고 바꾸는가
+/middleware.ts               @tonykim0
+/lib/auth/                   @tonykim0
+/lib/roles.ts                @tonykim0
+/lib/routes-map.ts           @tonykim0
+/lib/process.ts              @tonykim0
+/lib/api/                    @tonykim0
+/lib/blob/                   @tonykim0
+/app/api/auth/               @tonykim0
+/app/api/admin/              @tonykim0
+/app/api/files/              @tonykim0
+/app/api/file-link/          @tonykim0
+/app/api/backup/             @tonykim0
+
+# ── 밖으로 나가는 것 — 한백 이름의 메일 · 아지트 글 · 정해진 시각의 일
+/lib/agents/smtp.ts          @tonykim0
+/lib/agents/mail-send.ts     @tonykim0
+/lib/agents/secret-box.ts    @tonykim0
+/app/api/agents/**/mails/    @tonykim0
+/app/api/agents/mail-account/ @tonykim0
+/lib/agit/                   @tonykim0
+/app/api/agit/               @tonykim0
+/app/api/cron/               @tonykim0
+
+# ── AI 비용 — 판독 모델 고르기 · 에이전트 두뇌(프롬프트 캐시) — 잘못 바꾸면 청구서가 몇 배로 뛴다
+/lib/vision-ask.ts           @tonykim0
+/lib/claude.ts               @tonykim0
+/lib/agents/brain.ts         @tonykim0
