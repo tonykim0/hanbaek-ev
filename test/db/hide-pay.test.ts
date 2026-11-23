@@ -12,6 +12,9 @@ import { users } from '@/lib/db/schema';
 import { getSessionUser } from '@/lib/auth/session';
 import { inArray } from 'drizzle-orm';
 import { PATCH, POST } from '@/app/api/admin/accounts/route';
+import { POST as postNote } from '@/app/api/projects/[id]/notes/route';
+import { POST as postProcess } from '@/app/api/projects/[id]/process/route';
+import { hashPassword } from '@/lib/auth/crypto';
 import { RUN, USERS, call, signIn, signOut, viewerOf, withProject } from './kit';
 
 describe('정산 안 보기 계정의 눈', () => {
@@ -89,5 +92,33 @@ describe('계정 만들기 — 정산 봄 · 안 봄을 그때 고른다', () =>
     await signIn(USERS.admin);
     expect((await create(ids.view, 'viewer', { hidePay: true })).status).toBe(200);
     expect((await rowOf(ids.view))?.hidePay).toBe(false);
+  });
+});
+
+describe('정산 안 봄 계정도 조작은 그대로', () => {
+  // 2026-11-23 한백 「안보는 사람은 정산만 안보고 나머지는 다 조작가능해야해」 — 이 칸은 금액 · 정산 화면만 닫고 쓰기 문에는 안 든다.
+  // 시험 현장의 시공사(대상전력)와 같은 소속의 시공사 계정을 정산 안 봄으로 만들어 그 계정의 세션으로 현장에 쓴다.
+  const gc = { id: `hg-${RUN}`, name: `정산안봄 시공 ${RUN}`, role: 'cons', org: USERS.daesang.org } as const;
+  afterAll(async () => {
+    await getDb().delete(users).where(eq(users.id, gc.id));
+    signOut();
+  });
+
+  it('진행현황을 남기고 공정 메모를 적는다 — 금액은 하나도 안 받는다', async () => {
+    await getDb().insert(users).values({
+      id: gc.id, name: gc.name, role: gc.role, org: gc.org, hidePay: true, passwordHash: await hashPassword('test-1234'),
+    });
+    await withProject(async (id) => {
+      await signIn(gc);
+      expect((await getSessionUser())?.hidePay).toBe(true);
+
+      const note = await call(postNote, { params: { id }, body: { body: `[시험 ${RUN}] 정산 안 봄 계정의 기록`, scope: '시공' } });
+      expect(note.status).toBe(200);
+      const proc = await call(postProcess, { params: { id }, body: { memo: `[시험 ${RUN}] 공정 메모` } });
+      expect(proc.status).toBe(200);
+
+      const seen = await getRepository().getProject(id, { role: gc.role, org: gc.org, hidePay: true });
+      expect(seen?.notes.some((n) => n.body.includes('정산 안 봄 계정의 기록'))).toBe(true);
+    });
   });
 });

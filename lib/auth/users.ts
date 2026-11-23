@@ -42,7 +42,8 @@ export interface UserStore {
   setSolar(loginId: string, on: boolean, actor: Actor): Promise<void>;
   /**
    * 정산 안 보기 켜고 끄기. [한백 전용] 협력사 계정만 — 켜면 그 계정에 금액 · 정산 화면이 하나도 안 보인다.
-   * 지급은 같은 소속의 턴키 계정이 맡고 이 계정은 현장 · 시공만 볼 때(2026-11-18 「이브이솔루션(시공)은 협력사 정산관리랑 지급관리만
+   * ★정산만 가린다 — 나머지 조작은 구분 그대로★(2026-11-23 「안보는 사람은 정산만 안보고 나머지는 다 조작가능해야해」).
+   * 지급은 같은 소속의 턴키 계정이 맡고 이 계정은 정산을 안 볼 때(2026-11-18 「이브이솔루션(시공)은 협력사 정산관리랑 지급관리만
    * 안보이면돼」).
    */
   setHidePay(loginId: string, hide: boolean, actor: Actor): Promise<void>;
