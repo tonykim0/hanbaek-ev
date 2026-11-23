@@ -1030,6 +1030,13 @@ bulletpoint는 다 왼쪽정렬로」). 단가표의 조건 행(설치조건·�
     `worktree-<이름>` 이 `origin/main` 에서 갈라진다. 이름을 빼면 무작위 이름. `claude` 로 그냥 시작했으면
     ★첫 일로 `EnterWorktree` 를 부른다★. 본 저장소(main 이 체크아웃된 `~/Documents/hanbaek-ev` 자체)에서는
     일하지 않는다. 홈 디렉터리에서 시작하면 저장소 설정(훅)을 안 읽으니 저장소에서 시작한다.
+    ★데스크톱 앱(Code 탭)으로 열어도 같다★(2026-11-23 사용자 「클로드 앱에서 하려면」 — 직원이 터미널 대신 쓸 수 있게): 입력칸 밑
+    줄에서 환경 Local · 폴더 `~/Documents/hanbaek-ev` 를 고르고 「Worktree」 스위치는 켜지 않는다(기본이 꺼짐) — 본 저장소에서 시작하니
+    위처럼 첫 일로 `EnterWorktree`. 공식 문서는 `worktree.*` 설정(baseRef fresh · node_modules 링크)을 `--worktree` · `EnterWorktree` ·
+    서브에이전트에 건다고만 적고, 앱 스위치가 만드는 칸은 그 설정도 어디서 갈라지는지도 적지 않았다. 스위치를 켜고 시작했으면
+    `bash scripts/worktree-setup.sh` 와 `git fetch origin && git rebase origin/main` 부터 한다(둘 다 이미 돼 있으면 아무 일도 안 한다).
+    ★앱의 미리보기 창은 쓰지 않는다★ — 세션을 열 때 고른 폴더(본 저장소)를 작업 폴더로 서버를 띄운다(문서 · `.claude/launch.json` 도
+    거기 만든다). 워크트리에서 고친 화면이 아니다. 화면은 워크트리에서 띄운 `npm run dev` 를 브라우저로 본다.
   - **준비는 자동이다**: `.claude/settings.json` 의 `worktree.symlinkDirectories` 가 `node_modules` 를
     링크하고, `.worktreeinclude` 가 `.env.local`·`.vercel/project.json` 을 복사한다. 그래서 워크트리에서
     바로 `npm test`·`npx tsc --noEmit`·`npx vercel` 이 된다. `git worktree add` 로 손으로 만들었으면
