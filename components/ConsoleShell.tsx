@@ -530,18 +530,17 @@ export default function ConsoleShell({
           )}
           {/*
             * 내 비밀번호 변경(2026-11-23 한백 「각 계정에서 자기 비밀번호 재설정 할 수 있도록 해줘」) — 계정 모두에게. 로그아웃과 같은
-            * 자리다(제 계정의 일). 대행 중에는 걷는다 — 그 화면도 대행 중에는 못 바꾼다고만 말한다.
+            * 자리다(제 계정의 일). ★대행 중에도 선다★ — 대행은 협력사의 화면을 그대로 보는 자리라, 걷었더니 한백이 「이 계정으로 보기」로
+            * 확인하다 「비밀번호 변경 안뜨는데」(같은 날). 대행 중에 누르면 그 화면이 「대행 중에는 바꿀 수 없습니다」라고 말한다(라우트도 403).
             */}
-          {!actAs && (
-            <Link
-              href="/account/password"
-              title="비밀번호 변경"
-              aria-current={pathname === '/account/password' ? 'page' : undefined}
-              className="mb-1 block w-full rounded-ctl border border-slate-200 py-1.5 text-center text-tiny font-bold text-slate-500 transition hover:border-slate-300 hover:text-slate-800"
-            >
-              {expanded ? '비밀번호 변경' : '비번'}
-            </Link>
-          )}
+          <Link
+            href="/account/password"
+            title="비밀번호 변경"
+            aria-current={pathname === '/account/password' ? 'page' : undefined}
+            className="mb-1 block w-full rounded-ctl border border-slate-200 py-1.5 text-center text-tiny font-bold text-slate-500 transition hover:border-slate-300 hover:text-slate-800"
+          >
+            {expanded ? '비밀번호 변경' : '비번'}
+          </Link>
           <div className={`flex gap-1 ${expanded ? '' : 'flex-col'}`}>
             <form action="/api/auth/logout" method="post" className={expanded ? 'flex-1' : ''}>
               <button
