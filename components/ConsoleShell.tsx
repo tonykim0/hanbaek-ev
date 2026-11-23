@@ -17,7 +17,7 @@
  * 그런데 계약접수 칸에 현장이 올라오는 출발점이 거기라서, 흐름이 끊겨 보이지 않게
  * 자리를 만들어 두고 바깥으로 나가는 표시를 붙였다.
  */
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
@@ -455,7 +455,12 @@ export default function ConsoleShell({
           {groups.map((g) => (
             <div key={g.label} className="mb-3">
               {expanded ? (
-                <p className="px-2 pb-1 text-micro font-bold tracking-[0.12em] text-slate-400">
+                /*
+                 * 묶음 이름 — 12px · 굵게 · slate-500(2026-11-23 「묶음 이름 고른 메뉴만 수정해봐」 · 에코일렉 앱의 묶음 머리와 같은 짜임).
+                 * 그전에는 10px · slate-400 · 넓은 자간이라 잘 안 읽혔다 — slate-400 은 흰 바탕 2.6:1 이라 글자에 쓰지 않는다(ui.tsx TEXT).
+                 * 메뉴(13px · slate-600)보다 작고 옅게 둔다 — 묶음 이름이 메뉴보다 먼저 눈에 걸리면 누를 것처럼 읽힌다.
+                 */
+                <p className="px-2 pb-1 text-small font-bold text-slate-500">
                   {g.label}
                 </p>
               ) : (
@@ -472,7 +477,8 @@ export default function ConsoleShell({
                         target={it.external ? '_blank' : undefined}
                         rel={it.external ? 'noopener' : undefined}
                         title={expanded ? it.note : `${it.label}${it.note ? ` — ${it.note}` : ''}`}
-                        className={`flex items-center rounded-ctl font-semibold transition ${
+                        aria-current={active ? 'page' : undefined}
+                        className={`relative flex items-center rounded-ctl font-semibold transition ${
                           expanded ? 'gap-2 px-2 py-1.5' : 'justify-center py-2'
                         } ${
                           active
@@ -480,6 +486,14 @@ export default function ConsoleShell({
                             : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
                         }`}
                       >
+                        {/*
+                          * 고른 메뉴의 왼쪽 막대 — 옅은 면만으로는 지나가는 줄(회색 면)과 잘 안 갈렸다(2026-11-23 · 에코일렉 앱의 고른 메뉴와
+                          * 같은 짜임). 색은 위 막대와 같은 사업 색 채움이다(전기차 초록 · 태양광 귤색 — globals.css brand-fill). 글자가 아니라
+                          * 귤색 대비는 상관없다. 접힌 사이드바에서도 선다.
+                          */}
+                        {active && (
+                          <span aria-hidden className="absolute bottom-1.5 left-0 top-1.5 w-[3px] rounded-full bg-brand-fill" />
+                        )}
                         {expanded ? (
                           <>
                             <span className="truncate">{it.label}</span>
@@ -517,58 +531,25 @@ export default function ConsoleShell({
           ))}
         </nav>
 
-        <div className="shrink-0 border-t border-slate-100 p-2">
-          {/*
-            * 사람 이름은 적지 않는다 — 회사마다 계정이 하나라 늘 같은 이름이고,
-            * 정작 알아야 하는 것은 「어느 회사·어떤 권한으로 보고 있나」다.
-            */}
-          {expanded && (
-            <p className="truncate px-1.5 pb-2 text-tiny font-bold leading-tight text-slate-500">
-              {org ? `${org} · ` : ''}
-              {ROLE_LABEL[role]}
-            </p>
-          )}
-          {/*
-            * 내 비밀번호 변경(2026-11-23 한백 「각 계정에서 자기 비밀번호 재설정 할 수 있도록 해줘」) — 계정 모두에게. 로그아웃과 같은
-            * 자리다(제 계정의 일). ★대행 중에도 선다★ — 대행은 협력사의 화면을 그대로 보는 자리라, 걷었더니 한백이 「이 계정으로 보기」로
-            * 확인하다 「비밀번호 변경 안뜨는데」(같은 날). 대행 중에 누르면 그 화면이 「대행 중에는 바꿀 수 없습니다」라고 말한다(라우트도 403).
-            */}
-          <Link
-            href="/account/password"
-            title="비밀번호 변경"
-            aria-current={pathname === '/account/password' ? 'page' : undefined}
-            className="mb-1 block w-full rounded-ctl border border-slate-200 py-1.5 text-center text-tiny font-bold text-slate-500 transition hover:border-slate-300 hover:text-slate-800"
+        <div className={`flex shrink-0 gap-1 border-t border-slate-100 p-2 ${expanded ? 'items-center' : 'flex-col items-center'}`}>
+          <AccountMenu org={org} role={role} expanded={expanded} pathname={pathname} />
+          {/* 넓은 화면은 접고 펴는 것, 좁은 화면은 서랍을 닫는 것 — 하는 일이 달라 단추도 둘이다 */}
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            aria-expanded={open}
+            title={open ? '사이드바 접기' : '사이드바 펼치기'}
+            className="hidden flex-none rounded-ctl border border-slate-200 px-2 py-1.5 text-tiny font-bold text-slate-500 transition hover:border-slate-300 hover:text-slate-800 md:block"
           >
-            {expanded ? '비밀번호 변경' : '비번'}
-          </Link>
-          <div className={`flex gap-1 ${expanded ? '' : 'flex-col'}`}>
-            <form action="/api/auth/logout" method="post" className={expanded ? 'flex-1' : ''}>
-              <button
-                type="submit"
-                title="로그아웃"
-                className="w-full rounded-ctl border border-slate-200 py-1.5 text-tiny font-bold text-slate-500 transition hover:border-slate-300 hover:text-slate-800"
-              >
-                {expanded ? '로그아웃' : '나감'}
-              </button>
-            </form>
-            {/* 넓은 화면은 접고 펴는 것, 좁은 화면은 서랍을 닫는 것 — 하는 일이 달라 단추도 둘이다 */}
-            <button
-              type="button"
-              onClick={() => setOpen((v) => !v)}
-              aria-expanded={open}
-              title={open ? '사이드바 접기' : '사이드바 펼치기'}
-              className="hidden rounded-ctl border border-slate-200 px-2 py-1.5 text-tiny font-bold text-slate-400 transition hover:border-slate-300 hover:text-slate-700 md:block"
-            >
-              {open ? '«' : '»'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setDrawer(false)}
-              className="rounded-ctl border border-slate-200 px-2 py-1.5 text-tiny font-bold text-slate-400 transition hover:border-slate-300 hover:text-slate-700 md:hidden"
-            >
-              닫기
-            </button>
-          </div>
+            {open ? '«' : '»'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDrawer(false)}
+            className="flex-none rounded-ctl border border-slate-200 px-2 py-1.5 text-tiny font-bold text-slate-500 transition hover:border-slate-300 hover:text-slate-800 md:hidden"
+          >
+            닫기
+          </button>
         </div>
       </aside>
 
@@ -605,6 +586,125 @@ export default function ConsoleShell({
         {/* 바닥글은 걷어냈다(한백 확인) — 내부 도구에 매 페이지 같은 문장과 선은 자리만 먹는다 */}
         <main className="px-5 pb-16 pt-8 sm:px-7 sm:pt-9">{children}</main>
       </div>
+    </div>
+  );
+}
+
+/** 계정 칸 펼침의 한 줄 */
+const MENU_ITEM = 'block w-full rounded-ctl px-2 py-1.5 text-left text-small font-semibold text-slate-700 transition hover:bg-slate-50 hover:text-slate-900';
+
+/** 소속의 첫 글자 — 「(주)에코일렉」 → 「에」. 계정 칸 동그라미에 쓴다 */
+function initialOf(name: string): string {
+  const bare = name.replace(/\(주\)|㈜|주식회사|\(유\)|유한회사|[\s()[\]·]/g, '');
+  return Array.from(bare)[0] ?? '?';
+}
+
+/**
+ * 계정 칸 — 사이드바 맨 아래 한 칸(2026-11-23 한백 「사이드바 UI를 좀 바꿔줘, 에코일렉앱을 한 번 참고」 → 「맨아래, 묶음 이름
+ * 고른 메뉴만 수정해봐」). 소속 첫 글자 동그라미 + 소속 + 구분, 누르면 위로 비밀번호 변경 · 로그아웃이 펼쳐진다 — 에코일렉 앱의
+ * 계정 칸과 같은 짜임이다. 그전에는 소속 · 구분 글줄 밑에 「비밀번호 변경」 · 「로그아웃」 단추가 늘 서 있었다.
+ *
+ * 사람 이름은 적지 않는다 — 회사마다 계정이 하나라 늘 같은 이름이고, 알아야 하는 것은 「어느 회사 · 어떤 권한으로 보고 있나」다.
+ * 소속이 없는 한백 계정(열람 전용)은 「한백」이다. 계정설정 · 사업자 정보는 펼침에 넣지 않는다 — 사이드바 묶음에 이미 있다.
+ *
+ * 비밀번호 변경은 ★대행 중에도 선다★ — 대행은 협력사의 화면을 그대로 보는 자리라, 걷었더니 한백이 「이 계정으로 보기」로 확인하다
+ * 「비밀번호 변경 안뜨는데」(2026-11-23). 대행 중에 누르면 그 화면이 「대행 중에는 바꿀 수 없습니다」라고 말한다(라우트도 403).
+ * 접힌 사이드바에서는 동그라미만 서고 펼침은 사이드바 밖으로 나온다.
+ */
+function AccountMenu({ org, role, expanded, pathname }: {
+  org: string | null;
+  role: Role;
+  expanded: boolean;
+  pathname: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const box = useRef<HTMLDivElement>(null);
+
+  // 어디로 옮겨 가면 닫힌다 — 비밀번호 변경을 누른 뒤 펼침이 남지 않게
+  useEffect(() => setOpen(false), [pathname]);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (box.current && !box.current.contains(e.target as Node)) setOpen(false);
+    };
+    const esc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('mousedown', close);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [open]);
+
+  const name = org ?? '한백';
+  const roleLabel = ROLE_LABEL[role];
+
+  return (
+    <div ref={box} className={`relative ${expanded ? 'min-w-0 flex-1' : ''}`}>
+      <button
+        type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={`계정 — ${name} · ${roleLabel}`}
+        title={expanded ? undefined : `${name} · ${roleLabel}`}
+        onClick={() => setOpen((v) => !v)}
+        className={`flex items-center rounded-ctl text-left transition hover:bg-slate-50 ${open ? 'bg-slate-50' : ''} ${
+          expanded ? 'w-full gap-2 px-1.5 py-1.5' : 'justify-center p-1'
+        }`}
+      >
+        <span
+          aria-hidden
+          className="flex h-7 w-7 flex-none items-center justify-center rounded-full bg-brand-100 text-small font-black text-brand-800"
+        >
+          {initialOf(name)}
+        </span>
+        {expanded && (
+          <>
+            <span className="min-w-0 flex-1 leading-tight">
+              <span className="block truncate text-small font-bold text-slate-800">{name}</span>
+              <span className="block truncate text-tiny font-semibold text-slate-500">{roleLabel}</span>
+            </span>
+            {/* 위아래 꺾쇠 — 누르면 펼쳐진다는 표시 */}
+            <svg
+              aria-hidden
+              viewBox="0 0 16 16"
+              className="h-4 w-4 flex-none text-slate-500"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M5 6l3-3 3 3M5 10l3 3 3-3" />
+            </svg>
+          </>
+        )}
+      </button>
+      {open && (
+        <div
+          role="menu"
+          aria-label="계정"
+          className={`absolute bottom-full z-50 mb-1.5 rounded-box border border-slate-200 bg-white p-1.5 shadow-lg ${
+            expanded ? 'inset-x-0' : 'left-0 w-40'
+          }`}
+        >
+          <Link
+            role="menuitem"
+            href="/account/password"
+            aria-current={pathname === '/account/password' ? 'page' : undefined}
+            className={MENU_ITEM}
+          >
+            비밀번호 변경
+          </Link>
+          <form action="/api/auth/logout" method="post">
+            <button role="menuitem" type="submit" className={MENU_ITEM}>
+              로그아웃
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
