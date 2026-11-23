@@ -19,18 +19,21 @@ import { signPayload, verifyPayload } from './crypto';
 import { accountForSession } from './users';
 import { SESSION_COOKIE, SESSION_TTL_SEC, type Actor, type SessionPayload, type User, type Viewer } from './types';
 import { getSecret } from './secret';
+import { staleSession } from './own-password';
 
 // 열쇠 글은 lib/auth/secret 에 있다 — 저장소가 Next 밖에서도 쓰게(스크립트가 이 파일을 불러 죽지 않게)
 export { getSecret };
 
 /** asId 를 주면 대행 쿠키 — 바탕(id·role)은 그대로 이 사용자(관리자)다 */
 export async function createSessionToken(user: User, asId?: string): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
   const payload: SessionPayload = {
     id: user.id,
     name: user.name,
     role: user.role,
     org: user.org,
-    exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SEC,
+    iat: now,
+    exp: now + SESSION_TTL_SEC,
     ...(asId ? { asId } : {}),
   };
   return signPayload(payload, getSecret());
@@ -46,6 +49,12 @@ export const getSessionUser = cache(async (): Promise<SessionPayload | null> => 
 
   const live = await accountForSession(signed.id);
   if (live === 'gone') return null;
+  /*
+   * 비밀번호를 바꾸기 전에 발급한 쿠키는 받지 않는다(2026-11-23 · migrations/0138) — 바꾼 기기는 새 쿠키를 받았고, 다른 기기는
+   * 다시 로그인한다. 대행 쿠키는 바탕(관리자)의 것으로만 본다 — 대상 계정이 비밀번호를 바꿨다고 관리자의 대행이 풀리지 않는다.
+   * 발급 시각이 없는 옛 쿠키는 만료에서 거꾸로 센다.
+   */
+  if (live !== 'unknown' && staleSession(signed.iat ?? signed.exp - SESSION_TTL_SEC, live.passwordChangedAt)) return null;
 
   // 못 봤으면 쿠키에 실린 값을 그대로 쓴다 — DB 가 한 번 끊겼다고 전원을 내보내지 않는다
   // 이름·구분·소속은 지금 값이 정본이다. 쿠키의 값은 발급 시점의 것이라 낡을 수 있다.

@@ -20,6 +20,8 @@ import { dayOf } from '@/lib/date';
 interface StoredUser extends User {
   /** pbkdf2$iterations$salt$hash */
   hash: string;
+  /** 비밀번호를 바꾼 시각(users.password_changed_at) — 그 전에 발급한 쿠키는 안 받는다. 파일 계정은 없다 */
+  passwordChangedAt?: Date | null;
 }
 
 export type { AccountView, NewAccount };
@@ -67,6 +69,15 @@ export interface UserStore {
    * 관리자 계정은 여기서 못 바꾼다 — 그 길은 scripts/bootstrap-admin.ts 다.
    */
   resetPassword(loginId: string, password: string, actor: Actor): Promise<void>;
+  /**
+   * 내 비밀번호 바꾸기 — 계정 본인이 지금 비밀번호를 대고(2026-11-23 한백 「각 계정에서 자기 비밀번호 재설정 할 수 있도록 해줘」).
+   * 관리자 계정도 제 것은 바꾼다 — 남의 관리자 비밀번호를 못 바꾸게 한 것(resetPassword)과 달리 지금 비밀번호를 알아야 해서
+   * 다른 관리자를 잠그는 길이 아니다. 규칙(길이 · 지금과 같음 · 아이디와 같음)은 부르는 쪽이 lib/auth/own-password 로 먼저 본다.
+   *   'wrong'  지금 비밀번호가 틀렸다 — 부르는 쪽이 로그인 잠금에 센다
+   *   'file'   DB 에 없는 계정(배포 설정 · 개발 시드)이라 못 바꾼다
+   * 되면 바꾼 시각을 찍는다 — 그 전에 발급한 로그인은 다른 기기까지 풀린다(부르는 쪽이 이 기기에 새 쿠키를 준다).
+   */
+  changeOwnPassword(loginId: string, current: string, next: string): Promise<'ok' | 'wrong' | 'file'>;
 }
 
 /**
@@ -153,7 +164,7 @@ async function findInDb(id: string): Promise<DbLookup> {
     if (!row.active) return 'disabled';
     return {
       id: row.id, name: row.name, role: row.role as Role, org: row.org, solar: row.solar, hidePay: row.hidePay,
-      hash: row.passwordHash,
+      hash: row.passwordHash, passwordChangedAt: row.passwordChangedAt,
     };
   } catch (err) {
     // DB 가 잠깐 끊겼다고 로그인이 통째로 막히면 안 된다 — 파일 쪽으로 내려간다
@@ -182,7 +193,9 @@ const findInFile = (id: string): StoredUser | null =>
 export async function accountForSession(
   loginId: string
 ): Promise<
-  { name: string; role: Role; org: string | null; solar: boolean; hidePay: boolean } | 'gone' | 'unknown'
+  | { name: string; role: Role; org: string | null; solar: boolean; hidePay: boolean; passwordChangedAt: Date | null }
+  | 'gone'
+  | 'unknown'
 > {
   const id = loginId.trim().toLowerCase();
   const inDb = await findInDb(id);
@@ -191,14 +204,21 @@ export async function accountForSession(
   /* 못 본 것은 판정하지 않는다. 파일에 있으면 그 값을 쓰고, 없으면 세션을 그대로 둔다. */
   if (inDb === 'unavailable') {
     const file = findInFile(id);
-    return file ? { name: file.name, role: file.role, org: file.org, solar: file.solar ?? false, hidePay: false } : 'unknown';
+    return file
+      ? { name: file.name, role: file.role, org: file.org, solar: file.solar ?? false, hidePay: false, passwordChangedAt: null }
+      : 'unknown';
   }
   /* 확인했고 없다 — 파일에도 없으면 지워진 계정이다 */
   if (inDb === 'missing') {
     const file = findInFile(id);
-    return file ? { name: file.name, role: file.role, org: file.org, solar: file.solar ?? false, hidePay: false } : 'gone';
+    return file
+      ? { name: file.name, role: file.role, org: file.org, solar: file.solar ?? false, hidePay: false, passwordChangedAt: null }
+      : 'gone';
   }
-  return { name: inDb.name, role: inDb.role, org: inDb.org, solar: inDb.solar ?? false, hidePay: inDb.hidePay ?? false };
+  return {
+    name: inDb.name, role: inDb.role, org: inDb.org, solar: inDb.solar ?? false, hidePay: inDb.hidePay ?? false,
+    passwordChangedAt: inDb.passwordChangedAt ?? null,
+  };
 }
 
 function assertAdmin(actor: Actor, what: string): void {
@@ -277,6 +297,8 @@ export const userStore: UserStore = {
       org: isHanbaek(input.role) ? null : input.org!.trim(),
       passwordHash: await hashPassword(input.password),
       active: true,
+      // 정산 보기는 만들 때 고른다(2026-11-23). 한백 계정은 늘 본다 — 켤 칸이 없다(setHidePay 와 같은 규칙)
+      hidePay: isHanbaek(input.role) ? false : input.hidePay === true,
     });
   },
 
@@ -297,8 +319,6 @@ export const userStore: UserStore = {
      * 협력사 계정 하나를 관리자로 바꾸면 원가·마진이 그대로 넘어간다.
      */
     const role = patch.role ?? (row.role as Role);
-      // 정산 보기는 만들 때 고른다(2026-11-23). 한백 계정은 늘 본다 — 켤 칸이 없다(setHidePay 와 같은 규칙)
-      hidePay: isHanbaek(input.role) ? false : input.hidePay === true,
     if (role === 'admin' || row.role === 'admin') {
       throw new Error('관리자 계정의 구분은 이 화면에서 바꿀 수 없습니다.');
     }
@@ -364,9 +384,13 @@ export const userStore: UserStore = {
       throw new Error('관리자 계정 비밀번호는 이 화면에서 바꿀 수 없습니다.');
     }
 
+    /*
+     * 바꾼 시각도 찍는다 — 그 계정의 남은 로그인(다른 기기 · 비밀번호를 쥔 남)이 풀린다(migrations/0138). 재설정은 잊었거나
+     * 새었을 때 하는 일이라 남은 쿠키를 살려 둘 까닭이 없다.
+     */
     await db
       .update(users)
-      .set({ passwordHash: await hashPassword(password) })
+      .set({ passwordHash: await hashPassword(password), passwordChangedAt: new Date() })
       .where(eq(users.id, id));
     // 새 비밀번호를 받은 사람이 잠금에 걸려 못 들어오면 재설정이 소용없다 (상한 6시간)
     await clearLoginLock(id);
@@ -380,6 +404,31 @@ export const userStore: UserStore = {
       oldValue: null,
       newValue: '재설정',
     });
+  },
+
+  async changeOwnPassword(loginId, current, next) {
+    if (!hasDatabase()) return 'file';
+    const id = loginId.trim().toLowerCase();
+    const db = getDb();
+    const [row] = await db.select().from(users).where(eq(users.id, id)).limit(1);
+    // 파일 계정(배포 설정 · 개발 시드)은 해시가 환경변수 · 코드에 있어 여기서 못 바꾼다. 중지된 계정은 세션이 이미 없다
+    if (!row || !row.active) return 'file';
+    if (!(await verifyPassword(current, row.passwordHash))) return 'wrong';
+
+    await db
+      .update(users)
+      .set({ passwordHash: await hashPassword(next), passwordChangedAt: new Date() })
+      .where(eq(users.id, id));
+    // 본인이 바꾼 것 — 누가 언제만 남긴다(값은 해시 밖으로 꺼내지 않는다). 재설정(관리자)과 가르려고 새 값 글을 달리한다
+    await writeAudit(db, {
+      projectId: null,
+      actor: { id: row.id, name: row.name, role: row.role as Role, org: row.org },
+      action: `계정 ${id}`,
+      field: 'password',
+      oldValue: null,
+      newValue: '본인 변경',
+    });
+    return 'ok';
   },
 
   async setActive(loginId, active, actor) {

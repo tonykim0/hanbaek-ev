@@ -34,6 +34,11 @@ export interface SessionPayload {
   /** 만료 시각 (epoch seconds) */
   exp: number;
   /**
+   * 발급 시각 (epoch seconds, 2026-11-23 부터) — 비밀번호를 바꾼 시각보다 앞이면 받지 않는다(lib/auth/own-password staleSession).
+   * 그 전에 발급한 쿠키에는 없다 — exp − SESSION_TTL_SEC 로 받친다(getSessionUser).
+   */
+  iat?: number;
+  /**
    * 대행 — 관리자가 이 협력사 계정의 눈으로 보는 중이다.
    * 쿠키에는 이 표시만 실리고(바탕은 그대로 관리자), 화면·권한이 쓰는 값(id·role·org)은
    * getSessionUser 가 매 요청 그 계정의 지금 값으로 바꿔 낸다.
@@ -94,16 +99,16 @@ export interface NewAccount {
   role: Role;
   org: string | null;
   password: string;
-}
-
-export const SESSION_COOKIE = 'hb_session';
-/** 24시간 — 12시간이었다가 한백 요청으로 늘렸다(2026-10-27). 로그인 때 한 번 정해지고 쓰는 동안 늘지 않는다 */
-export const SESSION_TTL_SEC = 24 * 60 * 60;
   /**
    * 정산 안 보기 — 만들 때 고른다(2026-11-23 한백 「에코일렉 앱 처럼 계정생성 당시 정산부분을 볼 수 있는 사람과 없는 사람을 구분해줘」).
    * 협력사 계정에만 뜻이 있다 — 한백 계정(열람 전용)은 늘 보므로 넣어도 꺼진 채 만든다.
    */
   hidePay?: boolean;
+}
+
+export const SESSION_COOKIE = 'hb_session';
+/** 24시간 — 12시간이었다가 한백 요청으로 늘렸다(2026-10-27). 로그인 때 한 번 정해지고 쓰는 동안 늘지 않는다 */
+export const SESSION_TTL_SEC = 24 * 60 * 60;
 
 /**
  * 비밀번호 최소 길이.

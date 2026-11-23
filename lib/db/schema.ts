@@ -39,6 +39,11 @@ export const users = pgTable('users', {
    * (migrations/0137). 지급은 같은 소속의 턴키 계정이 맡고 이 계정은 현장 · 시공만 보는 회사가 있다(이브이솔루션 2026-11-18)
    */
   hidePay: boolean('hide_pay').notNull().default(false),
+  /**
+   * 비밀번호를 바꾼 시각 — 그보다 먼저 발급한 로그인 쿠키는 받지 않는다(migrations/0138 · lib/auth/own-password staleSession).
+   * 계정 본인의 「비밀번호 변경」과 한백의 「비밀번호 재설정」이 찍는다. 비어 있으면 막는 쿠키가 없다
+   */
+  passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }),
 });
 
 /**

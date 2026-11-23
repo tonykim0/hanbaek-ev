@@ -19,6 +19,7 @@ const MANUAL_GATES = [/\bcanWrite\(/, /\brequireAdmin\(/, /role [!=]== 'admin'/]
 const UNGATED_BY_DESIGN: Record<string, string> = {
   'app/api/auth/login/route.ts': '로그인 그 자체 — 세션이 없다',
   'app/api/auth/logout/route.ts': '로그아웃 — 세션을 지우는 일이라 누구나',
+  'app/api/auth/password/route.ts': '내 비밀번호 바꾸기 — 제 로그인을 지키는 일이라 열람 전용도. 로그인 · 지금 비밀번호 · 잠금을 보고 대행은 막는다(2026-11-23)',
   'app/api/intake/route.ts': '포털 접수 — 2026-08-26 닫혔다(lib/portal-intake.ts). 세션 없는 입구라 문이 아니라 폐쇄 안내를 준다',
   'app/api/notices/read/route.ts': '자기 읽음 표시 — 쓰기 권한과 무관, 로그인만 본다',
   'app/api/notifications/read/route.ts': '자기 알림 읽음 표시 — 공지 읽음과 같다. 대행 중에는 찍지 않는다',

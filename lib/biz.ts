@@ -38,7 +38,7 @@ export const SOLAR_ROOT = '/solar';
  * /solar/notices, migrations/0116 — 한백 2026-11-04 「모든 공지와 알림은 분리해(전기차/태양광)」). 공지는 그날까지 여기
  * 있었다 — 그래서 태양광에서도 전기차 공지가 보였다.
  */
-export const SHARED_PATHS = ['/admin/partners', '/admin/accounts'] as const;
+export const SHARED_PATHS = ['/admin/partners', '/admin/accounts', '/account'] as const;
 
 /** 마지막에 있던 사업 — 같이 쓰는 화면의 틀을 서버가 첫 그림부터 맞게 그리려고 쿠키로 둔다 */
 export const BIZ_COOKIE = 'hb-biz';

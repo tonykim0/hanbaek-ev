@@ -39,6 +39,8 @@ const MOVED = [
   // 포털 접수는 2026-08-26 에 닫혔다 — 안내 화면이 가리키던 자리로 바로 보낸다
   ['/intake', '/projects/new'],
   ['/intake/:rest*', '/projects/new'],
+  // 비밀번호 관리기의 「비밀번호 변경」이 찾는 자리(2026-11-23 — 계정마다 비밀번호를 바꾸게 했다)
+  ['/.well-known/change-password', '/account/password'],
 ];
 
 /** @type {import('next').NextConfig} */

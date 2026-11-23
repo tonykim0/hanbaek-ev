@@ -30,6 +30,7 @@ export const CONSOLE_PATHS = [
   '/receivables',
   '/statements',
   '/settings',
+  '/account',     // 내 비밀번호 변경(/account/password, 2026-11-23) — 로그인한 계정 모두(열람 전용 · 한백 관리자 포함)
   '/pricing',
   '/admin',
   '/design',

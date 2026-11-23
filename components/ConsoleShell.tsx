@@ -528,6 +528,20 @@ export default function ConsoleShell({
               {ROLE_LABEL[role]}
             </p>
           )}
+          {/*
+            * 내 비밀번호 변경(2026-11-23 한백 「각 계정에서 자기 비밀번호 재설정 할 수 있도록 해줘」) — 계정 모두에게. 로그아웃과 같은
+            * 자리다(제 계정의 일). 대행 중에는 걷는다 — 그 화면도 대행 중에는 못 바꾼다고만 말한다.
+            */}
+          {!actAs && (
+            <Link
+              href="/account/password"
+              title="비밀번호 변경"
+              aria-current={pathname === '/account/password' ? 'page' : undefined}
+              className="mb-1 block w-full rounded-ctl border border-slate-200 py-1.5 text-center text-tiny font-bold text-slate-500 transition hover:border-slate-300 hover:text-slate-800"
+            >
+              {expanded ? '비밀번호 변경' : '비번'}
+            </Link>
+          )}
           <div className={`flex gap-1 ${expanded ? '' : 'flex-col'}`}>
             <form action="/api/auth/logout" method="post" className={expanded ? 'flex-1' : ''}>
               <button

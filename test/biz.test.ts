@@ -21,6 +21,9 @@ describe('bizOf — 사업은 주소로 가른다', () => {
     expect(bizOf('/admin/accounts')).toBe('ev');
     expect(isShared('/admin/partners')).toBe(true);
     expect(isShared('/admin/materials')).toBe(false);
+    // 내 비밀번호 변경(2026-11-23)도 같이 쓰는 화면 — 태양광에서 열면 귤색 틀 그대로
+    expect(bizOf('/account/password', 'solar')).toBe('solar');
+    expect(isShared('/accounts')).toBe(false);
   });
   it('쿠키 값은 태양광만 태양광 — 나머지는 전기차', () => {
     expect(asBiz('solar')).toBe('solar');
