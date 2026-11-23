@@ -1,6 +1,6 @@
 'use client';
 
-import { Btn, FIELD, Note } from '@/components/ui';
+import { Btn, FIELD, Note, TEXT } from '@/components/ui';
 
 import { useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -84,6 +84,12 @@ export default function LoginForm({ devSeed }: { devSeed: boolean }) {
       <Btn type="submit" busy={busy} busyLabel="확인 중…">
         로그인
       </Btn>
+
+      {/*
+        * 잊은 비밀번호는 한백 관리자가 계정설정에서 재설정한다 — 계정에 메일 · 전화가 없어 스스로 되찾는 길이 없다
+        * (2026-11-23 한백 「비밀번호 변경 후 까먹었으면 한백 관리자에 문의 필요」 — 각 계정이 비밀번호를 스스로 바꾸게 된 날).
+        */}
+      <p className={`text-center ${TEXT.meta}`}>비밀번호를 잊으셨으면 한백 관리자에게 문의하세요.</p>
 
       {devSeed && (
         <Note tone="warn" className="leading-relaxed">

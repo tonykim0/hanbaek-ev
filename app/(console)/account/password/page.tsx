@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSessionUser } from '@/lib/auth/session';
 import { userStore } from '@/lib/auth/users';
 import { ROLE_LABEL } from '@/lib/roles';
-import { Note } from '@/components/ui';
+import { Note, TEXT } from '@/components/ui';
 import OwnPassword from '@/components/OwnPassword';
 
 export const metadata = {
@@ -43,7 +43,15 @@ export default async function OwnPasswordPage() {
       ) : fromFile ? (
         <Note>배포 설정 계정이라 여기서 바꿀 수 없습니다.</Note>
       ) : (
-        <OwnPassword loginId={session.id} />
+        <>
+          <OwnPassword loginId={session.id} />
+          {/*
+            * 잊으면 되찾는 길은 한백 관리자의 「비밀번호 재설정」(계정설정) 하나다 — 계정에 메일 · 전화가 없어 스스로 되찾을 수 없다.
+            * 바꾸기 전에 알아야 해서 칸 밑에 늘 둔다(2026-11-23 한백 「비밀번호 변경 후 까먹었으면 한백 관리자에 문의 필요」).
+            * 로그인 화면에도 같은 말이 있다(잊은 사람이 서는 자리).
+            */}
+          <p className={`mt-3 ${TEXT.meta}`}>바꾼 비밀번호를 잊으면 한백 관리자에게 문의하세요 — 관리자가 재설정해 드립니다.</p>
+        </>
       )}
     </div>
   );
