@@ -107,6 +107,7 @@ export default function AccountAdmin({
 
         {open ? (
           <NewAccountForm
+            accounts={accounts}
             knownOrgs={knownOrgs}
             dbReady={dbReady}
             onDone={(msg) => {
@@ -193,14 +194,28 @@ export default function AccountAdmin({
 }
 
 /**
+ * 정산 보기 — 만들 때 고르는 두 칸(2026-11-23 한백 「에코일렉 앱 처럼 계정생성 당시 정산부분을 볼 수 있는 사람과 없는 사람을
+ * 구분해줘」). 에코일렉 앱의 「권한 — 일반 · 정산 담당」과 같은 자리다. 「안 봄」은 목록의 정산 칸(hidePay)과 같은 값이다 —
+ * 금액 · 협력사 정산관리 탭 · 지급관리 · 거래명세서 · 정산 현황 · 세금계산서 발행 할 일이 안 보인다(lib/roles seesPay).
+ */
+const PAY_KINDS: Array<{ hide: boolean; label: string; note: string }> = [
+  { hide: false, label: '봄', note: '지급관리 · 거래명세서 · 세금계산서 발행' },
+  { hide: true, label: '안 봄', note: '현장 · 시공만 — 금액이 안 보임' },
+];
+
+/**
  * 계정 등록 폼 — 열면 나오고, 만들면 접힌다.
  *
  * 소속 칸은 구분을 따라 사라진다. 열람 전용은 소속으로 현장을 가르지 않아서 넣을 값이
- * 없다 — 흐리게 두면 왜 못 적는지 알 수 없으므로 칸 자체를 없앤다(화면 규칙 3번).
+ * 없다 — 흐리게 두면 왜 못 적는지 알 수 없으므로 칸 자체를 없앤다(화면 규칙 3번). 정산 칸도 같다 — 한백은 늘 본다.
+ *
+ * ★정산은 기본값이 없다★ — 골라야 만든다(단추 이름이 그 까닭 · 서버도 400). 빠뜨리고 만든 계정이 저절로 「봄」이 되면
+ * 지급을 안 맡는 계정이 금액을 보고, 「안 봄」이 되면 혼자 일하는 협력사가 제 지급을 못 본다 — 어느 쪽도 기본으로 둘 수 없다.
  */
 function NewAccountForm({
-  knownOrgs, dbReady, onDone, onCancel,
+  accounts, knownOrgs, dbReady, onDone, onCancel,
 }: {
+  accounts: AccountView[];
   knownOrgs: string[];
   dbReady: boolean;
   onDone: (msg: string) => void;
@@ -212,14 +227,23 @@ function NewAccountForm({
   const [name, setName] = useState('');
   const [org, setOrg] = useState('');
   const [password, setPassword] = useState('');
+  const [hidePay, setHidePay] = useState<boolean | null>(null);
 
   const needsOrg = !isHanbaek(role);
+  const block = needsOrg && hidePay === null ? '정산 봄 · 안 봄 미선택 — 만들기 불가' : null;
+  /*
+   * 「안 봄」으로 만들면 그 소속에 정산을 보는 계정이 남는가 — 없으면 그 회사의 지급 · 세금계산서를 볼 사람이 없다.
+   * 막지는 않는다(지급을 맡을 계정을 뒤에 만들 수도 있다). 에코일렉 앱의 「이 영업사에 정산 담당이 아직 없습니다」와 같은 말.
+   */
+  const orgKey = org.trim();
+  const orgHasPay = accounts.some((a) => a.active && !isHanbaek(a.role) && a.org === orgKey && !a.hidePay);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (block) return;
     const ok = await run({
       url: '/api/admin/accounts',
-      body: { id, name, role, org: needsOrg ? org : null, password },
+      body: { id, name, role, org: needsOrg ? org : null, password, ...(needsOrg ? { hidePay } : {}) },
       fail: '계정을 만들지 못했습니다.',
     });
     if (!ok) return;
@@ -299,6 +323,37 @@ function NewAccountForm({
         </Field>
       )}
 
+      {needsOrg && (
+        <div role="radiogroup" aria-label="정산">
+          <p className="mb-1 text-tiny font-bold tracking-[0.08em] text-slate-500">정산</p>
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            {PAY_KINDS.map((k) => {
+              const on = hidePay === k.hide;
+              return (
+                <button
+                  key={k.label}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  onClick={() => setHidePay(k.hide)}
+                  className={`rounded-box border px-3.5 py-2 text-left transition ${
+                    on ? 'border-brand-500 bg-brand-50' : 'border-slate-200 bg-white hover:border-slate-300'
+                  }`}
+                >
+                  <span className={`block text-lead font-bold ${on ? 'text-brand-800' : 'text-slate-700'}`}>{k.label}</span>
+                  <span className="block text-tiny text-slate-500">{k.note}</span>
+                </button>
+              );
+            })}
+          </div>
+          {hidePay === true && orgKey && !orgHasPay && (
+            <p className="mt-1.5 text-tiny font-bold text-amber-700">
+              {orgKey}에 정산을 보는 계정이 없습니다 — 지급 · 세금계산서를 볼 계정이 없어집니다
+            </p>
+          )}
+        </div>
+      )}
+
       <Field
         label="비밀번호"
         hint={`${PASSWORD_MIN_LEN}자 이상. 저장되는 것은 해시뿐이라 나중에 다시 볼 수 없습니다`}
@@ -313,8 +368,8 @@ function NewAccountForm({
       </Field>
 
       <div className="flex flex-wrap items-center gap-2.5">
-        <Btn type="submit" disabled={!dbReady} busy={busy} busyLabel="만드는 중…">
-          계정 만들기
+        <Btn type="submit" disabled={!dbReady || !!block} busy={busy} busyLabel="만드는 중…">
+          {block ?? '계정 만들기'}
         </Btn>
         <Btn kind="quiet" disabled={busy} onClick={onCancel}>
           취소

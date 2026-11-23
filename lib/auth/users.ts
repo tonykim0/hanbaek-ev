@@ -297,6 +297,8 @@ export const userStore: UserStore = {
      * 협력사 계정 하나를 관리자로 바꾸면 원가·마진이 그대로 넘어간다.
      */
     const role = patch.role ?? (row.role as Role);
+      // 정산 보기는 만들 때 고른다(2026-11-23). 한백 계정은 늘 본다 — 켤 칸이 없다(setHidePay 와 같은 규칙)
+      hidePay: isHanbaek(input.role) ? false : input.hidePay === true,
     if (role === 'admin' || row.role === 'admin') {
       throw new Error('관리자 계정의 구분은 이 화면에서 바꿀 수 없습니다.');
     }

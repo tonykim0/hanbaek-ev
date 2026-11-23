@@ -1,7 +1,7 @@
 /**
  * 계정 만들기 · 사용 중지 — 한백 관리자 전용.
  *
- *   POST                          새 계정
+ *   POST                          새 계정 — 협력사 계정은 정산 보기(hidePay)를 반드시 골라 보낸다(2026-11-23)
  *   PATCH  { active }             사용 중지·재개
  *   PATCH  { password }           비밀번호 재설정 — 해시만 저장해서 되찾는 길은 없다
  *   PATCH  { role|org|name }      구분·소속·이름 고치기
@@ -16,7 +16,7 @@
  * 되돌릴 수 없는 일이 생기지 않는다 — 못 만들게 막을 이유가 관리자와 다르다.
  */
 import { userStore } from '@/lib/auth/users';
-import type { Role } from '@/lib/roles';
+import { isHanbaek, type Role } from '@/lib/roles';
 import { adminWrite, BadRequest } from '@/lib/api/write-route';
 
 /**
@@ -38,16 +38,26 @@ function creatableRole(value: unknown): Role {
 
 export const POST = adminWrite<
   Record<string, never>,
-  { id?: string; name?: string; role?: string; org?: string; password?: string }
+  { id?: string; name?: string; role?: string; org?: string; password?: string; hidePay?: unknown }
 >('한백 관리자만 계정을 만들 수 있습니다.', async ({ body, actor }) => {
+  const role = creatableRole(body?.role);
+  /*
+   * 정산 보기는 만들 때 고른다 — 기본값을 두지 않는다(2026-11-23 한백 「에코일렉 앱 처럼 계정생성 당시 정산부분을 볼 수 있는 사람과
+   * 없는 사람을 구분해줘」). 한 회사의 영업 · 시공 계정 중 지급을 맡지 않는 계정이 금액을 보는지는 만드는 사람이 정할 일이라,
+   * 빠뜨리고 만든 계정이 저절로 「봄」이 되지 않게 한다. 한백 계정(열람 전용)은 늘 보므로 안 받는다.
+   */
+  if (!isHanbaek(role) && typeof body?.hidePay !== 'boolean') {
+    throw new BadRequest('정산 봄 · 안 봄을 골라야 합니다.');
+  }
   // id·이름·비밀번호 규칙은 저장소가 본다(화면과 스크립트가 같은 규칙을 쓰게) → 422
   await userStore.create(
     {
       id: body?.id ?? '',
       name: body?.name ?? '',
-      role: creatableRole(body?.role),
+      role,
       org: body?.org ?? null,
       password: body?.password ?? '',
+      hidePay: body?.hidePay === true,
     },
     actor
   );

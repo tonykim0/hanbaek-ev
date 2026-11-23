@@ -99,6 +99,11 @@ export interface NewAccount {
 export const SESSION_COOKIE = 'hb_session';
 /** 24시간 — 12시간이었다가 한백 요청으로 늘렸다(2026-10-27). 로그인 때 한 번 정해지고 쓰는 동안 늘지 않는다 */
 export const SESSION_TTL_SEC = 24 * 60 * 60;
+  /**
+   * 정산 안 보기 — 만들 때 고른다(2026-11-23 한백 「에코일렉 앱 처럼 계정생성 당시 정산부분을 볼 수 있는 사람과 없는 사람을 구분해줘」).
+   * 협력사 계정에만 뜻이 있다 — 한백 계정(열람 전용)은 늘 보므로 넣어도 꺼진 채 만든다.
+   */
+  hidePay?: boolean;
 
 /**
  * 비밀번호 최소 길이.

@@ -10,8 +10,9 @@ import { getRepository } from '@/lib/data';
 import { getDb } from '@/lib/db/client';
 import { users } from '@/lib/db/schema';
 import { getSessionUser } from '@/lib/auth/session';
-import { PATCH } from '@/app/api/admin/accounts/route';
-import { USERS, call, signIn, signOut, viewerOf, withProject } from './kit';
+import { inArray } from 'drizzle-orm';
+import { PATCH, POST } from '@/app/api/admin/accounts/route';
+import { RUN, USERS, call, signIn, signOut, viewerOf, withProject } from './kit';
 
 describe('정산 안 보기 계정의 눈', () => {
   it('제 현장은 그대로 열리고 지급관리에는 그 현장의 줄이 하나도 없다', async () => {
@@ -58,5 +59,35 @@ describe('계정설정 — 정산 보기 켜고 끄기', () => {
     expect((await call(PATCH, { method: 'PATCH', body: { id: USERS.navy.id, hidePay: 'yes' } })).status).toBe(400);
     await signIn(USERS.navy);
     expect((await call(PATCH, { method: 'PATCH', body: { id: USERS.navy.id, hidePay: true } })).status).toBe(403);
+  });
+});
+
+describe('계정 만들기 — 정산 봄 · 안 봄을 그때 고른다', () => {
+  // 2026-11-23 한백 「에코일렉 앱 처럼 계정생성 당시 정산부분을 볼 수 있는 사람과 없는 사람을 구분해줘」 — 협력사 계정은 기본값 없이 골라야 만든다
+  const ids = { hide: `hp-${RUN}`, see: `hs-${RUN}`, none: `hn-${RUN}`, view: `hv-${RUN}` };
+  const org = `정산시험-${RUN}`;
+  afterAll(async () => {
+    await getDb().delete(users).where(inArray(users.id, Object.values(ids)));
+    signOut();
+  });
+  const create = (id: string, role: string, extra: Record<string, unknown>) =>
+    call(POST, { body: { id, name: `시험 ${id}`, role, org, password: 'test-1234', ...extra } });
+  const rowOf = async (id: string) => (await getDb().select().from(users).where(eq(users.id, id)))[0];
+
+  it('협력사 계정은 안 고르면 400 · 고른 대로 만든다', async () => {
+    await signIn(USERS.admin);
+    expect((await create(ids.none, 'cons', {})).status).toBe(400);
+    expect(await rowOf(ids.none)).toBeUndefined();
+
+    expect((await create(ids.hide, 'cons', { hidePay: true })).status).toBe(200);
+    expect((await rowOf(ids.hide))?.hidePay).toBe(true);
+    expect((await create(ids.see, 'salesCons', { hidePay: false })).status).toBe(200);
+    expect((await rowOf(ids.see))?.hidePay).toBe(false);
+  });
+
+  it('열람 전용은 고를 것이 없다 — 보내도 늘 본다', async () => {
+    await signIn(USERS.admin);
+    expect((await create(ids.view, 'viewer', { hidePay: true })).status).toBe(200);
+    expect((await rowOf(ids.view))?.hidePay).toBe(false);
   });
 });
