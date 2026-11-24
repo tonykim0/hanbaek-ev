@@ -433,7 +433,7 @@ export async function applyNiceH2(
       steps.push({ rule, id, action: '추가', message: null });
       added += 1;
       // 뒤 행의 중복 판정이 방금 넣은 것을 보게 한다
-      existing.push({ ...rule, id, active: true, defaultSettlementRuleId: '' });
+      existing.push({ ...rule, installLoc: rule.installLoc ?? null, id, active: true, defaultSettlementRuleId: '' });
     } catch (err) {
       steps.push({ rule, id: null, action: '실패', message: (err as Error).message });
       failed += 1;

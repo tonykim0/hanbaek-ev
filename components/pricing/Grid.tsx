@@ -4,7 +4,7 @@ import {
   Fragment, useContext, useState,
 } from 'react';
 import {
-  BUILDING_TYPES, CPO_NAMES, powerTypesOfRepl, replTypesOf, type BuildingType, type CpoName, type PricingRule, type ReplType, type SettlementRule,
+  BUILDING_TYPES, CASE_LOCS, CPO_NAMES, powerTypesOfRepl, replTypesOf, type BuildingType, type CaseLoc, type CpoName, type PricingRule, type ReplType, type SettlementRule,
 } from '@/types/project';
 import { replLabel } from '@/types/project';
 import { won } from '@/lib/format';
@@ -56,13 +56,26 @@ export function Grid({
     .sort((a, b) => startKey({ startDate: a, bizYear: 0 }).localeCompare(startKey({ startDate: b, bizYear: 0 })));
   const period = periodPick && periods.includes(periodPick) ? periodPick : periods[periods.length - 1] ?? null;
 
+  /*
+   * ★설치위치로 줄을 가른다★ (2026-11-24 나이스 자체투자 — 실내 · 실외로 받는 단가가 갈린다).
+   * 그 운영사의 이 교체유형 · 수전 케이스 중 하나라도 위치를 정해 두었으면 실내 · 실외 두 줄로 편다 —
+   * 시기와 무관하게 늘 같은 줄이 선다(탭을 바꿀 때 줄이 생겼다 없어졌다 하지 않게). 위치를 안 정한
+   * 케이스(옛 시기)는 두 줄에 다 서서 「그때는 둘이 같았다」가 보인다. 아무도 안 정했으면 한 줄 그대로다.
+   */
+  const locsOf = (repl: ReplType, power: (typeof POWER_TYPES)[number]): (CaseLoc | null)[] =>
+    mine.some((r) => r.replType === repl && r.powerType === power && r.installLoc !== null) ? [...CASE_LOCS] : [null];
+  const rows = replTypesOf(cpo).flatMap((repl) =>
+    powerTypesOfRepl(repl).flatMap((power) => locsOf(repl, power).map((loc) => ({ repl, power, loc })))
+  );
+
   /** 칸에서 이 시기에 적용 중인 케이스 — 그 시기까지 시작된 것 중 최신. 이전 시기 것이면 이월이다 */
-  const at = (repl: ReplType, power: (typeof POWER_TYPES)[number], term: number, bldg: BuildingType) => {
+  const at = (repl: ReplType, power: (typeof POWER_TYPES)[number], loc: CaseLoc | null, term: number, bldg: BuildingType) => {
     if (!period) return { now: null, carried: false };
     const end = startKey({ startDate: period, bizYear: 0 });
     const hits = mine
       .filter((r) =>
         r.replType === repl && r.powerType === power &&
+        (loc === null || r.installLoc === null || r.installLoc === loc) &&
         r.termYears.includes(term) && r.bldgTypes.includes(bldg) &&
         startKey(r) <= end
       )
@@ -132,9 +145,9 @@ export function Grid({
 
   /** 한 칸(연수 × 유형)에 지금 적용 중인 케이스들 — 값 칸에 숫자가 뜨는 그 케이스들이다 */
   const casesAt = (term: number, bldg: BuildingType) =>
-    replTypesOf(cpo).flatMap((repl) =>
-      powerTypesOfRepl(repl).map((power) => at(repl, power, term, bldg).now)
-    ).filter((r): r is PricingRule => r !== null);
+    rows.map(({ repl, power, loc }) => at(repl, power, loc, term, bldg).now)
+      // 위치를 안 정한 케이스는 실내 · 실외 두 줄에 다 선다 — 조건 행에는 한 번만 센다
+      .filter((r, i, all): r is PricingRule => r !== null && all.findIndex((x) => x?.id === r.id) === i);
 
   /** 칸 하나의 정책 값 — 케이스마다 다르면 둘 다 적는다. 아무 케이스도 없으면 null */
   const policyAt = (term: number, bldg: BuildingType, of: (r: PricingRule) => string | null) => {
@@ -300,20 +313,19 @@ export function Grid({
               있을 수 없는 조합(연동 × 한전불입)은 행을 만들지 않는다 — 클릭을 막는 게 아니라 자리가 없다.
               교체유형이 단가를 안 가르는 운영사의 신규위치도 마찬가지다(replTypesOf).
             */}
-            {replTypesOf(cpo).flatMap((repl) =>
-              powerTypesOfRepl(repl).map((power) => (
-                <tr key={`${repl}-${power}`}>
+            {rows.map(({ repl, power, loc }) => (
+                <tr key={`${repl}-${power}-${loc ?? '구분 없음'}`}>
                   {/*
                     줄 이름은 표의 왼쪽 기둥이다 — 연한 바탕으로 세워 값 칸과 갈린다.
                     열 너비가 고정이라 줄바꿈을 막지 않는다 — 막으면 「자체투자 (제자리교체)」가 칸을 넘는다.
                   */}
                   <td className="bg-slate-50 px-3 py-2">
                     <span className="font-bold text-slate-900">{replLabel(cpo, repl)}</span>
-                    <span className="ml-1.5 text-tiny font-semibold text-slate-500">{power}</span>
+                    <span className="ml-1.5 text-tiny font-semibold text-slate-500">{power}{loc && ` · ${loc}`}</span>
                   </td>
                   {gridTerms.flatMap((term) =>
                     BUILDING_TYPES.map((bldg) => {
-                      const { now, carried } = at(repl, power, term, bldg);
+                      const { now, carried } = at(repl, power, loc, term, bldg);
                       return (
                         <td key={`${term}-${bldg}`} className={`px-1 py-1 text-right ${bldg === '공동주택' ? 'border-l border-slate-200' : ''}`}>
                           <button
@@ -336,7 +348,7 @@ export function Grid({
                                       prefill: { ...prefillOf(now, settleById.get(now.defaultSettlementRuleId) ?? null), startDate: now.startDate },
                                       editId: now.id,
                                     }
-                                  : { prefill: { cpo, replType: repl, powerType: power, terms: [term], bldgs: [bldg] } }
+                                  : { prefill: { cpo, replType: repl, powerType: power, installLoc: loc, terms: [term], bldgs: [bldg] } }
                               )
                             }
                             className="w-full rounded-ctl px-2 py-1.5 text-right tabular-nums transition enabled:hover:bg-brand-50 disabled:cursor-default"
@@ -365,8 +377,7 @@ export function Grid({
                     })
                   )}
                 </tr>
-              ))
-            )}
+            ))}
           </tbody>
 
           {/* 단가와 조건을 한 표로 잇는다 — 굵은 선 한 겹으로만 가른다(상자를 겹치지 않는다) */}

@@ -43,7 +43,7 @@ export default async function PricingPage() {
   const blockedLines = axes.filter((l) => {
     if (l.pricingRuleId) return false;
     const m = matchingRules(
-      { cpo: l.cpo, bizType: l.bizType, replType: l.projectReplType, bldgType: l.bldgType },
+      { cpo: l.cpo, bizType: l.bizType, replType: l.projectReplType, bldgType: l.bldgType, installLoc: l.installLoc },
       { termYears: l.termYears, powerType: l.powerType, replType: l.lineReplType },
       rules
     );

@@ -229,7 +229,8 @@ function Row({
         누르는 것도 아니다(화면 규칙 11번 — 각지면 누르는 것).
       */}
       <Td className="break-keep border-l border-slate-100 text-slate-700">{replLabel(r.cpo, r.replType)}</Td>
-      <Td className="whitespace-nowrap text-slate-700">{r.powerType}</Td>
+      {/* 설치위치는 수전 칸에 붙인다 — 실내 · 실외로 갈리는 케이스가 드물어 열 하나를 늘리지 않는다 */}
+      <Td className="whitespace-nowrap text-slate-700">{r.powerType}{r.installLoc && ` · ${r.installLoc}`}</Td>
       <Td className="whitespace-nowrap tabular-nums text-slate-700">{r.termYears.join('·')}년</Td>
       <Td className="break-keep text-slate-700">
         {/* 매트릭스 머리글과 같은 이름표 — 두 자리가 다르게 부르면 같은 축인지 알 수 없다 */}

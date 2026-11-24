@@ -174,6 +174,7 @@ function BlockedLines({ lines, onFill }: { lines: LineAxes[]; onFill: (p: Prefil
                 <Tag>{l.termYears}년 × {l.qty}대</Tag>
                 {l.powerType ? <Tag>{l.powerType}</Tag> : <Tag tone="warn">수전 미지정</Tag>}
                 {l.bldgType ? <Tag>{l.bldgType}</Tag> : <Tag tone="warn">유형 미지정</Tag>}
+                {l.installLoc && <Tag>{l.installLoc}</Tag>}
               </span>
               {canEdit && (
               <Btn
@@ -187,6 +188,8 @@ function BlockedLines({ lines, onFill }: { lines: LineAxes[]; onFill: (p: Prefil
                     powerType: l.powerType ?? undefined,
                     terms: [l.termYears],
                     bldgs: l.bldgType ? [l.bldgType] : undefined,
+                    /* 실내 · 실외 하나인 현장만 위치를 채운다 — 「실내·실외」는 케이스의 값이 아니다 */
+                    installLoc: l.installLoc === '실내' || l.installLoc === '실외' ? l.installLoc : undefined,
                   })
                 }
               >

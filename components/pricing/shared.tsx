@@ -9,7 +9,7 @@ import {
   createContext,
 } from 'react';
 import {
-  type BuildingType, type Channel, type CpoName, type PricingRule, type ReplType, type PromoExtendOption, type PromoStep, type SettlementRule, type SettlementStepRule,
+  type BuildingType, type CaseLoc, type Channel, type CpoName, type PricingRule, type ReplType, type PromoExtendOption, type PromoStep, type SettlementRule, type SettlementStepRule,
 } from '@/types/project';
 
 import {
@@ -52,6 +52,8 @@ export interface Prefill {
   terms?: number[];
   bldgs?: BuildingType[];
   channel?: Channel;
+  /** null 은 구분 없음 — 빼면(undefined) 폼의 기본값(구분 없음) */
+  installLoc?: CaseLoc | null;
   bizYear?: number;
   startDate?: string;
   salesUnit?: number;
@@ -79,6 +81,7 @@ export function prefillOf(r: PricingRule, settle: SettlementRule | null): Prefil
     cpo: r.cpo, replType: r.replType, powerType: r.powerType,
     terms: r.termYears, bldgs: r.bldgTypes,
     channel: (r.channel as string) === '시공만' ? '시공' : r.channel,
+    installLoc: r.installLoc,
     bizYear: r.bizYear,
     /*
      * ★적용 시작을 안 실으면 수정 폼이 그 값을 잃는다★ (2026-08-29) — 폼은 프리필에

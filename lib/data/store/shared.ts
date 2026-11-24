@@ -46,6 +46,7 @@ export function rowToRule(r: typeof pricingRules.$inferSelect): PricingRule {
     bldgTypes: r.bldgTypes as BuildingType[],
     replType: r.replType as ReplType,
     channel: r.channel as PricingRule['channel'],
+    installLoc: (r.installLoc as PricingRule['installLoc']) ?? null,
     bizYear: r.bizYear,
     startDate: r.startDate,
     salesUnit: r.salesUnit,

@@ -5,7 +5,7 @@
  * 치울 길이 없다. 그래서 저장 전 검증이 유일한 방어다.
  */
 import { describe, expect, it } from 'vitest';
-import { checkPricingRule, matchingRules, pricingRuleId, startKey } from '@/lib/pricing-match';
+import { cellsOf, checkPricingRule, duplicateOf, matchingRules, normalizePricingRule, pricingRuleId, startKey } from '@/lib/pricing-match';
 import { bizLabel, bizTypeOf, powerTypesOfRepl, replLabel, SPLITS_SELF_REPL } from '@/types/project';
 import type { NewPricingRule, PricingRule } from '@/types/project';
 
@@ -54,6 +54,63 @@ describe('matchingRules — 축으로 좁힌다', () => {
   it('무엇으로 좁혔는지 알려준다 — 사람이 판단할 수 있게', () => {
     const { usedAxes } = matchingRules(현장, { termYears: 5, powerType: '모자분리', replType: '환경부 신규' }, all);
     expect(usedAxes).toEqual(['운영사', '계약연수', '사업구분', '수전방식', '교체유형', '건축물유형']);
+  });
+});
+
+describe('설치위치 — 실내 · 실외로 받는 단가가 갈리는 케이스 (2026-11-24 나이스 자체투자)', () => {
+  const 자투 = { cpo: '나이스인프라' as const, bizType: '자체투자' as const, replType: '자체투자 (제자리교체)' as const, termYears: [10] };
+  const 실내 = 케이스({ ...자투, id: 'in', installLoc: '실내', startDate: '2026년 10월 6일' });
+  const 실외 = 케이스({ ...자투, id: 'out', installLoc: '실외', startDate: '2026년 10월 6일' });
+  const 옛것 = 케이스({ ...자투, id: 'old', installLoc: null, startDate: '2026년 8월 1일' });
+  const 라인 = { termYears: 10, powerType: '모자분리' as const, replType: '자체투자 (제자리교체)' as const };
+  const 현장 = (installLoc: '실내' | '실외' | '실내·실외' | null) =>
+    ({ cpo: '나이스인프라' as const, bizType: '자체투자' as const, replType: null, bldgType: '공동주택' as const, installLoc });
+
+  it('구분 없는 케이스는 실내 · 실외 두 칸을 다 덮고, 정한 케이스는 제 칸만 덮는다', () => {
+    expect(cellsOf(옛것)).toHaveLength(2);
+    expect(cellsOf(실외)).toEqual(['자체투자 (제자리교체)|모자분리|10|공동주택|턴키|실외']);
+  });
+
+  it('★같은 시기에 실내 · 실외 케이스가 나란히 선다★ — 구분 없는 케이스와는 겹친다', () => {
+    expect(duplicateOf(실외, [실내])).toBeNull();
+    expect(duplicateOf(실외, [실외])?.id).toBe('out');
+    expect(duplicateOf({ ...실외, installLoc: null }, [실내])?.id).toBe('in');
+    // 시기가 다르면 개정이다 — 옛 시기의 구분 없는 케이스와는 안 겹친다
+    expect(duplicateOf(실외, [옛것])).toBeNull();
+  });
+
+  it('실외 현장에는 실내 케이스가 안 붙는다 — 구분 없는 옛 케이스는 그대로 후보다', () => {
+    const { exact, others, usedAxes } = matchingRules(현장('실외'), 라인, [실내, 실외, 옛것]);
+    expect(exact.map((r) => r.id)).toEqual(['out', 'old']);
+    expect(others.map((r) => r.id)).toEqual(['in']);
+    expect(usedAxes).toContain('설치위치');
+  });
+
+  it('실내·실외 현장 · 설치위치 미지정 현장은 둘 다 후보다 — 사람이 고른다', () => {
+    for (const loc of ['실내·실외', null] as const) {
+      const { exact, usedAxes } = matchingRules(현장(loc), 라인, [실외, 옛것, 실내]);
+      // 같은 시기면 실내 → 실외 차례, 늦게 시작한 것이 위
+      expect(exact.map((r) => r.id)).toEqual(['in', 'out', 'old']);
+      expect(usedAxes).not.toContain('설치위치');
+    }
+  });
+
+  it('설치위치를 안 싣는 부르는 곳(스크립트)도 그대로 돈다', () => {
+    const { exact } = matchingRules({ cpo: '나이스인프라', bizType: '자체투자', replType: null, bldgType: '공동주택' }, 라인, [실내, 실외]);
+    expect(exact).toHaveLength(2);
+  });
+
+  it('저장값은 실내 · 실외 · 비움뿐이다 — 현장 값 「실내·실외」는 케이스의 값이 아니다', () => {
+    expect(checkPricingRule(새케이스({ installLoc: '실외' }))).toEqual([]);
+    expect(checkPricingRule(새케이스({ installLoc: null }))).toEqual([]);
+    expect(checkPricingRule(새케이스({ installLoc: '실내·실외' as never })).join()).toContain('설치위치');
+    // 칸을 모르는 옛 정의(installLoc 없음)는 구분 없음으로 저장된다
+    expect(normalizePricingRule(새케이스({})).installLoc).toBeNull();
+  });
+
+  it('위치를 정한 케이스는 id 에도 드러난다', () => {
+    expect(pricingRuleId(새케이스({ installLoc: '실외' }), new Set())).toContain('-out-');
+    expect(pricingRuleId(새케이스({}), new Set())).not.toMatch(/-(in|out)-/);
   });
 });
 

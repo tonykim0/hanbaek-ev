@@ -36,6 +36,7 @@ export function caseLineOf(r: PricingRule): string {
   const parts = [
     r.caseName,
     `채널 ${r.channel}`,
+    r.installLoc ? `설치위치 ${r.installLoc}만` : null,
     moneyOf(r),
     promoOf(r),
     r.promoExtend?.length

@@ -35,6 +35,8 @@ const BLANK_POLICY = {
   otherSupport: null,
   coexistTerms: null,
   miscTerms: null,
+  /* 설치위치(2026-11-24) — 시드 케이스는 전부 실내 · 실외 구분이 없다 */
+  installLoc: null,
 } as const;
 
 type SeedRule = Omit<PricingRule, keyof typeof BLANK_POLICY>;

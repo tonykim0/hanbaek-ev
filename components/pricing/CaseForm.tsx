@@ -3,13 +3,13 @@
 import {
   useEffect, useRef, useState, type ReactNode,
 } from 'react';
-import { BUILDING_TYPES, bizTypeOfRepl, CHANNELS, CPO_NAMES, powerTypesOfRepl, replTypesOf, type BuildingType, type Channel, type CpoName, type ReplType, type BizType, type PromoStep, type SettlementRule, type SettlementStepRule } from '@/types/project';
+import { BUILDING_TYPES, bizTypeOfRepl, CASE_LOCS, CHANNELS, CPO_NAMES, powerTypesOfRepl, replTypesOf, type BuildingType, type CaseLoc, type Channel, type CpoName, type ReplType, type BizType, type PromoStep, type SettlementRule, type SettlementStepRule } from '@/types/project';
 import { bizLabel, replLabel } from '@/types/project';
 import { won } from '@/lib/format';
 import { useAction } from '@/lib/use-action';
 
 import {
-  startKey, keepStartDate
+  caseNameOf, startKey, keepStartDate
 } from '@/lib/pricing-match';
 import { checkSettlementSteps, stepUnits } from '@/lib/settlement';
 import { Btn, Choice, Err, FIELD, PANEL, Tag } from '@/components/ui';
@@ -40,6 +40,8 @@ export function CaseForm({
   const [terms, setTerms] = useState<number[]>(prefill.terms ?? [10]);
   const [bldgs, setBldgs] = useState<BuildingType[]>(prefill.bldgs ?? ['공동주택']);
   const [channel, setChannel] = useState<Channel>(prefill.channel ?? '턴키');
+  /* 설치위치 — 비우면 구분 없음(실내 · 실외 둘 다). 실내 · 실외로 단가가 갈리는 운영사만 고른다 */
+  const [installLoc, setInstallLoc] = useState<CaseLoc | null>(prefill.installLoc ?? null);
 
   /*
    * 시기는 연도·반기·시작일(선택)로 구조화해 받는다 — 자유 텍스트로 두면 「2026-08-22」처럼
@@ -189,15 +191,11 @@ export function CaseForm({
     year
   );
 
-  /*
-   * caseName 은 사람이 짓지 않는다 — 시기·축에서 유도되는 표시용 라벨이고, 현장 상세의
-   * 단가 후보 셀렉트가 문자열이 필요해 쓴다. 화면에서 케이스의 정체는 운영사·시기·축 태그다.
-   * 시기를 라벨에 박는 이유: 같은 축의 개정 케이스가 반기마다 생기는데, 시기가 없으면
-   * 셀렉트에 똑같은 라벨이 나란히 떠서 금액만 다르다.
-   */
-  const bldgLabel = bldgs.length === 2 ? '전체' : (bldgs[0] ?? '');
-  const caseName =
-    `${cpo} (${startDate}) | ${bldgLabel} | ${terms.join('·')}년 ${replLabel(cpo, replType)} | ${powerType}${channel === '턴키' ? '' : ` | ${channel}`}`;
+  /* caseName 은 사람이 짓지 않는다 — 시기 · 축에서 유도한다(까닭은 caseNameOf) */
+  const bldgLabel = bldgs.length === BUILDING_TYPES.length ? '전체' : (bldgs[0] ?? '');
+  const caseName = caseNameOf({
+    cpo, startDate, bldgTypes: bldgs, termYears: terms, replType, powerType, installLoc, channel,
+  });
 
   const num = (v: string) => Math.max(0, Math.round(Number(v.replace(/[^0-9]/g, '')) || 0));
 
@@ -250,7 +248,7 @@ export function CaseForm({
       method: editId ? 'PUT' : 'POST',
       body: {
         ...(editId ? { id: editId } : {}),
-        caseName, cpo, bizType, powerType, termYears: terms, bldgTypes: bldgs, replType, channel,
+        caseName, cpo, bizType, powerType, termYears: terms, bldgTypes: bldgs, replType, channel, installLoc,
         bizYear: year, startDate,
         salesUnit: sales, consUnit: cons, margin: mg,
         settlementSteps: stepRules,
@@ -315,6 +313,7 @@ export function CaseForm({
       <Tag>{bldgLabel || '건축물 미선택'}</Tag>
       <Tag>{terms.length ? `${terms.join('·')}년` : '연수 미선택'} {replLabel(cpo, replType)}</Tag>
       <Tag>{powerType}</Tag>
+      {installLoc && <Tag>{installLoc}</Tag>}
       {channel !== '턴키' && <Tag tone="stage">{channel}</Tag>}
     </>
   );
@@ -350,7 +349,7 @@ export function CaseForm({
         <Btn kind="quiet" size="sm" disabled={busy} onClick={onDone}>← 단가표로</Btn>
       </div>
 
-      {/* ① 어느 계약의 단가인가 — 접수된 라인이 이 여섯 축으로 케이스를 찾는다. 개정은 접혀서 머리의 꼬리표가 대신 말한다 */}
+      {/* ① 어느 계약의 단가인가 — 접수된 라인이 이 일곱 축으로 케이스를 찾는다. 개정은 접혀서 머리의 꼬리표가 대신 말한다 */}
       <FormSection
         first
         title="계약 축"
@@ -412,6 +411,16 @@ export function CaseForm({
               picked={bldgs}
               onToggle={(v) => setBldgs((p) => (p.includes(v) ? p.filter((x) => x !== v) : [...p, v]))}
             />
+          </Field>
+          <Field label="설치위치">
+            <select
+              value={installLoc ?? ''}
+              onChange={(e) => setInstallLoc((e.target.value || null) as CaseLoc | null)}
+              className={FIELD}
+            >
+              <option value="">구분 없음</option>
+              {CASE_LOCS.map((l) => <option key={l} value={l}>{l}</option>)}
+            </select>
           </Field>
           <Field label="채널">
             <select

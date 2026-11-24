@@ -8,10 +8,10 @@
  * 아는 축으로만 좁히고, 무엇으로 좁혔는지 화면에 적어 사람이 판단하게 한다.
  */
 import {
-  BUILDING_TYPES, bizTypeOfRepl, CHANNELS, CPO_NAMES, powerTypesOfRepl, REPL_TYPES, replTypesOf,
+  BUILDING_TYPES, bizTypeOfRepl, CASE_LOCS, CHANNELS, CPO_NAMES, powerTypesOfRepl, REPL_TYPES, replLabel, replTypesOf,
 } from '@/types/project';
 import type {
-  ContractLine, CpoName, NewPricingRule, PricingRule, Project, ReplType,
+  ContractLine, CpoName, InstallLoc, NewPricingRule, PricingRule, Project, ReplType,
 } from '@/types/project';
 import { checkSettlementSteps } from '@/lib/settlement';
 
@@ -25,7 +25,8 @@ export interface RuleMatch {
 }
 
 export function matchingRules(
-  project: Pick<Project, 'cpo' | 'bizType' | 'replType' | 'bldgType'>,
+  /* 설치위치는 빼도 된다 — 모르면 실내 · 실외 케이스가 둘 다 후보다(스크립트 몇이 이 값을 안 싣는다) */
+  project: Pick<Project, 'cpo' | 'bizType' | 'replType' | 'bldgType'> & { installLoc?: InstallLoc | null },
   line: Pick<ContractLine, 'termYears' | 'powerType' | 'replType'>,
   /** 후보가 될 케이스 전부 — 저장소에서 온다(시드 파일이 아니다) */
   all: PricingRule[]
@@ -36,6 +37,12 @@ export function matchingRules(
    * 라인에 없으면(옛 데이터) 현장 값으로 내려간다.
    */
   const replType = line.replType ?? project.replType;
+  /*
+   * 설치위치는 실내 · 실외 하나일 때만 좁힌다. 「실내·실외」 현장은 라인마다 어느 쪽인지 시스템이 모른다 —
+   * 둘 다 후보로 두고 사람이 고른다(축이 없을 때 후보를 지우지 않는 것과 같은 이유). 구분 없는 케이스(null)는
+   * 어느 현장에나 맞는다.
+   */
+  const loc = project.installLoc === '실내' || project.installLoc === '실외' ? project.installLoc : null;
   const sameCpo = all.filter((r) => r.active && r.cpo === project.cpo);
   const usedAxes: string[] = ['운영사'];
 
@@ -45,6 +52,7 @@ export function matchingRules(
     if (line.powerType && r.powerType !== line.powerType) return false;
     if (replType && r.replType !== replType) return false;
     if (project.bldgType && !r.bldgTypes.includes(project.bldgType)) return false;
+    if (loc && r.installLoc && r.installLoc !== loc) return false;
     return true;
   });
 
@@ -53,6 +61,7 @@ export function matchingRules(
   if (line.powerType) usedAxes.push('수전방식');
   if (replType) usedAxes.push('교체유형');
   if (project.bldgType) usedAxes.push('건축물유형');
+  if (loc) usedAxes.push('설치위치');
 
   const exactIds = new Set(exact.map((r) => r.id));
   /*
@@ -63,13 +72,17 @@ export function matchingRules(
    * 지금 쓰는 케이스는 대개 마지막에 시작한 것이므로 그것을 맨 위에 세운다 — 고르는
    * 사람이 목록을 훑지 않아도 첫 줄이 답이 되게.
    */
-  const byStart = (a: PricingRule, b: PricingRule) => startKey(b).localeCompare(startKey(a));
+  /* 시작이 같으면(같은 시기의 실내 · 실외) 구분 없음 → 실내 → 실외 — 늘 같은 차례로 선다 */
+  const byStart = (a: PricingRule, b: PricingRule) =>
+    startKey(b).localeCompare(startKey(a)) || locRank(a) - locRank(b);
   return {
     exact: [...exact].sort(byStart),
     others: sameCpo.filter((r) => !exactIds.has(r.id)).sort(byStart),
     usedAxes,
   };
 }
+
+const locRank = (r: Pick<PricingRule, 'installLoc'>) => (r.installLoc ? CASE_LOCS.indexOf(r.installLoc) + 1 : 0);
 
 /** 라인 id → 그 라인에 붙일 수 있는 단가 케이스 */
 export type RuleOptions = Record<string, RuleMatch>;
@@ -88,6 +101,7 @@ export function pricingRuleId(r: NewPricingRule, taken: Set<string>): string {
     REPL_SLUG[r.replType] ?? 'x',
     r.bldgTypes.length === 2 ? 'both' : r.bldgTypes[0] === '상업시설' ? 'biz' : 'apt',
     ...(r.channel === '시공' ? ['gc'] : r.channel === '영업' ? ['sales'] : []),
+    ...(r.installLoc === '실내' ? ['in'] : r.installLoc === '실외' ? ['out'] : []),
     String(r.bizYear),
   ].join('-');
   if (!taken.has(part)) return part;
@@ -134,6 +148,7 @@ export function checkPricingRule(r: NewPricingRule): string[] {
   if (!POWER_CASES.includes(r.powerType)) bad.push('수전방식은 한전불입 · 모자분리 중 하나여야 합니다.');
   if (!REPL_TYPES.includes(r.replType)) bad.push('교체유형이 목록에 없습니다.');
   if (!CHANNELS.includes(r.channel)) bad.push('채널은 턴키 · 영업 · 시공 중 하나여야 합니다.');
+  if (r.installLoc != null && !CASE_LOCS.includes(r.installLoc)) bad.push('설치위치는 실내 · 실외 중 하나이거나 비워 둡니다.');
   // 한쪽만 맡는 채널에 반대쪽 단가가 붙어 있으면 어느 쪽인지 알 수 없는 케이스가 된다
   if (r.channel === '시공' && r.salesUnit > 0) bad.push('시공 케이스는 영업단가가 0 이어야 합니다.');
   if (r.channel === '영업' && r.consUnit > 0) bad.push('영업 케이스는 시공단가가 0 이어야 합니다.');
@@ -220,8 +235,23 @@ export function checkPricingRule(r: NewPricingRule): string[] {
   return bad;
 }
 
+/**
+ * 케이스 이름 — 사람이 짓지 않는다. 시기 · 축에서 유도되는 표시용 라벨이다(현장 상세의 단가 후보 셀렉트가
+ * 글자가 필요해 쓴다 · 화면에서 케이스의 정체는 운영사 · 시기 · 축 꼬리표다). 시기를 박는 것은 같은 축의 개정
+ * 케이스가 반기마다 생겨서다 — 시기가 없으면 셀렉트에 같은 라벨이 나란히 서서 금액만 다르다.
+ * 케이스 폼과 반영 스크립트(scripts/pricing-apply)가 같이 쓴다 — 두 벌이면 같은 칸이 두 이름이 된다.
+ */
+export function caseNameOf(
+  r: Pick<NewPricingRule, 'cpo' | 'startDate' | 'bldgTypes' | 'termYears' | 'replType' | 'powerType' | 'channel'>
+    & { installLoc?: PricingRule['installLoc'] }
+): string {
+  const bldg = r.bldgTypes.length === BUILDING_TYPES.length ? '전체' : (r.bldgTypes[0] ?? '');
+  return `${r.cpo} (${r.startDate}) | ${bldg} | ${r.termYears.join('·')}년 ${replLabel(r.cpo, r.replType)} | ${r.powerType}`
+    + `${r.installLoc ? ` | ${r.installLoc}` : ''}${r.channel === '턴키' ? '' : ` | ${r.channel}`}`;
+}
+
 /* ── MECE — 원자 칸과 적용 시작 ─────────────────────────────────────────────
- * 케이스 한 행은 원자 칸(교체유형 × 수전방식 × 연수 × 건축물유형 × 채널) 여러 개를 덮는
+ * 케이스 한 행은 원자 칸(교체유형 × 수전방식 × 연수 × 건축물유형 × 채널 × 설치위치) 여러 개를 덮는
  * 「블록」이다. MECE 는 행이 아니라 칸에서 성립해야 한다:
  *
  *   ME — 같은 운영사의 활성 케이스 두 개가 같은 칸을 같은 적용 시작으로 덮으면 중복이다.
@@ -230,10 +260,17 @@ export function checkPricingRule(r: NewPricingRule): string[] {
  *   CE — 어느 칸이 비었는지는 화면(운영사별 그리드)과 막힌 라인 목록이 보인다.
  */
 
-/** 케이스가 덮는 원자 칸들 — 채널·교체유형·수전은 행에 하나라 연수 × 유형만 곱한다 */
-export function cellsOf(r: Pick<NewPricingRule, 'replType' | 'powerType' | 'termYears' | 'bldgTypes' | 'channel'>): string[] {
+/**
+ * 케이스가 덮는 원자 칸들 — 채널·교체유형·수전은 행에 하나라 연수 × 유형 × 설치위치를 곱한다.
+ * 설치위치가 비어 있으면(구분 없음) 실내 · 실외 두 칸을 다 덮는다 — 그래서 구분 없는 케이스와 실외 케이스가
+ * 같은 시기에 겹치면 중복이고, 실내 케이스와 실외 케이스는 나란히 선다.
+ */
+export function cellsOf(
+  r: Pick<NewPricingRule, 'replType' | 'powerType' | 'termYears' | 'bldgTypes' | 'channel' | 'installLoc'>
+): string[] {
+  const locs = r.installLoc ? [r.installLoc] : CASE_LOCS;
   return r.termYears.flatMap((t) =>
-    r.bldgTypes.map((b) => `${r.replType}|${r.powerType}|${t}|${b}|${r.channel}`)
+    r.bldgTypes.flatMap((b) => locs.map((loc) => `${r.replType}|${r.powerType}|${t}|${b}|${r.channel}|${loc}`))
   );
 }
 
@@ -266,7 +303,8 @@ export function startKey(r: Pick<NewPricingRule, 'startDate' | 'bizYear'>): stri
  */
 export function duplicateOf(
   // 새 케이스와 기존 케이스(적용 시작을 고칠 때) 둘 다 들어온다 — 겹침 판정에 쓰는 축만 받는다
-  input: Pick<PricingRule, 'cpo' | 'replType' | 'powerType' | 'termYears' | 'bldgTypes' | 'channel' | 'startDate' | 'bizYear'>,
+  input: Pick<PricingRule, 'cpo' | 'replType' | 'powerType' | 'termYears' | 'bldgTypes' | 'channel' | 'startDate' | 'bizYear'>
+    & { installLoc?: PricingRule['installLoc'] },
   existing: PricingRule[]
 ): PricingRule | null {
   const mine = new Set(cellsOf(input));
@@ -293,6 +331,7 @@ export function normalizePricingRule(r: NewPricingRule): NewPricingRule {
   return {
     ...r,
     caseName: r.caseName.trim(),
+    installLoc: r.installLoc ?? null,
     startDate: r.startDate.trim(),
     note: r.note?.trim() || null,
     termYears: [...new Set(r.termYears)].sort((a, b) => a - b),

@@ -13,7 +13,7 @@ function rule(over: Partial<PricingRule> = {}): PricingRule {
   return {
     id: 'nice-jan-10', caseName: '나이스인프라 (2026년 1월 27일) | 공동주택 | 10년 환경부 신규 | 모자분리', cpo: '나이스인프라',
     bizType: '환경부', powerType: '모자분리', termYears: [10], bldgTypes: ['공동주택'], replType: '환경부 신규', channel: '턴키',
-    bizYear: 2026, startDate: '2026년 1월 27일', salesUnit: 1_150_000, consUnit: 1_000_000, margin: 250_000,
+    installLoc: null, bizYear: 2026, startDate: '2026년 1월 27일', salesUnit: 1_150_000, consUnit: 1_000_000, margin: 250_000,
     supplyItems: null, promo: null, promoExtend: null, chargeRate: null, installTerms: null, otherSupport: null,
     coexistTerms: null, miscTerms: null, defaultSettlementRuleId: 'rule', supervisionBearer: '운영사',
     safetyFeeBearer: '한백 대납(회수)', note: null, active: true,

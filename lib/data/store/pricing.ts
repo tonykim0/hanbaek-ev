@@ -35,6 +35,7 @@ export const pricingStore: Pick<
         cpo: projects.cpo,
         bizType: projects.bizType,
         bldgType: projects.bldgType,
+        installLoc: projects.installLoc,
         projectReplType: projects.replType,
         termYears: contractLines.termYears,
         qty: contractLines.qty,
@@ -51,6 +52,7 @@ export const pricingStore: Pick<
       cpo: r.cpo as CpoName,
       bizType: r.bizType as BizType | null,
       bldgType: r.bldgType as BuildingType | null,
+      installLoc: r.installLoc as LineAxes['installLoc'],
       projectReplType: r.projectReplType as ReplType | null,
       termYears: r.termYears,
       qty: r.qty,
@@ -147,7 +149,7 @@ export const pricingStore: Pick<
           await tx.insert(pricingRules).values({
             id, caseName: rule.caseName, cpo: rule.cpo, bizType: rule.bizType,
             powerType: rule.powerType, termYears: rule.termYears, bldgTypes: rule.bldgTypes,
-            replType: rule.replType, channel: rule.channel,
+            replType: rule.replType, channel: rule.channel, installLoc: rule.installLoc ?? null,
             bizYear: rule.bizYear, startDate: rule.startDate,
             salesUnit: rule.salesUnit, consUnit: rule.consUnit, margin: rule.margin,
             supplyItems: rule.supplyItems, promo: rule.promo,
@@ -228,7 +230,7 @@ export const pricingStore: Pick<
       await tx.update(pricingRules).set({
         caseName: rule.caseName, cpo: rule.cpo, bizType: rule.bizType,
         powerType: rule.powerType, termYears: rule.termYears, bldgTypes: rule.bldgTypes,
-        replType: rule.replType, channel: rule.channel,
+        replType: rule.replType, channel: rule.channel, installLoc: rule.installLoc ?? null,
         bizYear: rule.bizYear, startDate: rule.startDate,
         salesUnit: rule.salesUnit, consUnit: rule.consUnit, margin: rule.margin,
         supplyItems: rule.supplyItems, promo: rule.promo,

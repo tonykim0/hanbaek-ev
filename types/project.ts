@@ -33,6 +33,13 @@ export const CPO_NAMES = [
 /** 설치위치 — 결과서의 「실내,지하 / 실외,노상」. 둘 다인 현장이 있다 (한백 지시 2026-09-30) */
 export type InstallLoc = '실내' | '실외' | '실내·실외';
 export const INSTALL_LOCS = ['실내', '실외', '실내·실외'] as const satisfies readonly InstallLoc[];
+/**
+ * 단가 케이스의 설치위치 — 실내 · 실외로 받는 단가가 갈리는 운영사가 있다(나이스 자체투자 · 2026-11-24).
+ * 케이스 쪽에는 둘 중 하나이거나 비어 있다(null — 구분 없음, 실내 · 실외 둘 다 덮는다). 현장의 「실내·실외」는
+ * 케이스의 값이 아니다 — 그런 현장은 후보에 둘 다 뜨고 사람이 고른다(lib/pricing-match matchingRules).
+ */
+export type CaseLoc = Exclude<InstallLoc, '실내·실외'>;
+export const CASE_LOCS = ['실내', '실외'] as const satisfies readonly CaseLoc[];
 
 export type BuildingType = '공동주택' | '상업시설';
 export const BUILDING_TYPES = ['공동주택', '상업시설'] as const satisfies readonly BuildingType[];
@@ -476,6 +483,11 @@ export interface PricingRule {
   bldgTypes: BuildingType[];
   replType: ReplType;
   channel: Channel;
+  /**
+   * 설치위치 — null 이면 구분 없음(실내 · 실외 둘 다). 정해 두면 그 위치의 현장만 덮는다 —
+   * 같은 칸 · 같은 시기에 실내 케이스와 실외 케이스가 나란히 선다(cellsOf 가 위치까지 칸으로 친다).
+   */
+  installLoc: CaseLoc | null;
   bizYear: number;
   startDate: string;
   salesUnit: number;
@@ -535,8 +547,10 @@ export interface PricingRule {
  * 어떻게 받는지. 저장소가 같은 모양의 규칙을 찾아 붙이고, 없으면 만든다(불변·재사용).
  * 빈 배열은 「기성 미정」이다 — 규칙이 아직 안 정해진 운영사가 실제로 있다.
  */
-export type NewPricingRule = Omit<PricingRule, 'id' | 'active' | 'defaultSettlementRuleId'> & {
+export type NewPricingRule = Omit<PricingRule, 'id' | 'active' | 'defaultSettlementRuleId' | 'installLoc'> & {
   settlementSteps: SettlementStepRule[];
+  /** 빼면 구분 없음 — 이 칸이 생기기 전의 정의(lib/pricing-policy-*)는 이 칸을 모른다 */
+  installLoc?: CaseLoc | null;
 };
 
 /**
@@ -550,6 +564,8 @@ export interface LineAxes {
   cpo: CpoName;
   bizType: BizType | null;
   bldgType: BuildingType | null;
+  /** 현장의 설치위치 — 실내 · 실외로 갈리는 케이스를 가른다 */
+  installLoc: InstallLoc | null;
   projectReplType: ReplType | null;
   termYears: number;
   qty: number;

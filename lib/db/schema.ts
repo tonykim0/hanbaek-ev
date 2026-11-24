@@ -207,6 +207,8 @@ export const pricingRules = pgTable('pricing_rules', {
   replType: text('repl_type').notNull(),
   /** 턴키 | 영업 | 시공 — 한쪽만 맡는 현장의 단가는 구성이 다르다 (옛 값 '시공만' 은 '시공' 으로 이관) */
   channel: text('channel').notNull().default('턴키'),
+  /** 실내 | 실외 — null 이면 구분 없음(둘 다 덮는다). 실내 · 실외로 단가가 갈리는 운영사만 적는다 (0139) */
+  installLoc: text('install_loc'),
   bizYear: integer('biz_year').notNull(),
   startDate: text('start_date').notNull(),
   salesUnit: integer('sales_unit').notNull(),

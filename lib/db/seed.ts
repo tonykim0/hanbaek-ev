@@ -44,7 +44,7 @@ async function seedRules() {
     PRICING_RULES.map((r) => ({
       id: r.id, caseName: r.caseName, cpo: r.cpo, bizType: r.bizType,
       powerType: r.powerType, termYears: r.termYears, bldgTypes: r.bldgTypes,
-      replType: r.replType, channel: r.channel, bizYear: r.bizYear, startDate: r.startDate,
+      replType: r.replType, channel: r.channel, installLoc: r.installLoc, bizYear: r.bizYear, startDate: r.startDate,
       salesUnit: r.salesUnit, consUnit: r.consUnit, margin: r.margin,
       supplyItems: r.supplyItems, promo: r.promo,
       promoExtend: r.promoExtend, chargeRate: r.chargeRate,
