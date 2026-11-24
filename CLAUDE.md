@@ -1031,12 +1031,16 @@ bulletpoint는 다 왼쪽정렬로」). 단가표의 조건 행(설치조건·�
     ★첫 일로 `EnterWorktree` 를 부른다★. 본 저장소(main 이 체크아웃된 `~/Documents/hanbaek-ev` 자체)에서는
     일하지 않는다. 홈 디렉터리에서 시작하면 저장소 설정(훅)을 안 읽으니 저장소에서 시작한다.
     ★데스크톱 앱(Code 탭)으로 열어도 같다★(2026-11-23 사용자 「클로드 앱에서 하려면」 — 직원이 터미널 대신 쓸 수 있게): 입력칸 밑
-    줄에서 환경 Local · 폴더 `~/Documents/hanbaek-ev` 를 고르고 「Worktree」 스위치는 켜지 않는다(기본이 꺼짐) — 본 저장소에서 시작하니
+    줄에서 환경 Local · 저장소 폴더(맥 `~/Documents/hanbaek-ev` · 윈도우 `C:\hanbaek-ev`)를 고르고 「Worktree」 스위치는 켜지 않는다(기본이 꺼짐) — 본 저장소에서 시작하니
     위처럼 첫 일로 `EnterWorktree`. 공식 문서는 `worktree.*` 설정(baseRef fresh · node_modules 링크)을 `--worktree` · `EnterWorktree` ·
     서브에이전트에 건다고만 적고, 앱 스위치가 만드는 칸은 그 설정도 어디서 갈라지는지도 적지 않았다. 스위치를 켜고 시작했으면
     `bash scripts/worktree-setup.sh` 와 `git fetch origin && git rebase origin/main` 부터 한다(둘 다 이미 돼 있으면 아무 일도 안 한다).
     ★앱의 미리보기 창은 쓰지 않는다★ — 세션을 열 때 고른 폴더(본 저장소)를 작업 폴더로 서버를 띄운다(문서 · `.claude/launch.json` 도
     거기 만든다). 워크트리에서 고친 화면이 아니다. 화면은 워크트리에서 띄운 `npm run dev` 를 브라우저로 본다.
+    ★윈도우 PC 에서 일할 때★(같은 날 — 직원 PC 가 윈도우): 저장소는 `C:\hanbaek-ev`(OneDrive 가 도는 문서 폴더 밖)에 받고, 받기 전에
+    `git config --global core.autocrlf false` — 저장소 파일은 전부 LF 이고 `.gitattributes` 가 없어서, 윈도우 기본값(true)으로 받으면
+    CRLF 로 바뀌어 셸 스크립트(훅)가 깨진다. 워크트리의 node_modules 링크는 실패해도 경고만 남기고 칸은 생긴다 — 없으면 그 워크트리에서
+    `npm ci`. 훅(guard-git.sh)은 jq 가 없으면 조용히 넘어간다 — 직원 계정의 main 푸시는 GitHub 규칙이 막는다.
   - **준비는 자동이다**: `.claude/settings.json` 의 `worktree.symlinkDirectories` 가 `node_modules` 를
     링크하고, `.worktreeinclude` 가 `.env.local`·`.vercel/project.json` 을 복사한다. 그래서 워크트리에서
     바로 `npm test`·`npx tsc --noEmit`·`npx vercel` 이 된다. `git worktree add` 로 손으로 만들었으면
