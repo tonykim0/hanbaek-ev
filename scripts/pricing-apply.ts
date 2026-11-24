@@ -18,11 +18,17 @@
  *     단계) → 다시 확정 차례다 — 한백이 화면에서 누르는 차례 그대로라 감사기록이 넷 다 남는다. 라인의 지금
  *     케이스가 spec 의 from 과 다르면(그새 누가 바꿨으면) 그 현장은 건드리지 않는다.
  *
- * Spec:
+ *  ③ fixes — 있는 케이스의 영업 · 시공 · 마진 나눔만 고친다(한백이 마진을 다시 정할 때). ★받는 단가가 바뀌면 멈춘다★ —
+ *     기성(운영사에게 받는 돈)은 정책이 정하고, 나눔은 한백이 정한다. 현장이 붙어 있어도 고친다(한백 2026-09-04
+ *     「개정이란 없어 — 수정하는 게 맞아」, store/pricing updatePricingRule) — 붙은 현장이 지급조건 확정이면 잠깐 풀고
+ *     고친 뒤 다시 확정한다. 붙은 현장의 계획이 그대로 따라온다(그것이 의도다).
+ *
+ * Spec (셋 다 빼도 된다):
  *   { "actor": "나이스 10/6 정책 반영",
  *     "cases": [{ "key": "sub-y10", ...NewPricingRule }],
  *     "moves": [{ "projectId": "HB-2026-241", "lineId": "HB-2026-241-L1", "from": "<지금 케이스 id>",
- *                 "to": "<cases 의 key 또는 케이스 id>" }] }
+ *                 "to": "<cases 의 key 또는 케이스 id>" }],
+ *     "fixes": [{ "id": "<케이스 id>", "salesUnit": 0, "consUnit": 0, "margin": 0 }] }
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { loadEnvFile } from '../lib/env-file';
@@ -48,13 +54,15 @@ import { pgRepository as repo } from '../lib/data/pg-store';
 import { checkPricingRule, duplicateOf, normalizePricingRule } from '../lib/pricing-match';
 import { stepUnits } from '../lib/settlement';
 import type { Actor, Viewer } from '../lib/auth/types';
-import type { NewPricingRule, PricingRule, ProjectDetail } from '../types/project';
+import type { LineAxes, NewPricingRule, PricingRule, ProjectDetail } from '../types/project';
 
 interface SpecCase extends NewPricingRule { key: string }
 interface SpecMove { projectId: string; lineId: string; from: string; to: string }
-interface Spec { actor: string; cases: SpecCase[]; moves: SpecMove[] }
+interface SpecFix { id: string; salesUnit: number; consUnit: number; margin: number }
+interface Spec { actor: string; cases: SpecCase[]; moves: SpecMove[]; fixes: SpecFix[] }
 
-const spec = JSON.parse(readFileSync(SPEC_FILE, 'utf8')) as Spec;
+const raw = JSON.parse(readFileSync(SPEC_FILE, 'utf8')) as Partial<Spec> & { actor: string };
+const spec: Spec = { actor: raw.actor, cases: raw.cases ?? [], moves: raw.moves ?? [], fixes: raw.fixes ?? [] };
 const ACTOR: Actor = { id: 'script', name: spec.actor, role: 'admin', org: null };
 const HANBAEK: Viewer = { role: 'admin', org: null };
 
@@ -134,6 +142,54 @@ async function main() {
     console.log(`      받는 단가 ${won(receiveOf(from))} → ${won(receiveOf(to))} (기성 ${dRecv >= 0 ? '+' : ''}${won(dRecv)}) · 영업비 ${dSales >= 0 ? '+' : ''}${won(dSales)} · 시공비 ${dCons >= 0 ? '+' : ''}${won(dCons)} · 지급조건 확정 ${d.project.payoutTermsConfirmedAt ?? '전'}`);
   }
 
+  // ── ③ 나눔 고치기 — 받는 단가가 그대로인지 보고, 붙은 현장과 그 현장의 지급을 찍는다 ──
+  const fixPlan: Array<{ f: SpecFix; cur: PricingRule; input: NewPricingRule; refs: LineAxes[] }> = [];
+  const fixSites = new Map<string, ProjectDetail>();
+  if (spec.fixes.length > 0) {
+    const settles = new Map((await repo.listSettlementRules(ACTOR)).map((s) => [s.id, s]));
+    const axes = await repo.listLineAxes(ACTOR);
+    for (const f of spec.fixes) {
+      const cur = byId.get(f.id);
+      if (!cur) throw new Error(`${f.id} — 없는 케이스입니다. 아무것도 쓰지 않았습니다.`);
+      if (![f.salesUnit, f.consUnit, f.margin].every(Number.isInteger)) throw new Error(`${f.id} — 금액은 원 단위 정수입니다.`);
+      if (receiveOf(f) !== receiveOf(cur)) {
+        throw new Error(`${f.id} — 받는 단가가 ${won(receiveOf(cur))} → ${won(receiveOf(f))} 로 바뀝니다. 나눔만 고치는 자리라 멈춥니다. 아무것도 쓰지 않았습니다.`);
+      }
+      const settle = cur.defaultSettlementRuleId ? settles.get(cur.defaultSettlementRuleId) : null;
+      if (cur.defaultSettlementRuleId && !settle) throw new Error(`${f.id} — 기성 단계 ${cur.defaultSettlementRuleId} 를 찾지 못했습니다.`);
+      /* 축 · 글은 지금 그대로, 돈 셋만 바꾼다. 기성 단계도 그대로 넘긴다 — 받는 단가가 같아 같은 정산 규칙을 다시 찾는다 */
+      const { id: _id, active: _active, defaultSettlementRuleId: _settle, ...rest } = cur;
+      const input: NewPricingRule = {
+        ...rest, salesUnit: f.salesUnit, consUnit: f.consUnit, margin: f.margin, settlementSteps: settle?.steps ?? [],
+      };
+      const bad = checkPricingRule(input);
+      if (bad.length > 0) throw new Error(`${f.id} — ${bad.join(' / ')}`);
+      const refs = axes.filter((a) => a.pricingRuleId === f.id);
+      fixPlan.push({ f, cur, input, refs });
+      for (const r of refs) {
+        if (fixSites.has(r.projectId)) continue;
+        const d = await repo.getProject(r.projectId, HANBAEK);
+        if (d) fixSites.set(r.projectId, d);
+      }
+    }
+
+    console.log('\n■ 나눔 고치기');
+    for (const { cur, input, refs } of fixPlan) {
+      console.log(`  ${cur.caseName}  [${cur.id}]`);
+      console.log(`      ${splitOf(cur)}`);
+      console.log(`   →  ${splitOf(input)}`);
+      if (refs.length === 0) console.log('      붙은 현장 0곳');
+      for (const r of refs) {
+        const d = fixSites.get(r.projectId);
+        const dSales = (input.salesUnit - cur.salesUnit) * r.qty;
+        const dCons = (input.consUnit - cur.consUnit) * r.qty;
+        const paid = d?.payoutEntries ?? [];
+        console.log(`      ${r.projectId} ${r.projectName} · ${r.termYears}년 ${r.qty}기 · 영업비 ${dSales >= 0 ? '+' : ''}${won(dSales)}${dCons !== 0 ? ` · 시공비 ${dCons >= 0 ? '+' : ''}${won(dCons)}` : ''} · 지급조건 확정 ${d?.project.payoutTermsConfirmedAt ?? '전'}`);
+        console.log(`          원장 ${paid.length === 0 ? '0건' : paid.map((e) => `${e.kind} ${e.category}${e.step && !e.category.includes(`${e.step}차`) ? ` ${e.step}차` : ''} ${won(e.amount)} (${e.at})`).join(' · ')}`);
+      }
+    }
+  }
+
   if (!APPLY) {
     console.log('\n— 미리보기 — 실제로 하려면 --apply');
     return;
@@ -169,6 +225,36 @@ async function main() {
       if (wasLocked) await repo.setPayoutTermsConfirmed(projectId, true, ACTOR).catch(() => undefined);
       failed.push(`${projectId} ${d.project.name} — ${(err as Error).message}`);
     }
+  }
+
+  // 나눔 고치기 — 붙은 현장 중 잠긴 곳을 다 풀고, 고치고, 무엇이 깨져도 다시 잠근다
+  if (fixPlan.length > 0) {
+    const locked = [...fixSites.values()].filter((d) => d.project.payoutTermsConfirmedAt !== null);
+    const unlocked: string[] = [];
+    try {
+      for (const d of locked) {
+        await repo.setPayoutTermsConfirmed(d.project.id, false, ACTOR);
+        unlocked.push(d.project.id);
+      }
+      for (const { cur, input } of fixPlan) {
+        await repo.updatePricingRule(cur.id, input, ACTOR);
+        console.log(`  ✓ ${cur.caseName} — ${splitOf(input)}`);
+      }
+    } catch (err) {
+      failed.push(`나눔 고치기 — ${(err as Error).message}`);
+    } finally {
+      for (const id of unlocked) {
+        await repo.setPayoutTermsConfirmed(id, true, ACTOR)
+          .catch((e) => failed.push(`${id} 다시 확정 못 함 — ${(e as Error).message}`));
+      }
+    }
+    const fixed = new Map((await repo.listPricingRules(ACTOR)).map((r) => [r.id, r]));
+    for (const { cur } of fixPlan) {
+      const r = fixed.get(cur.id);
+      console.log(`  다시 읽음 ${cur.id} — ${r ? splitOf(r) : '없음'}`);
+    }
+    for (const projectId of fixSites.keys()) details.set(projectId, fixSites.get(projectId)!);
+    for (const [id, r] of fixed) after.set(id, r);
   }
 
   // 다시 읽어 확인한다 — 화면이 보는 것과 같은 조립(getProject)으로
