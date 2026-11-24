@@ -116,6 +116,8 @@ export default function ProposalMaker({ mapKey, initialQ, canManage }: { mapKey:
             <ParcelBar place={place} busy={loading !== null} onChange={reparcel} />
           </div>
         )}
+        {/* 한전이 답하지 않은 현장 — 서버가 한 번 더 물었는데도 못 받았다. 모햇 · 루모라는 이대로 못 짓는다(만들기 단추의 까닭) */}
+        {place && report?.grid === null && place.pnu && <GridRetry busy={loading !== null} onRetry={() => reparcel(siteQueryOf(place))} />}
       </SearchBox>
 
       <section className={`${PANEL} space-y-3 p-5`} aria-label="상품">
@@ -248,6 +250,7 @@ function ProposalSite({
     productChosen: !!chosen,
     templateState: chosen ? stateOf(chosen.template) : null,
     pnu: traceKeyOf(place.parcels.map((x) => x.pnu)),
+    gridMissing: !!chosen && TEMPLATES[chosen.template].usesGrid === true && report.grid === null,
     hasPlan: !!plan,
     aiBusy,
     roofs: plan?.roofs.length ?? 0,
@@ -381,5 +384,29 @@ function ProposalSite({
         </div>
       </section>
     </>
+  );
+}
+
+/**
+ * 한전 여유용량을 못 받은 현장의 한 줄 — 그 자리에서 다시 묻는다. 같은 부지를 다시 불러오는 것이라(ParcelBar 와 같은 길) 지도에서 뺀 지붕은
+ * 되살아나지만, AI 지붕은 하루 저장해 둔 결과라 다시 부르지 않는다(돈이 안 든다).
+ */
+function GridRetry({ busy, onRetry }: { busy: boolean; onRetry: () => Promise<string | null> }) {
+  const [going, setGoing] = useState(false);
+  const [fail, setFail] = useState<string | null>(null);
+  const retry = async () => {
+    setGoing(true);
+    setFail(null);
+    setFail(await onRetry());
+    setGoing(false);
+  };
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <Err>한전 여유용량 못 받음</Err>
+      <Btn kind="quiet" size="sm" busy={going} busyLabel="다시 받는 중…" disabled={busy} onClick={retry}>
+        다시 받기
+      </Btn>
+      <Err>{fail}</Err>
+    </div>
   );
 }

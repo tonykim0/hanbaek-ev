@@ -5,6 +5,8 @@ export class SourceError extends Error {
     message: string,
     /** 응답은 왔는데 200 이 아닐 때의 HTTP 상태 — 「기록 없음(404)」과 고장을 가르려고 */
     public status?: number,
+    /** 시간 안에 답이 없었다 — 그 순간만 몰린 것일 수 있어 한 번 더 물을 만하다(onceMoreOnTimeout) */
+    public timedOut = false,
   ) {
     super(`[${source}] ${message}`);
   }
@@ -12,6 +14,20 @@ export class SourceError extends Error {
 
 /** 잠깐 쉬기 — 바깥 자료가 헛 응답을 줄 때 한 번 더 묻기 전에 */
 export const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * 시간 초과면 잠깐 쉬고 한 번 더 — 다른 실패는 그대로 던진다. 한전이 한 번 10초 안에 답하지 않아 계통 칸과 모햇 제안서 8쪽의
+ * 한전 여유용량 표가 통째로 빠진 일이 있었다(2026-11-24 운영).
+ */
+export async function onceMoreOnTimeout<T>(f: () => Promise<T>, pauseMs = 500): Promise<T> {
+  try {
+    return await f();
+  } catch (err) {
+    if (!(err instanceof SourceError && err.timedOut)) throw err;
+    await sleep(pauseMs);
+    return f();
+  }
+}
 
 export async function getJson<T = unknown>(
   source: string,
@@ -23,8 +39,8 @@ export async function getJson<T = unknown>(
   try {
     res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), cache: 'no-store', headers });
   } catch (err) {
-    const why = err instanceof Error && err.name === 'TimeoutError' ? `응답 없음 (${timeoutMs / 1000}초)` : String(err);
-    throw new SourceError(source, why);
+    const timedOut = err instanceof Error && err.name === 'TimeoutError';
+    throw new SourceError(source, timedOut ? `응답 없음 (${timeoutMs / 1000}초)` : String(err), undefined, timedOut);
   }
   const text = await res.text();
   if (!res.ok) throw new SourceError(source, `HTTP ${res.status} ${text.slice(0, 200)}`, res.status);

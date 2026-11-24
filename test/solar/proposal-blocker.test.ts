@@ -8,6 +8,7 @@ const ready: ProposalReadiness = {
   productChosen: true,
   templateState: null,
   pnu: '4313012345100010000',
+  gridMissing: false,
   hasPlan: true,
   aiBusy: false,
   roofs: 3,
@@ -29,6 +30,7 @@ describe('proposalBlocker', () => {
     expect(proposalBlocker({ ...ready, productChosen: false })).toBe('상품 미선택');
     expect(proposalBlocker({ ...ready, templateState: '조건 미지정' })).toBe('조건 미지정');
     expect(proposalBlocker({ ...ready, pnu: null })).toBe('필지 없음');
+    expect(proposalBlocker({ ...ready, gridMissing: true })).toBe('한전 여유용량 못 받음');
     expect(proposalBlocker({ ...ready, hasPlan: false })).toBe('지도 자료 없음');
     expect(proposalBlocker({ ...ready, aiBusy: true })).toBe('AI 패널 배치 중');
     expect(proposalBlocker({ ...ready, roofs: 0, selected: 0 })).toBe('패널 배치 전');
@@ -59,6 +61,11 @@ describe('proposalBlocker', () => {
     expect(TEMPLATES['henergy-mohaet'].maxKw).toBe(ROOF_REC_CAP_KW);
     expect(TEMPLATES['lumora-rent'].maxKw).toBeUndefined();
     expect(ROOF_REC_CAP_KW).toBe(3_000);
+  });
+  it('한전 여유용량을 제안서에 쓰는 틀 — 모햇(8쪽 표 · 한전선로 칸) · 루모라 지붕임대(4쪽 한전연계 칸). 타이런트는 안 쓴다', () => {
+    expect(TEMPLATES['henergy-mohaet'].usesGrid).toBe(true);
+    expect(TEMPLATES['lumora-rent'].usesGrid).toBe(true);
+    expect(TEMPLATES['tyrant-solar15'].usesGrid).toBeUndefined();
   });
   it('계약자 구분 — 받는 상품만, 고르기 전에는 막는다', () => {
     expect(proposalBlocker({ ...ready, partyNeeded: true })).toBe('계약자 구분 미지정');

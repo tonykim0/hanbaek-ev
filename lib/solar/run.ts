@@ -14,6 +14,7 @@ import { pick, str } from './props';
 import { zonesInside } from './rules';
 import { FLUSH_KINDS, mergeLotChecks, mergeZones, roofCheck, roofSetbackCheck, setbackCheck, siteCheck, siteFactsOf, terrainCheck, zoneCheck, type Settled } from './site-checks';
 import { registerTitles } from './sources/bldg';
+import { onceMoreOnTimeout } from './sources/http';
 import { addressBuildingsIn, buildingsIn, landTraits, parcelAt, zonesOf, type Feature, type LandTraits, type Zone } from './sources/vworld';
 import { lotLabel, MAX_PARCELS, MAX_SPAN_M, spanOf, splitParcels } from './parcels';
 import { pointOfParcel, resolveTyped } from './suggest';
@@ -198,10 +199,11 @@ async function registerOf(lots: Lot[]): Promise<Settled<RegisterBuilding[] | nul
 /**
  * 계통 — 대표 필지로 찾는다(그 번지 → 둘레 → 동). 대표의 번지 기록이 없으면 다른 필지의 번지 기록이 먼저다(둘레 · 동보다
  * 이 부지의 기록이다). 다른 필지는 제 번지만 본다 — 둘레 · 동은 대표와 같아 다시 묻지 않는다.
+ * 한전이 시간 안에 답하지 않으면 한 번 더 묻는다 — 그래도 못 받으면 계통은 「못 받음」이고 제안서는 막힌다(proposal/blocker).
  */
 async function gridOf(lots: Lot[]): Promise<Settled<GridResult>> {
   const [main, ...rest] = lots;
-  const first = await settle(gridNear(main.pnu!, main.jibunAddress, lots.flatMap((l) => l.parcel.polygons)));
+  const first = await settle(onceMoreOnTimeout(() => gridNear(main.pnu!, main.jibunAddress, lots.flatMap((l) => l.parcel.polygons))));
   if (!first.ok || first.value.via === null) return first;
   for (const l of rest) {
     if (!l.pnu) continue;

@@ -13,6 +13,8 @@ export type ProposalReadiness = {
   /** 고른 상품의 템플릿이 못 짓는 까닭(「템플릿 없음」 · 「조건 미지정」) — 지을 수 있으면 null */
   templateState: string | null;
   pnu: string | null;
+  /** 고른 상품이 한전 여유용량을 쓰는데(TemplateDef usesGrid) 그 현장의 한전 조회를 못 받았다 — 현장을 다시 불러오면 다시 묻는다 */
+  gridMissing: boolean;
   /** 지붕 배치 자료(지도)가 있는가 */
   hasPlan: boolean;
   aiBusy: boolean;
@@ -39,6 +41,7 @@ export function proposalBlocker(s: ProposalReadiness): string | null {
     [!s.productChosen, '상품 미선택'],
     [s.templateState !== null, s.templateState],
     [!s.pnu, '필지 없음'],
+    [s.gridMissing, '한전 여유용량 못 받음'],
     [!s.hasPlan, '지도 자료 없음'],
     [s.aiBusy, 'AI 패널 배치 중'],
     [!s.roofs, '패널 배치 전'],

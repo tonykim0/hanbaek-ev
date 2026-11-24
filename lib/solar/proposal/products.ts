@@ -46,6 +46,11 @@ export type TemplateDef = {
   terms: TermField[];
   /** 이 용량(kW)을 넘는 배치면 만들기를 막는다 — 셈이 그 용량까지만 맞다(ROOF_REC_CAP_KW) */
   maxKw?: number;
+  /**
+   * 한전 여유용량을 제안서에 쓴다(모햇 8쪽 표 · 한전선로 칸, 루모라 4쪽 한전연계 칸) — 한전 조회를 못 받은 현장이면 만들기를 막는다.
+   * 그대로 지으면 그 칸이 「-」이고 모햇 8쪽에는 견본의 빨간 자리 글이 고객에게 나간다(2026-11-24 운영 — 한전 10초 무응답).
+   */
+  usesGrid?: boolean;
 };
 
 /**
@@ -123,6 +128,7 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
       { key: 'subsidyPerKw', label: '참여지원금(5년 선납 법인, 1회)', unit: '원/kW', min: 1, max: 5_000_000 },
     ],
     maxKw: ROOF_REC_CAP_KW,
+    usesGrid: true,
   },
   'lumora-rent': {
     key: 'lumora-rent',
@@ -140,6 +146,7 @@ export const TEMPLATES: Record<TemplateKey, TemplateDef> = {
       { key: 'price10', label: '10년 선납 임대료', unit: '원/kW·년', min: 1_000, max: 1_000_000 },
       MIN_KW,
     ],
+    usesGrid: true,
   },
   /** 자가소비형 — 구독료(원/kWh)로 발전량을 사고 한전 요금을 대체한다. 요금 시나리오 셋(동결 · 기본 · 인상 확대)과 RE100(REC 구매 대비) */
   'lumora-lease': {
