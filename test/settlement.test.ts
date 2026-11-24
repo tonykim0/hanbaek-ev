@@ -9,7 +9,7 @@ import {
   adjustEntriesOf, checkPayoutEntry, isPassThroughSite, payoutMilestonesOf,
   payoutPrerequisiteBlockersOf, payoutUnitOf,
   payoutReleaseOf,
-  checkSettlementSteps, payInstallments, payoutStepsOf, stepAmounts, stepUnits,
+  checkSettlementSteps, payInstallments, payoutStepGapsOf, payoutStepsOf, stepAmounts, stepUnits,
   settlementRuleIdOf, settlementRuleNameOf, settlementStepsKeyOf, siteRuleOf, triggerLabel, triggerSource, turnkeyUnit,
 } from '@/lib/settlement';
 import type { PayoutMilestones, SettlementRule, SettlementStepRule } from '@/types/project';
@@ -198,6 +198,40 @@ describe('payInstallments · payoutStepsOf — 협력사 지급 회차 (70/30)',
       const s = payoutStepsOf(10_000_000, side(adjust, paid));
       if (s.open) expect(s.open.amount).toBeGreaterThan(0);
     }
+  });
+});
+
+/*
+ * 회차 칸의 「계획 · 초과/부족」 (한백 2026-11-24 「일송아파트만 그렇게」). 금액은 지어낸 것이다 —
+ * 실제 현장의 지급액은 저장소(공개)에 적지 않는다.
+ */
+describe('payoutStepGapsOf — 회차 칸의 초과/부족', () => {
+  it('1차가 옛 단가로 나가고 오른 몫을 2차 잔금이 다 받았으면 둘 다 적지 않는다', () => {
+    /* 총액 1,000만 → 1,100만(대당 인상) · 1차는 옛 700만 · 2차 = 1,100만 − 700만 */
+    expect(payoutStepGapsOf({ paid: [7_000_000, 4_000_000], base: [7_700_000, 3_300_000] })).toEqual([0, 0]);
+  });
+
+  it('2차가 아직이면 1차의 부족은 아직 받을 돈이라 그대로 적는다', () => {
+    expect(payoutStepGapsOf({ paid: [2_100_000, null], base: [2_520_000, 1_080_000] })).toEqual([-420_000, 0]);
+  });
+
+  it('1차 초과는 그대로 적는다 — 2차가 없거나 2차가 계획대로면', () => {
+    expect(payoutStepGapsOf({ paid: [1_785_000, null], base: [1_050_000, 450_000] })).toEqual([735_000, 0]);
+    expect(payoutStepGapsOf({ paid: [1_785_000, 450_000], base: [1_050_000, 450_000] })).toEqual([735_000, 0]);
+  });
+
+  it('2차가 1차의 부족을 다 메우지 못했거나 넘게 메웠으면 둘 다 적는다', () => {
+    expect(payoutStepGapsOf({ paid: [7_000_000, 3_700_000], base: [7_700_000, 3_300_000] })).toEqual([-700_000, 400_000]);
+    expect(payoutStepGapsOf({ paid: [7_000_000, 4_200_000], base: [7_700_000, 3_300_000] })).toEqual([-700_000, 900_000]);
+  });
+
+  it('계획대로 나갔거나 아직 안 나갔으면 0 이다', () => {
+    expect(payoutStepGapsOf({ paid: [700_000, 300_000], base: [700_000, 300_000] })).toEqual([0, 0]);
+    expect(payoutStepGapsOf({ paid: [null, null], base: [700_000, 300_000] })).toEqual([0, 0]);
+  });
+
+  it('1차가 맞고 2차만 어긋나면 2차만 적는다', () => {
+    expect(payoutStepGapsOf({ paid: [700_000, 350_000], base: [700_000, 300_000] })).toEqual([0, 50_000]);
   });
 });
 

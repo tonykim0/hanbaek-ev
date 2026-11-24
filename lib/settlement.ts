@@ -875,6 +875,28 @@ export function payoutStepsOf(plan: number, side: {
 }
 
 /**
+ * 회차 칸의 「계획 · 초과/부족」 — [1차, 2차] 마다 실제 나간 돈 − 그때 나갔어야 할 돈(+ 초과 · − 부족 · 0 이면 적지 않는다).
+ * 기준(base)은 부르는 쪽이 센다 — 그 회차의 지금 기준액에서 지급 뒤에 붙은 그 회차 몫 조정을 되돌린 것이다
+ * (components/project/SettlementTab 의 주석).
+ *
+ * ★두 회차가 다 원장에 있고 합이 맞으면 둘 다 적지 않는다★ (한백 2026-11-24 일송아파트 1차의 「계획 … · 부족 …」을 「이 내용
+ * 빼줘」 → 「일송아파트만 그렇게」). 1차가 나간 뒤에 대당 금액이 오르면 1차는 옛 70% 그대로고, 오른 몫은 잔금
+ * (2차 = 총액 − 나간 1차)이 다 받는다. 그때 1차의 「부족」과 2차의 「초과」는 회차 사이로 옮겨 간 같은 돈을 두 번 빨갛게
+ * 적는 것이다. 2차가 아직 원장에 없으면 그 부족은 아직 받을 돈이라 그대로 적는다(양동그린파크 · ES아뜨리움 보조 — 노션 시절
+ * 1차가 대당 70만).
+ */
+export function payoutStepGapsOf(p: {
+  paid: readonly [number | null, number | null];
+  base: readonly [number, number];
+}): [number, number] {
+  const [p1, p2] = p.paid;
+  const g1 = p1 === null ? 0 : p1 - p.base[0];
+  const g2 = p2 === null ? 0 : p2 - p.base[1];
+  if (p1 !== null && p2 !== null && g1 !== 0 && g1 + g2 === 0) return [0, 0];
+  return [g1, g2];
+}
+
+/**
  * 조정 한 건이 원장에 남기는 줄 — ★한 사실이 두 줄일 수 있다.★
  *
  * ★추가공사비는 영업비에서 빼서 시공비로 넘긴다★ (한백 지시 2026-08-29). 시공사가 더

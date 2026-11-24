@@ -18,8 +18,8 @@ import type {
 } from '@/types/project';
 import { PAYOUT_CATEGORIES, replLabel } from '@/types/project';
 import {
-  adjustEntriesOf, collectionRate, distributionUnit, entryTypeOf, manualAdjustOf, payoutSidesOf, payoutStepsOf,
-  STEP_LABEL, STEP_TONE, triggerLabel, triggerSource, turnkeyUnit,
+  adjustEntriesOf, collectionRate, distributionUnit, entryTypeOf, manualAdjustOf, payoutSidesOf, payoutStepGapsOf,
+  payoutStepsOf, STEP_LABEL, STEP_TONE, triggerLabel, triggerSource, turnkeyUnit,
   claimMonthLabel, safetyFeeApplies, safetyFeeDue, safetyFeeReceiptState, safetyFeeStateOf,
 } from '@/lib/settlement';
 import type { Visibility } from '@/lib/roles';
@@ -1033,6 +1033,37 @@ function PaymentSection({
           const steps = payoutStepsOf(side.plan, sideSum);
           /* 사람이 적은 조정만 — 턴키 상계(offset)는 따로 한 줄로 말한다 */
           const manual = manualAdjustOf({ kind: side.kind, adjust, adjustBy: sideSum.adjustBy, offset: sideSum.offset });
+          const stepEntry = (cat: '1차' | '2차') =>
+            entries.find((e) => e.kind === side.kind && e.category === cat) ?? null;
+          /*
+           * 회차마다 「그때 나갔어야 할 돈」(기준) — 회차 칸의 「계획 · 초과/부족」이 실제 나간 돈과 견준다.
+           *
+           * ★되돌릴 것은 「지급 뒤에 붙은 조정」뿐이다★ (검토에서 잡힌 자리다).
+           *
+           * 초과·부족은 「그때 나갔어야 할 돈」과 실제 나간 돈을 견주는 말이다.
+           * ★지급 전에 붙은 차감은 이미 나간 금액에 들어 있다★ — 확정이 그때의
+           * 기준액을 그대로 원장에 박기 때문이다(writePayoutStep). 그것까지 되돌려
+           * 견주면, 시킨 대로 깎아서 정확히 나간 1차에 매번 빨간 「부족」이 뜬다.
+           * 한백이 쓰려는 흐름(먼저 깎고 그 금액으로 지급)이 바로 그 경우다.
+           *
+           * 뒤에 붙은 것만 되돌리면 셋이 다 맞는다 —
+           *   지급 전 차감 : 되돌릴 것 0 → 기준 = 원장 → 조용하다
+           *   지급 후 차감 : 그만큼 되돌림 → 기준 = 원장 → 조용하고, 「2차에서 상계」를 적는다
+           *   진짜 초과지급: 조정이 없으니 기준 = 계획 → 「초과」가 그대로 뜬다
+           */
+          const stepBaseOf = (no: 1 | 2) => {
+            const planned = steps.open?.no === no ? steps.open.amount : steps.parts[no - 1];
+            const e = stepEntry(`${no}차`);
+            const adjAfter = e === null ? 0 : entries
+              .filter((x) => x.kind === side.kind
+                && entryTypeOf(x.category) === '조정'
+                && (x.step ?? null) === no
+                /* 같은 날 것은 적은 순서로 가른다 — 날짜만으로는 앞뒤를 모른다 */
+                && (x.at > e.at || (x.at === e.at && x.createdAt > (e.createdAt ?? ''))))
+              .reduce((n, x) => n + x.amount, 0);
+            return { planned, adjAfter, base: planned - adjAfter, paid: e?.amount ?? null };
+          };
+          const stepBases = [stepBaseOf(1), stepBaseOf(2)] as const;
           return {
             ...side,
             /*
@@ -1065,9 +1096,12 @@ function PaymentSection({
              */
             stepPaid: (cat: '1차' | '2차') =>
               entries.find((e) => e.kind === side.kind && e.category === cat)?.amount ?? null,
-            /* 같은 날 적힌 조정의 앞뒤를 가르는 데 쓴다 — 날짜만으로는 순서를 모른다 */
-            stepCreatedAt: (cat: '1차' | '2차') =>
-              entries.find((e) => e.kind === side.kind && e.category === cat)?.createdAt ?? null,
+            stepBases,
+            /* 회차 칸의 초과(+) · 부족(−) — 두 회차 합이 맞으면 둘 다 0 이다(lib/settlement payoutStepGapsOf) */
+            stepGaps: payoutStepGapsOf({
+              paid: [stepBases[0].paid, stepBases[1].paid],
+              base: [stepBases[0].base, stepBases[1].base],
+            }),
           };
         });
         const unitCell = (unit: number | 'mixed' | null) =>
@@ -1148,7 +1182,9 @@ function PaymentSection({
                   */}
                   {passThrough ? null : ([1, 2] as const).map((no) => {
                     const done = no === 1 ? r.steps.step1Done : r.steps.step2Done;
-                    const planned = r.steps.open?.no === no ? r.steps.open.amount : r.steps.parts[no - 1];
+                    /* 기준 · 지급 뒤 조정 · 초과/부족은 줄을 만들 때 셌다(stepBaseOf 의 주석) */
+                    const { planned, adjAfter, base } = r.stepBases[no - 1];
+                    const gap = r.stepGaps[no - 1];
                     const at = r.stepAt(`${no}차`);
                     /* 배치 자리 — 지급관리·거래명세서와 같은 판정 하나를 본다 */
                     const stepState = payoutStepStateOf({ at, org: r.org, kind: r.kind }, batchFinals);
@@ -1157,29 +1193,6 @@ function PaymentSection({
                     const amount = paidHere ?? planned;
                     /* 이 회차에 붙은 조정 — 아래 「N차분 조정」이 적는 값이다 */
                     const stepAdj = r.adjustBy[no];
-                    /*
-                     * ★되돌릴 것은 「지급 뒤에 붙은 조정」뿐이다★ (검토에서 잡힌 자리다).
-                     *
-                     * 초과·부족은 「그때 나갔어야 할 돈」과 실제 나간 돈을 견주는 말이다.
-                     * ★지급 전에 붙은 차감은 이미 나간 금액에 들어 있다★ — 확정이 그때의
-                     * 기준액을 그대로 원장에 박기 때문이다(writePayoutStep). 그것까지 되돌려
-                     * 견주면, 시킨 대로 깎아서 정확히 나간 1차에 매번 빨간 「부족」이 뜬다.
-                     * 한백이 쓰려는 흐름(먼저 깎고 그 금액으로 지급)이 바로 그 경우다.
-                     *
-                     * 뒤에 붙은 것만 되돌리면 셋이 다 맞는다 —
-                     *   지급 전 차감 : 되돌릴 것 0 → 기준 = 원장 → 조용하다
-                     *   지급 후 차감 : 그만큼 되돌림 → 기준 = 원장 → 조용하고, 「2차에서 상계」를 적는다
-                     *   진짜 초과지급: 조정이 없으니 기준 = 계획 → 「초과」가 그대로 뜬다
-                     */
-                    const adjAfter = at === null ? 0 : entries
-                      .filter((e) => e.kind === r.kind
-                        && entryTypeOf(e.category) === '조정'
-                        && (e.step ?? null) === no
-                        /* 같은 날 것은 적은 순서로 가른다 — 날짜만으로는 앞뒤를 모른다 */
-                        && (e.at > at || (e.at === at && e.createdAt > (r.stepCreatedAt(`${no}차`) ?? ''))))
-                      .reduce((n, e) => n + e.amount, 0);
-                    const base = planned - adjAfter;
-                    const gap = paidHere !== null && paidHere !== base;
                     return (
                       <Fragment key={no}>
                         <Td money className="whitespace-nowrap border-l border-slate-100">
@@ -1202,9 +1215,9 @@ function PaymentSection({
                               영업비 초과 −{won(-r.offset)}
                             </span>
                           )}
-                          {gap && (
+                          {gap !== 0 && (
                             <span className="block text-tiny font-semibold text-red-700">
-                              계획 {won(base)} · {paidHere! > base ? '초과' : '부족'} {won(Math.abs(paidHere! - base))}
+                              계획 {won(base)} · {gap > 0 ? '초과' : '부족'} {won(Math.abs(gap))}
                             </span>
                           )}
                         </Td>
