@@ -7,7 +7,7 @@ import {
   BUILDING_TYPES, CASE_LOCS, CPO_NAMES, powerTypesOfRepl, replTypesOf, type BuildingType, type CaseLoc, type CpoName, type PricingRule, type ReplType, type SettlementRule,
 } from '@/types/project';
 import { replLabel } from '@/types/project';
-import { won } from '@/lib/format';
+import { won, wonCompact } from '@/lib/format';
 
 import { startKey } from '@/lib/pricing-match';
 
@@ -68,9 +68,14 @@ export function Grid({
     powerTypesOfRepl(repl).flatMap((power) => locsOf(repl, power).map((loc) => ({ repl, power, loc })))
   );
 
-  /** 칸에서 이 시기에 적용 중인 케이스 — 그 시기까지 시작된 것 중 최신. 이전 시기 것이면 이월이다 */
+  /**
+   * 칸에서 이 시기에 적용 중인 케이스 — 그 시기까지 시작된 것 중 최신. 이전 시기 것이면 이월이다.
+   * ★나눔 갈래★(lib/pricing-match isSplitSibling — 같은 시작 · 같은 받는 단가에 나눔만 다른 케이스)가 있으면 splits 에
+   * 다 담는다. 칸의 값(받는 단가)은 하나라 그대로 적고 밑에 갈래의 마진을 적는다 — 누르면 마진이 큰 갈래가 열린다
+   * (다른 갈래는 아래 케이스 목록에서 고친다).
+   */
   const at = (repl: ReplType, power: (typeof POWER_TYPES)[number], loc: CaseLoc | null, term: number, bldg: BuildingType) => {
-    if (!period) return { now: null, carried: false };
+    if (!period) return { now: null, carried: false, splits: [] as PricingRule[] };
     const end = startKey({ startDate: period, bizYear: 0 });
     const hits = mine
       .filter((r) =>
@@ -79,9 +84,10 @@ export function Grid({
         r.termYears.includes(term) && r.bldgTypes.includes(bldg) &&
         startKey(r) <= end
       )
-      .sort((a, b) => startKey(b).localeCompare(startKey(a)));
+      .sort((a, b) => startKey(b).localeCompare(startKey(a)) || b.margin - a.margin);
     const now = hits[0] ?? null;
-    return { now, carried: now !== null && now.startDate !== period };
+    const splits = now ? hits.filter((r) => r.active && startKey(r) === startKey(now)) : [];
+    return { now, carried: now !== null && now.startDate !== period, splits };
   };
 
   /*
@@ -325,7 +331,7 @@ export function Grid({
                   </td>
                   {gridTerms.flatMap((term) =>
                     BUILDING_TYPES.map((bldg) => {
-                      const { now, carried } = at(repl, power, loc, term, bldg);
+                      const { now, carried, splits } = at(repl, power, loc, term, bldg);
                       return (
                         <td key={`${term}-${bldg}`} className={`px-1 py-1 text-right ${bldg === '공동주택' ? 'border-l border-slate-200' : ''}`}>
                           <button
@@ -361,6 +367,15 @@ export function Grid({
                                */
                               <span className={`text-base font-black ${carried ? 'text-slate-500' : 'text-slate-900'}`}>
                                 {won(receiveUnitOf(now))}
+                                {/*
+                                  * 나눔 갈래 — 받는 단가는 하나, 협력사 몫 · 마진이 둘 이상(현장마다 고른다).
+                                  * 칸 폭(w-28)에 원 단위 금액 둘이 안 들어 만 단위로 적는다 — 자릿수를 훑는 값이 아니라 꼬리 글이다.
+                                  */}
+                                {splits.length > 1 && (
+                                  <span className="block whitespace-nowrap text-tiny font-semibold text-slate-500">
+                                    마진 {splits.map((r) => wonCompact(r.margin)).join(' · ')}
+                                  </span>
+                                )}
                                 {/* 부기 — 이 금액을 읽는 순간 같이 봐야 하는 조건 (한전불입 10기 이내 등) */}
                                 {now.note && (
                                   <span className="block whitespace-normal break-keep text-tiny font-semibold text-slate-400">

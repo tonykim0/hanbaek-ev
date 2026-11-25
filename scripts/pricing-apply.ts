@@ -22,6 +22,8 @@
  *  ② cases — 새 케이스를 넣는다. 저장소 addPricingRule 이라 화면 「케이스 추가」와 같은 문 · 같은 감사기록이다.
  *     like 를 주면 그 케이스(① 뒤의 모습)의 칸 · 글 · 기성 단계를 받아 적은 칸만 바꾼다. 이름을 안 적으면 축에서 짓는다.
  *     같은 칸 · 같은 적용 시작의 케이스가 이미 있으면 값이 같을 때 지나가고, 다르면 ★아무것도 쓰기 전에 멈춘다★.
+ *     ★받는 단가가 같고 나눔(영업 · 시공 · 마진)만 다르면 나눔 갈래로 나란히 선다★(lib/pricing-match isSplitSibling —
+ *     2026-11-25 현대 자체투자 — 마진이 다른 둘) — 갈래끼리 기성 단계가 같아야 하고, 같은 spec 안의 케이스끼리도 견준다.
  *  ③ moves — 라인을 새 케이스로 옮긴다. 지급조건이 확정된 현장은 해제 → 단가 지정 → 정산 규칙(새 케이스의 기성
  *     단계) → 다시 확정 차례다 — 한백이 화면에서 누르는 차례 그대로라 감사기록이 넷 다 남는다. 라인의 지금
  *     케이스가 spec 의 from 과 다르면(그새 누가 바꿨으면) 그 현장은 건드리지 않는다.
@@ -55,8 +57,8 @@ if (!SPEC_FILE || !existsSync(SPEC_FILE)) throw new Error('--spec <파일.json> 
 const APPLY = process.argv.includes('--apply');
 
 import { pgRepository as repo } from '../lib/data/pg-store';
-import { caseNameOf, checkPricingRule, duplicateOf, normalizePricingRule } from '../lib/pricing-match';
-import { stepUnits } from '../lib/settlement';
+import { caseNameOf, checkPricingRule, duplicateOf, normalizePricingRule, splitSiblingsOf } from '../lib/pricing-match';
+import { settlementStepsKeyOf, stepUnits } from '../lib/settlement';
 import type { Actor, Viewer } from '../lib/auth/types';
 import type { CaseLoc, LineAxes, NewPricingRule, PricingRule, ProjectDetail, SettlementStepRule } from '../types/project';
 
@@ -192,7 +194,15 @@ async function main() {
   }
 
   // ── ② 케이스 ─────────────────────────────────────────────────────────
-  const plan: Array<{ c: SpecCase; rule: NewPricingRule; have: PricingRule | null }> = [];
+  const plan: Array<{ c: SpecCase; rule: NewPricingRule; have: PricingRule | null; siblings: PricingRule[] }> = [];
+  /*
+   * 이 spec 이 넣을 케이스도 다음 케이스의 견줌에 든다 — 같은 칸에 나눔 갈래 둘을 한 번에 넣는 일이 있다
+   * (2026-11-25 현대엔지니어링 자체투자 11/18 — 받는 단가 하나에 마진 둘). 그전에는 spec 안끼리는 안 봐서
+   * 둘째를 넣다 저장소가 멈추면 첫째만 들어간 채 반쯤 갔다.
+   */
+  const planned: PricingRule[] = [];
+  const plannedSteps = new Map<string, SettlementStepRule[]>();
+  const stepsKeyOf = (r: PricingRule) => settlementStepsKeyOf(plannedSteps.get(r.id) ?? stepsOf(r));
   for (const c of spec.cases) {
     const { key: _key, like, ...fields } = c;
     let base: Partial<NewPricingRule> = {};
@@ -213,19 +223,35 @@ async function main() {
     const rule = merged.caseName ? norm : { ...norm, caseName: caseNameOf(norm) };
     const bad = checkPricingRule(rule);
     if (bad.length > 0) throw new Error(`${c.key} — ${bad.join(' / ')}`);
-    const dup = duplicateOf(rule, afterFix);
+    const pool = [...afterFix, ...planned];
+    const dup = duplicateOf(rule, pool);
+    if (dup && plannedSteps.has(dup.id)) {
+      throw new Error(`${c.key} — 이 spec 의 ${dup.id} 와 같은 칸 · 같은 시작에 겹칩니다(나눔이 같거나 받는 단가가 다름). 아무것도 쓰지 않았습니다.`);
+    }
     if (dup && !sameCase(dup, rule)) {
       throw new Error(`${c.key} — 같은 칸 · 같은 시작에 다른 값의 케이스가 있습니다: ${dup.id} ${dup.caseName} (${splitOf(dup)}). 아무것도 쓰지 않았습니다.`);
     }
-    plan.push({ c, rule, have: dup });
+    /* 나눔 갈래는 기성 단계가 같아야 한다 — 저장소도 본다(store/pricing assertSiblingSettle) · 반쯤 쓰기 전에 여기서 */
+    const siblings = splitSiblingsOf(rule, pool);
+    const off = siblings.find((s) => stepsKeyOf(s) !== settlementStepsKeyOf(rule.settlementSteps));
+    if (off) {
+      throw new Error(`${c.key} — 나눔 갈래 ${off.id}(${off.caseName}) 와 기성 단계가 다릅니다 — 받는 차례는 운영사 정책 하나입니다. 아무것도 쓰지 않았습니다.`);
+    }
+    plan.push({ c, rule, have: dup, siblings });
+    if (!dup) {
+      const id = `(${c.key})`;
+      planned.push({ ...rule, id, active: true, defaultSettlementRuleId: '', installLoc: rule.installLoc ?? null });
+      plannedSteps.set(id, rule.settlementSteps);
+    }
   }
 
   if (plan.length > 0) {
     console.log('\n■ 케이스');
-    for (const { c, rule, have } of plan) {
+    for (const { c, rule, have, siblings } of plan) {
       const first = stepUnits(rule.settlementSteps, receiveOf(rule));
       console.log(`  ${have ? '이미 있음' : APPLY ? '추가' : '넣을 것'}  ${rule.caseName}`);
       console.log(`      ${splitOf(rule)} · 기성 ${first.map(won).join(' → ')} · 설치위치 ${locOf(rule.installLoc)}${rule.note ? ` · 부기 「${rule.note}」` : ''}  [${c.key}${have ? ` = ${have.id}` : ''}]`);
+      if (siblings.length > 0) console.log(`      나눔 갈래 ${siblings.map((s) => `${s.id} (${splitOf(s)})`).join(' · ')}`);
     }
   }
 

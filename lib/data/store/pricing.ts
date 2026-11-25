@@ -11,12 +11,28 @@ import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
 import { chargerModels, contractLines, pricingRules, projects, settlementRules } from '@/lib/db/schema';
-import { checkPricingRule, duplicateOf, normalizePricingRule, pricingRuleId } from '@/lib/pricing-match';
+import { checkPricingRule, duplicateOf, normalizePricingRule, pricingRuleId, splitSiblingsOf } from '@/lib/pricing-match';
 import type {
   BizType, BuildingType, ChargerModel, CpoName, LineAxes, PricingRule, ReplType, SettlementRule,
 } from '@/types/project';
 import type { ProjectRepository } from '../repository';
 import { assertAdmin, assertHanbaek, resolveSettlementRule, rowToRule, rowToSettle } from './shared';
+
+/**
+ * 나눔 갈래(lib/pricing-match isSplitSibling)는 기성 단계가 같아야 한다 — 받는 단가와 받는 차례는 운영사 정책 하나다.
+ * 갈래마다 기성이 다르면 같은 현장이 어느 나눔을 고르느냐로 받을 돈의 차례가 바뀐다. 정산 규칙은 같은 단계면 같은 행을
+ * 다시 쓰므로(resolveSettlementRule) id 로 견준다 — 「기성 미정」(단계 없음)은 null 이다(행에서는 빈 글자로 읽힌다).
+ */
+function assertSiblingSettle(
+  rule: Parameters<typeof splitSiblingsOf>[0],
+  others: PricingRule[],
+  settleId: string | null
+): void {
+  const off = splitSiblingsOf(rule, others).find((s) => (s.defaultSettlementRuleId || null) !== (settleId || null));
+  if (off) {
+    throw new Error(`같은 조건 · 같은 시작의 다른 나눔 케이스와 기성 단계가 다릅니다 — ${off.caseName}. 받는 차례는 운영사 정책 하나라 같게 적어주세요.`);
+  }
+}
 
 /** pgRepository 가 펼쳐 담는 조각 — 이름과 시그니처는 인터페이스가 정한다 */
 export const pricingStore: Pick<
@@ -116,11 +132,11 @@ export const pricingStore: Pick<
     const rule = normalizePricingRule(input);
 
     const db = getDb();
-    // ME — 같은 칸을 같은 적용 시작으로 덮는 활성 케이스가 이미 있으면 중복이다
+    // ME — 같은 칸을 같은 적용 시작으로 덮는 활성 케이스가 이미 있으면 중복이다(받는 단가가 같고 나눔만 다른 갈래는 빼고)
     const existing = (await db.select().from(pricingRules)).map(rowToRule);
     const dup = duplicateOf(rule, existing);
     if (dup) {
-      throw new Error(`같은 조건을 덮는 케이스가 이미 있습니다 — ${dup.caseName}. 개정이라면 적용 시작을 다르게 적어주세요.`);
+      throw new Error(`같은 조건을 덮는 케이스가 이미 있습니다 — ${dup.caseName}. 개정이라면 적용 시작을 다르게, 같은 시기의 다른 나눔이라면 받는 단가를 같게 적어주세요.`);
     }
 
     /*
@@ -140,9 +156,10 @@ export const pricingStore: Pick<
           const now = (await tx.select().from(pricingRules)).map(rowToRule);
           const dupNow = duplicateOf(rule, now);
           if (dupNow) {
-            throw new Error(`같은 조건을 덮는 케이스가 이미 있습니다 — ${dupNow.caseName}. 개정이라면 적용 시작을 다르게 적어주세요.`);
+            throw new Error(`같은 조건을 덮는 케이스가 이미 있습니다 — ${dupNow.caseName}. 개정이라면 적용 시작을 다르게, 같은 시기의 다른 나눔이라면 받는 단가를 같게 적어주세요.`);
           }
           const settleId = await resolveSettlementRule(tx, rule.settlementSteps, actor);
+          assertSiblingSettle(rule, now, settleId);
 
           const taken = await tx.select({ id: pricingRules.id }).from(pricingRules);
           const id = pricingRuleId(rule, new Set(taken.map((t) => t.id)));
@@ -226,6 +243,7 @@ export const pricingStore: Pick<
       }
 
       const settleId = await resolveSettlementRule(tx, rule.settlementSteps, actor);
+      if (me.active) assertSiblingSettle(rule, all.filter((r) => r.id !== id), settleId);
       // id 는 그대로 둔다 — 축이 바뀌어 슬러그가 낡아도, 화면이 읽는 이름은 caseName 이다
       await tx.update(pricingRules).set({
         caseName: rule.caseName, cpo: rule.cpo, bizType: rule.bizType,
@@ -276,6 +294,7 @@ export const pricingStore: Pick<
         if (dup) {
           throw new Error(`그 적용 시작에는 같은 조건의 케이스가 이미 있습니다 — ${dup.caseName}`);
         }
+        assertSiblingSettle(next, all.filter((r) => r.id !== id), me.defaultSettlementRuleId);
       }
 
       /*
@@ -354,6 +373,7 @@ export const pricingStore: Pick<
         if (dup) {
           throw new Error(`같은 조건을 덮는 케이스가 이미 있습니다 — ${dup.caseName}. 그쪽을 중지한 뒤 되살려주세요.`);
         }
+        assertSiblingSettle(me, all.filter((r) => r.id !== id), me.defaultSettlementRuleId);
       }
 
       await tx.update(pricingRules).set({ active }).where(eq(pricingRules.id, id));

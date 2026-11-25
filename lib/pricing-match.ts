@@ -72,9 +72,12 @@ export function matchingRules(
    * 지금 쓰는 케이스는 대개 마지막에 시작한 것이므로 그것을 맨 위에 세운다 — 고르는
    * 사람이 목록을 훑지 않아도 첫 줄이 답이 되게.
    */
-  /* 시작이 같으면(같은 시기의 실내 · 실외) 구분 없음 → 실내 → 실외 — 늘 같은 차례로 선다 */
+  /*
+   * 시작이 같으면(같은 시기의 실내 · 실외) 구분 없음 → 실내 → 실외 — 늘 같은 차례로 선다.
+   * 위치까지 같으면 나눔 갈래(isSplitSibling)다 — 마진이 큰 것이 위(DB 가 돌려주는 차례에 맡기지 않는다).
+   */
   const byStart = (a: PricingRule, b: PricingRule) =>
-    startKey(b).localeCompare(startKey(a)) || locRank(a) - locRank(b);
+    startKey(b).localeCompare(startKey(a)) || locRank(a) - locRank(b) || b.margin - a.margin;
   return {
     exact: [...exact].sort(byStart),
     others: sameCpo.filter((r) => !exactIds.has(r.id)).sort(byStart),
@@ -297,27 +300,55 @@ export function startKey(r: Pick<NewPricingRule, 'startDate' | 'bizYear'>): stri
  * 적용 시작 그대로다(components/pricing/Grid). 견주는 값은 startKey 하나로 충분하다.
  */
 
-/**
- * 이 케이스와 겹치는 활성 케이스 — 있으면 중복이라 넣을 수 없다.
- * 같은 운영사 · 칸 교집합 · 같은 적용 시작. 시작이 다르면 개정이라 겹쳐도 된다.
- */
-export function duplicateOf(
-  // 새 케이스와 기존 케이스(적용 시작을 고칠 때) 둘 다 들어온다 — 겹침 판정에 쓰는 축만 받는다
-  input: Pick<PricingRule, 'cpo' | 'replType' | 'powerType' | 'termYears' | 'bldgTypes' | 'channel' | 'startDate' | 'bizYear'>
-    & { installLoc?: PricingRule['installLoc'] },
-  existing: PricingRule[]
-): PricingRule | null {
+/** 겹침 판정이 받는 것 — 새 케이스와 기존 케이스(적용 시작을 고칠 때) 둘 다 들어온다. 축 · 시작 · 나눔만 본다 */
+type OverlapInput = Pick<
+  PricingRule,
+  'cpo' | 'replType' | 'powerType' | 'termYears' | 'bldgTypes' | 'channel' | 'startDate' | 'bizYear'
+  | 'salesUnit' | 'consUnit' | 'margin'
+> & { installLoc?: PricingRule['installLoc'] };
+
+type Split = Pick<PricingRule, 'salesUnit' | 'consUnit' | 'margin'>;
+
+/** 같은 운영사 · 같은 적용 시작 · 칸이 겹치는 활성 케이스 — 중복과 나눔 갈래를 가르기 전 */
+function overlapsOf(input: OverlapInput, existing: PricingRule[]): PricingRule[] {
   const mine = new Set(cellsOf(input));
   const myStart = startKey(input);
-  return (
-    existing.find(
-      (r) =>
-        r.active &&
-        r.cpo === input.cpo &&
-        startKey(r) === myStart &&
-        cellsOf(r).some((c) => mine.has(c))
-    ) ?? null
+  return existing.filter(
+    (r) =>
+      r.active &&
+      r.cpo === input.cpo &&
+      startKey(r) === myStart &&
+      cellsOf(r).some((c) => mine.has(c))
   );
+}
+
+/**
+ * ★나눔 갈래★ — 같은 칸 · 같은 시작에서 받는 단가는 같고 나눔(영업 · 시공 · 마진)만 다른 두 케이스
+ * (한백 2026-11-25 「그냥 케이스가 2개야」 — 현대엔지니어링 자체투자 11/18 시기에 마진이 다른 케이스 둘. 연수 · 위치 · 수전
+ * 어느 축으로도 갈리지 않는다. 금액 · 마진은 대외비라 여기 적지 않는다 — DB 의 케이스가 근거다).
+ *
+ * 받는 단가는 운영사 정책이라 한 칸 · 한 시기에 하나다 — 그것이 다르면 어느 표가 맞는지 모르는 중복이다.
+ * 나눔은 한백이 정한다(협력사 몫 · 마진) — 한 정책 칸에 나눔을 둘 이상 두고 현장마다 고른다. 라인의 단가 후보에
+ * 둘 다 뜨고 영업 · 시공 금액이 같이 적힌다(SettlementTab) · 저절로 붙는 자리는 없다. 나눔까지 같으면 그냥 중복이다.
+ * 기성 단계(운영사에게 받는 차례)도 정책이라 갈래끼리 같아야 한다 — 정산 규칙은 저장소에 있어 저장소가 본다
+ * (store/pricing · scripts/pricing-apply 의 splitSiblingsOf).
+ */
+export function isSplitSibling(a: Split, b: Split): boolean {
+  const same = a.salesUnit === b.salesUnit && a.consUnit === b.consUnit && a.margin === b.margin;
+  return !same && a.salesUnit + a.consUnit + a.margin === b.salesUnit + b.consUnit + b.margin;
+}
+
+/**
+ * 이 케이스와 겹치는 활성 케이스 — 있으면 중복이라 넣을 수 없다.
+ * 같은 운영사 · 칸 교집합 · 같은 적용 시작. 시작이 다르면 개정이라 겹쳐도 된다. 나눔 갈래(isSplitSibling)는 중복이 아니다.
+ */
+export function duplicateOf(input: OverlapInput, existing: PricingRule[]): PricingRule | null {
+  return overlapsOf(input, existing).find((r) => !isSplitSibling(r, input)) ?? null;
+}
+
+/** 이 케이스의 나눔 갈래 — 같은 칸 · 같은 시작 · 같은 받는 단가에서 나눔만 다른 활성 케이스 */
+export function splitSiblingsOf(input: OverlapInput, existing: PricingRule[]): PricingRule[] {
+  return overlapsOf(input, existing).filter((r) => isSplitSibling(r, input));
 }
 
 /**

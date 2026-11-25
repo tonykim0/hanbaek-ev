@@ -5,7 +5,9 @@
  * 치울 길이 없다. 그래서 저장 전 검증이 유일한 방어다.
  */
 import { describe, expect, it } from 'vitest';
-import { cellsOf, checkPricingRule, duplicateOf, matchingRules, normalizePricingRule, pricingRuleId, startKey } from '@/lib/pricing-match';
+import {
+  cellsOf, checkPricingRule, duplicateOf, isSplitSibling, matchingRules, normalizePricingRule, pricingRuleId, splitSiblingsOf, startKey,
+} from '@/lib/pricing-match';
 import { bizLabel, bizTypeOf, powerTypesOfRepl, replLabel, SPLITS_SELF_REPL } from '@/types/project';
 import type { NewPricingRule, PricingRule } from '@/types/project';
 
@@ -249,5 +251,48 @@ describe('bizLabel · bizTypeOf — 사업구분은 화면에만 「기후부」
     expect(bizTypeOf('자체투자')).toBe('자체투자');
     expect(bizTypeOf('기후부 신규')).toBeNull();
     expect(bizTypeOf('')).toBeNull();
+  });
+});
+
+describe('나눔 갈래 — 받는 단가 하나에 나눔 둘 (2026-11-25 한백 「그냥 케이스가 2개야」)', () => {
+  /* 금액은 시험용으로 지어낸 값이다 — 운영사 정책 금액 · 마진을 저장소에 적지 않는다 */
+  const 자투 = {
+    cpo: '현대엔지니어링' as const, bizType: '자체투자' as const, replType: '자체투자 (제자리교체)' as const,
+    termYears: [7, 10], bldgTypes: ['공동주택' as const, '상업시설' as const], startDate: '2033년 3월 3일', bizYear: 2033,
+  };
+  const 큰마진 = 케이스({ ...자투, id: 'big', salesUnit: 1_500_000, consUnit: 1_200_000, margin: 300_000 });
+  const 작은마진 = 케이스({ ...자투, id: 'small', salesUnit: 1_600_000, consUnit: 1_200_000, margin: 200_000 });
+
+  it('받는 단가가 같고 나눔만 다르면 갈래다 — 나눔까지 같거나 받는 단가가 다르면 아니다', () => {
+    expect(isSplitSibling(큰마진, 작은마진)).toBe(true);
+    expect(isSplitSibling(큰마진, { ...큰마진 })).toBe(false);
+    expect(isSplitSibling(큰마진, { ...작은마진, margin: 250_000 })).toBe(false);
+    // 시공을 옮겨도 갈래다 — 영업 · 시공 · 마진 어느 칸이든 받는 단가 안에서만 옮겼으면
+    expect(isSplitSibling(큰마진, { ...큰마진, consUnit: 1_100_000, margin: 400_000 })).toBe(true);
+  });
+
+  it('★같은 칸 · 같은 시작에 갈래가 나란히 선다★ — 받는 단가가 다르거나 나눔이 같으면 여전히 중복이다', () => {
+    expect(duplicateOf(작은마진, [큰마진])).toBeNull();
+    expect(splitSiblingsOf(작은마진, [큰마진]).map((r) => r.id)).toEqual(['big']);
+    expect(duplicateOf({ ...작은마진, margin: 250_000 }, [큰마진])?.id).toBe('big');
+    expect(duplicateOf({ ...큰마진 }, [큰마진])?.id).toBe('big');
+    // 갈래가 있어도 받는 단가가 다른 셋째는 막힌다 — 갈래 아닌 쪽을 짚는다
+    expect(duplicateOf({ ...큰마진, salesUnit: 900_000 }, [큰마진, 작은마진])?.id).toBe('big');
+    // 칸 일부만 겹쳐도 같다 — 10년만 덮는 갈래도 선다
+    expect(duplicateOf({ ...작은마진, termYears: [10] }, [큰마진])).toBeNull();
+  });
+
+  it('시작이 다르면 개정이지 갈래가 아니다 · 중지된 케이스는 갈래로 세지 않는다', () => {
+    const 다음시기 = { ...작은마진, startDate: '2033년 9월 9일' };
+    expect(splitSiblingsOf(다음시기, [큰마진])).toEqual([]);
+    expect(splitSiblingsOf(작은마진, [{ ...큰마진, active: false }])).toEqual([]);
+  });
+
+  it('라인 후보에 갈래가 둘 다 뜨고 마진이 큰 것이 위다 — DB 차례와 상관없이', () => {
+    const 현장 = { cpo: '현대엔지니어링' as const, bizType: '자체투자' as const, replType: null, bldgType: '공동주택' as const };
+    const 라인 = { termYears: 7, powerType: '모자분리' as const, replType: '자체투자 (제자리교체)' as const };
+    for (const all of [[큰마진, 작은마진], [작은마진, 큰마진]]) {
+      expect(matchingRules(현장, 라인, all).exact.map((r) => r.id)).toEqual(['big', 'small']);
+    }
   });
 });
