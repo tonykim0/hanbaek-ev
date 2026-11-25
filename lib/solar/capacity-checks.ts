@@ -11,6 +11,11 @@ import { judge } from './verdict';
 
 const SRC_KEPCO = { name: '한전 전력데이터 개방포털 · 분산전원연계 정보' };
 
+/** 한전에 물었다가 실패한 사유(lib/solar/sources/kepco · http 의 SourceError 와 키 없음) — 「필지번호 없음」처럼 묻지도 않은 것과 가른다 */
+const KEPCO_FAILED = /^\[한전\]/;
+/** 그중 서버가 답하지 않은 것 — 시간 초과 · 연결 실패 */
+const KEPCO_DOWN = /응답 없음|fetch failed/;
+
 /** 예상 용량을 받을 여유가 있는 선로(용량을 모르면 여유가 조금이라도 있는 선로) */
 export const enough = (r: GridRow, capacityKw: number | null) => r.spareKw !== null && r.spareKw >= Math.max(capacityKw ?? 1, 1);
 
@@ -43,6 +48,20 @@ export function gridViewOf(result: Pick<GridResult, 'rows' | 'via'>, capacityKw:
  * @param error 한전 자료를 못 받았을 때의 사유(그때 view 는 null)
  */
 export function gridCheckOf(view: GridView | null, error: string | null, sido: string | null): Check {
+  // 한전에 물었는데 답을 못 받았다 — 「자료 없음」(한전에 기록이 없다)으로 읽히면 안 된다. 2026-11-24~25 한전 개방포털이
+  // 접속 자체를 받지 않아(운영 · 이 Mac 모두 연결 시간 초과) 부지 검토마다 「한전 여유용량 자료 없음」이 떴다
+  if (!view && error && KEPCO_FAILED.test(error)) {
+    const region = (sido && GRID_REGION[sido]) || null;
+    return {
+      key: 'grid',
+      title: '계통 연계',
+      // 지역 사정은 여유와 무관하게 「조건부」다(judgeGrid 와 같다) — 결론 줄은 못 받은 것을 말하고 사정은 사실 줄로
+      status: region ? 'conditional' : 'unknown',
+      summary: KEPCO_DOWN.test(error) ? '한전 서버 응답 없음 — 여유용량 못 받음' : '한전 조회 실패 — 여유용량 못 받음',
+      facts: [{ label: '한전 자료', value: error }, ...(region ? [{ label: '지역 사정', value: region }] : [])],
+      source: SRC_KEPCO,
+    };
+  }
   const rows = view?.rows ?? [];
   const best = view?.best ?? null;
   const capacityKw = view?.capacityKw ?? null;

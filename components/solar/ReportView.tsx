@@ -9,6 +9,7 @@ import type { Check, CheckStatus, Estimate, GridView, Level, Report, Verdict } f
 import { LEVEL_LABEL } from '@/lib/solar/verdict';
 import { siteQueryOf, traceKeyOf } from '@/lib/solar/parcels';
 import GridDetail from './GridDetail';
+import GridRetry from './GridRetry';
 import ParcelBar from './ParcelBar';
 import SiteMap from './SiteMap';
 import { LEVEL_TONE, PANEL, StatusPill, TEXT } from './ui';
@@ -141,7 +142,18 @@ export default function ReportView({
         <h2 className={`border-b border-slate-100 px-5 py-3 ${TEXT.head}`}>검토 항목 {checks.length}개</h2>
         <ul className="divide-y divide-slate-100">
           {checks.map((c) => (
-            <CheckRow key={c.key} check={c} grid={c.key === 'grid' ? grid : null} />
+            <CheckRow
+              key={c.key}
+              check={c}
+              grid={c.key === 'grid' ? grid : null}
+              busy={busy}
+              onRetry={
+                // 한전에 물었는데 못 받았다(필지는 있다) — 그 칸에서 다시 묻는다
+                c.key === 'grid' && report.grid === null && report.place.pnu && onParcels
+                  ? () => onParcels(siteQueryOf(report.place))
+                  : null
+              }
+            />
           ))}
         </ul>
       </div>
@@ -305,7 +317,18 @@ function Num({ label, value, roofArea, sub }: { label: string; value: string; ro
 }
 
 /** ③ 검토 항목 한 줄 — 이름 · 상태 · 결론 한 줄 · (걸렸으면) 근거 · 사실 */
-function CheckRow({ check, grid }: { check: Check; grid: GridView | null }) {
+function CheckRow({
+  check,
+  grid,
+  busy = false,
+  onRetry = null,
+}: {
+  check: Check;
+  grid: GridView | null;
+  busy?: boolean;
+  /** 한전 여유용량을 못 받은 계통 칸 — 「다시 받기」 */
+  onRetry?: (() => Promise<string | null>) | null;
+}) {
   return (
     <li id={`check-${check.key}`} className="scroll-mt-4 px-5 py-4">
       <div className="flex items-start justify-between gap-3">
@@ -317,6 +340,7 @@ function CheckRow({ check, grid }: { check: Check; grid: GridView | null }) {
         <StatusPill status={check.status} />
       </div>
       {grid && <GridDetail grid={grid} summary={check.summary} />}
+      {onRetry && <GridRetry busy={busy} onRetry={onRetry} />}
       {check.facts && check.facts.length > 0 && (
         <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-4 gap-y-0.5">
           {check.facts.map((f) => (

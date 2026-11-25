@@ -5,7 +5,7 @@ export class SourceError extends Error {
     message: string,
     /** 응답은 왔는데 200 이 아닐 때의 HTTP 상태 — 「기록 없음(404)」과 고장을 가르려고 */
     public status?: number,
-    /** 시간 안에 답이 없었다 — 그 순간만 몰린 것일 수 있어 한 번 더 물을 만하다(onceMoreOnTimeout) */
+    /** 답이 없었다(시간 초과 · 연결 실패) — 그 순간만 몰린 것일 수 있어 한 번 더 물을 만하다(onceMoreOnTimeout) */
     public timedOut = false,
   ) {
     super(`[${source}] ${message}`);
@@ -40,7 +40,9 @@ export async function getJson<T = unknown>(
     res = await fetch(url, { signal: AbortSignal.timeout(timeoutMs), cache: 'no-store', headers });
   } catch (err) {
     const timedOut = err instanceof Error && err.name === 'TimeoutError';
-    throw new SourceError(source, timedOut ? `응답 없음 (${timeoutMs / 1000}초)` : String(err), undefined, timedOut);
+    // 연결 실패(fetch 의 TypeError — 연결 시간 초과 · 끊김)도 그 순간만의 일일 수 있어 같이 한 번 더 묻는다(운영 2026-11-24 「fetch failed」)
+    const noAnswer = timedOut || err instanceof TypeError;
+    throw new SourceError(source, timedOut ? `응답 없음 (${timeoutMs / 1000}초)` : String(err), undefined, noAnswer);
   }
   const text = await res.text();
   if (!res.ok) throw new SourceError(source, `HTTP ${res.status} ${text.slice(0, 200)}`, res.status);
