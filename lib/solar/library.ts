@@ -110,3 +110,48 @@ export function groupLibrary(files: readonly LibraryFile[]): { category: string 
 /** 올릴 때 고를 수 있게 — 지금 있는 분류 이름 */
 export const categoriesOf = (files: readonly LibraryFile[]): string[] =>
   [...new Set(files.map((f) => f.category).filter((c): c is string => !!c))].sort(byName);
+
+/**
+ * 분류 칩의 값 — undefined 는 전체, null 은 「분류 없음」, 글은 그 분류.
+ * 주소로는 cat 이 없으면 전체 · `cat=`(빈 값)이면 분류 없음 · `cat=이름` 이면 그 분류다(`libraryPickOf`).
+ */
+export type LibraryPick = string | null | undefined;
+
+/** 주소의 cat 값 → 칩의 값. 지금 없는 분류면 전체(없는 칩을 고른 채로 열지 않는다) */
+export function libraryPickOf(raw: string | null, files: readonly LibraryFile[]): LibraryPick {
+  if (raw === null) return undefined;
+  const pick = raw === '' ? null : raw.normalize('NFC');
+  return files.some((f) => f.category === pick) ? pick : undefined;
+}
+
+/** 검색어의 낱말이 다 들어 있나 — 파일 이름 · 분류 이름에서(대소문자 무시) */
+export function libraryMatches(f: LibraryFile, q: string): boolean {
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const haystack = `${f.name} ${f.category ?? LOOSE_LABEL}`.normalize('NFC').toLowerCase();
+  return terms.every((t) => haystack.includes(t.normalize('NFC')));
+}
+
+/**
+ * 자료실 거르기 — 분류 칩 · 검색 (한백 2026-11-25 「자료실에서 필요한 자료를 바로 확인 할 수 있는 필터를 걸어줘 지금은 분류별로
+ * 쭉 스크롤 해야해」 — 전기차 자료실 lib/materials-meta filterMaterials 와 같은 규칙).
+ * ★칩의 수는 검색을 먹인 수다★(눌렀을 때 나올 수) · 칩 자리는 걸러도 그대로다(0 도 적는다). 칩 차례는 목록의 묶음 차례(groupLibrary).
+ */
+export function filterLibrary(
+  files: readonly LibraryFile[],
+  pick: { query: string; category: LibraryPick },
+): {
+  shown: { category: string | null; files: LibraryFile[] }[];
+  count: number;
+  chips: { category: string | null; label: string; count: number }[];
+  all: number;
+} {
+  const searched = files.filter((f) => libraryMatches(f, pick.query));
+  const chips = groupLibrary(files).map((g) => ({
+    category: g.category,
+    label: g.category ?? LOOSE_LABEL,
+    count: searched.filter((f) => f.category === g.category).length,
+  }));
+  const shown = groupLibrary(pick.category === undefined ? searched : searched.filter((f) => f.category === pick.category));
+  return { shown, count: shown.reduce((n, g) => n + g.files.length, 0), chips, all: searched.length };
+}
