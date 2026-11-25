@@ -362,3 +362,80 @@ export function isValidMaterialPath(pathname: string): boolean {
 
   return true;
 }
+
+/**
+ * 자료실 거르기 — 운영사 탭 · 분류 칩 · 검색 (한백 2026-11-25 「자료실에서 필요한 자료를 바로 확인 할 수 있는 필터를 걸어줘
+ * 지금은 분류별로 쭉 스크롤 해야해」). 순수 함수다 — 화면(components/MaterialsBrowser)이 부르고 시험(test/materials-filter)이 본다.
+ *
+ * ★건수는 「눌렀을 때 나올 수」다★ — 운영사 탭의 수는 검색 · 고른 분류를 먹인 수, 분류 칩의 수는 검색 · 고른 운영사를 먹인 수.
+ * 칩 자리는 걸러도 그대로다(0 도 적는다) — 칩이 생겼다 사라지면 자리를 외울 수 없다(운영사 탭과 같은 규칙).
+ */
+export interface MaterialsPick {
+  query: string;
+  /** 운영사 탭 — null 이면 전체 */
+  group: string | null;
+  /** 분류 칩 — null 이면 전체 */
+  category: string | null;
+}
+
+export interface MaterialsView {
+  /** 그릴 묶음 — 세 조건을 다 먹이고, 빈 운영사 · 분류는 뺀다 */
+  shown: MaterialGroup[];
+  /** 세 조건을 다 먹인 자료 수 */
+  count: number;
+  /** 운영사 탭 — 차례는 받은 묶음 그대로 */
+  groupTabs: { key: string; label: string; count: number }[];
+  /** 「전체」 탭의 수 */
+  allGroups: number;
+  /** 분류 칩 — 자료실에 있는 분류 모두, 분류 차례(CATEGORY_ORDER)대로 */
+  categoryChips: { key: string; label: string; count: number }[];
+  /** 「전체」 칩의 수 */
+  allCategories: number;
+}
+
+/** 검색어의 낱말이 다 들어 있나 — 자료명 · 파일명 · 운영사 · 분류 이름에서(대소문자 무시) */
+export function materialMatches(file: MaterialFile, groupLabel: string, categoryLabel: string, q: string): boolean {
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return true;
+  const haystack = [file.title, file.fileName, groupLabel, categoryLabel].join(' ').toLowerCase();
+  return terms.every((t) => haystack.includes(t));
+}
+
+export function filterMaterials(groups: readonly MaterialGroup[], pick: MaterialsPick): MaterialsView {
+  // 검색만 먹인 것 — 운영사 · 분류는 여기서 센다
+  const searched = groups.map((g) => ({
+    ...g,
+    categories: g.categories.map((c) => ({ ...c, files: c.files.filter((f) => materialMatches(f, g.label, c.label, pick.query)) })),
+  }));
+  const inCategory = (c: MaterialCategory) => pick.category === null || c.key === pick.category;
+  const inGroup = (g: MaterialGroup) => pick.group === null || g.key === pick.group;
+  const sum = (cs: readonly MaterialCategory[]) => cs.reduce((n, c) => n + c.files.length, 0);
+
+  const groupTabs = searched.map((g) => ({ key: g.key, label: g.label, count: sum(g.categories.filter(inCategory)) }));
+
+  const categoryKeys = [...new Set(groups.flatMap((g) => g.categories.map((c) => c.key)))].sort(
+    (a, b) => orderIndex(CATEGORY_ORDER, a) - orderIndex(CATEGORY_ORDER, b) || categoryLabel(a).localeCompare(categoryLabel(b), 'ko')
+  );
+  const pickedGroups = searched.filter(inGroup);
+  const categoryChips = categoryKeys.map((key) => ({
+    key,
+    label: categoryLabel(key),
+    count: sum(pickedGroups.flatMap((g) => g.categories.filter((c) => c.key === key))),
+  }));
+
+  const shown = pickedGroups
+    .map((g) => {
+      const categories = g.categories.filter((c) => inCategory(c) && c.files.length > 0);
+      return { ...g, categories, fileCount: sum(categories) };
+    })
+    .filter((g) => g.fileCount > 0);
+
+  return {
+    shown,
+    count: shown.reduce((n, g) => n + g.fileCount, 0),
+    groupTabs,
+    allGroups: groupTabs.reduce((n, t) => n + t.count, 0),
+    categoryChips,
+    allCategories: categoryChips.reduce((n, c) => n + c.count, 0),
+  };
+}

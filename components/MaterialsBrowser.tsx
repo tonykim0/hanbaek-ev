@@ -22,14 +22,19 @@
  *  5. ★「최신인가」에 답하지 않았다★ — 파일명에 rev.11·v1.9·_260325 가 박혀 있는데 날짜는
  *     잔글씨였고, 문서일과 올린 날이 이름 없이 같은 자리에 뭉쳐 있었다. 이름을 붙여 가른다.
  *
- * 분류 칩은 걷었다 — 소제목이 이미 그 일을 한다. 분류가 ★일의 순서★라(영업 → 법인 →
- * 업체·보험 → 착공·안전 → 인허가·전기 → 설치·준공) 고르는 것보다 훑는 것이 빠르다.
- * 검색은 남긴다: 지금 규모에는 과하지만 자료가 늘어날 자리이고, 「사업자등록증이 어디
- * 있더라」처럼 분류를 모르고 찾는 일이 실제로 있다.
+ * 분류 칩은 그때 걷었다 — 29건에서는 소제목을 훑는 것이 고르는 것보다 빨랐다. ★2026-11-25 되살렸다★(한백 「자료실에서
+ * 필요한 자료를 바로 확인 할 수 있는 필터를 걸어줘 지금은 분류별로 쭉 스크롤 해야해」) — 자료가 늘어 운영사 하나 안에서도
+ * 분류를 따라 내려가야 했다. 고르는 줄은 둘이다: 운영사 탭(위) · 분류 칩(아래, 일의 순서 — 영업 → 법인 → 업체·보험 →
+ * 착공·안전 → 인허가·전기 → 설치·준공). 둘 다 「전체」가 있고 겹쳐 좁힌다(「전체 + 법인관련」 = 모든 운영사의 법인 서류).
+ * 셈은 lib/materials-meta filterMaterials 한 곳이다. 고른 분류가 곧 제목이라 그때는 분류 띠를 적지 않는다(운영사 탭과 같은 규칙).
+ * ★걸어 둔 것은 주소에 남는다★(?op=운영사&cat=분류&q=검색 — replaceState 라 서버를 다시 부르지 않는다) — 링크로 보내면 같은
+ * 화면이 열리고, 「법인관련」을 즐겨찾기해 두면 한 번에 간다.
+ * 검색은 그대로다: 「사업자등록증이 어디 있더라」처럼 분류를 모르고 찾는 일이 실제로 있다.
  */
-import { useMemo, useState } from 'react';
-import type { MaterialFile, MaterialGroup } from '@/lib/materials-meta';
-import { Blank, Btn, BtnLink, FIELD_BASE } from '@/components/ui';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { filterMaterials, type MaterialFile, type MaterialGroup } from '@/lib/materials-meta';
+import { Blank, Btn, BtnLink, Choice, FIELD_BASE } from '@/components/ui';
 
 /** 확장자 꼬리표 색 — 형식을 한눈에 가른다. 제목보다 세면 안 되므로 작게 쓴다 */
 const EXT_STYLES: Record<string, string> = {
@@ -58,18 +63,30 @@ const PREVIEWABLE = new Set(['PDF', 'PNG', 'JPG', 'JPEG', 'GIF', 'WEBP']);
  */
 const FRESH_WINDOW_DAYS = 7;
 
-function matches(file: MaterialFile, groupLabel: string, categoryLabel: string, q: string) {
-  if (!q) return true;
-  const haystack = [file.title, file.fileName, groupLabel, categoryLabel].join(' ').toLowerCase();
-  return q.toLowerCase().split(/\s+/).filter(Boolean).every((term) => haystack.includes(term));
-}
-
 export default function MaterialsBrowser({ groups }: { groups: MaterialGroup[] }) {
-  const [query, setQuery] = useState('');
-  /** null 이면 전체 — 탭 하나가 운영사 하나다 */
-  const [tab, setTab] = useState<string | null>(null);
+  const sp = useSearchParams();
+  const [query, setQuery] = useState(() => sp.get('q') ?? '');
+  /** null 이면 전체 — 탭 하나가 운영사 하나다. 주소의 값이 없는 운영사면 전체 */
+  const [tab, setTab] = useState<string | null>(() => {
+    const v = sp.get('op');
+    return v && groups.some((g) => g.key === v) ? v : null;
+  });
+  /** null 이면 전체 — 칩 하나가 분류 하나다 */
+  const [cat, setCat] = useState<string | null>(() => {
+    const v = sp.get('cat');
+    return v && groups.some((g) => g.categories.some((c) => c.key === v)) ? v : null;
+  });
 
-  const total = groups.reduce((n, g) => n + g.fileCount, 0);
+  /* 걸어 둔 것은 주소에 남긴다 — 우리가 쥔 값만 다시 쓴다(현장 보드와 같은 방식) */
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    for (const k of ['q', 'op', 'cat']) p.delete(k);
+    if (query.trim()) p.set('q', query.trim());
+    if (tab) p.set('op', tab);
+    if (cat) p.set('cat', cat);
+    const qs = p.toString();
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+  }, [query, tab, cat]);
 
   const fresh = useMemo(() => {
     const all = groups.flatMap((g) => g.categories.flatMap((c) => c.files));
@@ -80,34 +97,22 @@ export default function MaterialsBrowser({ groups }: { groups: MaterialGroup[] }
     return keys.length * 2 < all.length ? new Set(keys) : new Set<string>();
   }, [groups]);
 
-  /* 검색만 먹인 것 — 탭 건수는 「눌렀을 때 나올 수」여야 한다 */
-  const searched = useMemo(
-    () => groups.map((g) => ({
-      ...g,
-      categories: g.categories
-        .map((c) => ({ ...c, files: c.files.filter((f) => matches(f, g.label, c.label, query)) }))
-        .filter((c) => c.files.length > 0),
-    })).map((g) => ({ ...g, fileCount: g.categories.reduce((n, c) => n + c.files.length, 0) })),
-    [groups, query]
-  );
+  const view = useMemo(() => filterMaterials(groups, { query, group: tab, category: cat }), [groups, query, tab, cat]);
+  const { shown, count: resultCount } = view;
+  const filtering = Boolean(query) || tab !== null || cat !== null;
 
-  const shown = tab === null ? searched.filter((g) => g.fileCount > 0) : searched.filter((g) => g.key === tab);
-  const resultCount = shown.reduce((n, g) => n + g.fileCount, 0);
-  const filtering = Boolean(query) || tab !== null;
-
-  const reset = () => { setQuery(''); setTab(null); };
+  const reset = () => { setQuery(''); setTab(null); setCat(null); };
 
   return (
     <div className="flex flex-col gap-4">
       {/*
         * 고르는 줄 하나 — 운영사 탭과 검색이 같은 줄에 선다. 상자로 감싸지 않는다:
         * 29건짜리 목록 위에 상자가 하나 더 서면 거르는 장치가 내용보다 커진다.
-        * ★건수는 검색을 먹인 뒤의 수다★ — 눌렀을 때 나올 수를 미리 적는다.
+        * ★건수는 검색 · 고른 분류를 먹인 뒤의 수다★ — 눌렀을 때 나올 수를 미리 적는다.
         */}
       <div className="flex flex-wrap items-end justify-between gap-x-4 gap-y-2 border-b border-slate-200">
         <div className="flex gap-1 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" role="tablist">
-          {[{ key: null as string | null, label: '전체', count: resultCountOf(searched) },
-            ...searched.map((g) => ({ key: g.key, label: g.label, count: g.fileCount }))].map((t) => (
+          {[{ key: null as string | null, label: '전체', count: view.allGroups }, ...view.groupTabs].map((t) => (
               <button
                 key={t.key ?? 'all'}
                 role="tab"
@@ -144,9 +149,27 @@ export default function MaterialsBrowser({ groups }: { groups: MaterialGroup[] }
         </div>
       </div>
 
+      {/*
+        * 분류 칩 — 운영사 탭 밑 한 줄. 분류가 하나뿐이면 고를 것이 없어 안 그린다.
+        * ★고른 칩을 다시 누르면 전체로★ — 「전체」까지 손을 옮기지 않아도 풀린다.
+        */}
+      {view.categoryChips.length > 1 && (
+        <div className="-mt-1 flex flex-wrap items-center gap-1" role="group" aria-label="분류">
+          {[{ key: null as string | null, label: '전체', count: view.allCategories }, ...view.categoryChips].map((c) => (
+            <Choice key={c.key ?? 'all'} on={cat === c.key} onClick={() => setCat(cat === c.key && c.key !== null ? null : c.key)}>
+              {c.label}
+              {/* 글자의 가장 옅은 색은 slate-500 이다(TEXT) — 0 도 같은 색으로 적는다 */}
+              <span className={`ml-1.5 tabular-nums ${cat === c.key ? 'text-brand-on-fill/70' : 'text-slate-500'}`}>
+                {c.count}
+              </span>
+            </Choice>
+          ))}
+        </div>
+      )}
+
       {resultCount === 0 ? (
         <div className="flex flex-col gap-3">
-          <Blank>{total === 0 ? '올라온 자료 0건' : '조건에 맞는 자료 0건'}</Blank>
+          <Blank>{groups.length === 0 ? '올라온 자료 0건' : '조건에 맞는 자료 0건'}</Blank>
           {/* 되돌릴 길을 그 자리에 둔다 — 거른 사람만 막다른 곳에 선다 */}
           {filtering && (
             <span className="text-center">
@@ -176,9 +199,12 @@ export default function MaterialsBrowser({ groups }: { groups: MaterialGroup[] }
                       가르고 글씨는 tiny·slate-600 으로 올린다. 제목(small·slate-900)보다
                       세지 않게 하는 일은 띠가 한다.
                     */}
-                    <p className="border-b border-slate-100 bg-slate-50/80 px-3.5 py-1.5 text-tiny font-black tracking-[0.04em] text-slate-600">
-                      {category.label}
-                    </p>
+                    {/* 고른 분류가 곧 제목이다 — 분류를 고르지 않았을 때만 띠를 적는다 */}
+                    {cat === null && (
+                      <p className="border-b border-slate-100 bg-slate-50/80 px-3.5 py-1.5 text-tiny font-black tracking-[0.04em] text-slate-600">
+                        {category.label}
+                      </p>
+                    )}
                     <ul className="divide-y divide-slate-50">
                       {category.files.map((file) => (
                         <FileRow key={file.pathname} file={file} fresh={fresh.has(file.pathname)} />
@@ -194,8 +220,6 @@ export default function MaterialsBrowser({ groups }: { groups: MaterialGroup[] }
     </div>
   );
 }
-
-const resultCountOf = (groups: MaterialGroup[]) => groups.reduce((n, g) => n + g.fileCount, 0);
 
 /**
  * 자료 한 줄 — 제목이 가장 세고, 동작은 오른쪽에 이름으로 선다.
