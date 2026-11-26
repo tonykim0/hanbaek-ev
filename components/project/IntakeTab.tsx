@@ -963,6 +963,7 @@ export function IntakeTab({
               check: preinstallCheck,
               currentFiles: checkedFilesOf([...byKind.values()]),
               bundled: bundledAsPdf([...byKind.values()]),
+              skipped: Boolean(project.preCheckSkipped),
               cpo: project.cpo,
             }) ?? parkingBlocker({
               // 건축물대장 대조도 계약 확인의 조건이다(한백 결정 2026-10-16) — 저장소 confirmContract 와 같은 판정

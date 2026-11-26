@@ -14,6 +14,9 @@
  *
  * 접수 단계에서 저절로 돈다(lib/preinstall-run) · 한백은 여기서 다시 돌린다 · 결과는 협력사도 본다.
  * 필수다 — 맞음이거나 한백이 「확인하고 넘기기」를 눌러야 계약 확인이 열린다(preCheckBlocker).
+ * ★볼 결과가 없으면(대조 전 · 서류 바뀜) 「대조 없이 넘기기」★(한백 2026-11-26 「force 버튼」) — 결과를 보고 넘기는
+ * 「확인하고 넘기기」와 한 자리에 같이 서지 않는다(둘 중 하나만 — 결과가 있으면 그것을 보고 넘긴다). 넘긴 것은 현장에
+ * 붙어(project.preCheckSkipped) 다시 대조해도 그대로고, 무르는 것은 같은 자리의 「넘김 취소」다.
  */
 import { useState, type ReactNode } from 'react';
 import { useAction } from '@/lib/use-action';
@@ -72,13 +75,15 @@ function ActCell({ line }: { line: CheckLine }) {
 }
 
 export function PreInstallCheckBlock({
-  projectId, check, currentFiles, canRun, hasSheet, logRejected = false, docs, bundled = false, cpo,
+  projectId, check, currentFiles, canRun, hasSheet, logRejected = false, docs, bundled = false, skipped = null, cpo,
 }: {
   /**
    * 설치이력을 PDF 로도 냈다 — 자료를 한 묶음으로 다 냈으니 대조하지 않는다(한백 지시 2026-10-07, bundledAsPdf).
    * 대조 결과가 있으면 참고로 그대로 보이고, 계약 확인은 막지 않는다.
    */
   bundled?: boolean;
+  /** 한백이 대조 없이 넘겼다(project.preCheckSkipped) — 대조 결과가 있으면 PDF 면제처럼 참고로 보인다 */
+  skipped?: { by: string; at: string } | null;
   projectId: string;
   check: PreInstallCheck | null | undefined;
   /** 지금 설치이력·증빙 칸의 파일 주소 — 지난 대조와 다르면 「서류가 바뀜」 */
@@ -96,11 +101,19 @@ export function PreInstallCheckBlock({
 }) {
   const { busy, error, run } = useAction();
   const accepting = useAction();
+  const skipping = useAction();
   const [showAll, setShowAll] = useState(false);
 
   const stale = !!check && !sameFiles(check.files, currentFiles);
   /* 모든 줄이 보조사업(사업연도·대기번호)이면 검수하지 않는다 — 계약 확인을 막지 않는다(한백 지시 2026-10-08, subsidyOnly) */
   const subsidy = !!check?.subsidyOnly && !stale;
+  /* 대조가 계약 확인을 막지 않는 까닭이 이미 있는가 — 그때는 돌리라고 재촉하지도, 넘기는 단추를 세우지도 않는다 */
+  const exempt = bundled || subsidy || skipped !== null;
+  const skip = (on: boolean) => skipping.run({
+    url: `/api/projects/${projectId}/preinstall/check/skip`,
+    body: { skip: on },
+    fail: on ? '넘기지 못했습니다.' : '넘김을 취소하지 못했습니다.',
+  });
   const n = check ? issueCount(check, cpo) : 0;
   const m = check ? reviewCount(check) : 0;
   /* 넘긴 것은 그 결과의 일이다 — 서류가 바뀌면 넘긴 것도 같이 무효다(preCheckBlocker) */
@@ -125,8 +138,8 @@ export function PreInstallCheckBlock({
         title="서류 · 대조"
         action={canRun && (
           <CheckRunBtn
-            /* 면제(PDF 로 냄 · 보조사업 이력)면 돌릴 까닭이 없다 — 단추는 남기되 곁 단추로 */
-            due={!bundled && !subsidy && (!check || stale || (check.unread.length > 0 && !accepted))}
+            /* 면제(PDF 로 냄 · 보조사업 이력 · 대조 없이 넘김)면 돌릴 까닭이 없다 — 단추는 남기되 곁 단추로 */
+            due={!exempt && (!check || stale || (check.unread.length > 0 && !accepted))}
             done={!!check}
             blocked={!hasSheet ? '설치이력 없음 — 대조 불가' : null}
             busy={busy}
@@ -137,7 +150,10 @@ export function PreInstallCheckBlock({
         // 대조 시각은 상태 곁이다 — 단추 곁에 두면 단추 없는 사람(협력사·열람 전용)에게 시각만 떠 있었다
         meta={check ? `${stampOf(new Date(check.checkedAt))} 대조` : undefined}
       >
-        {bundled
+        {/* 넘긴 것이 먼저다 — 다른 면제가 같이 서도 「넘김 취소」가 무엇을 무르는지 보여야 한다 */}
+        {skipped
+          ? <Tag tone="ok">대조 없이 넘김 · {skipped.by} {stampOf(new Date(skipped.at))}</Tag>
+          : bundled
           ? <Tag tone="ok">PDF 로 냄 · 대조 면제</Tag>
           : subsidy
           ? <Tag tone="ok">보조사업 이력 · 대조 면제</Tag>
@@ -267,7 +283,7 @@ export function PreInstallCheckBlock({
         ★넘기는 자리는 결과 밑이다★ — 줄을 다 읽고 나서 누르는 일이다(한백 지시 2026-10-07 「한백이 확인하고
         넘긴다」). 남은 것이 없으면 이미 통과라 자리가 없고, 서류가 바뀐 결과는 넘길 수 없다.
       */}
-      {check && canRun && !stale && !bundled && !subsidy && n + m > 0 && (
+      {check && canRun && !stale && !exempt && n + m > 0 && (
         <div className="flex flex-wrap items-center gap-2">
           {accepted ? (
             <Btn kind="quiet" size="sm" busy={accepting.busy} busyLabel="취소 중…" onClick={() => accept(false)}>
@@ -279,6 +295,25 @@ export function PreInstallCheckBlock({
             </Btn>
           )}
           <Err>{accepting.error}</Err>
+        </div>
+      )}
+
+      {/*
+        ★볼 결과가 없을 때의 문 — 대조 없이 넘기기★ (한백 2026-11-26 「force 버튼」). 대조 전 · 서류가 바뀐 결과에만 선다 —
+        결과가 서 있으면 위의 「확인하고 넘기기」가 그 자리다(넘기는 단추가 둘이 되지 않게). 넘겼으면 무르는 자리만 남는다.
+      */}
+      {canRun && (skipped || (!exempt && (!check || stale))) && (
+        <div className="flex flex-wrap items-center gap-2">
+          {skipped ? (
+            <Btn kind="quiet" size="sm" busy={skipping.busy} busyLabel="취소 중…" onClick={() => skip(false)}>
+              넘김 취소
+            </Btn>
+          ) : (
+            <Btn kind="side" size="sm" busy={skipping.busy} busyLabel="넘기는 중…" onClick={() => skip(true)}>
+              대조 없이 넘기기
+            </Btn>
+          )}
+          <Err>{skipping.error}</Err>
         </div>
       )}
     </div>

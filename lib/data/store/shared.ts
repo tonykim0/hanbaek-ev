@@ -166,6 +166,9 @@ export function toProject(r: ProjectRow): Project {
     preInstall: r.preInstall as PreInstall,
     preNote: r.preNote,
     consultDup: r.consultDup ?? null,
+    preCheckSkipped: r.preCheckSkippedAt
+      ? { by: r.preCheckSkippedBy ?? '', at: new Date(r.preCheckSkippedAt).toISOString() }
+      : null,
     preChecked: r.preChecked,
     powerType: r.powerType as PowerType | null,
     replType: r.replType as ReplType | null,

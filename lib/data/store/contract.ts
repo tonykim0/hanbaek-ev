@@ -129,6 +129,8 @@ export const contractStore: Pick<
           currentFiles: checkedFilesOf(record.documents),
           // 설치이력을 PDF 로도 냈으면 대조하지 않는다(한백 지시 2026-10-07, bundledAsPdf)
           bundled: bundledAsPdf(record.documents),
+          // 한백이 대조 없이 넘겼다(2026-11-26) — 넘기기·무르기도 같은 현장 잠금을 잡는다(store/preinstall-check)
+          skipped: Boolean(record.project.preCheckSkipped),
           cpo: record.project.cpo,
         });
         if (blocker) throw new Error(`${blocker} — 기설치 대조가 끝나야 계약을 확인할 수 있습니다.`);

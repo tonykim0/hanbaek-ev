@@ -246,6 +246,14 @@ export interface ProjectRepository {
   acceptPreInstallCheck(projectId: string, checkedAt: string, accept: boolean, actor: Actor): Promise<void>;
 
   /**
+   * 기설치 대조 없이 넘긴다 · 무른다. [한백 전용]
+   *
+   * 대조 전 · 서류 바뀜처럼 볼 결과가 없어도 계약 확인을 연다(한백 2026-11-26 「force 버튼」). 결과가 아니라 현장에
+   * 붙어 다시 대조해도 그대로다 — getProject 의 project.preCheckSkipped 로 읽힌다. 보조사업이 아닌 현장은 거절한다.
+   */
+  skipPreInstallCheck(projectId: string, skip: boolean, actor: Actor): Promise<void>;
+
+  /**
    * 건축물대장 대조 결과를 남긴다 — 주차면(건축물대장·K-apt·공문 = 결과서 = 신청서 · 열람용) · 신청서 도로명 주소. [한백 전용]
    * 현장마다 마지막 하나. 대조 자체는 lib/parking-run 이 하고 여기는 저장만 한다. getProject 의 parkingCheck 로 읽힌다.
    */

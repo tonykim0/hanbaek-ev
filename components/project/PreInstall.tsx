@@ -144,6 +144,7 @@ export function PreInstall({
           hasSheet={(byKind.get('legacylog')?.files.length ?? 0) > 0}
           logRejected={byKind.get('legacylog')?.status === 'rejected'}
           bundled={bundledAsPdf([...byKind.values()])}
+          skipped={project.preCheckSkipped ?? null}
           cpo={project.cpo}
           docs={
             /*

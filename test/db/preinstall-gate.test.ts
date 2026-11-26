@@ -7,6 +7,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { POST as ACCEPT } from '@/app/api/projects/[id]/preinstall/check/accept/route';
+import { POST as SKIP } from '@/app/api/projects/[id]/preinstall/check/skip/route';
 import { getRepository } from '@/lib/data';
 import { evaluateDocs } from '@/lib/doc-rules';
 import type { PreInstallCheck } from '@/lib/preinstall-check';
@@ -109,6 +110,28 @@ describe('기설치 대조 — 계약 확인의 조건', () => {
     });
   });
 
+  it('★대조 없이 넘기면 대조 전이어도 확인한다★ — 다시 대조해도 그대로 · 무르면 다시 막힌다 (한백 2026-11-26 「force 버튼」)', async () => {
+    await withSubsidyProject(async (id) => {
+      await expect(repo.confirmContract(id, true, admin)).rejects.toThrow(/기설치 대조 전/);
+      await repo.skipPreInstallCheck(id, true, admin);
+      const skippedBy = async () => (await repo.getProject(id, viewerOf(USERS.admin)))!.project.preCheckSkipped?.by ?? null;
+      expect(await skippedBy()).toBe(admin.name);
+
+      // 넘긴 것은 결과가 아니라 현장에 붙었다 — 다시 대조해 짚을 것이 나와도 그대로다
+      await repo.savePreInstallCheck(id, checkOf(await filesNow(id), { problem: '시험 — 짚을 것 하나' }), admin);
+      expect(await skippedBy()).toBe(admin.name);
+
+      // 무르면 다시 막힌다 — 이번엔 대조 결과가 막는다
+      await repo.skipPreInstallCheck(id, false, admin);
+      expect(await skippedBy()).toBeNull();
+      await expect(repo.confirmContract(id, true, admin)).rejects.toThrow(/기설치 대조 1건 미확인/);
+
+      await repo.skipPreInstallCheck(id, true, admin);
+      await expect(repo.confirmContract(id, true, admin)).resolves.toBeUndefined();
+      expect((await repo.getProject(id, viewerOf(USERS.admin)))?.project.contractConfirmedAt).not.toBeNull();
+    });
+  });
+
   it('★보완요청 이력은 판이 끝나면 닫힌다★ — 협력사가 무르면 남고, 한백이 접수를 무르거나 확인하면 지운다 (2026-10-08)', async () => {
     await withSubsidyProject(async (id) => {
       const partner = actorOf(USERS.navy);  // 시험 현장의 영업사
@@ -160,6 +183,25 @@ describe('「확인함」 라우트의 문', () => {
       await signIn(USERS.admin);
       expect((await call(ACCEPT, { params: { id }, body: { accept: true } })).status).toBe(400);
       expect((await call(ACCEPT, { params: { id }, body: { checkedAt: 'x', accept: true } })).status).toBe(422);
+      signOut();
+    });
+  });
+});
+
+describe('「대조 없이 넘기기」 라우트의 문', () => {
+  it('협력사·열람 전용은 못 넘긴다(403) · 값이 틀리면 400 · 보조사업이 아니면 422 · 무르기는 된다', async () => {
+    await withSubsidyProject(async (id) => {
+      for (const u of [USERS.daesang, USERS.viewer]) {
+        await signIn(u);
+        expect((await call(SKIP, { params: { id }, body: { skip: true } })).status, u.id).toBe(403);
+      }
+      await signIn(USERS.admin);
+      expect((await call(SKIP, { params: { id }, body: { skip: 'yes' } })).status).toBe(400);
+      expect((await call(SKIP, { params: { id }, body: { skip: true } })).status).toBe(200);
+      // 자체투자는 기설치 대조를 하지 않는다 — 새로 넘길 것이 없다. 넘겨 둔 것을 무르는 것은 된다
+      await repo.setProjectAxes(id, { bizType: '자체투자' }, admin);
+      expect((await call(SKIP, { params: { id }, body: { skip: false } })).status).toBe(200);
+      expect((await call(SKIP, { params: { id }, body: { skip: true } })).status).toBe(422);
       signOut();
     });
   });

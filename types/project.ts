@@ -323,6 +323,12 @@ export interface Project {
    */
   consultDup?: ConsultDup | null;
   /**
+   * ★한백이 기설치 대조 없이 넘겼다★ (한백 2026-11-26 「기설치 조사에서 대조없이 넘어갈수있게 force 버튼」) — 대조가 계약 확인을
+   * 막지 않는다(lib/preinstall-check preCheckBlocker). 대조 결과의 「확인함」(accepted)과 달리 결과에 붙지 않아 다시 대조하거나
+   * 서류가 바뀌어도 그대로다 — 무르는 것은 한백의 「넘김 취소」. null 이면 넘기지 않았다. at 은 ISO 시각.
+   */
+  preCheckSkipped?: { by: string; at: string } | null;
+  /**
    * 기설치 조사를 했는가.
    *
    * ★'없음' 과 「아직 안 봤음」은 다른 것이다.★ 접수 기본값이 '없음' 이라 이 값 없이는

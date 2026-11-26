@@ -282,6 +282,12 @@ export const projects = pgTable('projects', {
    */
   preChecked: boolean('pre_checked').notNull().default(false),
   /**
+   * 한백이 기설치 대조 없이 넘겼다 — 대조가 계약 확인을 막지 않는다(migrations/0140 · lib/preinstall-check preCheckBlocker).
+   * 대조 결과(preinstall_checks)는 다시 대조하면 덮이므로 현장에 둔다. null 이면 넘기지 않았다.
+   */
+  preCheckSkippedAt: timestamp('pre_check_skipped_at', { withTimezone: true }),
+  preCheckSkippedBy: text('pre_check_skipped_by'),
+  /**
    * ★죽은 칸★ — 코드가 읽지도 쓰지도 않는다 (2026-09-03).
    *
    * 기설치 조사 반려였는데, 기설치 두 칸(설치이력·증빙)의 서류 반려와 결과가 같은

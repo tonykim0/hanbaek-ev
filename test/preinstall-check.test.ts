@@ -246,6 +246,17 @@ describe('계약 확인을 막는 대조 — 검증 필수 (한백 지시 2026-1
     expect(preCheckBlocker({ needed: true, check: left, currentFiles: files, bundled: true, cpo: HEC })).toBeNull();
   });
 
+  it('★한백이 대조 없이 넘기면 보지 않는다★ — 대조 전 · 서류 바뀜 · 남은 것이 있어도 (한백 2026-11-26 「force 버튼」)', () => {
+    const left: PreInstallCheck = { ...base, lines: [{ verdict: 'diff', row: null, act: null, actCount: null, why: null }] };
+    const skip = (check: PreInstallCheck | null, currentFiles = files) =>
+      preCheckBlocker({ needed: true, check, currentFiles, skipped: true, cpo: HEC });
+    expect(skip(null)).toBeNull();
+    expect(skip(left, [...files, 'https://x/ev2.pdf'])).toBeNull();
+    expect(skip(left)).toBeNull();
+    // 넘기지 않았으면 그대로 막는다
+    expect(preCheckBlocker({ needed: true, check: null, currentFiles: files, skipped: false, cpo: HEC })).toBe('기설치 대조 전');
+  });
+
   it('지금 파일은 설치이력·증빙 두 칸만 본다', () => {
     expect(checkedFilesOf([
       { kind: 'contract', files: [{ url: 'https://x/c.pdf' }] },

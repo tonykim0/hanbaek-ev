@@ -12,10 +12,11 @@ import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { writeAudit } from '@/lib/db/audit';
 import { documents, preinstallChecks, projects } from '@/lib/db/schema';
+import { needsPreInstallCheck } from '@/lib/doc-rules';
 import {
   CHECKED_KINDS, checkedFilesOf, issueCount, reviewCount, sameFiles, type PreInstallCheck,
 } from '@/lib/preinstall-check';
-import type { DocFile } from '@/types/project';
+import type { BizType, DocFile } from '@/types/project';
 import type { ProjectRepository } from '../repository';
 import { assertAdmin, type TxLike } from './shared';
 
@@ -29,7 +30,9 @@ export async function loadPreInstallCheck(projectId: string, tx?: TxLike): Promi
   return (row?.result as PreInstallCheck | undefined) ?? null;
 }
 
-export const preinstallCheckStore: Pick<ProjectRepository, 'savePreInstallCheck' | 'acceptPreInstallCheck'> = {
+export const preinstallCheckStore: Pick<
+  ProjectRepository, 'savePreInstallCheck' | 'acceptPreInstallCheck' | 'skipPreInstallCheck'
+> = {
   async savePreInstallCheck(projectId, check, actor): Promise<void> {
     assertAdmin(actor, '기설치 대조');
     const db = getDb();
@@ -95,6 +98,39 @@ export const preinstallCheckStore: Pick<ProjectRepository, 'savePreInstallCheck'
         field: 'preinstallCheckAccepted',
         oldValue: check.accepted ? `${check.accepted.by} ${check.accepted.at}` : null,
         newValue: accepted ? `${accepted.by} ${accepted.at}` : null,
+      });
+    });
+  },
+
+  /**
+   * 「대조 없이 넘기기」 · 「넘김 취소」 (한백 2026-11-26 「기설치 조사에서 대조없이 넘어갈수있게 force 버튼」).
+   *
+   * ★결과가 아니라 현장에 적는다★ — 다시 대조하면 결과를 덮는다(savePreInstallCheck). 그래서 「확인함」과 달리 다시
+   * 대조하거나 서류가 바뀌어도 그대로다. 계약 확인과 같은 현장 잠금 안에서 쓴다 — 확인과 겹치면 한쪽이 다른 쪽을 본다.
+   * 기설치 대조를 하지 않는 현장(보조사업 아님)은 넘길 것이 없다. 무르는 것은 언제든 된다.
+   */
+  async skipPreInstallCheck(projectId, skip, actor): Promise<void> {
+    assertAdmin(actor, '기설치 대조 없이 넘기기');
+    await getDb().transaction(async (tx) => {
+      await lockProject(tx, projectId);
+      const [p] = await tx.select({
+        bizType: projects.bizType, at: projects.preCheckSkippedAt, by: projects.preCheckSkippedBy,
+      }).from(projects).where(eq(projects.id, projectId)).limit(1);
+      if (!p) throw new Error('현장을 찾을 수 없습니다.');
+      if (skip && !needsPreInstallCheck(p.bizType as BizType | null)) {
+        throw new Error('기설치 대조를 하지 않는 현장입니다 — 넘길 것이 없습니다.');
+      }
+      if (Boolean(p.at) === skip) return;
+      const at = skip ? new Date() : null;
+      await tx.update(projects)
+        .set({ preCheckSkippedAt: at, preCheckSkippedBy: skip ? actor.name : null })
+        .where(eq(projects.id, projectId));
+      await writeAudit(tx, {
+        projectId, actor,
+        action: skip ? '기설치 대조 없이 넘김' : '기설치 대조 없이 넘김 취소',
+        field: 'preCheckSkipped',
+        oldValue: p.at ? `${p.by ?? ''} ${new Date(p.at).toISOString()}` : null,
+        newValue: at ? `${actor.name} ${at.toISOString()}` : null,
       });
     });
   },

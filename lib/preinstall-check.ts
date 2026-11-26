@@ -374,6 +374,10 @@ export function bundledAsPdf(documents: Array<{ kind: string; files: Array<{ nam
  *   · 남아 있어도 한백이 그 결과를 보고 「확인함」으로 넘김(accepted)
  * 파일이 바뀌면 둘 다 무효다 — 확인한 것은 그때의 서류다.
  *
+ * ★한백이 대조 없이 넘기면 보지 않는다★ (skipped · 한백 2026-11-26 「기설치 조사에서 대조없이 넘어갈수있게 force 버튼」) —
+ * 대조 전 · 서류 바뀜처럼 볼 결과가 없을 때 쓰는 문이다. 결과가 아니라 현장에 붙어(projects.pre_check_skipped_*) 다시 대조하거나
+ * 서류가 바뀌어도 그대로고, 무르는 것은 한백의 「넘김 취소」다.
+ *
  * 글은 계약 확인 단추 이름에 그대로 붙는다(「… — 계약 확인 불가」, 화면 규칙 3).
  */
 export function preCheckBlocker(input: {
@@ -384,10 +388,12 @@ export function preCheckBlocker(input: {
   currentFiles: string[];
   /** 설치이력을 PDF 로도 냈다 — 대조하지 않는다(bundledAsPdf) */
   bundled?: boolean;
+  /** 한백이 대조 없이 넘겼다(project.preCheckSkipped) */
+  skipped?: boolean;
   /** 현장의 운영사 — 운영사 직인을 받는지 가른다(operatorSealNeeded) */
   cpo: string;
 }): string | null {
-  if (!input.needed || input.bundled) return null;
+  if (!input.needed || input.bundled || input.skipped) return null;
   const c = input.check;
   if (!c) return '기설치 대조 전';
   if (!sameFiles(c.files, input.currentFiles)) return '기설치 서류 바뀜 — 다시 대조';
