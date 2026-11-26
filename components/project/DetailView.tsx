@@ -17,7 +17,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { BatchFinal, ContractState, NoteScope, ProjectDetail, SettlementRuleChoice } from '@/types/project';
 import {
-  BIZ_TYPES, bizLabel, CPO_NAMES, INSTALL_LOCS, POWER_TYPES, subsidized, TERM_YEARS,
+  bizChoicesOf, bizFactLabel, CPO_NAMES, INSTALL_LOCS, POWER_TYPES, subsidized, TERM_YEARS,
 } from '@/types/project';
 import { isPassThroughSite, safetyFeeApplies } from '@/lib/settlement';
 import { useAction } from '@/lib/use-action';
@@ -684,15 +684,19 @@ function SiteHeader({
           placeholder="비우면 어느 업체도 아닌 현장"
           suggestions={knownOrgs}
         />
+        {/*
+          * 사업구분을 바꾸면 교체유형도 따라간다(저장소 setProjectAxes · types/project replOfBiz) — SK · 에버온은 자체투자의
+          * 단가가 제자리교체 · 신규위치로 갈려 후보가 그 둘이다(그냥 「자체투자」는 저장소가 거절한다)
+          */}
         <EditableFact
           label="사업구분"
-          value={bizLabel(project.bizType)}
+          value={bizFactLabel(project.cpo, project.bizType, project.replType)}
           canEdit={canEditAxes}
           lockNote={lockNote}
           url={`/api/projects/${project.id}/axes`}
           field="bizType"
           empty="미지정"
-          suggestions={BIZ_TYPES.map((b) => bizLabel(b))}
+          suggestions={bizChoicesOf(project.cpo)}
         />
       </dl>
 

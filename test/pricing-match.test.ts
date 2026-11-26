@@ -8,7 +8,9 @@ import { describe, expect, it } from 'vitest';
 import {
   cellsOf, checkPricingRule, duplicateOf, isSplitSibling, matchingRules, normalizePricingRule, pricingRuleId, splitSiblingsOf, startKey,
 } from '@/lib/pricing-match';
-import { bizLabel, bizTypeOf, powerTypesOfRepl, replLabel, SPLITS_SELF_REPL } from '@/types/project';
+import {
+  bizChoiceOf, bizChoicesOf, bizFactLabel, bizLabel, bizTypeOf, powerTypesOfRepl, replLabel, replOfBiz, SPLITS_SELF_REPL,
+} from '@/types/project';
 import type { NewPricingRule, PricingRule } from '@/types/project';
 
 const 케이스 = (o: Partial<PricingRule>): PricingRule => ({
@@ -251,6 +253,46 @@ describe('bizLabel · bizTypeOf — 사업구분은 화면에만 「기후부」
     expect(bizTypeOf('자체투자')).toBe('자체투자');
     expect(bizTypeOf('기후부 신규')).toBeNull();
     expect(bizTypeOf('')).toBeNull();
+  });
+});
+
+/*
+ * 교체유형은 사업구분을 따라간다 (2026-11-26 — 사업구분만 자체투자로 바꾼 운영 현장 6곳에 「환경부 신규」가 남아 단가 후보에
+ * 기후부 케이스가 떴다 · store setProjectAxes)
+ */
+describe('replOfBiz · bizChoiceOf — 사업구분을 바꾸면 교체유형도', () => {
+  it('기후부는 「환경부 신규」, 연동은 「기설치 연동」 하나뿐이다', () => {
+    expect(replOfBiz('현대엔지니어링', '환경부', null, '자체투자 (제자리교체)')).toBe('환경부 신규');
+    expect(replOfBiz('SK일렉링크', '기설치 연동', null, '환경부 신규')).toBe('기설치 연동');
+  });
+
+  it('자체투자 — 안 가르는 운영사는 제자리교체 · 가르는 운영사(SK · 에버온)는 골라야 한다(null)', () => {
+    expect(replOfBiz('현대엔지니어링', '자체투자', null, '환경부 신규')).toBe('자체투자 (제자리교체)');
+    expect(replOfBiz('SK일렉링크', '자체투자', null, '환경부 신규')).toBeNull();
+    expect(replOfBiz('에버온', '자체투자', null, null)).toBeNull();
+    expect(replOfBiz('SK일렉링크', '자체투자', '자체투자 (신규위치)', '환경부 신규')).toBe('자체투자 (신규위치)');
+  });
+
+  it('이미 자체투자인 지금 값은 지킨다 · 안 가르는 운영사의 신규위치는 제자리교체로 눕는다', () => {
+    expect(replOfBiz('SK일렉링크', '자체투자', null, '자체투자 (신규위치)')).toBe('자체투자 (신규위치)');
+    expect(replOfBiz('플러그링크', '자체투자', '자체투자 (신규위치)', null)).toBe('자체투자 (제자리교체)');
+  });
+
+  it('머리말의 후보 — SK · 에버온만 자체투자 자리에 두 값이 서고, 적은 글은 사업구분 + 교체유형으로 읽힌다', () => {
+    expect(bizChoicesOf('현대엔지니어링')).toEqual(['기후부', '자체투자', '기설치 연동']);
+    expect(bizChoicesOf('SK일렉링크')).toEqual(['기후부', '자체투자 (제자리교체)', '자체투자 (신규위치)', '기설치 연동']);
+    expect(bizChoiceOf(' 자체투자 (신규위치) ')).toEqual({ bizType: '자체투자', replType: '자체투자 (신규위치)' });
+    expect(bizChoiceOf('기후부')).toEqual({ bizType: '환경부', replType: null });
+    expect(bizChoiceOf('자체투자')).toEqual({ bizType: '자체투자', replType: null });
+    expect(bizChoiceOf('기후부 신규')).toBeNull();
+  });
+
+  it('머리말에 적는 값 — 가르는 운영사의 자체투자만 교체유형까지', () => {
+    expect(bizFactLabel('SK일렉링크', '자체투자', '자체투자 (신규위치)')).toBe('자체투자 (신규위치)');
+    expect(bizFactLabel('현대엔지니어링', '자체투자', '자체투자 (제자리교체)')).toBe('자체투자');
+    expect(bizFactLabel('SK일렉링크', '환경부', '환경부 신규')).toBe('기후부');
+    expect(bizFactLabel('SK일렉링크', '자체투자', null)).toBe('자체투자');
+    expect(bizFactLabel('SK일렉링크', null, null)).toBeNull();
   });
 });
 

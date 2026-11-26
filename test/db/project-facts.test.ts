@@ -230,6 +230,59 @@ describe('단가·흐름의 축 고치기', () => {
     }, { bizType: '자체투자' });
   });
 
+  /*
+   * ★교체유형은 사업구분을 따라간다★ (2026-11-26) — 사업구분만 자체투자로 바꾼 운영 현장 6곳의 현장 · 라인에 「환경부 신규」가
+   * 남아, 단가 후보가 기후부 케이스를 맞는 후보로 띄웠다(한 곳은 실제로 그 케이스에 붙어 있었다 · types/project replOfBiz).
+   */
+  const subsidy = {
+    cpo: '현대엔지니어링' as const, bizType: '환경부' as const, replType: '환경부 신규' as const,
+    lines: [{ termYears: 7, qty: 2, powerType: null, replType: '환경부 신규' as const, memo: null }],
+  };
+  const replsOf = async (id: string) => {
+    const d = (await repo.getProject(id, { role: 'admin', org: null }))!;
+    return [d.project.replType, ...d.lines.map((l) => l.replType)];
+  };
+
+  it('★사업구분을 바꾸면 현장 · 라인의 교체유형도 따라간다★', async () => {
+    await withProject(async (id) => {
+      await repo.setProjectAxes(id, { bizType: '자체투자' }, admin);
+      expect(await replsOf(id)).toEqual(['자체투자 (제자리교체)', '자체투자 (제자리교체)']);
+      await repo.setProjectAxes(id, { bizType: '기후부' as never }, admin);
+      expect(await replsOf(id)).toEqual(['환경부 신규', '환경부 신규']);
+    }, subsidy);
+  });
+
+  it('SK · 에버온의 자체투자는 제자리교체 · 신규위치를 고른다 — 그냥 「자체투자」는 거절', async () => {
+    await withProject(async (id) => {
+      await expect(repo.setProjectAxes(id, { bizType: '자체투자' }, admin)).rejects.toThrow(/제자리교체 · 신규위치/);
+      expect((await factOf(id)).bizType).toBe('환경부');
+
+      await repo.setProjectAxes(id, { bizType: '자체투자 (신규위치)' as never }, admin);
+      expect((await factOf(id)).bizType).toBe('자체투자');
+      expect(await replsOf(id)).toEqual(['자체투자 (신규위치)', '자체투자 (신규위치)']);
+
+      // 사업구분은 그대로 교체유형만 고친다 · 「자체투자」만 보내면 지금 값 그대로다
+      await repo.setProjectAxes(id, { bizType: '자체투자 (제자리교체)' as never }, admin);
+      await repo.setProjectAxes(id, { bizType: '자체투자' }, admin);
+      expect(await replsOf(id)).toEqual(['자체투자 (제자리교체)', '자체투자 (제자리교체)']);
+    }, { ...subsidy, cpo: 'SK일렉링크' });
+  });
+
+  it('묶음마다 교체유형이 다른 현장은 교체유형 하나로 덮지 않는다 — 사업구분이 바뀌면 다 같이 간다', async () => {
+    await withProject(async (id) => {
+      await expect(repo.setProjectAxes(id, { bizType: '자체투자 (신규위치)' as never }, admin)).rejects.toThrow(/묶음마다/);
+      expect(await replsOf(id)).toEqual(['자체투자 (제자리교체)', '자체투자 (제자리교체)', '자체투자 (신규위치)']);
+      await repo.setProjectAxes(id, { bizType: '기후부' as never }, admin);
+      expect(await replsOf(id)).toEqual(['환경부 신규', '환경부 신규', '환경부 신규']);
+    }, {
+      cpo: 'SK일렉링크', bizType: '자체투자', replType: '자체투자 (제자리교체)',
+      lines: [
+        { termYears: 7, qty: 2, powerType: null, replType: '자체투자 (제자리교체)', memo: null },
+        { termYears: 7, qty: 1, powerType: null, replType: '자체투자 (신규위치)', memo: null },
+      ],
+    });
+  });
+
   it('목록 밖의 값은 거절한다', async () => {
     await withProject(async (id) => {
       await expect(repo.setProjectAxes(id, { cpo: '없는운영사' as never }, admin)).rejects.toThrow(/운영사/);

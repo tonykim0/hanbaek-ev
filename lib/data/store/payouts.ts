@@ -33,7 +33,7 @@ import type {
   BizType, CpoName, NewPayoutEntry, NoticeFile, PayoutCategory, PayoutKind, PayoutRow,
   ReplType, SettlementStep, SettlementSummary,
 } from '@/types/project';
-import { BIZ_TYPES, bizLabel, bizTypeOf, CPO_NAMES, normalizeRepl, POWER_TYPES, TERM_YEARS } from '@/types/project';
+import { BIZ_TYPES, bizChoiceOf, bizLabel, CPO_NAMES, normalizeRepl, POWER_TYPES, replOfBiz, TERM_YEARS } from '@/types/project';
 import type { Actor, PaymentPatch, ProjectRepository } from '../repository';
 import {
   accessWhere, assertAdmin, lockReceivable, recordsOf, resolveSettlementRule, ruleMap, settleMap, stepsNow,
@@ -102,11 +102,14 @@ export const payoutStore: Pick<
     if (patch.cpo !== undefined && !(CPO_NAMES as readonly string[]).includes(patch.cpo)) {
       throw new Error(`운영사는 ${CPO_NAMES.join('·')} 중 하나입니다.`);
     }
+    let chosenRepl: ReplType | null = null;
     if (patch.bizType !== undefined) {
-      // 머리말의 「사업구분」은 화면 이름(기후부)을 보낸다 — 저장값(환경부)으로 받는다(types/project bizTypeOf)
-      const biz = typeof patch.bizType === 'string' ? bizTypeOf(patch.bizType) : null;
-      if (!biz) throw new Error(`사업구분은 ${BIZ_TYPES.map((b) => bizLabel(b)).join('·')} 중 하나입니다.`);
-      patch = { ...patch, bizType: biz };
+      // 머리말의 「사업구분」은 화면 이름(기후부)을 보낸다 — 저장값(환경부)으로 받는다. SK · 에버온은 「자체투자 (신규위치)」처럼
+      // 교체유형까지 고른다(types/project bizChoiceOf · replOfBiz)
+      const choice = typeof patch.bizType === 'string' ? bizChoiceOf(patch.bizType) : null;
+      if (!choice) throw new Error(`사업구분은 ${BIZ_TYPES.map((b) => bizLabel(b)).join('·')} 중 하나입니다.`);
+      chosenRepl = choice.replType;
+      patch = { ...patch, bizType: choice.bizType };
     }
     if (patch.powerType != null && !(POWER_TYPES as readonly string[]).includes(patch.powerType)) {
       throw new Error(`수전방식은 ${POWER_TYPES.join('·')} 중 하나입니다.`);
@@ -121,7 +124,21 @@ export const payoutStore: Pick<
       const bizType = (patch.bizType ?? row.bizType) as BizType | null;
       const powerType = 'powerType' in patch ? patch.powerType ?? null : row.powerType;
 
-      const moved = cpo !== row.cpo || bizType !== row.bizType || powerType !== row.powerType;
+      /*
+       * ★교체유형은 사업구분을 따라간다★ (2026-11-26 — 사업구분만 자체투자로 바꾼 현장 6곳에 「환경부 신규」가 남아 단가
+       * 후보에 기후부 케이스가 떴다 · types/project replOfBiz). 사업구분이 바뀌었거나 교체유형을 골랐을 때만이다 — 그 밖에는
+       * 운영사로만 눕힌다(안 가르는 운영사의 「신규위치」는 제자리교체다).
+       */
+      const bizMoved = bizType !== row.bizType;
+      const replChosen = bizType !== null && (bizMoved || chosenRepl !== null);
+      const replType = replChosen
+        ? replOfBiz(cpo, bizType, chosenRepl, row.replType as ReplType | null)
+        : normalizeRepl(cpo, row.replType as ReplType | null);
+      if (replChosen && replType === null) {
+        throw new Error(`${cpo} 의 자체투자는 제자리교체 · 신규위치로 단가가 갈립니다 — 「자체투자 (제자리교체)」 · 「자체투자 (신규위치)」 중 하나를 고르세요.`);
+      }
+
+      const moved = cpo !== row.cpo || bizMoved || powerType !== row.powerType || (replChosen && replType !== row.replType);
       if (!moved) return;
 
       // 축이 움직이면 금액이 따라 움직인다 — 굳은 현장에서는 못 바꾼다
@@ -147,8 +164,18 @@ export const payoutStore: Pick<
         }
       }
 
-      /* 안 가르는 운영사의 「신규위치」는 제자리교체다 — 운영사가 바뀌면 다시 눕힌다 */
-      const replType = normalizeRepl(cpo, row.replType as ReplType | null);
+      const lines = await tx
+        .select({ id: contractLines.id, powerType: contractLines.powerType, replType: contractLines.replType })
+        .from(contractLines)
+        .where(eq(contractLines.projectId, projectId));
+
+      /*
+       * 사업구분은 그대로인데 교체유형만 고르면(SK 의 제자리교체 → 신규위치) 라인을 그 값 하나로 덮는다 — 묶음마다 다르게 둔
+       * 현장(한 현장에 제자리교체와 신규위치가 섞인다 — ContractLine.replType)은 덮으면 나눠 둔 것이 사라지니 거절한다.
+       */
+      if (replChosen && !bizMoved && new Set(lines.map((l) => l.replType).filter((r) => r !== null)).size > 1) {
+        throw new Error('묶음마다 교체유형이 다른 현장입니다 — 한 값으로 덮지 않습니다.');
+      }
 
       await tx.update(projects).set({ cpo, bizType, powerType, replType }).where(eq(projects.id, projectId));
 
@@ -162,16 +189,15 @@ export const payoutStore: Pick<
        *
        * ★단가 지정은 축이 움직인 라인만 푼다★ — 운영사·사업구분이 바뀌면 전부(붙어 있던 케이스가 이 현장과 안 맞는다),
        * 그 밖에는 라인의 수전·교체유형이 실제로 바뀐 라인만. 겸용으로 바꿔 라인이 그대로면 단가도 그대로다.
+       *
+       * ★교체유형도 라인을 따라간다★ — 사업구분이 바뀌었거나 골랐으면 라인도 현장과 같은 값이다(비어 있는 라인은 현장 값을
+       * 따르니 그대로 둔다). 단가 후보는 라인의 교체유형으로 선다.
        */
-      const lines = await tx
-        .select({ id: contractLines.id, powerType: contractLines.powerType, replType: contractLines.replType })
-        .from(contractLines)
-        .where(eq(contractLines.projectId, projectId));
-      const allMoved = cpo !== row.cpo || bizType !== row.bizType;
+      const allMoved = cpo !== row.cpo || bizMoved;
       let released = 0;
       for (const l of lines) {
         const nextPower = powerType !== row.powerType && powerType !== '한전불입+모자분리' ? powerType : l.powerType;
-        const nextRepl = normalizeRepl(cpo, l.replType as ReplType | null);
+        const nextRepl = replChosen && l.replType !== null ? replType : normalizeRepl(cpo, l.replType as ReplType | null);
         if (!allMoved && nextPower === l.powerType && nextRepl === l.replType) continue;
         released += 1;
         await tx
@@ -182,6 +208,7 @@ export const payoutStore: Pick<
 
       for (const [field, before, after] of [
         ['cpo', row.cpo, cpo], ['bizType', row.bizType, bizType], ['powerType', row.powerType, powerType],
+        ['replType', row.replType, replType],
       ] as Array<[string, unknown, unknown]>) {
         if (before === after) continue;
         await writeAudit(tx, {

@@ -207,6 +207,53 @@ export function normalizeRepl<T extends ReplType | null>(cpo: CpoName, repl: T):
     : repl) as T;
 }
 
+/** 자체투자를 가르는 운영사가 머리말 「사업구분」에서 고르는 두 값 — 저장값(교체유형) 그대로다 */
+const SELF_REPL_CHOICES = ['자체투자 (제자리교체)', '자체투자 (신규위치)'] as const satisfies readonly ReplType[];
+
+/**
+ * 사업구분이 정해질 때의 교체유형 — ★교체유형이 사업구분을 정하므로(bizTypeOfRepl) 둘은 같이 간다★.
+ *
+ * 2026-11-26 — 머리말에서 사업구분만 기후부 → 자체투자로 바꾼 운영 현장 6곳의 교체유형이 「환경부 신규」로 남아 있었다
+ * (현장 · 라인 둘 다). 금액은 한백이 자체투자 케이스를 손으로 붙여 맞았지만, 단가 후보는 라인의 교체유형으로 서서 기후부
+ * 케이스가 맞는 후보로 떴고 한 곳은 실제로 그 케이스에 붙어 있었다.
+ *
+ * 기후부는 「환경부 신규」, 연동은 「기설치 연동」 하나뿐이다. 자체투자는 고른 것 → 이미 자체투자인 지금 값 → 안 가르는
+ * 운영사면 제자리교체(replTypesOf 의 대표값). ★가르는 운영사(SK · 에버온)가 고르지 않았으면 null★ — 제자리교체로 눕히면
+ * 신규위치 현장이 조용히 다른 단가 후보를 받는다(SPLITS_SELF_REPL 주석의 2026-09-17). 부르는 쪽이 거절한다.
+ */
+export function replOfBiz(cpo: CpoName, bizType: BizType, chosen: ReplType | null, current: ReplType | null): ReplType | null {
+  if (bizType === '환경부') return '환경부 신규';
+  if (bizType === '기설치 연동') return '기설치 연동';
+  if (chosen && bizTypeOfRepl(chosen) === '자체투자') return normalizeRepl(cpo, chosen);
+  if (current && bizTypeOfRepl(current) === '자체투자') return normalizeRepl(cpo, current);
+  return SPLITS_SELF_REPL.has(cpo) ? null : '자체투자 (제자리교체)';
+}
+
+/**
+ * 머리말 「사업구분」에 적은 값 — 사업구분과, 고른 교체유형. 모르는 글이면 null.
+ *
+ * 화면 이름(기후부)과 저장값(환경부)을 둘 다 받고(bizTypeOf), SK · 에버온 후보의 「자체투자 (제자리교체)」 ·
+ * 「자체투자 (신규위치)」는 사업구분 자체투자 + 그 교체유형이다(bizChoicesOf · replOfBiz).
+ */
+export function bizChoiceOf(input: string): { bizType: BizType; replType: ReplType | null } | null {
+  const s = input.trim();
+  const repl = SELF_REPL_CHOICES.find((r) => r === s);
+  if (repl) return { bizType: '자체투자', replType: repl };
+  const bizType = bizTypeOf(s);
+  return bizType ? { bizType, replType: null } : null;
+}
+
+/** 머리말 「사업구분」의 후보 — 자체투자를 가르는 운영사는 자체투자 자리에 두 값을 세운다(bizChoiceOf) */
+export function bizChoicesOf(cpo: CpoName): string[] {
+  return BIZ_TYPES.flatMap((b) => (b === '자체투자' && SPLITS_SELF_REPL.has(cpo) ? [...SELF_REPL_CHOICES] : [bizLabel(b)]));
+}
+
+/** 머리말 「사업구분」에 적을 값 — 가르는 운영사의 자체투자는 교체유형까지 적는다(후보와 같은 이름이라 「수정」의 입력칸이 후보 그대로 든다) */
+export function bizFactLabel(cpo: CpoName, bizType: BizType | null, repl: ReplType | null): string | null {
+  if (bizType === '자체투자' && SPLITS_SELF_REPL.has(cpo) && repl && bizTypeOfRepl(repl) === '자체투자') return repl;
+  return bizLabel(bizType);
+}
+
 /**
  * 환경부 보조금을 받는 사업인가 — 대기번호·기설치 조사가 이것으로 갈린다.
  *
