@@ -5,8 +5,9 @@
  * (lib/agents/mail-send — 「승인하고 보내기」와 같은 길). 한백 2026-11-05 「내일 오전 9시에 보내달라」 → 「A로 충분해」. Vercel Hobby 의
  * 크론은 하루 한 번 · 정시에서 59분까지 늦게 돌아서 「9시대」다(lib/agents/mail-schedule).
  *
- * 보낸 사람(감사기록 · 카드의 「승인」)은 예약한 한백이다 — 「○○ (예약)」. 보내지 못한 것은 카드에 「보내지 못함」으로 남고
- * [mail] 로그가 감시를 울린다 — 한백이 고쳐서 다시 보낸다. 같은 메일이 두 번 불려도 한 번만 나간다(저장소의 줄 잠금 · 「보내는 중」).
+ * 보낸 사람(감사기록 · 카드의 「승인」)은 예약한 한백이다 — 「○○ (예약)」. 보내면 그 담당의 대화에 「예약한 메일을 보냈습니다」,
+ * 보내지 못한 것은 카드에 「보내지 못함」 · 대화에 「예약한 메일을 보내지 못했습니다」와 까닭이 서고(lib/agents/mail-say) [mail] 로그가
+ * 감시를 울린다 — 한백이 고쳐서 다시 보낸다. 같은 메일이 두 번 불려도 한 번만 나간다(저장소의 줄 잠금 · 「보내는 중」).
  *
  * ★CRON_SECRET 으로만 연다★ — /api/cron/agents 와 같다(값이 없으면 [cron] 500 · 미들웨어는 api 를 안 본다 · 넘기기도 비킨다).
  */
@@ -54,13 +55,13 @@ export async function GET(request: Request) {
       } catch (e) {
         const why = e instanceof Error ? e.message : '메일 연결을 풀지 못했습니다.';
         await repo.claimAgentMail(ref, actor);
-        await repo.finishAgentMail({ ...ref, result: { ok: false, error: why } }, actor);
+        await repo.finishAgentMail({ ...ref, result: { ok: false, error: why }, scheduled: true }, actor);
         failed.push(m.id);
         console.error('[mail] 예약 보내기 실패 — 메일 연결', m.agentId, m.id, why);
         continue;
       }
       try {
-        await sendAgentMail(ref, actor);
+        await sendAgentMail(ref, actor, { scheduled: true });
         sent += 1;
       } catch (e) {
         failed.push(m.id);

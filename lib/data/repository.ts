@@ -759,11 +759,15 @@ export interface ProjectRepository {
   projectMails(projectId: string, kind: string, actor: Actor): Promise<AgentMail[]>;
   /** 사전현장컨설팅 결과서 「6. 중복설치」를 읽은 것을 현장에 남긴다(lib/consult-dup-run) [한백 관리자 · 자동 대조] */
   saveConsultDup(projectId: string, value: ConsultDup, actor: Actor): Promise<void>;
-  /** 보낸 뒤 닫는다 — 보냄(감사기록 · 주간 기록) 또는 보내지 못함(다시 보낼 수 있다) */
+  /**
+   * 보낸 뒤 닫는다 — 보냄(감사기록 · 주간 기록 · 그 담당의 대화에 한 줄) 또는 보내지 못함(다시 보낼 수 있다).
+   * scheduled 는 예약 보내기(크론)가 부른 것 — 대화의 말이 「예약한 메일」이 되고, 못 보낸 것도 대화에 남는다(lib/agents/mail-say)
+   */
   finishAgentMail(
     input: {
       agentId: string; id: string;
       result: { ok: true; from: string; ref: string } | { ok: false; error: string };
+      scheduled?: boolean;
     },
     actor: Actor
   ): Promise<AgentMail>;

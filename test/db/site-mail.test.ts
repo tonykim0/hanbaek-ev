@@ -172,6 +172,12 @@ describe('현대엔지니어링 설치승인서 메일', () => {
         const closed = await getDb().select().from(auditLog)
           .where(and(eq(auditLog.projectId, id), eq(auditLog.action, '에이전트 할 일 끝냄')));
         expect(closed).toHaveLength(1);
+        // 현대엔지니어링 담당의 대화에 「보냈습니다」 — 그 현장으로 가는 고리 · 끝낸 할 일과 함께(lib/agents/mail-say)
+        const said = t.messages.find((m) => m.body.startsWith('메일을 보냈습니다 — '));
+        expect(said?.agentId).toBe('op-hec');
+        expect(said?.body).toContain(`받는 사람 hec-${RUN}@example.com`);
+        expect(said?.body).toContain('첨부 1개 — 설치승인서.pdf');
+        expect(said?.meta).toMatchObject({ site: { id }, done: [t.tasks[0].title] });
       } finally {
         await clean(id);
       }

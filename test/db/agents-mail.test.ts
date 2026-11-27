@@ -15,7 +15,7 @@ import { POST as sendMail } from '@/app/api/agents/[id]/mails/[mailId]/send/rout
 import { DELETE as disconnect, POST as connect } from '@/app/api/agents/mail-account/route';
 import { getRepository } from '@/lib/data';
 import { getDb } from '@/lib/db/client';
-import { agentMails, auditLog, mailAccounts } from '@/lib/db/schema';
+import { agentMails, agentMessages, auditLog, mailAccounts } from '@/lib/db/schema';
 import { getSecret } from '@/lib/auth/secret';
 import { unseal } from '@/lib/agents/secret-box';
 import { mondayOf } from '@/lib/agents/weeks';
@@ -53,12 +53,14 @@ beforeAll(async () => {
 afterAll(async () => {
   const db = getDb();
   await db.delete(agentMails).where(like(agentMails.subject, `%${RUN}%`));
+  /* 보낸 뒤 담당의 대화에 선 말(lib/agents/mail-say) — 제목에 실행 표지가 든다 */
+  await db.delete(agentMessages).where(and(eq(agentMessages.role, 'auto'), like(agentMessages.body, `%${RUN}%`)));
   await db.delete(mailAccounts).where(eq(mailAccounts.id, 'mail'));
   if (saved) await db.insert(mailAccounts).values(saved);
   await db.delete(mailAccounts).where(eq(mailAccounts.id, 'mail-solar'));
   if (savedSolar) await db.insert(mailAccounts).values(savedSolar);
   await db.delete(auditLog).where(and(
-    or(like(auditLog.action, '에이전트 메일%'), like(auditLog.action, '메일 계정%')),
+    or(like(auditLog.action, '에이전트 메일%'), like(auditLog.action, '메일 계정%'), eq(auditLog.action, '에이전트 자동')),
     or(like(auditLog.newValue, `%${RUN}%`), like(auditLog.oldValue, `%${RUN}%`)),
   ));
 });
@@ -84,6 +86,10 @@ async function draft(over: Partial<{ to: unknown; subject: string }> = {}): Prom
 }
 
 const ref = (mailId: string) => ({ id: AGENT, mailId });
+
+/** 그 제목을 말한 담당의 자동 말 — 메일을 보낸 뒤 대화에 서는 한 줄(lib/agents/mail-say) */
+const saidAbout = (subject: string) => getDb().select().from(agentMessages)
+  .where(and(eq(agentMessages.role, 'auto'), like(agentMessages.body, `%${subject}%`)));
 
 describe('초안 — 누가 · 무엇을', () => {
   it('협력사 · 열람 전용은 고치지도 보내지도 연결하지도 못한다(403) · 저장소도 관리자만', async () => {
@@ -207,6 +213,16 @@ describe('승인하고 보내기', () => {
     const week = await repo.getAgent(AGENT, admin, { week: mondayOf(today()) });
     expect(week.weeks.find((w) => w.start === mondayOf(today()))?.mails).toBeGreaterThanOrEqual(1);
     expect(week.week?.events.some((e) => e.kind === 'mail-sent' && e.title.includes(`${mark} 11월 기성 청구`))).toBe(true);
+
+    // 그 담당의 대화에 「보냈습니다」 한 줄 — 한 번 보냈으니 한 줄(다시 누른 것은 거절이라 말하지 않는다)
+    const said = await saidAbout(`${mark} 11월 기성 청구`);
+    expect(said).toHaveLength(1);
+    expect(said[0]).toMatchObject({ agentId: AGENT, role: 'auto' });
+    expect(said[0].body).toBe([
+      `메일을 보냈습니다 — ${mark} 11월 기성 청구`,
+      '받는 사람 ops@example.com · 참조 boss@example.com',
+      `보낸 주소 ${SENDER} (승인 ${USERS.admin.name}) — 메일 서버가 받았습니다. 받는 쪽에서 반송되면 이 메일함으로 옵니다.`,
+    ].join('\n'));
   });
 
   it('두 창에서 같이 눌러도 한 통만 나간다', async () => {
@@ -230,9 +246,12 @@ describe('승인하고 보내기', () => {
     expect(row.status).toBe('failed');
     expect(row.error).toBe('메일 서버가 받는 사람을 받지 않았습니다: ops@example.com — 5.1.1 No such user');
 
+    // 누른 것은 까닭이 단추 옆에 뜨므로 대화에는 말하지 않는다 — 나가면 그때 한 줄
+    expect(await saidAbout(`${mark} 거절`)).toHaveLength(0);
     const retry = await call(sendMail, { params: ref(id) });
     expect(retry.status).toBe(200);
     expect(smtp.send).toHaveBeenCalledTimes(2);
+    expect((await saidAbout(`${mark} 거절`)).map((m) => m.body.split('\n')[0])).toEqual([`메일을 보냈습니다 — ${mark} 거절`]);
   });
 
   it('끊으면 줄이 사라진다 — 초안은 남는다', async () => {
@@ -338,6 +357,12 @@ describe('예약 보내기 (migrations/0123 · lib/agents/mail-schedule · /api/
       expect(sentRow).toMatchObject({ status: 'sent', sentBy: `${USERS.admin.name} (예약)` });
       const [laterRow] = await getDb().select().from(agentMails).where(eq(agentMails.id, later));
       expect(laterRow.status).toBe('scheduled');
+      // 아침에 나간 것은 대화에 「예약한 메일을 보냈습니다」 — 예약한 사람 이름으로
+      const said = await saidAbout(`${mark} 때가 된 예약`);
+      expect(said).toHaveLength(1);
+      expect(said[0].body.split('\n')[0]).toBe(`예약한 메일을 보냈습니다 — ${mark} 때가 된 예약`);
+      expect(said[0].body).toContain(`(예약 ${USERS.admin.name})`);
+      expect(await saidAbout(`${mark} 아직인 예약`)).toHaveLength(0);
 
       const calls = smtp.send.mock.calls.length;
       await cron(`Bearer cron-${RUN}`);
@@ -361,6 +386,12 @@ describe('예약 보내기 (migrations/0123 · lib/agents/mail-schedule · /api/
       const [row] = await getDb().select().from(agentMails).where(eq(agentMails.id, id));
       expect(row.status).toBe('failed');
       expect(row.error).toContain('메일 연결 전');
+      // 예약은 아무도 보고 있지 않다 — 대화에 까닭을 남긴다
+      const said = await saidAbout(`${mark} 끊긴 예약`);
+      expect(said).toHaveLength(1);
+      expect(said[0].body.split('\n')[0]).toBe(`예약한 메일을 보내지 못했습니다 — ${mark} 끊긴 예약`);
+      expect(said[0].body).toContain('까닭: ');
+      expect(said[0].body).toContain('메일 연결 전');
     } finally {
       process.env.CRON_SECRET = before;
     }

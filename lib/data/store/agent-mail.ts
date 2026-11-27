@@ -8,7 +8,8 @@
  *   claimAgentMail   승인 대기 · 보내지 못함인 줄을 「보내는 중」으로 잡는다 — 줄 잠금 안에서 상태를 보므로 두 번 누르거나
  *                    두 창에서 같이 눌러도 한 번만 잡힌다(그래서 한 번만 나간다)
  *   (라우트가 다음 메일 서버로 보낸다 — lib/agents/smtp)
- *   finishAgentMail  보냄 · 보내지 못함으로 닫는다 — 보냄은 감사기록에 남고, 주간 기록이 그것을 읽는다
+ *   finishAgentMail  보냄 · 보내지 못함으로 닫는다 — 보냄은 감사기록에 남고, 주간 기록이 그것을 읽는다. 보냄은 그 담당의 대화에도
+ *                    한 줄(자동 · lib/agents/mail-say)이 선다 — 예약 보내기는 못 보낸 것도
  * 「보내는 중」에서 멈춘 줄(보내는 도중 함수가 끊긴 것)은 STALE_SENDING_MS 가 지나야 다시 잡힌다 — 그사이 나갔을 수 있어서
  * 화면이 받는 사람에게 갔는지 먼저 보라고 말한다.
  *
@@ -29,6 +30,7 @@ import { stampOf } from '@/lib/date';
 import { getSecret } from '@/lib/auth/secret';
 import { addressesOf, MAIL_LIMITS } from '@/lib/agents/mime';
 import { scheduledAtOf, scheduleError, scheduleLabel } from '@/lib/agents/mail-schedule';
+import { mailSentSay, scheduledMailFailedSay } from '@/lib/agents/mail-say';
 import { seal, unseal } from '@/lib/agents/secret-box';
 import { sizeLabel } from '@/lib/agents/files';
 import {
@@ -555,6 +557,7 @@ export const agentMailStore: Pick<
   async finishAgentMail(input, actor): Promise<AgentMail> {
     assertAdmin(actor, '메일 보내기');
     const { name: agentName, key: agentKey } = await agentLabelOf(input.agentId);
+    const scheduled = input.scheduled === true;
     const db = getDb();
     await db.transaction(async (tx) => {
       const [old] = await tx.select().from(agentMails)
@@ -562,31 +565,55 @@ export const agentMailStore: Pick<
       if (!old) throw new Error('메일을 찾을 수 없습니다.');
       if (statusOf(old.status) !== 'sending') throw new Error('보내는 중인 메일이 아닙니다.');
       const line = letterLine({ subject: old.subject, to: old.to ?? [], cc: old.cc ?? [] });
+      /* 그 담당의 대화에 한 줄(자동) — 감사기록에도 「에이전트 자동」으로(주간 기록 · 다른 자동의 말과 같다) */
+      const say = async (body: string, meta: AgentMessageMeta, projectId: string | null) => {
+        await tx.insert(agentMessages).values({ id: crypto.randomUUID(), agentId: input.agentId, role: 'auto', author: agentName, body, meta });
+        await writeAudit(tx, { projectId, actor, action: '에이전트 자동', field: agentKey, oldValue: null, newValue: body.slice(0, 2000) });
+      };
       if (input.result.ok) {
         await tx.update(agentMails).set({
           status: 'sent', error: null, from: input.result.from, sentRef: input.result.ref,
           sentAt: new Date(), sentBy: actor.name, updatedAt: new Date(),
         }).where(eq(agentMails.id, old.id));
         await writeAudit(tx, { projectId: null, actor, action: '에이전트 메일 보냄', field: agentKey, oldValue: null, newValue: line });
+        const [site] = old.projectId
+          ? await tx.select({ id: projects.id, name: projects.name }).from(projects).where(eq(projects.id, old.projectId))
+          : [];
         /* 현장 양식 메일이면 그 현장 · 양식의 할 일이 끝난다 — 접수 때 담당이 적은 「… 메일 보내기」(lib/site-mail) */
-        if (old.projectId && old.kind) {
-          const closed = await tx.update(agentTasks).set({ doneAt: new Date() }).where(and(
+        const closed = old.projectId && old.kind
+          ? await tx.update(agentTasks).set({ doneAt: new Date() }).where(and(
             eq(agentTasks.agentId, old.agentId), eq(agentTasks.projectId, old.projectId), eq(agentTasks.kind, old.kind), isNull(agentTasks.doneAt),
-          )).returning({ title: agentTasks.title });
-          if (closed.length) {
-            const [site] = await tx.select({ name: projects.name }).from(projects).where(eq(projects.id, old.projectId));
-            for (const t of closed) {
-              await writeAudit(tx, {
-                projectId: old.projectId, actor, action: '에이전트 할 일 끝냄', field: agentKey,
-                oldValue: [t.title, site?.name].filter(Boolean).join(' · '), newValue: '끝냄 — 메일 보냄',
-              });
-            }
-          }
+          )).returning({ title: agentTasks.title })
+          : [];
+        for (const t of closed) {
+          await writeAudit(tx, {
+            projectId: old.projectId, actor, action: '에이전트 할 일 끝냄', field: agentKey,
+            oldValue: [t.title, site?.name].filter(Boolean).join(' · '), newValue: '끝냄 — 메일 보냄',
+          });
         }
+        /* 그 담당의 대화에 한 줄 — 한백 2026-11-27 「메일이 정상적으로 발신되었다면 에이전트 통해 알려줘」(lib/agents/mail-say) */
+        const fileIds = old.fileIds ?? [];
+        const named = fileIds.length
+          ? new Map((await tx.select({ id: agentFiles.id, name: agentFiles.name }).from(agentFiles)
+            .where(inArray(agentFiles.id, fileIds))).map((f) => [f.id, f.name]))
+          : new Map<string, string>();
+        const body = mailSentSay({
+          subject: old.subject, to: old.to ?? [], cc: old.cc ?? [],
+          files: [...fileIds.map((id) => named.get(id)).filter((n): n is string => Boolean(n)), ...(old.docFiles ?? []).map((f) => f.name)],
+          from: input.result.from, by: scheduled ? old.scheduledBy ?? actor.name : actor.name, scheduled,
+        });
+        await say(body, {
+          ...(site ? { site: { id: site.id, name: site.name } } : {}),
+          ...(closed.length ? { done: closed.map((t) => t.title) } : {}),
+        }, site?.id ?? null);
       } else {
         const error = input.result.error.slice(0, 500);
         await tx.update(agentMails).set({ status: 'failed', error, updatedAt: new Date() }).where(eq(agentMails.id, old.id));
         await writeAudit(tx, { projectId: null, actor, action: '에이전트 메일 실패', field: agentKey, oldValue: line, newValue: error });
+        /* 예약 보내기만 — 「승인하고 보내기」는 누른 단추 옆에 까닭이 뜬다 */
+        if (scheduled) {
+          await say(scheduledMailFailedSay({ subject: old.subject, error, by: old.scheduledBy ?? actor.name }), {}, old.projectId ?? null);
+        }
       }
     });
     const [mail] = await mailsOf([await mailRow(input.agentId, input.id)]);

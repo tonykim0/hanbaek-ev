@@ -13,7 +13,7 @@ import { POST as sendMail } from '@/app/api/agents/[id]/mails/[mailId]/send/rout
 import { PATCH as patchMail } from '@/app/api/agents/[id]/mails/[mailId]/route';
 import { getRepository } from '@/lib/data';
 import { getDb } from '@/lib/db/client';
-import { agentMails, auditLog, documents, mailAccounts } from '@/lib/db/schema';
+import { agentMails, agentMessages, auditLog, documents, mailAccounts } from '@/lib/db/schema';
 import { niceSubmitLines } from '@/lib/nice-submit';
 import { RUN, USERS, actorOf, call, signIn, withProject } from './kit';
 
@@ -38,10 +38,12 @@ beforeAll(async () => {
 afterAll(async () => {
   const db = getDb();
   await db.delete(agentMails).where(like(agentMails.subject, `%${RUN}%`));
+  /* 보낸 뒤 나이스인프라 담당의 대화에 선 말(lib/agents/mail-say) — 제목에 실행 표지가 든다 */
+  await db.delete(agentMessages).where(and(eq(agentMessages.role, 'auto'), like(agentMessages.body, `%${RUN}%`)));
   await db.delete(mailAccounts).where(eq(mailAccounts.id, 'mail'));
   if (saved) await db.insert(mailAccounts).values(saved);
   await db.delete(auditLog).where(and(
-    or(like(auditLog.action, '%메일%'), like(auditLog.action, '결과서%')),
+    or(like(auditLog.action, '%메일%'), like(auditLog.action, '결과서%'), eq(auditLog.action, '에이전트 자동')),
     or(like(auditLog.newValue, `%${RUN}%`), like(auditLog.oldValue, `%${RUN}%`)),
   ));
 });
