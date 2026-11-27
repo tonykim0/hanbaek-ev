@@ -174,6 +174,23 @@ export async function autoIntakeFromZip(
     }
   }
 
+  /*
+   * ★판독 결과가 이어지지 않은 PDF 는 말한다★ (2026-11-27 HB-2026-298 서호e-TOWN아파트). 판독은 파일 이름(originalName)으로
+   * 답하고 buildUploadItems 가 그 이름으로 짝을 찾는다 — 못 찾은 파일은 쪼개지지도 않고 이름 규칙 · 기타로 떨어진다. 그날
+   * 윈도우 ZIP 의 깨진 이름(lib/files decodeZipName) 때문에 일곱 개가 다 그렇게 됐는데, 판독은 성공해 경고가 한 줄도 없었다.
+   * 나눠 읽다 한 묶음이 실패한 경우도 같은 자리다.
+   */
+  if (metadata) {
+    const answered = new Set((metadata.files ?? []).map((f) => f.originalName.normalize('NFC')));
+    const missed = pdfs.filter((f) => !answered.has(f.name.normalize('NFC'))).map((f) => f.name);
+    if (missed.length > 0) {
+      console.error('[intake-auto] 판독 결과가 이어지지 않은 파일', missed.length, '/', pdfs.length);
+      warnings.push(
+        `판독 결과가 없는 파일 ${missed.length}건 — ${missed.join(' · ')} — 쪼개지 않고 그대로 올렸습니다. 서류 칸을 직접 확인해주세요.`
+      );
+    }
+  }
+
   // ── 분할·병합 (노션 호출 없는 순수 함수) ─────────────────────
   onProgress({ phase: 'split', message: '서류 종류별로 나누는 중' });
   const items = await buildUploadItems(files, metadata);

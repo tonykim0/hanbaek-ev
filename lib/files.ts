@@ -50,6 +50,30 @@ export async function extractAndHashFromZipBuffer(buffer: Buffer): Promise<Norma
   return extractPDFsFromZip(buffer);
 }
 
+const UTF8_STRICT = new TextDecoder('utf-8', { fatal: true });
+/* WHATWG 의 euc-kr 은 CP949(윈도우 한글 — 확장 완성형 포함)다 */
+const CP949 = new TextDecoder('euc-kr');
+
+/**
+ * ZIP 안 파일 이름 바이트 → 글자. UTF-8 표시도 유니코드 이름 칸도 없는 이름에만 불린다(JSZip decodeFileName).
+ *
+ * ★윈도우 탐색기의 「압축(ZIP) 폴더」는 이름을 CP949 로 적는다★ — JSZip 기본(UTF-8)으로 읽으면 「��ȣ��Ÿ��…」로
+ * 깨지고, 판독은 그 이름을 그대로 돌려주지 못해 판독 결과가 파일에 이어지지 않았다: 계약서 묶음이 쪼개지지 않고 기타 칸에,
+ * 충전기 이력 엑셀이 실사보고서 칸에 갔다(2026-11-27 HB-2026-298 · 앞서 256 · 291). 맥이 만든 ZIP 도 표시 없이 UTF-8 로
+ * 적는 일이 있어 UTF-8 을 먼저 엄격히 읽고, 안 되면 CP949 다. 시험 `test/zip-names.test.ts`.
+ */
+export function decodeZipName(bytes: Uint8Array | ReadonlyArray<number | string>): string {
+  /* JSZip 은 Uint8Array 를 넘긴다(못 쓰는 곳에서만 배열) — 타입이 string[] 이라 글자 한 칸도 받는다 */
+  const u8 = bytes instanceof Uint8Array
+    ? bytes
+    : Uint8Array.from(bytes, (b) => (typeof b === 'string' ? b.charCodeAt(0) : b));
+  try {
+    return UTF8_STRICT.decode(u8);
+  } catch {
+    return CP949.decode(u8);
+  }
+}
+
 export function isZipBuffer(buffer: Buffer): boolean {
   if (buffer.length < 4) return false;
   return ZIP_SIGNATURES.some((signature) => buffer.subarray(0, 4).equals(signature));
@@ -60,7 +84,7 @@ async function extractPDFsFromZip(buffer: Buffer): Promise<NormalizedFile[]> {
     throw new Error('ZIP 형식이 아닙니다.');
   }
 
-  const zip = await JSZip.loadAsync(buffer);
+  const zip = await JSZip.loadAsync(buffer, { decodeFileName: decodeZipName });
   const pdfs: NormalizedFile[] = [];
 
   for (const [path, zipFile] of Object.entries(zip.files)) {
