@@ -17,6 +17,7 @@ import type { SiteFile } from '@/lib/solar/sites';
 import type { AgentMessageMeta } from '@/types/agents';
 import type { ConsultDup } from '@/lib/consult-dup';
 import type { AgitFeeInput } from '@/lib/agit/fee';
+import type { AgitPassthruInput } from '@/lib/agit/passthru';
 import type { AgitFeePayee } from '@/lib/agit/post';
 
 // ── 계정 ────────────────────────────────────────────────────────
@@ -972,6 +973,11 @@ export const agitPosts = pgTable('agit_posts', {
    * (migrations/0131 · lib/agit/fee AgitFeeInput). 승인 때 이것으로 다시 지어 본 글과 견준다. 그 밖의 글은 null
    */
   fee: jsonb('fee').$type<AgitFeeInput>(),
+  /**
+   * 패스스루 글(구분 「패스스루」)의 재료 — 차수 · 달 · 받을 돈(EPC 잔금) · 하도급사 지급 줄(계좌 포함) · 입금 예정일 · 넘긴 엑셀 · 증빙 파일
+   * (migrations/0141 · lib/agit/passthru AgitPassthruInput). 승인 때 이것으로 다시 지어 본 글과 견준다. 그 밖의 글은 null
+   */
+  passthru: jsonb('passthru').$type<AgitPassthruInput>(),
   /** 아지트가 돌려준 그 글의 id · 주소(lib/agit/send) — 카드의 「아지트에서 보기」 */
   agitId: text('agit_id'),
   agitUrl: text('agit_url'),

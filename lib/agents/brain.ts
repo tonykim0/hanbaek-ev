@@ -51,7 +51,7 @@ import type {
 } from '@/types/agents';
 import { isLead } from '@/types/agents';
 import type { PayoutKind } from '@/types/project';
-import { AGIT_FEE_KIND, AGIT_POST_KINDS, agitKindOf, type AgitKind } from '@/lib/agit/post';
+import { AGIT_FEE_KIND, AGIT_PASSTHRU_KIND, AGIT_POST_KINDS, agitKindOf, type AgitKind } from '@/lib/agit/post';
 import { directionsBlock, HISTORY_DAYS, teamLineOf, TELLS_PER_TURN } from './team';
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
@@ -140,6 +140,15 @@ function roleOf(agent: Agent): string {
         + '매달 말일 지급(쉬는 날이면 앞 영업일)의 3영업일 전 아침에 콘솔이 네 이름으로 「위탁운영수수료 상신」 할 일 · 알림을 이 대화에 '
         + '올린다(세금계산서 두 장을 넘겨 달라는 말) — 그 지급일의 글을 아지트에 올리면 저절로 끝나고, 한백이 따로 상신했다고 하면 네가 끝낸다. '
         + '엑셀에 적는 플러그링크 계좌는 고정값이라 콘솔 DB 에 들어 있다(화면 없음 · 바뀌거나 비었으면 Claude Code 가 고친다). '
+        + '★플러그링크 패스스루 집행 글★(한백 11-28 「[긴급] 플러그링크 2026년 10월 패스스루 집행 이것도 주기적으로 올리는데」): 매달 플러그링크 '
+        + 'Mother EPC 하도급사에 내려 주는 돈(HB○차)의 긴급구매요청 글이다 — 거래명세서 글도, 위탁운영수수료 글도 아니다. 한백이 한백사업내역'
+        + '리스트 엑셀(시트 「매입내역」 · 「EPC사업내역리스트」)을 넘기면 agit_passthru_post 에 그 파일 id 를 준다 — 차수 · 하도급사 지급 줄 · '
+        + '플러그링크에서 받을 돈(EPC 잔금 세금계산서 합) · 지급일 · 계좌는 콘솔이 엑셀 칸에서 읽는다(한백 자신에게 가는 줄은 뺀다). 같이 넘긴 '
+        + '하도급사 세금계산서 · 공사하도급계약서 PDF 는 attach_file_ids 로 첨부 zip 에 넣는다 — 엑셀 자체는 내부 장부라 첨부하지 않는다. '
+        + '플러그링크 입금 예정일은 엑셀에 없다 — 한백이 말했을 때만 in_date(말하지 않았으면 「입금 예정일 미정」으로 짓고 알려 주면 넣겠다고 '
+        + '한 줄). 올리라고 하면 agit_publish(돌려받은 지급일 · kind 패스스루). 매월 25일(쉬는 날이면 앞 영업일) 아침에 콘솔이 네 이름으로 '
+        + '「패스스루 집행 상신」 할 일 · 알림을 이 대화에 올린다(엑셀을 넘겨 달라는 말) — 그 달의 패스스루 글을 아지트에 올리면 저절로 끝나고, '
+        + '한백이 따로 상신했다고 하면 네가 끝낸다. 지금은 정기 지급만이다 — 취소 · 회수 · 반환 글은 짓지 않는다(한백이 손으로 쓴다). '
         + '한백이 따로 써 달라고 할 때만 [열린구매] 자료로 글을 쓴다. 붙일 자료는 자료 줄에 있는 것(거래명세서 주소 · 세금계산서 · '
         + '사업자등록증 · 통장사본)을 보고 없는 것은 없다고 짚는다.';
     case 'strategy':
@@ -388,6 +397,17 @@ export interface AgentHands {
     fee: { supply: number; vat: number; total: number };
     sales: { supply: number; vat: number; total: number; inDate: string | null } | null;
   }>;
+  /**
+   * 플러그링크 패스스루 집행 글 초안 — 전기차 정산 담당만(lib/agit/passthru-run). 한백이 넘긴 한백사업내역리스트 엑셀(파일 id)을 콘솔이 칸으로
+   * 읽어 짓는다 — 담당은 금액 · 계좌를 옮겨 적지 않는다. 시트가 없거나 셈이 맞지 않으면 사람 말로 던진다
+   */
+  agitPassthruDraft?(input: {
+    sheetFileId: string; attachFileIds: string[]; round: number | null; inDate: string | null; payDate: string | null; again: boolean;
+  }): Promise<{
+    id: string; plan: 'create' | 'refresh' | 'keep'; name: string; payDate: string; round: number; month: string;
+    receive: number; pay: number; vat: number; rows: { org: string; supply: number }[]; own: { supply: number; rows: number };
+    inDate: string | null; attach: string[]; notes: string[];
+  }>;
   /** 팀장만 — 팀 목표 · 방향 올리기(id 없이) · 고치기(id). 저장소가 틀리면 사람 말로 던진다 */
   saveDirection?(input: { id: string | null; title: string; body: string }): Promise<{ id: string; title: string }>;
   /** 팀장만 — 팀 목표 · 방향 지우기. 지운 줄의 이름을 돌려준다 */
@@ -543,10 +563,11 @@ const AGIT_PUBLISH_TOOL = {
   input_schema: {
     type: 'object',
     properties: {
-      pay_date: { type: 'string', description: '결제일 YYYY-MM-DD — 올릴 초안의 결제일(위탁운영수수료 글은 그 지급 요청일)' },
+      pay_date: { type: 'string', description: '결제일 YYYY-MM-DD — 올릴 초안의 결제일(위탁운영수수료 · 패스스루 글은 그 지급 요청일)' },
       kind: {
-        type: 'string', enum: ['영업비', '시공비', '위탁운영수수료'],
-        description: '그 구분의 글만 — 한백이 한쪽만 올리라고 했을 때 · 위탁운영수수료 글이면 위탁운영수수료. 빼면 그날의 승인 전 초안 전부 (선택)',
+        type: 'string', enum: ['영업비', '시공비', '위탁운영수수료', '패스스루'],
+        description: '그 구분의 글만 — 한백이 한쪽만 올리라고 했을 때 · 위탁운영수수료 글이면 위탁운영수수료 · 패스스루 집행 글이면 패스스루. '
+          + '빼면 그날의 승인 전 초안 전부 (선택)',
       },
     },
     required: ['pay_date'],
@@ -590,6 +611,40 @@ const AGIT_FEE_TOOL = {
       again: { type: 'boolean', description: '이미 올린 그 지급일의 위탁운영수수료 글을 다시 올리는 초안 — 한백이 다시 올리라고 했을 때만 (선택)' },
     },
     required: ['fee_file_id'],
+  },
+};
+
+/**
+ * 플러그링크 패스스루 집행 글 초안 — 전기차 정산 담당만(라우트가 손을 이어 줄 때). 한백이 한백사업내역리스트 엑셀을 넘기면 담당은 어느 파일이
+ * 엑셀인지 · 어느 것이 첨부할 증빙인지만 고르고 콘솔이 칸을 읽어 짓는다(lib/agit/passthru-run — 한백 2026-11-28)
+ */
+const AGIT_PASSTHRU_TOOL = {
+  name: 'agit_passthru_post',
+  description: '플러그링크 패스스루 집행 글 — 매달 아지트 열린구매에 올리는 「[긴급] 플러그링크 YYYY년 M월 패스스루 집행」 긴급구매요청 글 — '
+    + '초안을 이 답 밑에 올린다. 한백이 이 대화에 넘긴 한백사업내역리스트 엑셀(xlsx — 시트 「매입내역」 · 「EPC사업내역리스트」)의 파일 id 를 준다. '
+    + '★차수(HB○차) · 하도급사 지급 줄(매입내역 — 한백 자신에게 가는 줄은 뺀다) · 플러그링크에서 받을 돈(EPC사업내역리스트 그 차의 잔금 세금계산서 합) · '
+    + '지급일 · 은행 · 계좌는 콘솔이 엑셀 칸에서 읽는다 — 네가 옮겨 적지 않는다★. 시트가 없거나 셈이 맞지 않으면 짓지 않고 까닭을 돌려준다 — '
+    + '그대로 한백에게 말한다. 같이 넘긴 하도급사 세금계산서 · 공사하도급계약서 등 증빙 PDF 는 attach_file_ids — 첨부 zip 에 엑셀(하도급 지급요청)과 '
+    + '같이 든다. 플러그링크 입금 예정일은 한백이 말했을 때만 in_date. 같은 지급일의 승인 전 초안이 있으면 고쳐 이 답 밑으로 옮긴다. 짓기만 한다 — '
+    + '올리는 것은 agit_publish(돌려준 지급일 · kind 패스스루, 한백이 올리라고 했을 때만). 정기 지급만이다 — 취소 · 회수 · 반환 글은 짓지 않는다.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      sheet_file_id: { type: 'string', description: '한백사업내역리스트 엑셀(xlsx) — 「[넘긴 파일 … · id=…]」의 id' },
+      attach_file_ids: {
+        type: 'array', items: { type: 'string' },
+        description: '첨부 zip 에 넣을 증빙(하도급사 세금계산서 · 공사하도급계약서 …)의 id — 한백이 넘긴 것 중 엑셀 말고 전부. 없으면 빈 배열 (선택)',
+      },
+      round: {
+        type: 'integer', description: '차수 HB○차의 숫자 — 한백이 다른 차를 말했을 때만. 빼면 매입내역의 가장 큰 차 (선택)',
+      },
+      in_date: { type: 'string', description: '플러그링크 → 한백 입금 예정일 YYYY-MM-DD — 한백이 말했을 때만 (선택)' },
+      pay_date: {
+        type: 'string', description: '지급 요청일 YYYY-MM-DD — 한백이 다른 날을 말했을 때만. 빼면 매입내역 그 차의 지급일 (선택)',
+      },
+      again: { type: 'boolean', description: '이미 올린 그 지급일의 패스스루 글을 다시 올리는 초안 — 한백이 다시 올리라고 했을 때만 (선택)' },
+    },
+    required: ['sheet_file_id'],
   },
 };
 
@@ -810,7 +865,7 @@ export function toolsOf(
   hands: Pick<
     AgentHands,
     | 'siteMail' | 'pricingTable' | 'saveDirection' | 'tellTeammate' | 'saveMemo' | 'saveDuty' | 'bundleSiteDocs' | 'agitDraft' | 'agitPublish'
-    | 'agitFeeDraft'
+    | 'agitFeeDraft' | 'agitPassthruDraft'
   >,
 ): unknown[] {
   const siteSpec = agent.kind === 'operator' && hands.siteMail ? siteMailOfCpo(agent.cpo) : null;
@@ -822,6 +877,7 @@ export function toolsOf(
     ...(agent.kind === 'settlement' && hands.agitDraft ? [AGIT_POST_TOOL] : []),
     ...(agent.kind === 'settlement' && hands.agitPublish ? [AGIT_PUBLISH_TOOL] : []),
     ...(agent.kind === 'settlement' && hands.agitFeeDraft ? [AGIT_FEE_TOOL] : []),
+    ...(agent.kind === 'settlement' && hands.agitPassthruDraft ? [AGIT_PASSTHRU_TOOL] : []),
     ...(siteSpec ? [siteMailTool(siteSpec)] : []),
     ...(agent.kind === 'operator' && hands.pricingTable ? [PRICING_TOOL] : []),
     ...(hands.saveDuty ? DUTY_TOOLS : []),
@@ -1056,7 +1112,7 @@ export async function agentReply(input: {
         const won = (n: number) => n.toLocaleString('ko-KR');
         const lines = started.map((s) => {
           agitPublished.push(s.urgent ? `${s.name} (긴급)` : s.name);
-          const count = s.kind === AGIT_FEE_KIND ? '' : `지급 ${s.batches}건 · `;
+          const count = s.kind === AGIT_FEE_KIND ? '' : s.kind === AGIT_PASSTHRU_KIND ? `하도급 지급 ${s.batches}건 · ` : `지급 ${s.batches}건 · `;
           return `${s.name} 글을 올리기 시작했다 (id=${s.id}, ${count}공급가액 ${won(s.total)}원${s.urgent ? ' · 긴급' : ''}) — `
             + '1~2분 뒤 이 대화에 「아지트에 올렸습니다」 한 줄이 저절로 선다. 아직 다 된 것이 아니다.';
         });
@@ -1101,6 +1157,40 @@ export async function agentReply(input: {
               ? `충전매출(한백 → 플러그링크 계산서): ${sum(made.sales)} · 입금 예정 ${made.sales.inDate ?? '날짜 없음 — 한백이 알려 주면 sales_in_date 로 다시 짓는다'}`
               : '충전매출: 없음(no_sales)',
             `아직 올리지 않았다 — 한백이 올리라고 하면 agit_publish(pay_date ${made.payDate}, kind 위탁운영수수료). 카드의 「승인하고 올리기」도 같다.`,
+          ].join('\n'),
+        };
+      }
+      if (block.name === 'agit_passthru_post' && agent.kind === 'settlement' && hands.agitPassthruDraft) {
+        const sheetFileId = str(args.sheet_file_id);
+        if (!sheetFileId) return fail('sheet_file_id 를 준다 — 한백사업내역리스트 엑셀의 「[넘긴 파일 … · id=…]」 id.');
+        const attachFileIds = Array.isArray(args.attach_file_ids)
+          ? [...new Set(args.attach_file_ids.filter((x): x is string => typeof x === 'string' && x.trim() !== '').map((x) => x.trim()))] : [];
+        if (attachFileIds.includes(sheetFileId)) return fail('한백사업내역리스트는 내부 장부라 첨부하지 않는다 — attach_file_ids 에서 뺀다.');
+        if (attachFileIds.length > 30) return fail('첨부는 서른 개까지다.');
+        const round = args.round === undefined || args.round === null ? null : Number(args.round);
+        if (round !== null && !(Number.isInteger(round) && round > 0)) return fail('round 는 차수의 숫자다(HB31차면 31).');
+        const inDate = str(args.in_date) || null;
+        if (inDate && !DAY_RE.test(inDate)) return fail('in_date 는 YYYY-MM-DD 다.');
+        const payDate = str(args.pay_date) || null;
+        if (payDate && !DAY_RE.test(payDate)) return fail('pay_date 는 YYYY-MM-DD 다.');
+        if (agitDrafts.length >= 4) return fail('한 답에 아지트 글 초안은 넷까지다.');
+        const made = await hands.agitPassthruDraft({ sheetFileId, attachFileIds, round, inDate, payDate, again: args.again === true });
+        agitDrafts.push(`${made.name} (긴급)`);
+        const won = (n: number) => n.toLocaleString('ko-KR');
+        const [y, m] = made.month.split('-');
+        const head = made.plan === 'create' ? '초안을 올렸다'
+          : made.plan === 'refresh' ? '승인 전 초안을 지금 글로 고쳐 이 답 밑으로 옮겼다' : '같은 초안이 이미 있어 이 답 밑으로 옮겼다';
+        return {
+          type: 'tool_result', tool_use_id: block.id,
+          content: [
+            `패스스루 HB${made.round}차(${y}년 ${Number(m)}월) 긴급 글 ${head} (id=${made.id}, 지급 요청일 ${made.payDate}).`,
+            `플러그링크 → 한백(받을 돈 · 부가세 전): ${won(made.receive)}원 · 입금 예정 ${made.inDate ?? '미정 — 한백이 알려 주면 in_date 로 다시 짓는다'}`,
+            `한백 → 하도급사(지급 ${made.rows.length}건 · 부가세 전 ${won(made.pay)}원 · 포함 ${won(made.pay + made.vat)}원): `
+              + made.rows.map((r) => `${r.org} ${won(r.supply)}원`).join(' · '),
+            ...(made.own.rows ? [`한백 자신에게 가는 줄 ${made.own.rows}건(${won(made.own.supply)}원)은 지급 글에서 뺐다.`] : []),
+            `첨부 zip: 하도급 지급요청 엑셀${made.attach.length ? ` · ${made.attach.join(' · ')}` : ' — 증빙 PDF 없음(넘겨 주면 attach_file_ids 로 다시 짓는다)'}`,
+            ...made.notes.map((n) => `참고: ${n}`),
+            `아직 올리지 않았다 — 한백이 올리라고 하면 agit_publish(pay_date ${made.payDate}, kind 패스스루). 카드의 「승인하고 올리기」도 같다.`,
           ].join('\n'),
         };
       }

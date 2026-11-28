@@ -161,7 +161,7 @@ describe('정산 담당이 읽는 것 — 기성관리 · 지급관리 · 열린
 
   it('아지트 글 — 지금 콘솔의 초안 · 올린 글 · 계정(지난 대화의 금액으로 말하지 않게)', () => {
     const post = (over: Partial<AgitPostRecord>): AgitPostRecord => ({
-      id: 'p', payDate: '2026-11-10', kind: '영업비', fee: null, status: 'draft', title: '공사명', body: '', total: 1_200_000, batches: 1,
+      id: 'p', payDate: '2026-11-10', kind: '영업비', fee: null, passthru: null, status: 'draft', title: '공사명', body: '', total: 1_200_000, batches: 1,
       error: null, postedBy: '정산 담당', assignees: [], messageId: null, again: false, urgent: null, agitUrl: null, createdAt: '2026-11-07 08:00',
       at: '2026-11-07 08:00', stalled: false, ...over,
     });

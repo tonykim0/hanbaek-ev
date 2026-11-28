@@ -27,10 +27,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
     const actor = actorOf(session);
     const post = await getRepository().getAgitPost(actor, params.id);
     if (!post) return fail('아지트 글을 찾을 수 없습니다.', 404);
-    /* 올릴 때 붙는 것과 같은 zip — 위탁운영수수료 글은 엑셀 · 넘긴 세금계산서(lib/agit/fee), 그 밖은 그 결제일 · 구분의 배치 */
+    /* 올릴 때 붙는 것과 같은 zip — 위탁운영수수료 글은 엑셀 · 넘긴 세금계산서(lib/agit/fee), 패스스루 글은 엑셀 · 넘긴 증빙
+     * (lib/agit/passthru), 그 밖은 그 결제일 · 구분의 배치 */
     const url = new URL(request.url);
     const { zip, png } = await agitPostFilesOf(actor, post, { origin: url.origin, cookie: request.headers.get('cookie') });
-    /* ?part=png — 엑셀 캡처만(예비 길이 본문 그림으로 올린다 · 위탁운영수수료 zip 에는 캡처가 없다 — 한백의 5차 zip 그대로) */
+    /* ?part=png — 엑셀 캡처만(예비 길이 본문 그림으로 올린다 · 위탁운영수수료 · 패스스루 zip 에는 캡처가 없다 — 한백의 지난 zip 그대로) */
     const file = url.searchParams.get('part') === 'png'
       ? { bytes: png.bytes, name: png.name, type: 'image/png' }
       : { bytes: zip.bytes, name: zip.name, type: 'application/zip' };

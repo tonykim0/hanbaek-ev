@@ -17,6 +17,7 @@ import type { RetouchLog } from '@/lib/retouch/types';
 import type { ConsultDup } from '@/lib/consult-dup';
 import type { AgitHookInfo, AgitKind, AgitPostRecord } from '@/lib/agit/post';
 import type { AgitFeeInput } from '@/lib/agit/fee';
+import type { AgitPassthruInput } from '@/lib/agit/passthru';
 import type { AgitCookie } from '@/lib/agit/session';
 import type {
   AgentDetail, AgentFile, AgentMail, AgentMemos, AgentMessage, AgentMessageMeta, AgentMessageRole, AgentSummary, AgentTeam, AgentUsage, MailAccountInfo, MemoScope, TeamMemberLog,
@@ -679,12 +680,13 @@ export interface ProjectRepository {
    * 초안 — 그 결제일 · 구분의 열린 초안(초안 · 못 올림)이 있으면 지금 글로 고치고(messageId 를 주면 그 말 밑으로 옮긴다), 없으면 새로.
    * urgent 는 그 글의 긴급사유(null 이면 보통 글) — body 를 지은 모양과 같아야 한다(lib/agit/post agitPostOf 가 돌려준 urgent).
    * 올리는 중이면 · 이미 올린 결제일 · 구분인데 again 이 아니면 사람 말로 던진다. plan: create 새로 · refresh 고침 · keep 같은 글.
-   * 위탁운영수수료 글은 fee(세금계산서에서 읽은 재료 — lib/agit/fee)를 같이 준다 — 승인 때 그것으로 다시 짓는다
+   * 위탁운영수수료 글은 fee(세금계산서에서 읽은 재료 — lib/agit/fee), 패스스루 글은 passthru(한백사업내역리스트에서 읽은 재료 — lib/agit/passthru)를
+   * 같이 준다 — 승인 때 그것으로 다시 짓는다
    */
   draftAgitPost(
     input: {
       payDate: string; kind: AgitKind; body: string; total: number; batches: number; again: boolean; messageId: string | null;
-      urgent: string | null; fee?: AgitFeeInput | null;
+      urgent: string | null; fee?: AgitFeeInput | null; passthru?: AgitPassthruInput | null;
     },
     actor: Actor
   ): Promise<{ post: AgitPostRecord; plan: 'create' | 'refresh' | 'keep' }>;

@@ -16,6 +16,7 @@ import { normalizeOrg } from '@/lib/roles';
 import { CONSOLE_URL } from '@/lib/portal-intake';
 import { agitPostName, type AgitHookInfo, type AgitPostRecord } from '@/lib/agit/post';
 import { feeMonthName } from '@/lib/agit/fee';
+import { passthruMonthName, passthruPayOf } from '@/lib/agit/passthru';
 import type { CpoName, ProjectSummary } from '@/types/project';
 import { CPO_NAMES } from '@/types/project';
 import type { Agent, AgentHeadline } from '@/types/agents';
@@ -175,14 +176,17 @@ export function agitLines(agit: NonNullable<ScopeData['agit']>): string[] {
   ];
   if (agit.posts.length === 0) out.push('- 없음');
   for (const p of agit.posts) {
-    /* 위탁운영수수료 글은 몇 차 · 몇 월분 · 세금계산서 두 장의 금액 — 거래명세서 글은 지급 건수 · 공급가액 */
+    /* 위탁운영수수료 글은 몇 차 · 몇 월분 · 세금계산서 두 장의 금액, 패스스루 글은 HB 차 · 달 · 받을 돈 · 하도급 지급 — 거래명세서 글은 지급 건수 · 공급가액 */
     const amount = p.fee
       ? `${p.fee.round}차(${feeMonthName(p.fee.month)}) · 위탁운영수수료 공급가액 ${won(p.fee.fee.supply)}원 · 합계 ${won(p.fee.fee.total)}원`
         + (p.fee.sales ? ` · 충전매출 합계 ${won(p.fee.sales.total)}원(입금 예정 ${p.fee.sales.inDate ?? '날짜 없음'})` : ' · 충전매출 없음')
-      : `지급 ${p.batches}건 · 공급가액 ${won(p.total)}원`;
+      : p.passthru
+        ? `HB${p.passthru.round}차(${passthruMonthName(p.passthru.month)}) · 플러그링크에서 받을 돈 ${won(p.passthru.receive)}원`
+          + `(입금 예정 ${p.passthru.inDate ?? '날짜 없음'}) · 하도급 지급 ${p.passthru.rows.length}건 공급가액 ${won(passthruPayOf(p.passthru))}원`
+        : `지급 ${p.batches}건 · 공급가액 ${won(p.total)}원`;
     out.push(`- ${[
       `${p.payDate} ${agitPostName(p)}`, agitStateOf(p), amount,
-      !p.fee && p.urgent && `긴급(사유: ${p.urgent})`, p.again && '다시 올리는 초안',
+      !p.fee && !p.passthru && p.urgent && `긴급(사유: ${p.urgent})`, p.again && '다시 올리는 초안',
     ].filter(Boolean).join(' · ')}`);
   }
   return out;

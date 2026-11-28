@@ -48,6 +48,7 @@ import { won } from '@/lib/format';
 import { batchesOf, batchKey, REGULAR_PAY_DAYS } from '@/lib/payout-board';
 import { PAYOUT_KINDS, type BatchFinal, type PayoutKind, type PayoutRow, type TaxInvoice } from '@/types/project';
 import type { AgitFeeInput } from './fee';
+import type { AgitPassthruInput } from './passthru';
 
 /** 지급처의 계좌 — 협력사 정보(/settings · /admin/partners)의 값 */
 export interface AgitPayee {
@@ -118,13 +119,20 @@ export const AGIT_KINDS = PAYOUT_KINDS;
  * 초안 · 승인 · 올리기 · 카드가 열린구매 글과 같은 길이다.
  */
 export const AGIT_FEE_KIND = '위탁운영수수료' as const;
-/** 아지트 글의 구분 — 지급의 구분 둘(거래명세서로 짓는다) · 위탁운영수수료(세금계산서로 짓는다) */
-export type AgitKind = PayoutKind | typeof AGIT_FEE_KIND;
-/** 글의 차례 — 영업비 · 시공비 · 위탁운영수수료 */
-export const AGIT_POST_KINDS: readonly AgitKind[] = [...AGIT_KINDS, AGIT_FEE_KIND];
-export const agitKindOf = (v: unknown): AgitKind => (v === '시공비' ? '시공비' : v === AGIT_FEE_KIND ? AGIT_FEE_KIND : '영업비');
-/** 거래명세서로 짓는 글(영업비 · 시공비)인가 — 위탁운영수수료가 아니면 */
-export const isPayoutKind = (k: AgitKind): k is PayoutKind => k !== AGIT_FEE_KIND;
+/**
+ * 패스스루 — 플러그링크 Mother EPC 의 기성을 하도급사에게 그대로 내려주는 달마다의 집행 글(lib/agit/passthru). 한백이 넘긴 한백사업내역리스트
+ * 엑셀로 짓는다(한백 2026-11-28 「[긴급] 플러그링크 2026년 10월 패스스루 집행 이것도 주기적으로 올리는데」). 같은 줄(agit_posts)에 구분으로 선다
+ */
+export const AGIT_PASSTHRU_KIND = '패스스루' as const;
+/** 아지트 글의 구분 — 지급의 구분 둘(거래명세서로 짓는다) · 위탁운영수수료(세금계산서로 짓는다) · 패스스루(한백사업내역리스트로 짓는다) */
+export type AgitKind = PayoutKind | typeof AGIT_FEE_KIND | typeof AGIT_PASSTHRU_KIND;
+/** 글의 차례 — 영업비 · 시공비 · 위탁운영수수료 · 패스스루 */
+export const AGIT_POST_KINDS: readonly AgitKind[] = [...AGIT_KINDS, AGIT_FEE_KIND, AGIT_PASSTHRU_KIND];
+export const agitKindOf = (v: unknown): AgitKind => (
+  v === '시공비' ? '시공비' : v === AGIT_FEE_KIND ? AGIT_FEE_KIND : v === AGIT_PASSTHRU_KIND ? AGIT_PASSTHRU_KIND : '영업비'
+);
+/** 거래명세서로 짓는 글(영업비 · 시공비)인가 — 위탁운영수수료 · 패스스루가 아니면 */
+export const isPayoutKind = (k: AgitKind): k is PayoutKind => k !== AGIT_FEE_KIND && k !== AGIT_PASSTHRU_KIND;
 
 export interface AgitPostText {
   payDate: string;
@@ -482,6 +490,8 @@ export interface AgitPostRecord {
   kind: AgitKind;
   /** 위탁운영수수료 글의 재료(세금계산서에서 읽은 것 — lib/agit/fee) — 그 밖의 글은 null */
   fee: AgitFeeInput | null;
+  /** 패스스루 글의 재료(한백사업내역리스트에서 읽은 것 — lib/agit/passthru) — 그 밖의 글은 null */
+  passthru: AgitPassthruInput | null;
   status: AgitPostStatus;
   title: string;
   /** 아지트에 갈(간) 글 그대로 */
@@ -518,11 +528,14 @@ export function payDateName(payDate: string): string {
   return `${m}월 ${d}일 ${isRegular(payDate) ? '정기결제' : '지급'}`;
 }
 
-/** 결제일 · 구분의 이름 — 「11월 10일 정기결제 시공비」 · 위탁운영수수료는 「11월 30일 위탁운영수수료」(말일 지급 — 정기결제가 아니다) */
+/**
+ * 결제일 · 구분의 이름 — 「11월 10일 정기결제 시공비」 · 위탁운영수수료는 「11월 30일 위탁운영수수료」(말일 지급 — 정기결제가 아니다) ·
+ * 패스스루는 「11월 27일 패스스루」(플러그링크와 합의한 날)
+ */
 export const agitPostName = (post: { payDate: string; kind: AgitKind }): string => {
-  if (post.kind === AGIT_FEE_KIND) {
+  if (!isPayoutKind(post.kind)) {
     const [, m, d] = post.payDate.split('-').map(Number);
-    return `${m}월 ${d}일 ${AGIT_FEE_KIND}`;
+    return `${m}월 ${d}일 ${post.kind}`;
   }
   return `${payDateName(post.payDate)} ${post.kind}`;
 };

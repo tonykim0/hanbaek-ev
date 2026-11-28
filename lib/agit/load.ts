@@ -13,10 +13,11 @@ import type { Actor } from '@/lib/auth/types';
 import type { PartnerLine } from '@/lib/agents/brief';
 import type { PayoutKind } from '@/types/project';
 import {
-  AGIT_KINDS, agitBatchesOf, agitPostOf, isPayoutKind, urgentReasonOf, type AgitBatch, type AgitPayee, type AgitPayoutText, type AgitPostRecord,
+  AGIT_KINDS, AGIT_PASSTHRU_KIND, agitBatchesOf, agitPostOf, isPayoutKind, urgentReasonOf, type AgitBatch, type AgitPayee, type AgitPayoutText, type AgitPostRecord,
   type AgitPostText,
 } from './post';
 import { agitFeePostOf } from './fee';
+import { agitPassthruPostOf } from './passthru';
 
 /** 배치의 지급처 → 협력사 정보의 계좌 */
 export const payeeOfMap = (partners: ReadonlyMap<string, PartnerLine>) =>
@@ -51,9 +52,13 @@ export async function loadAgitDraft(
 
 /**
  * 그 글을 지금 다시 짓는다 — 승인 때 본 글과 견주려고(lib/agit/publish). 영업비 · 시공비는 지금 원장으로(금액이 바뀌었으면 다른 글이 나온다),
- * 위탁운영수수료는 그 줄에 둔 재료(세금계산서에서 읽은 것 — lib/agit/fee)로.
+ * 위탁운영수수료 · 패스스루는 그 줄에 둔 재료(세금계산서 · 한백사업내역리스트에서 읽은 것 — lib/agit/fee · passthru)로.
  */
 export async function loadAgitPostDraft(actor: Actor, post: AgitPostRecord): Promise<AgitPostText> {
+  if (post.kind === AGIT_PASSTHRU_KIND) {
+    if (!post.passthru) throw new Error('패스스루 글의 한백사업내역리스트 재료가 없습니다 — 정산 담당에게 엑셀을 다시 넘겨 주세요.');
+    return agitPassthruPostOf(post.payDate, post.passthru);
+  }
   if (!isPayoutKind(post.kind)) {
     if (!post.fee) throw new Error('위탁운영수수료 글의 세금계산서 재료가 없습니다 — 정산 담당에게 세금계산서를 다시 넘겨 주세요.');
     return agitFeePostOf(post.payDate, post.fee);

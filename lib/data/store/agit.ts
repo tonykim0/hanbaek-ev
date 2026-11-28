@@ -36,10 +36,11 @@ import { seal, unseal } from '@/lib/agents/secret-box';
 import { OPEN_PURCHASE_AGENT, openPurchaseKey } from '@/lib/agents/open-purchase';
 import { agentAuditKey, type AgentMessageMeta } from '@/types/agents';
 import {
-  AGIT_FEE_KIND, AGIT_MAX_ASSIGNEES, AGIT_POST_KINDS, AGIT_POST_STATUSES, agitAssigneesOf, agitKindOf, agitPostedSay, agitPostName, agitTitleOf,
-  badAgitIds, type AgitFeePayee, type AgitHookInfo, type AgitKind, type AgitPostRecord, type AgitPostStatus,
+  AGIT_FEE_KIND, AGIT_MAX_ASSIGNEES, AGIT_PASSTHRU_KIND, AGIT_POST_KINDS, AGIT_POST_STATUSES, agitAssigneesOf, agitKindOf, agitPostedSay, agitPostName, agitTitleOf,
+  badAgitIds, isPayoutKind, type AgitFeePayee, type AgitHookInfo, type AgitKind, type AgitPostRecord, type AgitPostStatus,
 } from '@/lib/agit/post';
 import { agitFeePayeeOf, feePayeeLabel, feeRemindKey } from '@/lib/agit/fee';
+import { passthruRemindKey } from '@/lib/agit/passthru';
 import { agitLoginOf, agitSessionUntil, type AgitCookie } from '@/lib/agit/session';
 import { PAYOUT_KINDS, type PayoutKind } from '@/types/project';
 import type { ProjectRepository } from '../repository';
@@ -69,6 +70,7 @@ function recordOf(row: Row): AgitPostRecord {
     payDate: row.payDate,
     kind: agitKindOf(row.kind),
     fee: row.fee ?? null,
+    passthru: row.passthru ?? null,
     status: statusOf(row.status),
     title: agitTitleOf(row.body),
     body: row.body,
@@ -306,10 +308,12 @@ export const agitStore: Pick<
   async draftAgitPost(input, actor) {
     assertAdmin(actor, '아지트 글 초안');
     if (!DAY_RE.test(input.payDate)) throw new Error('결제일은 YYYY-MM-DD 로 적어주세요.');
-    if (!AGIT_POST_KINDS.includes(input.kind)) throw new Error('구분은 영업비 · 시공비 · 위탁운영수수료 중 하나입니다.');
-    /* 위탁운영수수료 글은 재료(세금계산서에서 읽은 것)와 같이 — 승인 때 그것으로 다시 짓는다. 다른 글은 재료 칸이 없다 */
+    if (!AGIT_POST_KINDS.includes(input.kind)) throw new Error('구분은 영업비 · 시공비 · 위탁운영수수료 · 패스스루 중 하나입니다.');
+    /* 위탁운영수수료 · 패스스루 글은 재료(세금계산서 · 한백사업내역리스트에서 읽은 것)와 같이 — 승인 때 그것으로 다시 짓는다. 다른 글은 재료 칸이 없다 */
     const fee = input.kind === AGIT_FEE_KIND ? input.fee ?? null : null;
     if (input.kind === AGIT_FEE_KIND && !fee) throw new Error('위탁운영수수료 글의 세금계산서 재료가 없습니다.');
+    const passthru = input.kind === AGIT_PASSTHRU_KIND ? input.passthru ?? null : null;
+    if (input.kind === AGIT_PASSTHRU_KIND && !passthru) throw new Error('패스스루 글의 한백사업내역리스트 재료가 없습니다.');
     if (!input.body.trim()) throw new Error('올릴 글이 비었습니다.');
     const db = getDb();
     const name = agitPostName(input);
@@ -324,12 +328,12 @@ export const agitStore: Pick<
         /* 긴급 · 보통이 바뀌면 글도 바뀐다 — 그래도 사유 칸을 따로 견준다(같은 글에 사유만 다른 일이 없게). 위탁운영수수료는 재료(넘긴 세금계산서
          * 파일 포함)까지 — 같은 금액의 새 파일이면 zip 에 새 파일이 들게 */
         const changed = open.body !== input.body || (open.urgentReason ?? null) !== input.urgent
-          || stableJson(open.fee ?? null) !== stableJson(fee);
+          || stableJson(open.fee ?? null) !== stableJson(fee) || stableJson(open.passthru ?? null) !== stableJson(passthru);
         const moved = input.messageId !== null && input.messageId !== open.messageId;
         if (!changed && !moved) return { id: open.id, plan: 'keep' as const };
         await tx.update(agitPosts).set({
           body: input.body, total: input.total, batches: input.batches,
-          ...(changed ? { status: 'draft', error: null, urgentReason: input.urgent, fee } : {}),
+          ...(changed ? { status: 'draft', error: null, urgentReason: input.urgent, fee, passthru } : {}),
           ...(moved ? { messageId: input.messageId } : {}),
         }).where(eq(agitPosts.id, open.id));
         if (changed) {
@@ -349,7 +353,7 @@ export const agitStore: Pick<
       const newId = crypto.randomUUID();
       await tx.insert(agitPosts).values({
         id: newId, payDate: input.payDate, kind: input.kind, status: 'draft', body: input.body, total: input.total, batches: input.batches,
-        messageId: input.messageId, again: Boolean(posted), urgentReason: input.urgent, fee, postedBy: actor.name,
+        messageId: input.messageId, again: Boolean(posted), urgentReason: input.urgent, fee, passthru, postedBy: actor.name,
       });
       await writeAudit(tx, { projectId: null, actor, action: '아지트 글 초안', field: AUDIT_FIELD, oldValue: null, newValue: title });
       return { id: newId, plan: 'create' as const };
@@ -431,21 +435,23 @@ export const agitStore: Pick<
         { payDate: row.payDate, kind, title: agitTitleOf(row.body), total: row.total, batches: row.batches, urgent: row.urgentReason },
         actor.name
       );
-      /* 위탁운영수수료 글은 그 지급일의 위탁운영수수료 상신 할 일(lib/agit/fee feeRemindKey)을 끝낸다 — 열린구매 상신 할 일(결제일의 거래명세서
-       * 글 · 구분이 다 올라가야)과 따로다 */
-      const fee = kind === AGIT_FEE_KIND;
+      /* 위탁운영수수료 글은 그 지급일의 위탁운영수수료 상신 할 일(lib/agit/fee feeRemindKey), 패스스루 글은 그 달의 25일 상신 할 일
+       * (lib/agit/passthru passthruRemindKey — 그 차의 달)을 끝낸다 — 열린구매 상신 할 일(결제일의 거래명세서 글 · 구분이 다 올라가야)과 따로다 */
+      const own = !isPayoutKind(kind);
       const postedKinds = new Set((await tx.select({ kind: agitPosts.kind }).from(agitPosts)
         .where(and(eq(agitPosts.payDate, row.payDate), eq(agitPosts.status, 'posted')))).map((r) => agitKindOf(r.kind)));
-      const left = fee ? [] : (input.kinds ?? [kind]).filter((k) => !postedKinds.has(k));
+      const left = own ? [] : (input.kinds ?? [kind]).filter((k) => !postedKinds.has(k));
+      const taskKey = kind === AGIT_FEE_KIND ? feeRemindKey(row.payDate)
+        : kind === AGIT_PASSTHRU_KIND ? passthruRemindKey(row.passthru?.month ?? row.payDate.slice(0, 7))
+          : openPurchaseKey(row.payDate);
       const closed = left.length ? [] : await tx.update(agentTasks).set({ doneAt: new Date() }).where(and(
-        eq(agentTasks.agentId, agent.id), eq(agentTasks.kind, fee ? feeRemindKey(row.payDate) : openPurchaseKey(row.payDate)),
-        isNull(agentTasks.doneAt),
+        eq(agentTasks.agentId, agent.id), eq(agentTasks.kind, taskKey), isNull(agentTasks.doneAt),
       )).returning({ title: agentTasks.title });
       for (const t of closed) {
         await writeAudit(tx, { projectId: null, actor, action: '에이전트 할 일 끝냄', field: key, oldValue: t.title, newValue: '끝냄 — 아지트에 올림' });
       }
       const body = left.length ? `${said}\n남은 글: ${left.join(' · ')} — 다 올리면 상신 할 일이 끝납니다.` : said;
-      const meta: AgentMessageMeta = fee ? {} : { link: { href: '/statements', label: '거래명세서 보기 →' } };
+      const meta: AgentMessageMeta = own ? {} : { link: { href: '/statements', label: '거래명세서 보기 →' } };
       await tx.insert(agentMessages).values({ id: crypto.randomUUID(), agentId: agent.id, role: 'auto', author: agent.name, body, meta });
       await writeAudit(tx, { projectId: null, actor, action: '에이전트 자동', field: key, oldValue: null, newValue: body.slice(0, 2000) });
     });

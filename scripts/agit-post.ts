@@ -10,6 +10,7 @@
  *   npx tsx scripts/agit-post.ts 2026-11-25            (그날의 글 전부 — 영업비 · 시공비 따로, 영업비 먼저)
  *   npx tsx scripts/agit-post.ts 2026-11-25 시공비     (한 구분만)
  *   npx tsx scripts/agit-post.ts 2026-11-30 위탁운영수수료   (플러그링크 위탁운영수수료 글 — 그 지급 요청일 · lib/agit/fee)
+ *   npx tsx scripts/agit-post.ts 2026-11-27 패스스루         (플러그링크 패스스루 집행 글 — 그 지급 요청일 · lib/agit/passthru)
  * 글은 결제일 × 구분마다 하나다 — 아래 2~5 를 글마다 한다. 한 글이 금액이 바뀌었거나 못 올라가도 다음 글은 올린다(끝에 모아 말한다).
  * 1. 전용 크롬 창(프로필 ~/hanbaek-backups/agit-browser · 9335 포트 — 떠 있으면 붙고 없으면 띄운다)에서 콘솔과 아지트에 로그인돼 있는지 본다.
  *    안 돼 있으면 한백이 그 창에서 로그인할 때까지 기다린다(★비밀번호는 Claude 가 받지 않는다★).
@@ -39,9 +40,9 @@ const CHROME = process.env.CHROME_PATH || '/Applications/Google Chrome.app/Conte
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** 글의 구분 — 위탁운영수수료 글(lib/agit/fee)은 그 지급 요청일로 찾는다 */
-type Kind = '영업비' | '시공비' | '위탁운영수수료';
-const KINDS: readonly Kind[] = ['영업비', '시공비', '위탁운영수수료'];
+/** 글의 구분 — 위탁운영수수료 글(lib/agit/fee) · 패스스루 글(lib/agit/passthru)은 그 지급 요청일로 찾는다 */
+type Kind = '영업비' | '시공비' | '위탁운영수수료' | '패스스루';
+const KINDS: readonly Kind[] = ['영업비', '시공비', '위탁운영수수료', '패스스루'];
 
 interface Args {
   payDate: string; kind: Kind | null; dry: boolean; console: string; cdp: string | null; mark: string | null; noCc: boolean;
@@ -50,7 +51,7 @@ interface Args {
 function argsOf(argv: string[]): Args {
   const payDate = argv.find((a) => /^\d{4}-\d{2}-\d{2}$/.test(a));
   if (!payDate) {
-    throw new Error('사용: npx tsx scripts/agit-post.ts <결제일 YYYY-MM-DD> [영업비|시공비|위탁운영수수료] [--dry] [--console 주소] [--cdp 주소] [--mark 글] [--no-cc]');
+    throw new Error('사용: npx tsx scripts/agit-post.ts <결제일 YYYY-MM-DD> [영업비|시공비|위탁운영수수료|패스스루] [--dry] [--console 주소] [--cdp 주소] [--mark 글] [--no-cc]');
   }
   const kind = (argv.find((a) => (KINDS as readonly string[]).includes(a)) as Kind | undefined) ?? null;
   const val = (name: string) => {
@@ -173,7 +174,7 @@ async function postOne(a: Args, browser: Browser, consoleTab: Page, draft: Draft
     writeFileSync(zipPath, zip.bytes);
     const unzipped = await JSZip.loadAsync(zip.bytes);
     const pngEntry = Object.values(unzipped.files).find((f) => !f.dir && f.name.endsWith('.png'));
-    /* 위탁운영수수료 zip 에는 캡처가 없다(한백의 5차 zip 그대로) — 따로 받는다 */
+    /* 위탁운영수수료 · 패스스루 zip 에는 캡처가 없다(한백의 지난 zip 그대로) — 따로 받는다 */
     const shot = pngEntry
       ? { bytes: await pngEntry.async('nodebuffer'), name: pngEntry.name.split('/').pop()! }
       : await zipOf(consoleTab, draft.id, 'png');

@@ -27,7 +27,7 @@ export async function GET(request: Request) {
   if (!DAY_RE.test(payDate)) return fail('결제일은 YYYY-MM-DD 로 주세요.', 400);
   const only = q.get('kind');
   if (only !== null && !(AGIT_POST_KINDS as readonly string[]).includes(only)) {
-    return fail('구분은 영업비 · 시공비 · 위탁운영수수료 중 하나입니다.', 400);
+    return fail('구분은 영업비 · 시공비 · 위탁운영수수료 · 패스스루 중 하나입니다.', 400);
   }
   try {
     const actor = actorOf(session);

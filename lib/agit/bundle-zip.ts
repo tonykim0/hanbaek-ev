@@ -11,6 +11,7 @@ import JSZip from 'jszip';
 import { ourBlobPathname } from '@/lib/intake-stage';
 import type { AgitBundlePlan } from './bundle';
 import type { AgitFeePlan } from './fee';
+import type { AgitPassthruPlan } from './passthru';
 import { purchaseXlsx } from './purchase-xlsx';
 import { purchaseHtml } from './purchase-image';
 import { readBlob } from '@/lib/blob/server';
@@ -69,6 +70,22 @@ export async function agitFeeFilesOf(plan: AgitFeePlan, hands: AgitFileHands): P
   const { image } = await hands.render({ paths: [], html: await purchaseHtml(xlsx) });
   if (!image) throw new Error('엑셀 캡처를 만들지 못했습니다.');
   zip.file(plan.invoice.name, await hands.file(plan.invoice.url));
+  return { zip: await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }), image };
+}
+
+/**
+ * 패스스루 집행 글의 첨부(lib/agit/passthru) — 한백의 10월 zip 그대로 폴더 없이 엑셀(하도급 지급요청)과 넘긴 증빙(하도급사 세금계산서 ·
+ * 공사하도급계약 …). 한백사업내역리스트는 내부 장부라 넣지 않는다. 엑셀 캡처는 글의 청구금액 밑 그림으로만 쓴다(10월 zip 에도 없었다).
+ */
+export async function agitPassthruFilesOf(plan: AgitPassthruPlan, hands: AgitFileHands): Promise<{ zip: Uint8Array; image: Uint8Array }> {
+  const bad = plan.attach.find((f) => !ourBlobPathname(f.url));
+  if (bad) throw new Error(`증빙 주소가 콘솔 저장소가 아닙니다 — ${bad.name}`);
+  const zip = new JSZip();
+  const xlsx = await purchaseXlsx(plan.sheet, await purchaseTemplate());
+  zip.file(plan.xlsxName, xlsx);
+  const { image } = await hands.render({ paths: [], html: await purchaseHtml(xlsx) });
+  if (!image) throw new Error('엑셀 캡처를 만들지 못했습니다.');
+  for (const f of plan.attach) zip.file(f.name, await hands.file(f.url));
   return { zip: await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }), image };
 }
 

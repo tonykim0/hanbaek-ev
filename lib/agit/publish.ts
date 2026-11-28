@@ -21,11 +21,13 @@ import { isUnexpectedError } from '@/lib/api/errors';
 import type { Actor } from '@/lib/data/repository';
 import type { PayoutKind } from '@/types/project';
 import { agitBundleOf } from './bundle';
-import { agitFeeFilesOf, agitFilesOf, fetchOurBlob, type AgitFileHands } from './bundle-zip';
+import { agitFeeFilesOf, agitFilesOf, agitPassthruFilesOf, fetchOurBlob, type AgitFileHands } from './bundle-zip';
 import { agitWallOf } from './editor-doc';
 import { agitFeeBundleOf, FEE_PAYEE_MISSING } from './fee';
 import { loadAgitBundleInput, loadAgitKinds, loadAgitPostDraft } from './load';
-import { agitTemplateOf, isPayoutKind, type AgitPostRecord } from './post';
+import { today } from '@/lib/date';
+import { agitPassthruBundleOf } from './passthru';
+import { AGIT_FEE_KIND, AGIT_PASSTHRU_KIND, agitTemplateOf, isPayoutKind, type AgitPostRecord } from './post';
 import { renderAgitFiles } from './statement-pdf';
 import { AgitSignedOut, type ComposeCheck } from './compose';
 import { postAsHanbaek } from './agit-web';
@@ -65,7 +67,7 @@ export async function claimAgitForPosting(actor: Actor, id: string, seen: string
   const { assignees } = hook;
   if (assignees.length === 0) throw new Error('아지트 요청 담당 미지정 — 「요청 담당」에서 아지트 ID 를 넣어 주세요.');
   /* 위탁운영수수료 글의 엑셀에는 플러그링크 계좌가 든다 — 없으면 시작하지 않는다(카드의 단추 이름과 같은 말) */
-  if (!isPayoutKind(post.kind) && !hook.feePayee) throw new Error(FEE_PAYEE_MISSING);
+  if (post.kind === AGIT_FEE_KIND && !hook.feePayee) throw new Error(FEE_PAYEE_MISSING);
   const draft = await loadAgitPostDraft(actor, post);
   if (draft.blocked) throw new Error(draft.blocked);
   if (draft.text !== seen) {
@@ -73,7 +75,7 @@ export async function claimAgitForPosting(actor: Actor, id: string, seen: string
     await repo.draftAgitPost(
       {
         payDate: post.payDate, kind: post.kind, body: draft.text, total: draft.total, batches: draft.batches, again: post.again, messageId: null,
-        urgent: draft.urgent, fee: post.fee,
+        urgent: draft.urgent, fee: post.fee, passthru: post.passthru,
       },
       actor
     );
@@ -87,13 +89,19 @@ export async function claimAgitForPosting(actor: Actor, id: string, seen: string
 }
 
 /**
- * 글 하나의 첨부 — zip 과 캡처(구매 내역 그림). 위탁운영수수료 글은 엑셀 · 넘긴 세금계산서(lib/agit/fee — 거래명세서 없음), 그 밖의 글은
- * 그 결제일 · 구분의 배치로
+ * 글 하나의 첨부 — zip 과 캡처(구매 내역 그림). 위탁운영수수료 글은 엑셀 · 넘긴 세금계산서(lib/agit/fee — 거래명세서 없음), 패스스루 글은
+ * 엑셀 · 넘긴 증빙(lib/agit/passthru), 그 밖의 글은 그 결제일 · 구분의 배치로
  */
 export async function agitPostFilesOf(actor: Actor, post: AgitPostRecord, ctx: Pick<PublishContext, 'origin' | 'cookie'>): Promise<{
   zip: { bytes: Uint8Array; name: string }; png: { bytes: Uint8Array; name: string };
 }> {
   const render: AgitFileHands['render'] = ({ paths, html }) => renderAgitFiles({ origin: ctx.origin, cookie: ctx.cookie, paths, html });
+  if (post.kind === AGIT_PASSTHRU_KIND) {
+    if (!post.passthru) throw new Error('패스스루 글의 한백사업내역리스트 재료가 없습니다 — 정산 담당에게 엑셀을 다시 넘겨 주세요.');
+    const plan = agitPassthruBundleOf(post.payDate, post.passthru, today());
+    const { zip, image } = await agitPassthruFilesOf(plan, { render, file: (url) => fetchOurBlob(url) });
+    return { zip: { bytes: zip, name: plan.zipName }, png: { bytes: image, name: plan.imageName } };
+  }
   if (!isPayoutKind(post.kind)) {
     if (!post.fee) throw new Error('위탁운영수수료 글의 세금계산서 재료가 없습니다 — 정산 담당에게 세금계산서를 다시 넘겨 주세요.');
     const { feePayee } = await getRepository().getAgitHook(actor);

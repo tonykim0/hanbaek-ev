@@ -1,6 +1,7 @@
 /**
  * 에이전트의 정기 일 (서버 전용) — 매일 아침 크론(app/api/cron/agents · vercel.json)이 부른다. 정산 담당의 둘 — 아래 열린구매와,
- *   말일 지급 플러그링크 위탁운영수수료의 상신 알림(lib/agit/fee feeRemindDue — 3영업일 전 · 2026-11-11, 아래 remindFee). 열린구매는:
+ *   말일 지급 플러그링크 위탁운영수수료의 상신 알림(lib/agit/fee feeRemindDue — 3영업일 전 · 2026-11-11, 아래 remindFee) · 매월 25일
+ *   플러그링크 패스스루 집행의 상신 알림(lib/agit/passthru passthruRemindDue — 2026-11-28, 아래 remindPassthru). 열린구매는:
  *   정산 담당의 열린구매 상신 알림(lib/agents/open-purchase — 정기결제 10일 · 25일의 3영업일 전, 한백 지시 2026-11-04)과
  *   그 결제일의 아지트 열린구매 글 초안(lib/agit — 한백 2026-11-08 「정산담당 에이전트가 때가 되면 초안을 올려주고, 내가 승인하면
  *   정산담당에이전트가 아지트에 글을 올리는 구조」). 초안은 알림의 말 밑에 카드로 서고, 한백이 승인해야 올라간다.
@@ -12,8 +13,9 @@ import { getRepository } from '@/lib/data';
 import { today } from '@/lib/date';
 import { AUTO } from '@/lib/check-kit';
 import { agitUrgentFor, draftKindsOf, loadAgitDraft, loadAgitKinds } from '@/lib/agit/load';
-import { AGIT_FEE_KIND, type AgitPayoutText } from '@/lib/agit/post';
+import { AGIT_FEE_KIND, AGIT_PASSTHRU_KIND, type AgitPayoutText } from '@/lib/agit/post';
 import { feeRemindDue, feeRemindPlan } from '@/lib/agit/fee';
+import { passthruRemindDue, passthruRemindPlan } from '@/lib/agit/passthru';
 import type { Actor } from '@/lib/data/repository';
 import { loadScope } from './scope';
 import { OPEN_PURCHASE_AGENT, openPurchaseDue, openPurchasePlan, unknownYears } from './open-purchase';
@@ -28,7 +30,10 @@ export async function runAgentReminders(now: Date = new Date()): Promise<{
   const dues = openPurchaseDue(day);
   /* 플러그링크 위탁운영수수료 — 이번 달 말일 지급분의 3영업일 전(lib/agit/fee · 한백 2026-11-11). 결과 목록에는 「지급일 위탁운영수수료」로 선다 */
   const fee = await remindFee(day);
-  if (dues.length === 0) return { day, due: fee.due, reminded: fee.reminded, drafted: [] };
+  /* 플러그링크 패스스루 집행 — 매월 25일(lib/agit/passthru · 한백 2026-11-28). 결과 목록에는 「달 패스스루」로 선다 */
+  const pass = await remindPassthru(day);
+  const own = { due: [...fee.due, ...pass.due], reminded: [...fee.reminded, ...pass.reminded] };
+  if (dues.length === 0) return { day, due: own.due, reminded: own.reminded, drafted: [] };
   const { batches } = await loadScope(REMIND_ACTOR);
   const reminded: string[] = [];
   const drafted: string[] = [];
@@ -62,7 +67,7 @@ export async function runAgentReminders(now: Date = new Date()): Promise<{
       }
     }
   }
-  return { day, due: [...dues.map((d) => d.payDate), ...fee.due], reminded: [...reminded, ...fee.reminded], drafted };
+  return { day, due: [...dues.map((d) => d.payDate), ...own.due], reminded: [...reminded, ...own.reminded], drafted };
 }
 
 /**
@@ -79,6 +84,26 @@ async function remindFee(day: string): Promise<{ due: string[]; reminded: string
     .some((p) => p.kind === AGIT_FEE_KIND && p.payDate === due.payDate && p.status === 'posted');
   if (posted) return { due: [label], reminded: [] };
   const plan = feeRemindPlan(due, day);
+  const r = await getRepository().agentRemind({
+    agentId: OPEN_PURCHASE_AGENT, key: plan.key, task: plan.task, say: plan.say, alarm: plan.alarm,
+  }, REMIND_ACTOR);
+  return { due: [label], reminded: r.created ? [label] : [] };
+}
+
+/**
+ * 패스스루 집행 상신 알림 — 매월 25일(쉬는 날이면 앞 영업일) 아침, 놓쳤으면 그 달 안에 한 번. 할 일 · 대화 한 줄 · 한백 관리자 알림만 남긴다 —
+ * 초안은 한백이 한백사업내역리스트 엑셀을 넘겨야 지을 수 있다(lib/agit/passthru-run). 그 달의 글을 이미 올렸으면 알리지 않는다.
+ */
+async function remindPassthru(day: string): Promise<{ due: string[]; reminded: string[] }> {
+  const due = passthruRemindDue(day);
+  if (!due) return { due: [], reminded: [] };
+  const label = `${due.month} ${AGIT_PASSTHRU_KIND}`;
+  const years = unknownYears({ payDate: due.remindOn, payDay: due.remindOn, deadline: due.remindOn });
+  if (years.length) console.error('[agents] 공휴일 표 없음', years.join(','), '— lib/business-days 에 그 해를 더한다');
+  const posted = (await getRepository().recentAgitPosts(REMIND_ACTOR, `${due.month}-01`))
+    .some((p) => p.kind === AGIT_PASSTHRU_KIND && p.status === 'posted' && (p.passthru?.month ?? p.payDate.slice(0, 7)) === due.month);
+  if (posted) return { due: [label], reminded: [] };
+  const plan = passthruRemindPlan(due, day);
   const r = await getRepository().agentRemind({
     agentId: OPEN_PURCHASE_AGENT, key: plan.key, task: plan.task, say: plan.say, alarm: plan.alarm,
   }, REMIND_ACTOR);

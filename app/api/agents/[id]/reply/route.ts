@@ -35,6 +35,8 @@ import { agitUrgentFor, draftKindsOf, loadAgitDraft, loadAgitKinds } from '@/lib
 import { agitPostName, payDateName, type AgitKind } from '@/lib/agit/post';
 import { requestAgitPublish } from '@/lib/agit/publish';
 import { draftAgitFeePost } from '@/lib/agit/fee-run';
+import { draftAgitPassthruPost } from '@/lib/agit/passthru-run';
+import { passthruPayOf, passthruVatOf } from '@/lib/agit/passthru';
 import { isUnexpectedError } from '@/lib/api/errors';
 import type { PayoutKind } from '@/types/project';
 import { OPEN_PURCHASE_AGENT } from '@/lib/agents/open-purchase';
@@ -209,6 +211,32 @@ async function answer(
             sales: input.sales
               ? { supply: input.sales.supply, vat: input.sales.vat, total: input.sales.total, inDate: input.sales.inDate }
               : null,
+          };
+        },
+        /*
+         * 플러그링크 패스스루 집행 글 — 한백이 이 대화에 넘긴 한백사업내역리스트 엑셀을 콘솔이 칸으로 읽어 짓는다(lib/agit/passthru-run).
+         * 엑셀 · 증빙 파일은 이 담당에게 넘긴 것만
+         */
+        agitPassthruDraft: async (q: {
+          sheetFileId: string; attachFileIds: string[]; round: number | null; inDate: string | null; payDate: string | null; again: boolean;
+        }) => {
+          const fileOf = async (id: string, what: string) => {
+            const f = await repo.agentFileOf(agentId, id, actor);
+            if (!f) throw new Error(`${what}(id=${id})를 이 대화에서 찾지 못했다 — 「[넘긴 파일 … · id=…]」의 id 를 쓴다.`);
+            return { url: f.url, name: f.name };
+          };
+          const sheetFile = await fileOf(q.sheetFileId, '한백사업내역리스트 엑셀');
+          const attach = [];
+          for (const id of q.attachFileIds) attach.push(await fileOf(id, '첨부할 증빙'));
+          const { post, plan, input, read } = await draftAgitPassthruPost(actor, {
+            sheetFile, attach, round: q.round, inDate: q.inDate, payDate: q.payDate, again: q.again,
+          });
+          agitDrafted.push(post.id);
+          return {
+            id: post.id, plan, name: agitPostName(post), payDate: post.payDate, round: input.round, month: input.month,
+            receive: input.receive, pay: passthruPayOf(input), vat: passthruVatOf(input),
+            rows: input.rows.map((r) => ({ org: r.org, supply: r.supply })), own: read.own,
+            inDate: input.inDate, attach: input.attach.map((f) => f.name), notes: read.notes,
           };
         },
         agitPublish: async (q: { payDate: string; kind?: AgitKind }) => {

@@ -22,6 +22,7 @@ import { won } from '@/lib/format';
 import { downloadBlob } from '@/lib/download';
 import { agitPostName, assigneesLabel, payDateName, type AgitPostRecord } from '@/lib/agit/post';
 import { feeMonthName } from '@/lib/agit/fee';
+import { passthruMonthName, passthruPayOf } from '@/lib/agit/passthru';
 import { Btn, Confirm, Err, Tag, TEXT, type Tone } from '@/components/ui';
 import { fileHref } from '@/lib/blob/path';
 
@@ -63,11 +64,15 @@ export function AgitCard({ post, assignees, account }: {
   const sending = post.status === 'sending' && !post.stalled;
   const look = post.stalled ? STALLED : LOOK[post.status];
   const open = post.status === 'draft' || post.status === 'failed' || post.stalled;
-  /* 위탁운영수수료 글은 몇 차 · 몇 월분 · 세금계산서의 공급가액(지급처가 플러그링크 하나) — 거래명세서 글은 지급 건수 · 공급가액 */
+  /* 위탁운영수수료 글은 몇 차 · 몇 월분 · 세금계산서의 공급가액(지급처가 플러그링크 하나), 패스스루 글은 HB 차 · 달 · 하도급 지급 건수 ·
+   * 공급가액 — 거래명세서 글은 지급 건수 · 공급가액 */
   const fee = post.fee;
+  const pass = post.passthru;
   const sum = fee
     ? `${fee.round}차 · ${feeMonthName(fee.month)} · 공급가액 ${won(fee.fee.supply)}원`
-    : `지급 ${post.batches}건 · 공급가액 ${won(post.total)}원`;
+    : pass
+      ? `HB${pass.round}차 · ${passthruMonthName(pass.month)} · 하도급 지급 ${pass.rows.length}건 · 공급가액 ${won(passthruPayOf(pass))}원`
+      : `지급 ${post.batches}건 · 공급가액 ${won(post.total)}원`;
   /* 올린 글은 그때 붙인 사람, 아직이면 지금 정해 둔 사람 */
   const who = post.status === 'posted' || post.status === 'sending' ? post.assignees : assignees;
   /* 못 올리는 까닭이 단추 이름이다(규칙 3) */
@@ -145,9 +150,9 @@ export function AgitCard({ post, assignees, account }: {
       </div>
 
       <dl className="mt-2 grid grid-cols-[64px_minmax(0,1fr)] gap-x-3 gap-y-1">
-        <dt className={TEXT.label}>{fee ? '지급일' : '결제일'}</dt>
+        <dt className={TEXT.label}>{fee || pass ? '지급일' : '결제일'}</dt>
         <dd className="text-small font-bold text-slate-900 tabular-nums">
-          {fee ? monthDayOf(post.payDate) : payDateName(post.payDate)} · {sum}
+          {fee || pass ? monthDayOf(post.payDate) : payDateName(post.payDate)} · {sum}
         </dd>
         <dt className={TEXT.label}>구분</dt>
         <dd className="text-small font-semibold text-slate-800">{post.kind}</dd>
@@ -164,6 +169,35 @@ export function AgitCard({ post, assignees, account }: {
               <a href={fileHref(fee.fee.file.url)} target="_blank" rel="noreferrer" className="font-semibold text-brand-700 underline-offset-2 hover:underline">
                 {fee.fee.file.name}
               </a>
+            </dd>
+          </>
+        )}
+        {pass && (
+          <>
+            <dt className={TEXT.label}>받을 돈</dt>
+            <dd className="text-small font-semibold text-slate-800 tabular-nums">
+              {`플러그링크 → 한백 ${won(pass.receive)}원 · ${pass.inDate ? `${monthDayOf(pass.inDate)} 입금 예정` : '입금 예정일 미지정'}`}
+            </dd>
+            <dt className={TEXT.label}>지급처</dt>
+            <dd className="text-small text-slate-800 tabular-nums">
+              {pass.rows.map((r) => `${r.org} ${won(r.supply)}원`).join(' · ')}
+            </dd>
+            <dt className={TEXT.label}>엑셀</dt>
+            <dd className="text-small text-slate-800">
+              <a href={fileHref(pass.sheet.url)} target="_blank" rel="noreferrer" className="font-semibold text-brand-700 underline-offset-2 hover:underline">
+                {pass.sheet.name}
+              </a>
+            </dd>
+            <dt className={TEXT.label}>증빙</dt>
+            <dd className="text-small text-slate-800">
+              {pass.attach.length === 0 ? '0건' : pass.attach.map((f, i) => (
+                <span key={f.url}>
+                  {i > 0 && ' · '}
+                  <a href={fileHref(f.url)} target="_blank" rel="noreferrer" className="font-semibold text-brand-700 underline-offset-2 hover:underline">
+                    {f.name}
+                  </a>
+                </span>
+              ))}
             </dd>
           </>
         )}
@@ -199,7 +233,7 @@ export function AgitCard({ post, assignees, account }: {
             {blocked ?? (post.status === 'draft' ? '승인하고 올리기' : '다시 올리기')}
           </Btn>
         )}
-        <Btn size="sm" kind="side" busy={zipping} busyLabel={fee ? '묶는 중… (엑셀 캡처)' : '묶는 중… (거래명세서 PDF)'} onClick={() => void bundle()}>
+        <Btn size="sm" kind="side" busy={zipping} busyLabel={fee || pass ? '묶는 중… (엑셀 캡처)' : '묶는 중… (거래명세서 PDF)'} onClick={() => void bundle()}>
           첨부 파일 받기 (zip)
         </Btn>
         <Btn size="sm" kind="quiet" onClick={() => void copy()}>{copied ? '복사됨' : '복사'}</Btn>
