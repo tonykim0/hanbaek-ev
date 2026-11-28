@@ -25,7 +25,9 @@
  * 세금계산서. 그 글은 재무팀이 물어 공사하도급계약 · 기성산출물 PDF 를 나중에 따로 붙였다 — 여기서는 한백이 넘긴 증빙을 다 zip 에 넣는다.
  *
  * ★금액 · 계좌는 엑셀에서 콘솔이 읽는다 — 정산 담당이 옮겨 적지 않는다★(열린구매 · 위탁운영수수료 글과 같은 원칙). 지급일은 매입내역 「지급일」
- * (L) · 입금 예정일은 엑셀에 없어 한백이 말해야 적는다(10월은 지급 전날이었다 — 지어내지 않는다).
+ * (L) · ★입금 예정일은 「매출수금매입내역_총괄」 시트의 그 차 「수금일자」★(ledgerInDateOf — 11-28 시험에서 찾았다: HB30 의 수금일자가 10월
+ * 글의 입금 예정일과 같았고, 파일을 만든 날(11/19)에 HB31 은 앞날(11/26)이 적혀 있었다). 한백이 다른 날을 말하면 그 날이 이긴다
+ * (lib/agit/passthru-run) · 시트에도 없으면 「입금 예정일 미정」(지어내지 않는다).
  * ★실제 금액 · 계좌 · 거래처는 공개 저장소에 적지 않는다★ — 시험은 지어낸 값이다.
  */
 import { won } from '@/lib/format';
@@ -41,12 +43,14 @@ export interface SheetRow {
   r: number;
   c: Record<string, Cell>;
 }
-/** 한백사업내역리스트에서 쓰는 두 시트 */
+/** 한백사업내역리스트에서 쓰는 시트 */
 export interface PassthruBook {
   /** 「매입내역」 — 차수별 지급 줄 */
   purchase: SheetRow[];
   /** 「EPC사업내역리스트」 — 현장별 기성 · 세금계산서 */
   epc: SheetRow[];
+  /** 「매출수금매입내역_총괄」 — 차수별 매출 · 수금 · 매입. 입금 예정일(수금일자)만 읽는다 · 없어도 짓는다(입금 예정일 미정) */
+  ledger?: SheetRow[];
 }
 
 /** 넘긴 파일 — 정산 담당 대화에 한백이 올린 것(우리 Blob 의 agent-files/…) */
@@ -78,7 +82,7 @@ export interface AgitPassthruInput {
   month: string;
   /** 플러그링크 → 한백(부가세 전) — EPC 그 차수 줄의 「잔금 세금계산서」 합 */
   receive: number;
-  /** 플러그링크 입금 예정일 YYYY-MM-DD — 엑셀에 없어 한백이 말했을 때만 */
+  /** 플러그링크 입금 예정일 YYYY-MM-DD — 한백이 말한 날, 아니면 엑셀 총괄 시트의 그 차 「수금일자」(둘 다 없으면 null — 「미정」) */
   inDate: string | null;
   /** 한백 → 하도급사 — 매입내역 그 차수 줄(한백 줄 빼고) */
   rows: PassthruPayRow[];
@@ -96,6 +100,8 @@ export interface PassthruRead {
   rows: PassthruPayRow[];
   /** 매입내역 「지급일」 — 그 차수 줄에 적힌 하나(없으면 null — 한백이 말해야 한다) */
   payDate: string | null;
+  /** 플러그링크 입금 예정일 — 총괄 시트의 그 차 「수금일자」(시트 · 줄 · 날이 없으면 null) */
+  inDate: string | null;
   /** 뺀 한백 줄의 공급가 합 · 줄 수(참고 — 글에 안 든다) */
   own: { supply: number; rows: number };
   /** 막지 않고 짚을 것 — 계좌를 다른 줄에서 빌림 · 계좌 없음 · EPC 금회기성 합과 다름 */
@@ -168,6 +174,31 @@ function checkPurchaseHead(rows: readonly SheetRow[]): void {
   const head = rows.find((r) => text(r.c[P.supply]).replace(/\s/g, '') === '공급가');
   const ok = head && text(head.c[P.vat]).replace(/\s/g, '') === '부가세' && text(head.c[P.total]).replace(/\s/g, '') === '합계금액';
   if (!ok) throw new Error('매입내역 시트의 머리(공급가 · 부가세 · 합계금액)를 찾지 못했습니다 — 엑셀 모양이 바뀌었습니다.');
+}
+
+/** 열 글자 → 번호(A=1 · AA=27) — 한 머리 줄에서 왼쪽 · 오른쪽을 가른다 */
+const colNo = (letters: string): number => [...letters].reduce((n, ch) => n * 26 + ch.charCodeAt(0) - 64, 0);
+
+/**
+ * 총괄 시트의 그 차 「수금일자」 — 플러그링크 입금 예정일. 시트는 표 셋이 나란히 선다(「1) HB기준 매출내역」 B~N · 「2) HB기준 수금내역」
+ * P~W · 「3) HB기준 매입내역」 X~). 머리 줄에서 「수금일자」를 찾고, 그 표의 「구분」은 그 왼쪽에서 가장 가까운 「구분」이다(매출내역의 「구분」
+ * 둘이 더 왼쪽에 있다). 그 「구분」이 HB31(HB31차)인 줄 하나 — HB31_1 같은 정산 줄은 아니다. 시트 · 머리 · 줄 · 날이 없으면 null.
+ */
+export function ledgerInDateOf(rows: readonly SheetRow[] | undefined, round: number): string | null {
+  if (!rows) return null;
+  const want = new RegExp(`^HB\\s*${round}\\s*차?$`);
+  for (const head of rows.slice(0, 20)) {
+    const cells = Object.entries(head.c).map(([letter, v]) => ({ letter, name: text(v).replace(/\s/g, '') }));
+    const day = cells.find((x) => x.name === '수금일자');
+    if (!day) continue;
+    const key = cells
+      .filter((x) => x.name === '구분' && colNo(x.letter) < colNo(day.letter))
+      .sort((a, b) => colNo(b.letter) - colNo(a.letter))[0];
+    if (!key) return null;
+    const hit = rows.find((r) => r.r > head.r && want.test(text(r.c[key.letter])));
+    return hit ? excelDayOf(hit.c[day.letter]) : null;
+  }
+  return null;
 }
 
 /** 매입내역의 차수 — 가장 큰 차(「지금」 차) */
@@ -263,10 +294,37 @@ export function passthruReadOf(book: PassthruBook, round?: number | null): Passt
   if (!month || !MONTH_RE.test(month)) throw new Error(`EPC사업내역리스트 ${at}차 줄에서 해당년도 · 해당월을 읽지 못했습니다.`);
 
   return {
-    round: at, month, receive, rows, payDate: days[0] ?? null,
+    round: at, month, receive, rows, payDate: days[0] ?? null, inDate: ledgerInDateOf(book.ledger, at),
     own: { supply: own.reduce((s, x) => s + x.supply, 0), rows: own.length },
     notes,
   };
+}
+
+/**
+ * 정산 담당 대화에 싣는 이 엑셀의 글자 — 요약만(lib/agents/file-text). 통째로 실으면 6만 자(≈ 9만 토큰)가 최근 대화 창에 남아, 5분 넘게
+ * 쉬었다 부를 때마다 캐시를 다시 쓴다(11-28 시험 — 파일을 넘긴 첫 답 $0.53 중 $0.47). 금액 · 계좌는 agit_passthru_post 가 칸에서
+ * 읽으니 담당은 시트 이름과 콘솔이 읽은 지금 차의 숫자만 본다 — 전체는 read_file. sheets 는 엑셀의 시트 이름(차례대로) ·
+ * read 는 passthruReadOf 의 결과(못 읽었으면 그 까닭).
+ */
+export function passthruBriefOf(sheets: readonly string[], read: PassthruRead | Error): string {
+  const lines = [
+    `한백사업내역리스트 엑셀(시트 ${sheets.join(' · ')}) — 플러그링크 패스스루 집행 글의 재료다. 대화에는 요약만 싣는다 — 차수 · 금액 · 계좌 · `
+      + '지급일 · 입금 예정일은 agit_passthru_post 가 엑셀 칸에서 읽어 글을 짓는다. 다른 칸을 봐야 하면 read_file 로 전체를 연다.',
+  ];
+  if (read instanceof Error) {
+    lines.push(`콘솔이 지금 차(매입내역의 가장 큰 차)를 읽지 못했다 — ${read.message}`);
+    return lines.join('\n');
+  }
+  const pay = passthruPayOf(read);
+  lines.push(
+    `콘솔이 읽은 지금 차(매입내역의 가장 큰 차): HB${read.round}차 · ${monthName(read.month)}`,
+    `플러그링크 → 한백(부가세 전): ${won(read.receive)}원 · 입금 예정 ${read.inDate ?? '미정(총괄 시트에 수금일자 없음)'}`,
+    `한백 → 하도급사 ${read.rows.length}건(부가세 전 ${won(pay)}원 · 포함 ${won(pay + passthruVatOf(read))}원) · 지급일 ${read.payDate ?? '없음'}: `
+      + read.rows.map((r) => `${r.org} ${r.what || '지급'} ${won(r.supply)}원`).join(' · '),
+    ...(read.own.rows ? [`한백 자신에게 가는 줄 ${read.own.rows}건(${won(read.own.supply)}원)은 지급에서 뺀다.`] : []),
+    ...read.notes.map((n) => `참고: ${n}`),
+  );
+  return lines.join('\n');
 }
 
 /** 입금 예정일 · 지급 요청일 — YYYY-MM-DD 만(빈 글 · 없으면 null) */
@@ -431,9 +489,9 @@ export function passthruRemindPlan(due: PassthruRemindDue, today: string): Remin
       late
         ? `${passthruMonthName(due.month)} 플러그링크 패스스루 집행 상신 — 알림 날(${dayLabel(due.remindOn)})이 지났습니다. 엑셀이 준비됐으면 바로 넘겨 주세요.`
         : `${passthruMonthName(due.month)} 플러그링크 패스스루 집행 상신 — 오늘이 알림 날입니다(매월 ${PASSTHRU_REMIND_DAY}일).`,
-      '이번 차수가 든 한백사업내역리스트 엑셀을 이 대화에 넘겨 주세요 — 차수 · 하도급사 지급 줄 · 플러그링크에서 받을 돈 · 지급일은 콘솔이 엑셀에서 '
-        + '읽어 긴급구매요청 초안을 짓습니다. 하도급사 세금계산서 · 공사하도급계약서 PDF 도 같이 넘기면 첨부 zip 에 넣고, 플러그링크 입금 예정일도 '
-        + '알려 주시면 글에 넣습니다.',
+      '이번 차수가 든 한백사업내역리스트 엑셀을 이 대화에 넘겨 주세요 — 차수 · 하도급사 지급 줄 · 플러그링크에서 받을 돈 · 지급일 · 입금 예정일은 '
+        + '콘솔이 엑셀에서 읽어 긴급구매요청 초안을 짓습니다(입금 예정일은 「매출수금매입내역_총괄」 시트의 「수금일자」 — 다른 날이면 알려 주세요). '
+        + '하도급사 세금계산서 · 공사하도급계약서 PDF 도 같이 넘기면 첨부 zip 에 넣습니다.',
       '아지트에 올리면 이 할 일이 저절로 끝납니다.',
     ].join('\n'),
     alarm: {

@@ -145,8 +145,10 @@ function roleOf(agent: Agent): string {
         + '리스트 엑셀(시트 「매입내역」 · 「EPC사업내역리스트」)을 넘기면 agit_passthru_post 에 그 파일 id 를 준다 — 차수 · 하도급사 지급 줄 · '
         + '플러그링크에서 받을 돈(EPC 잔금 세금계산서 합) · 지급일 · 계좌는 콘솔이 엑셀 칸에서 읽는다(한백 자신에게 가는 줄은 뺀다). 같이 넘긴 '
         + '하도급사 세금계산서 · 공사하도급계약서 PDF 는 attach_file_ids 로 첨부 zip 에 넣는다 — 엑셀 자체는 내부 장부라 첨부하지 않는다. '
-        + '플러그링크 입금 예정일은 엑셀에 없다 — 한백이 말했을 때만 in_date(말하지 않았으면 「입금 예정일 미정」으로 짓고 알려 주면 넣겠다고 '
-        + '한 줄). 올리라고 하면 agit_publish(돌려받은 지급일 · kind 패스스루). 매월 25일(쉬는 날이면 앞 영업일) 아침에 콘솔이 네 이름으로 '
+        + '플러그링크 입금 예정일도 콘솔이 엑셀에서 읽는다(시트 「매출수금매입내역_총괄」의 그 차 「수금일자」) — in_date 는 한백이 다른 날을 '
+        + '말했을 때만 준다(한백이 말한 날이 이긴다). 엑셀에도 없으면 「입금 예정일 미정」으로 짓고 알려 주면 넣겠다고 한 줄. 이 엑셀은 대화에 '
+        + '요약(시트 이름 · 콘솔이 읽은 지금 차의 숫자)만 실린다 — 다른 칸을 봐야 하면 read_file 로 전체를 연다. '
+        + '올리라고 하면 agit_publish(돌려받은 지급일 · kind 패스스루). 매월 25일(쉬는 날이면 앞 영업일) 아침에 콘솔이 네 이름으로 '
         + '「패스스루 집행 상신」 할 일 · 알림을 이 대화에 올린다(엑셀을 넘겨 달라는 말) — 그 달의 패스스루 글을 아지트에 올리면 저절로 끝나고, '
         + '한백이 따로 상신했다고 하면 네가 끝낸다. 지금은 정기 지급만이다 — 취소 · 회수 · 반환 글은 짓지 않는다(한백이 손으로 쓴다). '
         + '한백이 따로 써 달라고 할 때만 [열린구매] 자료로 글을 쓴다. 붙일 자료는 자료 줄에 있는 것(거래명세서 주소 · 세금계산서 · '
@@ -407,6 +409,8 @@ export interface AgentHands {
     id: string; plan: 'create' | 'refresh' | 'keep'; name: string; payDate: string; round: number; month: string;
     receive: number; pay: number; vat: number; rows: { org: string; supply: number }[]; own: { supply: number; rows: number };
     inDate: string | null; attach: string[]; notes: string[];
+    /** 입금 예정일을 어디서 — 한백이 말한 날 · 엑셀 총괄 시트의 수금일자 · 없음(미정) */
+    inDateFrom: 'said' | 'sheet' | null;
   }>;
   /** 팀장만 — 팀 목표 · 방향 올리기(id 없이) · 고치기(id). 저장소가 틀리면 사람 말로 던진다 */
   saveDirection?(input: { id: string | null; title: string; body: string }): Promise<{ id: string; title: string }>;
@@ -623,9 +627,10 @@ const AGIT_PASSTHRU_TOOL = {
   description: '플러그링크 패스스루 집행 글 — 매달 아지트 열린구매에 올리는 「[긴급] 플러그링크 YYYY년 M월 패스스루 집행」 긴급구매요청 글 — '
     + '초안을 이 답 밑에 올린다. 한백이 이 대화에 넘긴 한백사업내역리스트 엑셀(xlsx — 시트 「매입내역」 · 「EPC사업내역리스트」)의 파일 id 를 준다. '
     + '★차수(HB○차) · 하도급사 지급 줄(매입내역 — 한백 자신에게 가는 줄은 뺀다) · 플러그링크에서 받을 돈(EPC사업내역리스트 그 차의 잔금 세금계산서 합) · '
-    + '지급일 · 은행 · 계좌는 콘솔이 엑셀 칸에서 읽는다 — 네가 옮겨 적지 않는다★. 시트가 없거나 셈이 맞지 않으면 짓지 않고 까닭을 돌려준다 — '
-    + '그대로 한백에게 말한다. 같이 넘긴 하도급사 세금계산서 · 공사하도급계약서 등 증빙 PDF 는 attach_file_ids — 첨부 zip 에 엑셀(하도급 지급요청)과 '
-    + '같이 든다. 플러그링크 입금 예정일은 한백이 말했을 때만 in_date. 같은 지급일의 승인 전 초안이 있으면 고쳐 이 답 밑으로 옮긴다. 짓기만 한다 — '
+    + '지급일 · 은행 · 계좌 · 입금 예정일(「매출수금매입내역_총괄」 그 차의 수금일자)은 콘솔이 엑셀 칸에서 읽는다 — 네가 옮겨 적지 않는다★. 시트가 '
+    + '없거나 셈이 맞지 않으면 짓지 않고 까닭을 돌려준다 — 그대로 한백에게 말한다. 같이 넘긴 하도급사 세금계산서 · 공사하도급계약서 등 증빙 PDF 는 '
+    + 'attach_file_ids — 첨부 zip 에 엑셀(하도급 지급요청)과 같이 든다. in_date 는 한백이 엑셀과 다른 입금 예정일을 말했을 때만. '
+    + '같은 지급일의 승인 전 초안이 있으면 고쳐 이 답 밑으로 옮긴다. 짓기만 한다 — '
     + '올리는 것은 agit_publish(돌려준 지급일 · kind 패스스루, 한백이 올리라고 했을 때만). 정기 지급만이다 — 취소 · 회수 · 반환 글은 짓지 않는다.',
   input_schema: {
     type: 'object',
@@ -638,7 +643,10 @@ const AGIT_PASSTHRU_TOOL = {
       round: {
         type: 'integer', description: '차수 HB○차의 숫자 — 한백이 다른 차를 말했을 때만. 빼면 매입내역의 가장 큰 차 (선택)',
       },
-      in_date: { type: 'string', description: '플러그링크 → 한백 입금 예정일 YYYY-MM-DD — 한백이 말했을 때만 (선택)' },
+      in_date: {
+        type: 'string',
+        description: '플러그링크 → 한백 입금 예정일 YYYY-MM-DD — 한백이 다른 날을 말했을 때만. 빼면 엑셀 「매출수금매입내역_총괄」 시트의 그 차 「수금일자」 (선택)',
+      },
       pay_date: {
         type: 'string', description: '지급 요청일 YYYY-MM-DD — 한백이 다른 날을 말했을 때만. 빼면 매입내역 그 차의 지급일 (선택)',
       },
@@ -783,7 +791,8 @@ const MEMORY_TOOLS = [
   },
   {
     name: 'read_file',
-    description: '한백이 이 대화창에 넘긴 파일 하나를 다시 연다 — 「… id=…」의 id. 최근 대화에 붙어 있지 않은 지난 파일을 볼 때 쓴다.',
+    description: '한백이 이 대화창에 넘긴 파일 하나를 다시 연다 — 「… id=…」의 id. 최근 대화에 붙어 있지 않은 지난 파일을 볼 때 · 대화에 요약만 '
+      + '실린 파일(한백사업내역리스트 엑셀)의 전체 칸을 볼 때 쓴다.',
     input_schema: {
       type: 'object',
       properties: { file_id: { type: 'string', description: '넘긴 파일의 id' } },
@@ -1184,7 +1193,9 @@ export async function agentReply(input: {
           type: 'tool_result', tool_use_id: block.id,
           content: [
             `패스스루 HB${made.round}차(${y}년 ${Number(m)}월) 긴급 글 ${head} (id=${made.id}, 지급 요청일 ${made.payDate}).`,
-            `플러그링크 → 한백(받을 돈 · 부가세 전): ${won(made.receive)}원 · 입금 예정 ${made.inDate ?? '미정 — 한백이 알려 주면 in_date 로 다시 짓는다'}`,
+            `플러그링크 → 한백(받을 돈 · 부가세 전): ${won(made.receive)}원 · 입금 예정 ${
+              !made.inDate ? '미정 — 엑셀 총괄 시트에 그 차의 「수금일자」가 없다. 한백이 알려 주면 in_date 로 다시 짓는다'
+                : made.inDateFrom === 'said' ? `${made.inDate}(한백이 말한 날)` : `${made.inDate}(엑셀 총괄 시트 「수금일자」)`}`,
             `한백 → 하도급사(지급 ${made.rows.length}건 · 부가세 전 ${won(made.pay)}원 · 포함 ${won(made.pay + made.vat)}원): `
               + made.rows.map((r) => `${r.org} ${won(r.supply)}원`).join(' · '),
             ...(made.own.rows ? [`한백 자신에게 가는 줄 ${made.own.rows}건(${won(made.own.supply)}원)은 지급 글에서 뺐다.`] : []),
@@ -1290,7 +1301,7 @@ export async function agentReply(input: {
         if (read === 'pdf' || read === 'image') {
           return { type: 'tool_result', tool_use_id: block.id, content: fileBlocks({ ...f, url: await fileLink(f.url) }) as Anthropic.ToolResultBlockParam['content'] };
         }
-        const t = await fileText(f);
+        const t = await fileText(f, { full: true }); // 대화에 요약만 실린 엑셀도 여기서는 전체(file-text sheetText)
         const head = `[넘긴 파일 ${f.name} · id=${f.id}]`;
         return {
           type: 'tool_result', tool_use_id: block.id,

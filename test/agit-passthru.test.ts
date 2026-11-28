@@ -6,10 +6,11 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import JSZip from 'jszip';
 import {
-  agitPassthruBundleOf, agitPassthruPostOf, excelDayOf, latestPassthruRound, passthruDayOf, passthruReadOf, passthruRemindDue,
+  agitPassthruBundleOf, agitPassthruPostOf, excelDayOf, latestPassthruRound, ledgerInDateOf, passthruDayOf, passthruReadOf, passthruRemindDue,
   passthruRemindKey, passthruRemindPlan, purchaseRoundOf, type AgitPassthruInput, type Cell, type PassthruBook, type SheetRow,
 } from '@/lib/agit/passthru';
-import { passthruBookOf } from '@/lib/agit/passthru-read';
+import { passthruBookOf, passthruSheetBrief } from '@/lib/agit/passthru-read';
+import { sheetText } from '@/lib/agents/file-text';
 import {
   AGIT_CC, AGIT_PASSTHRU_KIND, AGIT_POST_KINDS, AGIT_URGENT_TAG, agitKindOf, agitPostedSay, agitPostName, agitTemplateOf, agitTitleOf,
   isPayoutKind,
@@ -43,6 +44,16 @@ const BOOK: PassthruBook = {
     row(5, { A: '2026', B: '10월', D: '97차', Y: 800_000, AB: 700_000 }),
     row(6, { A: '2026', B: '11월', D: '98차', Y: 1_500_000, AB: 1_200_000 }),
     row(7, { A: '2026년', B: 11, D: '98차_1', Y: 900_000, AB: 800_000 }),
+  ],
+  /* 총괄 — 표 셋이 나란히(매출내역 B~ · 수금내역 P~ · 매입내역 X~). 수금내역의 「구분」은 「수금일자」 왼쪽에서 가장 가까운 것이다 —
+     매출내역의 「구분」(B · C)에 같은 차가 다른 줄로 서 있어도 그것을 보지 않는다 */
+  ledger: [
+    row(2, { B: '1) HB기준 매출내역', P: '2) HB기준 수금내역', X: '3) HB기준 매입내역' }),
+    row(4, { B: '구분', C: '구분', I: '계산서 발행', P: '구분', Q: '거래처', R: '수금일자', X: '구분' }),
+    row(6, { B: 'HB98', I: 46340, P: 'HB97', Q: '플러그링크', R: 46322 }),
+    row(7, { B: 'HB97', P: 'HB98', Q: '플러그링크', R: 46352 }),
+    /* 같은 차의 정산 줄 — 입금 예정일이 아니다 */
+    row(8, { P: 'HB98_1', Q: '플러그링크', R: 46356 }),
   ],
 };
 const SHEET = { url: 'https://x.private.blob.vercel-storage.com/agent-files/settlement/a/sheet.xlsx', name: '한백사업내역리스트.xlsx' };
@@ -79,11 +90,28 @@ describe('엑셀 읽기 — 매입내역 · EPC사업내역리스트', () => {
       { label: 'HB98차_추가공사비', org: '다라이브이', what: '추가공사비', supply: 300_000, vat: 30_000, bank: '나라은행', account: '111-222-333333', holder: '다라이브이' },
     ]);
     expect(r.notes).toEqual(['가나전기 하자보수비(매입내역 12행)에 계좌가 없어 같은 거래처의 HB98차 줄(10행) 계좌를 썼습니다.']);
+    /* 입금 예정일 — 총괄 수금내역의 HB98 줄 「수금일자」(정산 줄 HB98_1 · 매출내역의 HB98 줄이 아니다) */
+    expect(r.inDate).toBe('2026-11-26');
   });
 
   it('지난 차를 고를 수 있다', () => {
     const r = passthruReadOf(BOOK, 97);
-    expect(r).toMatchObject({ round: 97, month: '2026-10', receive: 800_000, payDate: '2026-10-28', own: { supply: 0, rows: 0 } });
+    expect(r).toMatchObject({
+      round: 97, month: '2026-10', receive: 800_000, payDate: '2026-10-28', inDate: '2026-10-27', own: { supply: 0, rows: 0 },
+    });
+  });
+
+  it('입금 예정일 — 총괄 시트 · 머리 · 그 차의 줄 · 날이 없으면 null(짓기는 막지 않는다)', () => {
+    const head = row(4, { P: '구분', R: '수금일자' });
+    expect(ledgerInDateOf(undefined, 98)).toBeNull();
+    expect(ledgerInDateOf([row(4, { A: '구분', B: '거래처' }), row(7, { A: 'HB98', B: 46352 })], 98)).toBeNull();
+    expect(ledgerInDateOf([row(4, { R: '수금일자', S: '구분' }), row(7, { R: 46352, S: 'HB98' })], 98)).toBeNull();
+    expect(ledgerInDateOf([head, row(7, { P: 'HB98' })], 98)).toBeNull();
+    expect(ledgerInDateOf([head, row(7, { P: 'HB98', R: '미정' })], 98)).toBeNull();
+    expect(ledgerInDateOf([head, row(7, { P: 'HB98차', R: 46352 })], 98)).toBe('2026-11-26');
+    expect(ledgerInDateOf([head, row(7, { P: 'HB 98', R: '2026.11.26' })], 98)).toBe('2026-11-26');
+    expect(ledgerInDateOf([head, row(7, { P: 'HB98', R: 46352 })], 9)).toBeNull();
+    expect(passthruReadOf({ purchase: BOOK.purchase, epc: BOOK.epc }).inDate).toBeNull();
   });
 
   it('막지 않고 짚는다 — EPC 금회기성 합이 매입내역 합과 다름 · 빌릴 계좌도 없음', () => {
@@ -129,18 +157,18 @@ describe('엑셀 읽기 — 매입내역 · EPC사업내역리스트', () => {
   });
 });
 
-describe('xlsx 바이트 → 두 시트(passthru-read)', () => {
-  /** 지어낸 작은 엑셀 — 공유 글자(서식이 갈린 글 · 읽는 법 표시 포함) · 칸 안 글자 · 수식 칸의 저장값 · 시트 차례가 이름과 다름 */
+describe('xlsx 바이트 → 시트들(passthru-read)', () => {
+  /** 지어낸 작은 엑셀 — 공유 글자(서식이 갈린 글 · 읽는 법 표시 포함) · 칸 안 글자 · 수식 칸의 저장값 · 시트 차례가 이름과 다름 · 총괄의 수금일자 */
   async function workbook(): Promise<Uint8Array> {
     const zip = new JSZip();
     zip.file('xl/workbook.xml', '<workbook xmlns:r="r"><sheets>'
       + '<sheet name="통합" sheetId="1" r:id="rId1"/><sheet name="EPC사업내역리스트" sheetId="2" r:id="rId2"/>'
-      + '<sheet name=" 매입내역" sheetId="3" r:id="rId3"/></sheets></workbook>');
+      + '<sheet name=" 매입내역" sheetId="3" r:id="rId3"/><sheet name="매출수금매입내역_총괄" sheetId="4" r:id="rId4"/></sheets></workbook>');
     zip.file('xl/_rels/workbook.xml.rels', '<Relationships>'
       + '<Relationship Id="rId1" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Target="worksheets/sheet2.xml"/>'
-      + '<Relationship Id="rId3" Target="/xl/worksheets/sheet3.xml"/></Relationships>');
+      + '<Relationship Id="rId3" Target="/xl/worksheets/sheet3.xml"/><Relationship Id="rId4" Target="worksheets/sheet4.xml"/></Relationships>');
     const strings = ['차수', '거래처', '구분', '공급가', '부가세', '합계금액', 'HB98차', '가나전기', '준공', '가상은행', '000-11-2222',
-      '해당년도', '해당월', '잔금 세금계산서', '금회기성', '98차', '11월', 'HB98차 지급액', '하도급사'];
+      '해당년도', '해당월', '잔금 세금계산서', '금회기성', '98차', '11월', 'HB98차 지급액', '하도급사', '수금일자', 'HB98'];
     zip.file('xl/sharedStrings.xml', `<sst>${strings.map((s) => (s === '가나전기'
       ? '<si><r><t>가나</t></r><r><rPr/><t>전기</t></r><rPh><t>カナ</t></rPh></si>'
       : `<si><t>${s}</t></si>`)).join('')}</sst>`);
@@ -157,6 +185,17 @@ describe('xlsx 바이트 → 두 시트(passthru-read)', () => {
       + `${s('H10', 9)}<c r="I10" t="inlineStr"><is><t>000-11-2222</t></is></c><c r="J10" t="str"><f>C10</f><v>가나전기</v></c>${n('L10', NOV27)}</row>`
       + `<row r="11">${s('B11', 17)}${n('E11', 1_000_000)}</row>`
       + '</sheetData></worksheet>');
+    zip.file('xl/worksheets/sheet4.xml', '<worksheet><sheetData>'
+      + `<row r="4">${s('B4', 2)}${s('P4', 2)}${s('Q4', 1)}${s('R4', 19)}</row>`
+      + `<row r="7">${s('P7', 20)}${n('R7', NOV27 - 1)}</row>`
+      + '</sheetData></worksheet>');
+    return zip.generateAsync({ type: 'uint8array' });
+  }
+  /** 같은 엑셀에서 시트 목록만 바꾼다 — 그 시트가 없는 엑셀 */
+  async function without(...names: string[]): Promise<Uint8Array> {
+    const zip = await JSZip.loadAsync(await workbook());
+    const book = await zip.file('xl/workbook.xml')!.async('string');
+    zip.file('xl/workbook.xml', names.reduce((xml, name) => xml.replace(new RegExp(`<sheet name="\\s*${name}"[^>]*/>`), ''), book));
     return zip.generateAsync({ type: 'uint8array' });
   }
 
@@ -166,16 +205,50 @@ describe('xlsx 바이트 → 두 시트(passthru-read)', () => {
       B: 'HB98차', C: '가나전기', D: '준공', E: 1_000_000, F: 100_000, G: 1_100_000, H: '가상은행', I: '000-11-2222', J: '가나전기', L: NOV27,
     });
     expect(book.epc.find((r) => r.r === 6)?.c.Y).toBe(1_500_000);
+    expect(book.ledger?.find((r) => r.r === 7)?.c).toEqual({ P: 'HB98', R: NOV27 - 1 });
     const r = passthruReadOf(book);
-    expect(r).toMatchObject({ round: 98, month: '2026-11', receive: 1_500_000, payDate: '2026-11-27' });
+    expect(r).toMatchObject({ round: 98, month: '2026-11', receive: 1_500_000, payDate: '2026-11-27', inDate: '2026-11-26' });
     expect(r.rows).toHaveLength(1);
+  });
+
+  it('총괄 시트가 없어도 읽는다 — 입금 예정일만 빈다', async () => {
+    const book = await passthruBookOf(await without('매출수금매입내역_총괄'));
+    expect(book.ledger).toBeUndefined();
+    expect(passthruReadOf(book)).toMatchObject({ round: 98, receive: 1_500_000, inDate: null });
   });
 
   it('xlsx 가 아니거나 시트가 없으면 사람 말로', async () => {
     await expect(passthruBookOf(new Uint8Array([1, 2, 3]))).rejects.toThrow('엑셀(xlsx)로 열리지 않습니다');
-    const zip = await JSZip.loadAsync(await workbook());
-    zip.file('xl/workbook.xml', '<workbook><sheets><sheet name="매입내역" sheetId="3" r:id="rId3"/></sheets></workbook>');
-    await expect(passthruBookOf(await zip.generateAsync({ type: 'uint8array' }))).rejects.toThrow('엑셀에 「EPC사업내역리스트」 시트가 없습니다');
+    await expect(passthruBookOf(await without('EPC사업내역리스트'))).rejects.toThrow('엑셀에 「EPC사업내역리스트」 시트가 없습니다');
+    await expect(passthruBookOf(await without('매입내역'))).rejects.toThrow('엑셀에 「매입내역」 시트가 없습니다');
+  });
+
+  it('대화에는 요약만 — 시트 이름 · 지금 차의 숫자 · 입금 예정일 · read_file. 다른 엑셀은 통째로(file-text sheetText)', async () => {
+    const bytes = await workbook();
+    const brief = await passthruSheetBrief(bytes);
+    expect(brief).not.toBeNull();
+    expect(brief!.split('\n')).toEqual([
+      expect.stringMatching(/^한백사업내역리스트 엑셀\(시트 통합 · EPC사업내역리스트 · 매입내역 · 매출수금매입내역_총괄\) — .*read_file 로 전체를 연다\.$/),
+      '콘솔이 읽은 지금 차(매입내역의 가장 큰 차): HB98차 · 2026년 11월',
+      '플러그링크 → 한백(부가세 전): 1,500,000원 · 입금 예정 2026-11-26',
+      '한백 → 하도급사 1건(부가세 전 1,000,000원 · 포함 1,100,000원) · 지급일 2026-11-27: 가나전기 준공 1,000,000원',
+    ]);
+    /* 대화에 싣는 글자(요약) · read_file 의 글자(통째) */
+    expect(await sheetText(Buffer.from(bytes))).toBe(brief);
+    const full = await sheetText(Buffer.from(bytes), true);
+    expect(full).toMatch(/## 시트 「\s*매입내역」/);
+    expect(full).toContain('## 시트 「매출수금매입내역_총괄」');
+    /* 지금 차를 못 읽으면 그 까닭을 요약에 — 매입내역의 머리가 바뀜 */
+    const zip = await JSZip.loadAsync(bytes);
+    const sheet3 = await zip.file('xl/worksheets/sheet3.xml')!.async('string');
+    zip.file('xl/worksheets/sheet3.xml', sheet3.replace(/<row r="2">[\s\S]*?<\/row>/, ''));
+    const broken = await passthruSheetBrief(await zip.generateAsync({ type: 'uint8array' }));
+    expect(broken!.split('\n')[1]).toBe('콘솔이 지금 차(매입내역의 가장 큰 차)를 읽지 못했다 — 매입내역 시트의 머리(공급가 · 부가세 · 합계금액)를 찾지 못했습니다 — 엑셀 모양이 바뀌었습니다.');
+    /* 한백사업내역리스트가 아니면 null — 통째로 싣는다 */
+    const other = await without('매입내역');
+    expect(await passthruSheetBrief(other)).toBeNull();
+    expect(await sheetText(Buffer.from(other))).toContain('## 시트 「EPC사업내역리스트」');
+    expect(await passthruSheetBrief(new Uint8Array([1, 2, 3]))).toBeNull();
   });
 });
 
@@ -295,6 +368,7 @@ describe('매월 25일 상신 알림 (한백 2026-11-28 「알림 시점은 매�
     expect(plan.key).toBe('pluglink-passthru:2026-11');
     expect(plan.task).toMatchObject({ title: '패스스루 집행 상신 — 26년 11월', due: '2026-11-25' });
     expect(plan.say.split('\n')[0]).toBe('26년 11월 플러그링크 패스스루 집행 상신 — 오늘이 알림 날입니다(매월 25일).');
+    expect(plan.say).toContain('「매출수금매입내역_총괄」 시트의 「수금일자」');
     expect(plan.alarm.title).toBe('패스스루 집행 상신 — 26년 11월');
     const late = passthruRemindPlan(due, '2026-11-27');
     expect(late.say.split('\n')[0]).toContain('알림 날(');

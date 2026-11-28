@@ -228,7 +228,7 @@ async function answer(
           const sheetFile = await fileOf(q.sheetFileId, '한백사업내역리스트 엑셀');
           const attach = [];
           for (const id of q.attachFileIds) attach.push(await fileOf(id, '첨부할 증빙'));
-          const { post, plan, input, read } = await draftAgitPassthruPost(actor, {
+          const { post, plan, input, read, inDateFrom } = await draftAgitPassthruPost(actor, {
             sheetFile, attach, round: q.round, inDate: q.inDate, payDate: q.payDate, again: q.again,
           });
           agitDrafted.push(post.id);
@@ -236,7 +236,7 @@ async function answer(
             id: post.id, plan, name: agitPostName(post), payDate: post.payDate, round: input.round, month: input.month,
             receive: input.receive, pay: passthruPayOf(input), vat: passthruVatOf(input),
             rows: input.rows.map((r) => ({ org: r.org, supply: r.supply })), own: read.own,
-            inDate: input.inDate, attach: input.attach.map((f) => f.name), notes: read.notes,
+            inDate: input.inDate, inDateFrom, attach: input.attach.map((f) => f.name), notes: read.notes,
           };
         },
         agitPublish: async (q: { payDate: string; kind?: AgitKind }) => {

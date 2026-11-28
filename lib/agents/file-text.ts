@@ -7,11 +7,16 @@
  * (.xls)은 바이너리라 읽지 않는다 — 이름만 넘긴다.
  *
  * 읽지 못해도 던지지 않는다 — 파일 하나 때문에 답이 막히면 안 된다. null 이면 에이전트는 이름만 안다.
+ *
+ * ★대화에 싣는 글자는 최근 대화 창에 머무는 동안 부를 때마다 다시 실린다★(brain toMessages · fileTextsOf) — 5분 넘게 쉬었다 부르면 캐시를
+ * 다시 쓴다. 그래서 콘솔이 칸으로 읽는 엑셀은 요약만 싣는다(sheetText): 한백사업내역리스트(패스스루 집행 글의 재료)는 통째로 6만 자 ≈ 9만
+ * 토큰이라 파일을 넘긴 첫 답이 $0.53 였다(11-28 시험). 전체는 read_file(fileText 의 full)로 연다.
  */
 import JSZip from 'jszip';
 import { agentFileRead } from './files';
 import type { AgentFile, AgentMessage } from '@/types/agents';
 import { readBlob } from '@/lib/blob/server';
+import { passthruSheetBrief } from '@/lib/agit/passthru-read';
 
 /** 한 파일에서 넘기는 글자 상한 — 넘으면 자르고 잘랐다고 적는다 */
 const TEXT_CAP = 60_000;
@@ -119,15 +124,27 @@ export async function hwpxText(buf: Buffer): Promise<string> {
   return clipText(parts.join('\n'));
 }
 
-/** 한 파일의 글자 — 읽을 형식이 아니거나 못 받으면 null */
-export async function fileText(file: Pick<AgentFile, 'name' | 'url' | 'size'>): Promise<string | null> {
+/**
+ * 엑셀의 글자 — 콘솔이 칸으로 읽는 엑셀(한백사업내역리스트)은 요약만, 나머지는 통째로(xlsxText). full 이면 언제나 통째로(read_file).
+ * 요약을 짓다 넘어져도 통째로 돌아간다 — 파일 하나 때문에 답이 막히면 안 된다.
+ */
+export async function sheetText(buf: Buffer, full = false): Promise<string> {
+  if (!full) {
+    const brief = await passthruSheetBrief(buf).catch(() => null);
+    if (brief) return brief;
+  }
+  return xlsxText(buf);
+}
+
+/** 한 파일의 글자 — 읽을 형식이 아니거나 못 받으면 null. full: 요약만 싣는 엑셀도 통째로(read_file) */
+export async function fileText(file: Pick<AgentFile, 'name' | 'url' | 'size'>, opts: { full?: boolean } = {}): Promise<string | null> {
   const how = agentFileRead(file.name);
   if (how !== 'text' && how !== 'sheet' && how !== 'word' && how !== 'hwpx') return null;
   if (file.size > FETCH_CAP) return null;
   try {
     const buf = await readBlob(file.url); // 비공개 저장소 — SDK 로 읽는다(lib/blob/server)
     if (how === 'text') return clipText(decodeText(buf));
-    if (how === 'sheet') return await xlsxText(buf);
+    if (how === 'sheet') return await sheetText(buf, opts.full);
     if (how === 'word') return await docxText(buf);
     return await hwpxText(buf);
   } catch (e) {

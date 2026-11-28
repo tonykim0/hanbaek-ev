@@ -61,7 +61,7 @@ const SHEET: PassthruFile = { url: 'https://x.public.blob.vercel-storage.com/age
 const INV: PassthruFile = { url: 'https://x.public.blob.vercel-storage.com/agent-files/settlement/pass-inv.pdf', name: '가나전기 세금계산서.pdf' };
 const CONTRACT: PassthruFile = { url: 'https://x.public.blob.vercel-storage.com/agent-files/settlement/pass-con.pdf', name: '공사하도급계약서.pdf' };
 const READ: PassthruRead = {
-  round: 98, month: MONTH, receive: 2_400_000, payDate: PAY, own: { supply: 500_000, rows: 1 }, notes: [],
+  round: 98, month: MONTH, receive: 2_400_000, payDate: PAY, inDate: null, own: { supply: 500_000, rows: 1 }, notes: [],
   rows: [
     { label: 'HB98차_준공', org: '가나전기', what: '준공', supply: 1_000_000, vat: 100_000, bank: '가상은행', account: '000-11-2222', holder: '가나전기' },
     { label: 'HB98차_추가공사비', org: '다라이브이', what: '추가공사비', supply: 300_000, vat: 30_000, bank: null, account: null, holder: null },
@@ -136,10 +136,23 @@ describe('플러그링크 패스스루 집행 글 (한백 2026-11-28)', () => {
     });
     expect(made.post.body).toContain('> *- 입금 예정일 미정*');
     expect((await draftAgitPassthruPost(admin, ask(), reader)).plan).toBe('keep');
+    expect(made.inDateFrom).toBeNull();
     const dated = await draftAgitPassthruPost(admin, ask({ inDate: '2098-03-26' }), reader);
     expect(dated.plan).toBe('refresh');
     expect(dated.post.id).toBe(made.post.id);
     expect(dated.post.body).toContain('> *- 2098년 3월 26일 수요일 입금 예정*');
+    expect(dated.inDateFrom).toBe('said');
+    /* 입금 예정일은 엑셀 총괄 시트의 수금일자가 기본 — 한백이 다른 날을 말하면 그 날이 이기고 다르다고 짚는다 */
+    const sheetDay = async () => ({ ...READ, inDate: '2098-03-25' });
+    const fromSheet = await draftAgitPassthruPost(admin, ask(), sheetDay);
+    expect(fromSheet).toMatchObject({ plan: 'refresh', inDateFrom: 'sheet' });
+    expect(fromSheet.post.passthru?.inDate).toBe('2098-03-25');
+    expect(fromSheet.post.body).toContain('> *- 2098년 3월 25일 화요일 입금 예정*');
+    expect(fromSheet.read.notes).toEqual([]);
+    const said = await draftAgitPassthruPost(admin, ask({ inDate: '2098-03-26' }), sheetDay);
+    expect(said).toMatchObject({ plan: 'refresh', inDateFrom: 'said' });
+    expect(said.post.body).toBe(dated.post.body);
+    expect(said.read.notes).toEqual(['한백이 말한 입금 예정일(2098-03-26)이 엑셀 총괄 시트의 HB98 수금일자(2098-03-25)와 다릅니다 — 한백이 말한 날로 지었습니다.']);
     /* 한백사업내역리스트를 첨부로도 고르면 짓지 않는다(내부 장부) · 지급일을 못 읽었으면 묻는다 */
     await expect(draftAgitPassthruPost(admin, ask({ attach: [SHEET] }), reader)).rejects.toThrow('첨부에서 빼 주세요');
     await expect(draftAgitPassthruPost(admin, ask(), async () => ({ ...READ, payDate: null }))).rejects.toThrow('지급일이 없습니다');

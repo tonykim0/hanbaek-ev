@@ -21,7 +21,7 @@ export interface PassthruDraftRequest {
   attach: PassthruFile[];
   /** 차수 — 빼면 매입내역의 가장 큰 차 */
   round: number | null;
-  /** 플러그링크 입금 예정일 YYYY-MM-DD — 한백이 말했을 때만 */
+  /** 플러그링크 입금 예정일 YYYY-MM-DD — 한백이 다른 날을 말했을 때만(빼면 엑셀 총괄 시트의 그 차 「수금일자」) */
   inDate: string | null;
   /** 지급 요청일 — 빼면 매입내역 「지급일」(없으면 던진다) */
   payDate: string | null;
@@ -39,7 +39,11 @@ export async function draftAgitPassthruPost(
   actor: Actor,
   q: PassthruDraftRequest,
   read: (file: PassthruFile, round: number | null) => Promise<PassthruRead> = readPassthruSheet
-): Promise<{ post: AgitPostRecord; plan: 'create' | 'refresh' | 'keep'; input: AgitPassthruInput; read: PassthruRead }> {
+): Promise<{
+  post: AgitPostRecord; plan: 'create' | 'refresh' | 'keep'; input: AgitPassthruInput; read: PassthruRead;
+  /** 입금 예정일을 어디서 — 한백이 말한 날 · 엑셀 총괄 시트의 수금일자 · 없음(미정) */
+  inDateFrom: 'said' | 'sheet' | null;
+}> {
   if (q.attach.some((f) => f.url === q.sheetFile.url)) {
     throw new Error('한백사업내역리스트를 첨부로도 골랐습니다 — 내부 장부라 zip 에 넣지 않습니다. 첨부에서 빼 주세요.');
   }
@@ -48,13 +52,18 @@ export async function draftAgitPassthruPost(
   if (!payDate) {
     throw new Error(`매입내역 HB${got.round}차 줄에 지급일이 없습니다 — 한백에게 지급 요청일을 묻고 pay_date 로 줍니다.`);
   }
+  /* 입금 예정일 — 한백이 말한 날이 이긴다(엑셀이 덜 고쳐졌을 수 있다). 엑셀과 다르면 짚는다 */
+  const inDate = q.inDate ?? got.inDate;
+  const notes = q.inDate && got.inDate && q.inDate !== got.inDate
+    ? [...got.notes, `한백이 말한 입금 예정일(${q.inDate})이 엑셀 총괄 시트의 HB${got.round} 수금일자(${got.inDate})와 다릅니다 — 한백이 말한 날로 지었습니다.`]
+    : got.notes;
   const input: AgitPassthruInput = {
-    round: got.round, month: got.month, receive: got.receive, inDate: q.inDate, rows: got.rows, sheet: q.sheetFile, attach: q.attach,
+    round: got.round, month: got.month, receive: got.receive, inDate, rows: got.rows, sheet: q.sheetFile, attach: q.attach,
   };
   const draft = agitPassthruPostOf(payDate, input);
   const { post, plan } = await getRepository().draftAgitPost({
     payDate, kind: AGIT_PASSTHRU_KIND, body: draft.text, total: draft.total, batches: draft.batches, again: q.again, messageId: null,
     urgent: draft.urgent, passthru: input,
   }, actor);
-  return { post, plan, input, read: got };
+  return { post, plan, input, read: { ...got, notes }, inDateFrom: q.inDate ? 'said' : got.inDate ? 'sheet' : null };
 }
